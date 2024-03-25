@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Package Metadata Database</title>
+    <style>
+        html {
+            font-family: sans-serif;
+        }
+
+        label {
+            display: inline-block;
+            width: 120px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Package Metadata Database</h1>
+    <a href="/">Home</a>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Distribution</th>
+                <th>Name</th>
+                <th>Version</th>
+                <th>Architecture</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {{ range . }}
+            <tr>
+                <td>{{ .Name.Distribution }}</td>
+                <td>{{ .Name.Name }}</td>
+                <td>{{ .Name.Version }}</td>
+                <td>{{ .Name.Architecture }}</td>
+            </tr>
+            {{ end }}
+        </tbody>
+    </table>
+</body>
+
+</html>

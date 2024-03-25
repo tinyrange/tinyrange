@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Package Metadata Database</title>
+    <style>
+        html {
+            font-family: sans-serif;
+        }
+
+        label {
+            display: inline-block;
+            width: 120px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Package Metadata Database</h1>
+    <form action="/search">
+        <div>
+            <label for="distribution">Distribution:</label>
+            <input type="text" name="distribution" id="distribution">
+        </div>
+        <div>
+            <label for="name">Name:</label>
+            <input type="text" name="name" id="name">
+        </div>
+        <div>
+            <label for="version">Version:</label>
+            <input type="text" name="version" id="version">
+        </div>
+        <div>
+            <label for="architecture">Architecture:</label>
+            <input type="text" name="architecture" id="architecture">
+        </div>
+        <button type="submit">Search</button>
+    </form>
+</body>
+
+</html>
