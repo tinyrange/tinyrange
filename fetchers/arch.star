@@ -53,7 +53,12 @@ def parse_arch_package(contents):
     return ret
 
 def parse_arch_name(ctx, name):
-    name, version = split_maybe(name, "=", 2)
+    version = ""
+    if ">=" in name:
+        name, version = name.split(">=", 1)
+        version = ">" + version
+    else:
+        name, version = split_maybe(name, "=", 2)
     return ctx.name(name = name, version = version)
 
 def fetch_arch_repository(ctx, url, pool):
@@ -72,8 +77,8 @@ def fetch_arch_repository(ctx, url, pool):
             architecture = ent["arch"],
         ))
 
-        pkg.set_description(ent["desc"])
-        pkg.set_license(ent["license"])
+        pkg.set_description(opt(ent, "desc"))
+        pkg.set_license(opt(ent, "license"))
         pkg.set_size(int(ent["csize"]))
         pkg.set_installed_size(int(ent["isize"]))
 
@@ -118,5 +123,7 @@ for pool in ["core", "community", "extra", "multilib"]:
             ),
             distro = "arch",
         )
+
+fetch_repo(fetch_arch_repository, ("https://repo.bioarchlinux.org/x86_64", "bioarchlinux"), distro="arch")
 
 fetch_repo(fetch_aur_repository, (), distro = "arch")
