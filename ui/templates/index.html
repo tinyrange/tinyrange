@@ -5,39 +5,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Package Metadata Database</title>
-    <style>
-        html {
-            font-family: sans-serif;
-        }
-
-        label {
-            display: inline-block;
-            width: 120px;
-        }
-    </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+        integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
 </head>
 
 <body>
-    <h1>Package Metadata Database</h1>
-    <form action="/search">
-        <div>
-            <label for="distribution">Distribution:</label>
-            <input type="text" name="distribution" id="distribution">
-        </div>
-        <div>
-            <label for="name">Name:</label>
-            <input type="text" name="name" id="name">
-        </div>
-        <div>
-            <label for="version">Version:</label>
-            <input type="text" name="version" id="version">
-        </div>
-        <div>
-            <label for="architecture">Architecture:</label>
-            <input type="text" name="architecture" id="architecture">
-        </div>
-        <button type="submit">Search</button>
-    </form>
+    <div class="container">
+        <h1>Package Metadata Database</h1>
+        <form action="/search">
+            <div class="mb-3">
+                <label for="distribution" class="form-label">Distribution:</label>
+                <input type="text" class="form-control" name="distribution" id="distribution">
+            </div>
+            <div class="mb-3">
+                <label for="name" class="form-label">Name:</label>
+                <input type="text" class="form-control" name="name" id="name">
+            </div>
+            <div class="mb-3">
+                <label for="version" class="form-label">Version:</label>
+                <input type="text" class="form-control" name="version" id="version">
+            </div>
+            <div class="mb-3">
+                <label for="architecture" class="form-label">Architecture:</label>
+                <input type="text" class="form-control" name="architecture" id="architecture">
+            </div>
+            <button type="submit" class="btn btn-primary">Search</button>
+        </form>
+    </div>
 </body>
 
 </html>
