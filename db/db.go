@@ -49,6 +49,7 @@ func (name PackageName) Matches(query PackageName) bool {
 func (name PackageName) String() string {
 	return fmt.Sprintf("%s/%s@%s:%s", name.Distribution, name.Name, name.Version, name.Architecture)
 }
+
 func (PackageName) Type() string          { return "PackageName" }
 func (PackageName) Hash() (uint32, error) { return 0, fmt.Errorf("PackageName is not hashable") }
 func (PackageName) Truth() starlark.Bool  { return starlark.True }
@@ -417,9 +418,10 @@ var (
 )
 
 type PackageDatabase struct {
-	Eif      *core.EnvironmentInterface
-	Fetchers []*RepositoryFetcher
-	Packages []*Package
+	Eif        *core.EnvironmentInterface
+	Fetchers   []*RepositoryFetcher
+	Packages   []*Package
+	PackageMap map[string]*Package
 }
 
 func (db *PackageDatabase) addPackage(name PackageName) *Package {
@@ -540,6 +542,12 @@ func (db *PackageDatabase) FetchAll() error {
 		}
 	}
 
+	db.PackageMap = make(map[string]*Package)
+
+	for _, pkg := range db.Packages {
+		db.PackageMap[pkg.Name.String()] = pkg
+	}
+
 	return nil
 }
 
@@ -558,4 +566,10 @@ func (db *PackageDatabase) Search(query PackageName, maxResults int) ([]*Package
 	}
 
 	return ret, nil
+}
+
+func (db *PackageDatabase) Get(key string) (*Package, bool) {
+	pkg, ok := db.PackageMap[key]
+
+	return pkg, ok
 }

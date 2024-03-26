@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Package Metadata Database</title>
+    <style>
+        html {
+            font-family: sans-serif;
+        }
+
+        label {
+            display: inline-block;
+            width: 120px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Package Metadata Database</h1>
+    <a href="/">Home</a>
+
+    <h2>{{ .Name }}</h2>
+    <h3><strong>License:</strong> {{ .License }}</h3>
+
+    <div>
+        <h3>Description</h3>
+        <p>{{ .Description }}</p>
+    </div>
+
+    <div>
+        <h3>Download URLs</h3>
+        <ul>
+            {{ range .DownloadUrls }}
+            <li><a href="{{ . }}">{{ . }}</a></li>
+            {{ end }}
+        </ul>
+    </div>
+
+    <div>
+        <h3>Metadata</h3>
+        <ul>
+            {{ range $k, $v := .Metadata }}
+            <li><strong>{{ $k }}</strong>: {{ $v }}</li>
+            {{ end }}
+        </ul>
+    </div>
+
+    <div>
+        <h3>Depends</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Distribution</th>
+                    <th>Name</th>
+                    <th>Version</th>
+                    <th>Architecture</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {{ range .Depends }}
+                {{ range . }}
+                <tr>
+                    <td>{{ .Distribution }}</td>
+                    <td><a
+                            href="/search?distribution={{ .Distribution }}&name={{ .Name }}&version={{ .Version }}&architecture={{ .Architecture }}">
+                            {{ .Name }}
+                        </a>
+                    </td>
+                    <td>{{ .Version }}</td>
+                    <td>{{ .Architecture }}</td>
+                </tr>
+                {{ end }}
+                {{ end }}
+            </tbody>
+        </table>
+    </div>
+
+    <div>
+        <h3>Aliases</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Distribution</th>
+                    <th>Name</th>
+                    <th>Version</th>
+                    <th>Architecture</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {{ range .Aliases }}
+                <tr>
+                    <td>{{ .Distribution }}</td>
+                    <td>{{ .Name }}</td>
+                    <td>{{ .Version }}</td>
+                    <td>{{ .Architecture }}</td>
+                </tr>
+                {{ end }}
+            </tbody>
+        </table>
+    </div>
+</body>
+
+</html>

@@ -48,7 +48,13 @@ def parse_apk_index(contents):
     return ret
 
 def parse_apk_name(ctx, s):
-    pkg, version = split_maybe(s, "=", 2)
+    pkg = ""
+    version = ""
+    if ">=" in s:
+        pkg, version = s.split(">=", 1)
+        version = ">" + version
+    else:
+        pkg, version = split_maybe(s, "=", 2)
     if ":" in pkg:
         namespace, pkg = pkg.split(":", 1)
         return ctx.name(namespace = namespace, name = pkg, version = version)

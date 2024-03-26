@@ -35,7 +35,7 @@
             {{ range . }}
             <tr>
                 <td>{{ .Name.Distribution }}</td>
-                <td>{{ .Name.Name }}</td>
+                <td><a href="/info?key={{ .Name }}">{{ .Name.Name }}</a></td>
                 <td>{{ .Name.Version }}</td>
                 <td>{{ .Name.Architecture }}</td>
             </tr>

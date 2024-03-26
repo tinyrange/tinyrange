@@ -40,6 +40,21 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 		}
 	})
 
+	mux.HandleFunc("/info", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+
+		key := r.FormValue("key")
+
+		pkg, ok := pkgDb.Get(key)
+		if !ok {
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+
+		if err := templates.ExecuteTemplate(w, "info.html", pkg); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if err := templates.ExecuteTemplate(w, "index.html", nil); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
