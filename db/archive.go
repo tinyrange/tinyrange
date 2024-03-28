@@ -8,6 +8,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/tinyrange/pkg2/memtar"
+	"github.com/xi2/xz"
 )
 
 func ReadArchive(r io.Reader, ext string) (memtar.TarReader, error) {
@@ -20,6 +21,13 @@ func ReadArchive(r io.Reader, ext string) (memtar.TarReader, error) {
 		ext = strings.TrimSuffix(ext, ".gz")
 
 		reader, err = gzip.NewReader(r)
+		if err != nil {
+			return nil, err
+		}
+	} else if strings.HasSuffix(ext, ".xz") {
+		ext = strings.TrimSuffix(ext, ".xz")
+
+		reader, err = xz.NewReader(r, 0)
 		if err != nil {
 			return nil, err
 		}

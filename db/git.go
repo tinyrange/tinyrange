@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5"
@@ -87,6 +88,24 @@ func (db *PackageDatabase) fetchGit(url string) (*GitRepository, error) {
 		return nil, err
 	}
 
+	info, err := os.Stat(cachePath)
+	if err == nil {
+		modTime := info.ModTime()
+
+		if time.Since(modTime) < 8*time.Hour {
+			store := osfs.New(cachePath)
+
+			s := filesystem.NewStorage(store, cache.NewObjectLRUDefault())
+
+			repo, err := git.Open(s, nil)
+			if err != nil {
+				return nil, fmt.Errorf("failed to open: %s", err)
+			}
+
+			return &GitRepository{repo: repo}, nil
+		}
+	}
+
 	slog.Info("downloading with git", "url", url)
 
 	repo, err := git.PlainClone(cachePath, true, &git.CloneOptions{
@@ -111,6 +130,10 @@ func (db *PackageDatabase) fetchGit(url string) (*GitRepository, error) {
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to clone: %s", err)
+	}
+
+	if err := os.Chtimes(cachePath, time.Now(), time.Now()); err != nil {
+		return nil, err
 	}
 
 	return &GitRepository{repo: repo}, nil

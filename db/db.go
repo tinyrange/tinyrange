@@ -619,6 +619,24 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 
 			return starlark.None, nil
 		}),
+		"parse_shell": starlark.NewBuiltin("parse_shell", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				contents string
+			)
+
+			if err := starlark.UnpackArgs("parse_shell", args, kwargs,
+				"contents", &contents,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return parseShell(contents)
+		}),
 		"error": starlark.NewBuiltin("error", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -696,7 +714,7 @@ func (db *PackageDatabase) Get(key string) (*Package, bool) {
 	return pkg, ok
 }
 
-func (db *PackageDatabase) GetBuildScript(script BuildScript) (any, error) {
+func (db *PackageDatabase) GetBuildScript(script BuildScript) (starlark.Value, error) {
 	for _, fetcher := range db.ScriptFetchers {
 		if fetcher.Name == script.Name {
 			thread := &starlark.Thread{}

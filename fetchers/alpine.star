@@ -99,9 +99,11 @@ def fetch_alpine_build_script(ctx, url, commit, file):
     tree = repo[commit]
     build_script = tree[file].read()
 
-    print(build_script)
+    script_vars = parse_shell(build_script)
 
-    return None
+    sources = script_vars["source"].split("\n")
+
+    return [source.strip("\t\n") for source in sources if source.strip("\t\n") != ""]
 
 register_script_fetcher(
     "alpine",
