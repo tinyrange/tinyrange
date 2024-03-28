@@ -13,6 +13,7 @@ import (
 
 var (
 	httpAddress = flag.String("http", "localhost:5123", "the address to run a http web server on")
+	buildScript = flag.String("buildScript", "", "get the build script for a given package")
 )
 
 func main() {
@@ -34,8 +35,24 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ui.RegisterHandlers(db, http.DefaultServeMux)
+	if *buildScript != "" {
+		pkg, ok := db.Get(*buildScript)
+		if !ok {
+			log.Fatalf("could not find package: %s", *buildScript)
+		}
 
-	slog.Info("http server listening", "addr", "http://"+*httpAddress)
-	log.Fatal(http.ListenAndServe(*httpAddress, nil))
+		for _, script := range pkg.BuildScripts {
+			scriptInfo, err := db.GetBuildScript(script)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			slog.Info("", "scriptInfo", scriptInfo)
+		}
+	} else {
+		ui.RegisterHandlers(db, http.DefaultServeMux)
+
+		slog.Info("http server listening", "addr", "http://"+*httpAddress)
+		log.Fatal(http.ListenAndServe(*httpAddress, nil))
+	}
 }

@@ -61,7 +61,7 @@ def parse_apk_name(ctx, s):
     else:
         return ctx.name(name = pkg, version = version)
 
-def fetch_alpine_repository(ctx, url):
+def fetch_alpine_repository(ctx, url, repo):
     resp = fetch_http(url + "/APKINDEX.tar.gz")
     apk_index = resp.read_archive(".tar.gz")["APKINDEX"]
 
@@ -80,6 +80,8 @@ def fetch_alpine_repository(ctx, url):
         pkg.set_installed_size(int(ent["I"]))
 
         pkg.add_source(url = "{}/{}-{}.apk".format(url, pkg.name, pkg.version))
+        if opt(ent, "c") != "":
+            pkg.add_build_script("alpine", (ent["c"], "{}/{}/APKBUILD".format(repo, ent["o"])))
 
         pkg.add_metadata("url", opt(ent, "U"))
         pkg.add_metadata("origin", opt(ent, "o"))
@@ -92,11 +94,26 @@ def fetch_alpine_repository(ctx, url):
         for alias in split_dict_maybe(ent, "p", " "):
             pkg.add_alias(parse_apk_name(ctx, alias))
 
+def fetch_alpine_build_script(ctx, url, commit, file):
+    repo = fetch_git(url)
+    tree = repo[commit]
+    build_script = tree[file].read()
+
+    print(build_script)
+
+    return None
+
+register_script_fetcher(
+    "alpine",
+    fetch_alpine_build_script,
+    ("git://git.alpinelinux.org/aports",),
+)
+
 for version in ["v3.19"]:
     for repo in ["main", "community"]:
         for arch in ["x86_64"]:
             fetch_repo(
                 fetch_alpine_repository,
-                ("{}/{}/{}/{}".format(alpine_mirror, version, repo, arch),),
+                ("{}/{}/{}/{}".format(alpine_mirror, version, repo, arch), repo),
                 distro = "alpine@{}".format(version),
             )

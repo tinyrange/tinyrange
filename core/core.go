@@ -21,7 +21,7 @@ type EnvironmentInterface struct {
 	client    *http.Client
 }
 
-func (eif *EnvironmentInterface) urlToPath(key string) (string, error) {
+func (eif *EnvironmentInterface) GetCachePath(key string) (string, error) {
 	u, err := url.Parse(key)
 	if err != nil {
 		return "", err
@@ -33,7 +33,7 @@ func (eif *EnvironmentInterface) urlToPath(key string) (string, error) {
 }
 
 func (eif *EnvironmentInterface) HttpGetReader(url string) (io.ReadCloser, error) {
-	path, err := eif.urlToPath(url)
+	path, err := eif.GetCachePath(url)
 	if err != nil {
 		return nil, err
 	}

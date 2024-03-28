@@ -59,6 +59,11 @@ var (
 	_ starlark.Value = PackageName{}
 )
 
+type BuildScript struct {
+	Name string
+	Args starlark.Tuple
+}
+
 type Package struct {
 	Name          PackageName
 	Description   string
@@ -69,6 +74,11 @@ type Package struct {
 	Metadata      map[string]string
 	Depends       [][]PackageName
 	Aliases       []PackageName
+	BuildScripts  []BuildScript
+}
+
+func (pkg *Package) Id() string {
+	return pkg.Name.String()
 }
 
 func (pkg *Package) Matches(query PackageName) bool {
@@ -290,6 +300,32 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
+	} else if name == "add_build_script" {
+		return starlark.NewBuiltin("Package.add_build_script", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				name  string
+				fArgs starlark.Tuple
+			)
+
+			if err := starlark.UnpackArgs("Package.add_build_script", args, kwargs,
+				"name", &name,
+				"fArgs", &fArgs,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			pkg.BuildScripts = append(pkg.BuildScripts, BuildScript{
+				Name: name,
+				Args: fArgs,
+			})
+
+			return starlark.None, nil
+		}), nil
 	} else if name == "name" {
 		return starlark.String(pkg.Name.Name), nil
 	} else if name == "version" {
@@ -417,11 +453,42 @@ var (
 	_ starlark.HasAttrs = &RepositoryFetcher{}
 )
 
+type ScriptFetcher struct {
+	db   *PackageDatabase
+	Name string
+	Func *starlark.Function
+	Args starlark.Tuple
+}
+
+// Attr implements starlark.HasAttrs.
+func (s *ScriptFetcher) Attr(name string) (starlark.Value, error) {
+	return nil, nil
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (s *ScriptFetcher) AttrNames() []string {
+	return []string{}
+}
+
+func (*ScriptFetcher) String() string { return "ScriptFetcher" }
+func (*ScriptFetcher) Type() string   { return "ScriptFetcher" }
+func (*ScriptFetcher) Hash() (uint32, error) {
+	return 0, fmt.Errorf("ScriptFetcher is not hashable")
+}
+func (*ScriptFetcher) Truth() starlark.Bool { return starlark.True }
+func (*ScriptFetcher) Freeze()              {}
+
+var (
+	_ starlark.Value    = &ScriptFetcher{}
+	_ starlark.HasAttrs = &ScriptFetcher{}
+)
+
 type PackageDatabase struct {
-	Eif        *core.EnvironmentInterface
-	Fetchers   []*RepositoryFetcher
-	Packages   []*Package
-	PackageMap map[string]*Package
+	Eif            *core.EnvironmentInterface
+	Fetchers       []*RepositoryFetcher
+	ScriptFetchers []*ScriptFetcher
+	Packages       []*Package
+	PackageMap     map[string]*Package
 }
 
 func (db *PackageDatabase) addPackage(name PackageName) *Package {
@@ -439,6 +506,17 @@ func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Funct
 		Distro: distro,
 		Func:   f,
 		Args:   args,
+	})
+
+	return nil
+}
+
+func (db *PackageDatabase) addScriptFetcher(name string, f *starlark.Function, args starlark.Tuple) error {
+	db.ScriptFetchers = append(db.ScriptFetchers, &ScriptFetcher{
+		db:   db,
+		Name: name,
+		Func: f,
+		Args: args,
 	})
 
 	return nil
@@ -470,6 +548,50 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 			}
 
 			return &StarFile{f: f, name: url}, nil
+		}),
+		"fetch_git": starlark.NewBuiltin("fetch_git", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				url string
+			)
+
+			if err := starlark.UnpackArgs("fetch_git", args, kwargs,
+				"url", &url,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return db.fetchGit(url)
+		}),
+		"register_script_fetcher": starlark.NewBuiltin("register_script_fetcher", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				name  string
+				f     *starlark.Function
+				fArgs starlark.Tuple
+			)
+
+			if err := starlark.UnpackArgs("register_script_fetcher", args, kwargs,
+				"name", &name,
+				"f", &f,
+				"fArgs", &fArgs,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if err := db.addScriptFetcher(name, f, fArgs); err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.None, nil
 		}),
 		"fetch_repo": starlark.NewBuiltin("fetch_repo", func(
 			thread *starlark.Thread,
@@ -572,4 +694,28 @@ func (db *PackageDatabase) Get(key string) (*Package, bool) {
 	pkg, ok := db.PackageMap[key]
 
 	return pkg, ok
+}
+
+func (db *PackageDatabase) GetBuildScript(script BuildScript) (any, error) {
+	for _, fetcher := range db.ScriptFetchers {
+		if fetcher.Name == script.Name {
+			thread := &starlark.Thread{}
+
+			args := starlark.Tuple{fetcher}
+			args = append(args, fetcher.Args...)
+			args = append(args, script.Args...)
+
+			ret, err := starlark.Call(thread, fetcher.Func,
+				args,
+				[]starlark.Tuple{},
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			return ret, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no build script fetcher defined for: %s", script.Name)
 }
