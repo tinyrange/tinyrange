@@ -79,13 +79,15 @@ func (p *shellParser) visitStmt(stmt *syntax.Stmt) error {
 		for _, assign := range cmd.Assigns {
 			k := assign.Name.Value
 
-			val, err := p.evaluateWord(assign.Value)
-			if err != nil {
-				return err
-			}
+			if assign.Value != nil {
+				val, err := p.evaluateWord(assign.Value)
+				if err != nil {
+					return err
+				}
 
-			if err := p.out.SetKey(starlark.String(k), starlark.String(val)); err != nil {
-				return err
+				if err := p.out.SetKey(starlark.String(k), starlark.String(val)); err != nil {
+					return err
+				}
 			}
 		}
 	case *syntax.FuncDecl:

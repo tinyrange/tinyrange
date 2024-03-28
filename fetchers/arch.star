@@ -61,7 +61,19 @@ def parse_arch_name(ctx, name):
         name, version = split_maybe(name, "=", 2)
     return ctx.name(name = name, version = version)
 
-def fetch_arch_repository(ctx, url, pool):
+arch_repo_base = "https://gitlab.archlinux.org/archlinux/packaging/packages/"
+
+def fetch_arch_build_script(ctx, name, version):
+    print(name, version)
+    repo = fetch_git(arch_repo_base + name + ".git")
+    commit = repo.tag(version)
+    pkgbuild = commit["PKGBUILD"].read()
+
+    build_script = parse_shell(pkgbuild)
+
+    return build_script
+
+def fetch_arch_repository(ctx, url, pool, include_scripts):
     resp = fetch_http("{}/{}.db.tar.gz".format(url, pool))
     archive = resp.read_archive(".tar.gz")
 
@@ -83,6 +95,8 @@ def fetch_arch_repository(ctx, url, pool):
         pkg.set_installed_size(int(ent["isize"]))
 
         pkg.add_source(url = url + "/" + ent["filename"])
+        if include_scripts:
+            pkg.add_build_script("arch", (ent["base"], ent["version"]))
 
         for depend in split_dict_maybe(ent, "depends", "\n"):
             pkg.add_dependency(parse_arch_name(ctx, depend))
@@ -120,10 +134,17 @@ for pool in ["core", "community", "extra", "multilib"]:
             (
                 "{}/{}/os/{}".format(arch_mirror, pool, arch),
                 pool,
+                True,
             ),
             distro = "arch",
         )
 
-fetch_repo(fetch_arch_repository, ("https://repo.bioarchlinux.org/x86_64", "bioarchlinux"), distro="arch")
+fetch_repo(fetch_arch_repository, (
+    "https://repo.bioarchlinux.org/x86_64",
+    "bioarchlinux",
+    False,
+), distro = "arch")
 
 fetch_repo(fetch_aur_repository, (), distro = "arch")
+
+register_script_fetcher("arch", fetch_arch_build_script, ())

@@ -55,6 +55,52 @@ type GitRepository struct {
 	repo *git.Repository
 }
 
+// Attr implements starlark.HasAttrs.
+func (g *GitRepository) Attr(name string) (starlark.Value, error) {
+	if name == "tag" {
+		return starlark.NewBuiltin("GitRepository.tag", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				tag string
+			)
+
+			if err := starlark.UnpackArgs("GitRepository.tag", args, kwargs,
+				"tag", &tag,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			obj, err := g.repo.Tag(tag)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			tagObj, err := g.repo.TagObject(obj.Hash())
+			if err != nil {
+				return starlark.None, err
+			}
+
+			commit, err := tagObj.Commit()
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return &GitCommit{commit: commit}, nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (g *GitRepository) AttrNames() []string {
+	return []string{"tag"}
+}
+
 // Get implements starlark.Mapping.
 func (g *GitRepository) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
 	commit, _ := starlark.AsString(k)
@@ -78,8 +124,9 @@ func (*GitRepository) Truth() starlark.Bool { return starlark.True }
 func (*GitRepository) Freeze()              {}
 
 var (
-	_ starlark.Value   = &GitRepository{}
-	_ starlark.Mapping = &GitRepository{}
+	_ starlark.Value    = &GitRepository{}
+	_ starlark.Mapping  = &GitRepository{}
+	_ starlark.HasAttrs = &GitRepository{}
 )
 
 func (db *PackageDatabase) fetchGit(url string) (*GitRepository, error) {
