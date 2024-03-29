@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path"
 	"time"
 
 	"github.com/go-git/go-billy/v5/osfs"
@@ -15,17 +16,98 @@ import (
 	"go.starlark.net/starlark"
 )
 
-type GitCommit struct {
-	commit *object.Commit
+type gitTreeIterator struct {
+	tree  *object.Tree
+	name  string
+	ents  []object.TreeEntry
+	index int
+}
+
+// Done implements starlark.Iterator.
+func (g *gitTreeIterator) Done() {
+	g.index = len(g.ents)
+}
+
+// Next implements starlark.Iterator.
+func (g *gitTreeIterator) Next(p *starlark.Value) bool {
+	if g.index == len(g.ents) {
+		return false
+	}
+
+	node := g.ents[g.index]
+
+	if node.Mode.IsFile() {
+		// assume a file.
+		file, err := g.tree.File(node.Name)
+		if err != nil {
+			*p = starlark.None
+			return false
+		}
+
+		r, err := file.Reader()
+		if err != nil {
+			*p = starlark.None
+			return false
+		}
+
+		*p = &StarFile{f: r, name: path.Join(g.name, node.Name)}
+	} else {
+		// assume a directory.
+		tree, err := g.tree.Tree(node.Name)
+		if err != nil {
+			*p = starlark.None
+			return false
+		}
+
+		*p = &GitTree{tree: tree, name: path.Join(g.name, node.Name)}
+	}
+
+	g.index += 1
+	return g.index != len(g.ents)
+}
+
+var (
+	_ starlark.Iterator = &gitTreeIterator{}
+)
+
+type GitTree struct {
+	tree *object.Tree
+	name string
+}
+
+// Attr implements starlark.HasAttrs.
+func (g *GitTree) Attr(name string) (starlark.Value, error) {
+	if name == "name" {
+		return starlark.String(g.name), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (g *GitTree) AttrNames() []string {
+	return []string{"name"}
+}
+
+// Iterate implements starlark.Iterable.
+func (g *GitTree) Iterate() starlark.Iterator {
+	return &gitTreeIterator{tree: g.tree, name: g.name, ents: g.tree.Entries}
 }
 
 // Get implements starlark.Mapping.
-func (g *GitCommit) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
+func (g *GitTree) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
 	name, _ := starlark.AsString(k)
 
-	f, err := g.commit.File(name)
+	f, err := g.tree.File(name)
 	if err == object.ErrFileNotFound {
-		return starlark.None, false, nil
+		child, err := g.tree.Tree(name)
+		if err == object.ErrDirectoryNotFound {
+			return starlark.None, false, nil
+		} else if err != nil {
+			return starlark.None, false, err
+		}
+
+		return &GitTree{tree: child, name: path.Join(g.name, name)}, true, nil
 	} else if err != nil {
 		return starlark.None, false, err
 	}
@@ -35,20 +117,22 @@ func (g *GitCommit) Get(k starlark.Value) (v starlark.Value, found bool, err err
 		return starlark.None, false, err
 	}
 
-	return &StarFile{f: r}, true, nil
+	return &StarFile{f: r, name: path.Join(g.name, name)}, true, nil
 }
 
-func (*GitCommit) String() string { return "GitCommit" }
-func (*GitCommit) Type() string   { return "GitCommit" }
-func (*GitCommit) Hash() (uint32, error) {
-	return 0, fmt.Errorf("GitCommit is not hashable")
+func (t *GitTree) String() string { return fmt.Sprintf("GitTree{%s}", t.name) }
+func (*GitTree) Type() string     { return "GitTree" }
+func (*GitTree) Hash() (uint32, error) {
+	return 0, fmt.Errorf("GitTree is not hashable")
 }
-func (*GitCommit) Truth() starlark.Bool { return starlark.True }
-func (*GitCommit) Freeze()              {}
+func (*GitTree) Truth() starlark.Bool { return starlark.True }
+func (*GitTree) Freeze()              {}
 
 var (
-	_ starlark.Value   = &GitCommit{}
-	_ starlark.Mapping = &GitCommit{}
+	_ starlark.Value    = &GitTree{}
+	_ starlark.HasAttrs = &GitTree{}
+	_ starlark.Mapping  = &GitTree{}
+	_ starlark.Iterable = &GitTree{}
 )
 
 type GitRepository struct {
@@ -89,7 +173,51 @@ func (g *GitRepository) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return &GitCommit{commit: commit}, nil
+			tree, err := commit.Tree()
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return &GitTree{tree: tree}, nil
+		}), nil
+	} else if name == "branch" {
+		return starlark.NewBuiltin("GitRepository.branch", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				branch string
+			)
+
+			if err := starlark.UnpackArgs("GitRepository.branch", args, kwargs,
+				"branch", &branch,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			obj, err := g.repo.Branch(branch)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			ref, err := g.repo.Reference(obj.Merge, true)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			commit, err := g.repo.CommitObject(ref.Hash())
+			if err != nil {
+				return starlark.None, err
+			}
+
+			tree, err := commit.Tree()
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return &GitTree{tree: tree}, nil
 		}), nil
 	} else {
 		return nil, nil
@@ -98,7 +226,7 @@ func (g *GitRepository) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (g *GitRepository) AttrNames() []string {
-	return []string{"tag"}
+	return []string{"tag", "branch"}
 }
 
 // Get implements starlark.Mapping.
@@ -112,7 +240,12 @@ func (g *GitRepository) Get(k starlark.Value) (v starlark.Value, found bool, err
 		return starlark.None, false, err
 	}
 
-	return &GitCommit{commit: obj}, true, nil
+	tree, err := obj.Tree()
+	if err != nil {
+		return starlark.None, false, err
+	}
+
+	return &GitTree{tree: tree}, true, nil
 }
 
 func (*GitRepository) String() string { return "GitRepository" }

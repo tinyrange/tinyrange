@@ -1,14 +1,17 @@
 package db
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
 
+	"github.com/icza/dyno"
 	"github.com/tinyrange/pkg2/core"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
+	"gopkg.in/yaml.v3"
 )
 
 func versionGreaterThan(a, b string) bool {
@@ -661,6 +664,40 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 			}
 
 			return parseShell(contents)
+		}),
+		"parse_yaml": starlark.NewBuiltin("parse_yaml", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				contents string
+			)
+
+			if err := starlark.UnpackArgs("parse_yaml", args, kwargs,
+				"contents", &contents,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			var body interface{}
+			if err := yaml.Unmarshal([]byte(contents), &body); err != nil {
+				return starlark.None, err
+			}
+
+			body = dyno.ConvertMapI2MapS(body)
+
+			if b, err := json.Marshal(body); err != nil {
+				return starlark.None, err
+			} else {
+				return starlark.Call(
+					thread,
+					starlarkjson.Module.Members["decode"],
+					starlark.Tuple{starlark.String(b)},
+					[]starlark.Tuple{},
+				)
+			}
 		}),
 		"error": starlark.NewBuiltin("error", func(
 			thread *starlark.Thread,
