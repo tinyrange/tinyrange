@@ -3,12 +3,21 @@ package db
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/tinyrange/pkg2/core"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 )
+
+func versionGreaterThan(a, b string) bool {
+	return true
+}
+
+func versionLessThan(a, b string) bool {
+	return true
+}
 
 type PackageName struct {
 	Distribution string
@@ -38,7 +47,15 @@ func (name PackageName) Matches(query PackageName) bool {
 	}
 
 	if query.Version != "" {
-		if query.Version != name.Version {
+		if strings.HasPrefix(query.Version, "<") {
+			if !versionLessThan(name.Version, query.Version) {
+				return false
+			}
+		} else if strings.HasPrefix(query.Version, ">") {
+			if !versionGreaterThan(name.Version, query.Version) {
+				return false
+			}
+		} else if query.Version != name.Version {
 			return false
 		}
 	}
@@ -47,7 +64,11 @@ func (name PackageName) Matches(query PackageName) bool {
 }
 
 func (name PackageName) String() string {
-	return fmt.Sprintf("%s/%s@%s:%s", name.Distribution, name.Name, name.Version, name.Architecture)
+	return fmt.Sprintf("%s/%s:%s@%s:%s", name.Distribution, name.Namespace, name.Name, name.Version, name.Architecture)
+}
+
+func (name PackageName) ShortName() string {
+	return fmt.Sprintf("@/%s:%s", name.Namespace, name.Name)
 }
 
 func (PackageName) Type() string          { return "PackageName" }
@@ -58,6 +79,10 @@ func (PackageName) Freeze()               {}
 var (
 	_ starlark.Value = PackageName{}
 )
+
+func ParsePackageName(s string) (PackageName, error) {
+	return PackageName{Name: s}, nil
+}
 
 type BuildScript struct {
 	Name string
@@ -736,4 +761,100 @@ func (db *PackageDatabase) GetBuildScript(script BuildScript) (starlark.Value, e
 	}
 
 	return nil, fmt.Errorf("no build script fetcher defined for: %s", script.Name)
+}
+
+type InstallationPlan struct {
+	db        *PackageDatabase
+	installed map[string]bool
+	Packages  []*Package
+}
+
+func (plan *InstallationPlan) checkName(name PackageName) bool {
+	_, ok := plan.installed[name.ShortName()]
+
+	return ok
+}
+
+func (plan *InstallationPlan) addName(name PackageName) error {
+	// if plan.checkName(name) {
+	// 	return fmt.Errorf("%s is already installed", name.ShortName())
+	// }
+
+	plan.installed[name.ShortName()] = true
+
+	return nil
+}
+
+type ErrPackageNotFound PackageName
+
+// Error implements error.
+func (e ErrPackageNotFound) Error() string {
+	return fmt.Sprintf("package %s not found", PackageName(e).String())
+}
+
+var (
+	_ error = ErrPackageNotFound{}
+)
+
+func (plan *InstallationPlan) addPackage(query PackageName) error {
+	if plan.checkName(query) {
+		// Already installed.
+		return nil
+	}
+
+	// Only look for 1 package.
+	results, err := plan.db.Search(query, 1)
+	if err != nil {
+		return err
+	}
+	if len(results) != 1 {
+		return ErrPackageNotFound(query)
+	}
+
+	pkg := results[0]
+
+	// Add the names to the installed list.
+	if err := plan.addName(pkg.Name); err != nil {
+		return err
+	}
+
+	for _, alias := range pkg.Aliases {
+		if err := plan.addName(alias); err != nil {
+			return err
+		}
+	}
+
+	// Add all dependencies.
+outer:
+	for _, depend := range pkg.Depends {
+		for _, option := range depend {
+			err := plan.addPackage(option)
+			if _, ok := err.(ErrPackageNotFound); ok {
+				continue
+			} else if err != nil {
+				return err
+			}
+
+			continue outer
+		}
+
+		return fmt.Errorf("could not find installation candidate among options: %+v", depend)
+	}
+
+	// Finally add the package.
+	plan.Packages = append(plan.Packages, pkg)
+
+	return nil
+}
+
+func (db *PackageDatabase) MakeInstallationPlan(packages []PackageName) (*InstallationPlan, error) {
+	plan := &InstallationPlan{db: db, installed: make(map[string]bool)}
+
+	for _, pkg := range packages {
+		if err := plan.addPackage(pkg); err != nil {
+			return nil, err
+		}
+	}
+
+	return plan, nil
 }

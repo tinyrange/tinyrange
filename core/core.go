@@ -8,9 +8,26 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"time"
 
 	"github.com/schollz/progressbar/v3"
 )
+
+var CACHE_EXPIRE_RULES = []struct {
+	re     *regexp.Regexp
+	maxAge time.Duration
+}{
+	// Alpine Linux
+	{regexp.MustCompile(".*/APKINDEX.tar.gz"), 24 * time.Hour},
+
+	// Ubuntu/Debian
+	{regexp.MustCompile(".*/archive/dists/.*/InRelease"), 24 * time.Hour},
+	{regexp.MustCompile(".*/archive/dists/.*/by-hash/.*"), 24 * time.Hour},
+
+	// Alpine Linux
+	{regexp.MustCompile(".*.db.tar.gz"), 24 * time.Hour},
+}
 
 var (
 	ErrNotFound = fmt.Errorf("http not found")
@@ -19,6 +36,16 @@ var (
 type EnvironmentInterface struct {
 	cachePath string
 	client    *http.Client
+}
+
+func (eif *EnvironmentInterface) needsRefresh(url string, age time.Duration) bool {
+	for _, rule := range CACHE_EXPIRE_RULES {
+		if rule.re.Match([]byte(url)) {
+			return age > rule.maxAge
+		}
+	}
+
+	return false
 }
 
 func (eif *EnvironmentInterface) GetCachePath(key string) (string, error) {
@@ -38,8 +65,11 @@ func (eif *EnvironmentInterface) HttpGetReader(url string) (io.ReadCloser, error
 		return nil, err
 	}
 
-	if _, err := os.Stat(path); err == nil {
-		return os.Open(path)
+	if info, err := os.Stat(path); err == nil {
+		// slog.Info("checking refresh", "url", url, "age", time.Since(info.ModTime()))
+		if !eif.needsRefresh(url, time.Since(info.ModTime())) {
+			return os.Open(path)
+		}
 	}
 
 	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
