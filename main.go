@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/tinyrange/pkg2/core"
 	"github.com/tinyrange/pkg2/db"
@@ -19,6 +20,7 @@ var (
 	buildScript       = flag.String("buildScript", "", "get the build script for a given package")
 	makePlan          = flag.String("plan", "", "make a installation plan for a series of packages separated by commas")
 	makeTinyrangePlan = flag.String("trplan", "", "make a tinyrange package definition executing the plan")
+	allowLocal        = flag.Bool("allowLocal", false, "allow reading local files")
 )
 
 func main() {
@@ -28,7 +30,13 @@ func main() {
 
 	eif := core.NewEif("local/cache")
 
-	pkgDb := &db.PackageDatabase{Eif: eif}
+	if *allowLocal {
+		slog.Warn("scripts can read local files with the -allowLocal flag")
+	}
+
+	pkgDb := &db.PackageDatabase{Eif: eif, AllowLocal: *allowLocal}
+
+	start := time.Now()
 
 	for _, name := range names {
 		if err := pkgDb.LoadScript(name); err != nil {
@@ -39,6 +47,8 @@ func main() {
 	if err := pkgDb.FetchAll(); err != nil {
 		log.Fatal(err)
 	}
+
+	slog.Info("finished loading all repositories", "took", time.Since(start))
 
 	if *makePlan != "" {
 		var names []db.PackageName

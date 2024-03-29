@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 
 	"github.com/icza/dyno"
@@ -517,6 +518,7 @@ type PackageDatabase struct {
 	ScriptFetchers []*ScriptFetcher
 	Packages       []*Package
 	PackageMap     map[string]*Package
+	AllowLocal     bool
 }
 
 func (db *PackageDatabase) addPackage(name PackageName) *Package {
@@ -699,6 +701,51 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 				)
 			}
 		}),
+		"parse_nix_derivation": starlark.NewBuiltin("parse_nix_derivation", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				contents string
+			)
+
+			if err := starlark.UnpackArgs("parse_yaml", args, kwargs,
+				"contents", &contents,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return parseNixDerivation(thread, contents)
+		}),
+		"open": starlark.NewBuiltin("open", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				filename string
+			)
+
+			if err := starlark.UnpackArgs("open", args, kwargs,
+				"filename", &filename,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if !db.AllowLocal {
+				return starlark.None, fmt.Errorf("open is only allowed if -allowLocal is passed")
+			}
+
+			f, err := os.Open(filename)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return &StarFile{f: f}, nil
+		}),
 		"error": starlark.NewBuiltin("error", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -723,6 +770,7 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 	_, err := starlark.ExecFileOptions(&syntax.FileOptions{
 		TopLevelControl: true,
 		Recursion:       true,
+		Set:             true,
 	}, thread, filename, nil, globals)
 	if err != nil {
 		return err
