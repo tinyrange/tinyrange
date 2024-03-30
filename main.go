@@ -40,12 +40,12 @@ func main() {
 
 	for _, name := range names {
 		if err := pkgDb.LoadScript(name); err != nil {
-			log.Fatal(err)
+			log.Fatal("failed to load script: ", err)
 		}
 	}
 
 	if err := pkgDb.FetchAll(); err != nil {
-		log.Fatal(err)
+		log.Fatal("failed to fetch: ", err)
 	}
 
 	slog.Info("finished loading all repositories", "took", time.Since(start))

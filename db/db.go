@@ -1,13 +1,17 @@
 package db
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/icza/dyno"
+	"github.com/minio/sha256-simd"
 	"github.com/tinyrange/pkg2/core"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
@@ -15,390 +19,41 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func versionGreaterThan(a, b string) bool {
-	return true
+func getSha256(val []byte) string {
+	sum := sha256.Sum256(val)
+	return hex.EncodeToString(sum[:])
 }
-
-func versionLessThan(a, b string) bool {
-	return true
-}
-
-type PackageName struct {
-	Distribution string
-	Namespace    string
-	Name         string
-	Version      string
-	Architecture string
-}
-
-func (name PackageName) Matches(query PackageName) bool {
-	if query.Distribution != "" {
-		if query.Distribution != name.Distribution {
-			return false
-		}
-	}
-
-	if query.Architecture != "" {
-		if query.Architecture != name.Architecture {
-			return false
-		}
-	}
-
-	if query.Name != "" {
-		if query.Name != name.Name {
-			return false
-		}
-	}
-
-	if query.Version != "" {
-		if strings.HasPrefix(query.Version, "<") {
-			if !versionLessThan(name.Version, query.Version) {
-				return false
-			}
-		} else if strings.HasPrefix(query.Version, ">") {
-			if !versionGreaterThan(name.Version, query.Version) {
-				return false
-			}
-		} else if query.Version != name.Version {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (name PackageName) String() string {
-	return fmt.Sprintf("%s/%s:%s@%s:%s", name.Distribution, name.Namespace, name.Name, name.Version, name.Architecture)
-}
-
-func (name PackageName) ShortName() string {
-	return fmt.Sprintf("@/%s:%s", name.Namespace, name.Name)
-}
-
-func (PackageName) Type() string          { return "PackageName" }
-func (PackageName) Hash() (uint32, error) { return 0, fmt.Errorf("PackageName is not hashable") }
-func (PackageName) Truth() starlark.Bool  { return starlark.True }
-func (PackageName) Freeze()               {}
-
-var (
-	_ starlark.Value = PackageName{}
-)
-
-func ParsePackageName(s string) (PackageName, error) {
-	return PackageName{Name: s}, nil
-}
-
-type BuildScript struct {
-	Name string
-	Args starlark.Tuple
-}
-
-type Package struct {
-	Name          PackageName
-	Description   string
-	License       string
-	Size          int
-	InstalledSize int
-	DownloadUrls  []string
-	Metadata      map[string]string
-	Depends       [][]PackageName
-	Aliases       []PackageName
-	BuildScripts  []BuildScript
-}
-
-func (pkg *Package) Id() string {
-	return pkg.Name.String()
-}
-
-func (pkg *Package) Matches(query PackageName) bool {
-	ok := pkg.Name.Matches(query)
-	if ok {
-		return true
-	}
-
-	for _, alias := range pkg.Aliases {
-		if ok = alias.Matches(query); ok {
-			return true
-		}
-	}
-
-	return false
-}
-
-// Attr implements starlark.HasAttrs.
-func (pkg *Package) Attr(name string) (starlark.Value, error) {
-	if name == "set_description" {
-		return starlark.NewBuiltin("Package.set_description", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				description string
-			)
-
-			if err := starlark.UnpackArgs("Package.set_description", args, kwargs,
-				"description", &description,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			pkg.Description = description
-
-			return starlark.None, nil
-		}), nil
-	} else if name == "set_license" {
-		return starlark.NewBuiltin("Package.set_license", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				license string
-			)
-
-			if err := starlark.UnpackArgs("Package.set_license", args, kwargs,
-				"license", &license,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			pkg.License = license
-
-			return starlark.None, nil
-		}), nil
-	} else if name == "set_size" {
-		return starlark.NewBuiltin("Package.set_size", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				size int
-			)
-
-			if err := starlark.UnpackArgs("Package.set_size", args, kwargs,
-				"size", &size,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			pkg.Size = size
-
-			return starlark.None, nil
-		}), nil
-	} else if name == "set_installed_size" {
-		return starlark.NewBuiltin("Package.set_installed_size", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				size int
-			)
-
-			if err := starlark.UnpackArgs("Package.set_installed_size", args, kwargs,
-				"size", &size,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			pkg.InstalledSize = size
-
-			return starlark.None, nil
-		}), nil
-	} else if name == "add_source" {
-		return starlark.NewBuiltin("Package.add_source", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				url string
-			)
-
-			if err := starlark.UnpackArgs("Package.add_source", args, kwargs,
-				"url", &url,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			pkg.DownloadUrls = append(pkg.DownloadUrls, url)
-
-			return starlark.None, nil
-		}), nil
-	} else if name == "add_metadata" {
-		return starlark.NewBuiltin("Package.add_metadata", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				key   string
-				value string
-			)
-
-			if err := starlark.UnpackArgs("Package.add_metadata", args, kwargs,
-				"key", &key,
-				"value", &value,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			if value != "" {
-				pkg.Metadata[key] = value
-			}
-
-			return starlark.None, nil
-		}), nil
-	} else if name == "add_dependency" {
-		return starlark.NewBuiltin("Package.add_dependency", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				name starlark.Value
-				kind string
-			)
-
-			if err := starlark.UnpackArgs("Package.add_alias", args, kwargs,
-				"name", &name,
-				"kind?", &kind,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			if pkgName, ok := name.(PackageName); ok {
-				pkg.Depends = append(pkg.Depends, []PackageName{pkgName})
-
-				return starlark.None, nil
-			} else if names, ok := name.(*starlark.List); ok {
-				var options []PackageName
-
-				var err error
-
-				names.Elements(func(v starlark.Value) bool {
-					pkgName, ok := v.(PackageName)
-					if ok {
-						options = append(options, pkgName)
-						return true
-					} else {
-						err = fmt.Errorf("expected PackageName got %s", name.Type())
-						return false
-					}
-				})
-				if err != nil {
-					return starlark.None, err
-				}
-
-				pkg.Depends = append(pkg.Depends, options)
-
-				return starlark.None, nil
-			} else {
-				return starlark.None, fmt.Errorf("unhandled argument type: %T", name)
-			}
-		}), nil
-	} else if name == "add_alias" {
-		return starlark.NewBuiltin("Package.add_alias", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				name PackageName
-				kind string
-			)
-
-			if err := starlark.UnpackArgs("Package.add_alias", args, kwargs,
-				"name", &name,
-				"kind?", &kind,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			pkg.Aliases = append(pkg.Aliases, name)
-
-			return starlark.None, nil
-		}), nil
-	} else if name == "add_build_script" {
-		return starlark.NewBuiltin("Package.add_build_script", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				name  string
-				fArgs starlark.Tuple
-			)
-
-			if err := starlark.UnpackArgs("Package.add_build_script", args, kwargs,
-				"name", &name,
-				"fArgs", &fArgs,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			pkg.BuildScripts = append(pkg.BuildScripts, BuildScript{
-				Name: name,
-				Args: fArgs,
-			})
-
-			return starlark.None, nil
-		}), nil
-	} else if name == "name" {
-		return starlark.String(pkg.Name.Name), nil
-	} else if name == "version" {
-		return starlark.String(pkg.Name.Version), nil
-	} else if name == "arch" {
-		return starlark.String(pkg.Name.Architecture), nil
-	} else {
-		return nil, nil
-	}
-}
-
-// AttrNames implements starlark.HasAttrs.
-func (*Package) AttrNames() []string {
-	return []string{
-		"set_description",
-		"set_license",
-		"set_size",
-		"set_installed_size",
-		"add_source",
-		"add_metadata",
-		"add_dependency",
-		"add_alias",
-		"name",
-		"version",
-		"arch",
-	}
-}
-
-func (*Package) String() string        { return "Package" }
-func (*Package) Type() string          { return "Package" }
-func (*Package) Hash() (uint32, error) { return 0, fmt.Errorf("Package is not hashable") }
-func (*Package) Truth() starlark.Bool  { return starlark.True }
-func (*Package) Freeze()               {}
-
-var (
-	_ starlark.Value    = &Package{}
-	_ starlark.HasAttrs = &Package{}
-)
 
 type RepositoryFetcher struct {
-	db     *PackageDatabase
-	Distro string
-	Func   *starlark.Function
-	Args   starlark.Tuple
+	db       *PackageDatabase
+	Packages []*Package
+	Distro   string
+	Func     *starlark.Function
+	Args     starlark.Tuple
+}
+
+func (r *RepositoryFetcher) Key() (string, error) {
+	var tokens []string
+
+	tokens = append(tokens, r.Func.Name())
+
+	for _, arg := range r.Args {
+		str, ok := starlark.AsString(arg)
+		if !ok {
+			str = arg.String()
+		}
+
+		tokens = append(tokens, str)
+	}
+
+	return getSha256([]byte(strings.Join(tokens, "_"))), nil
+}
+
+func (r *RepositoryFetcher) addPackage(name PackageName) starlark.Value {
+	pkg := NewPackage()
+	pkg.Name = name
+	r.Packages = append(r.Packages, pkg)
+	return pkg
 }
 
 // Attr implements starlark.HasAttrs.
@@ -420,7 +75,7 @@ func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return r.db.addPackage(name), nil
+			return r.addPackage(name), nil
 		}), nil
 	} else if name == "name" {
 		return starlark.NewBuiltin("Repo.name", func(
@@ -519,15 +174,6 @@ type PackageDatabase struct {
 	Packages       []*Package
 	PackageMap     map[string]*Package
 	AllowLocal     bool
-}
-
-func (db *PackageDatabase) addPackage(name PackageName) *Package {
-	pkg := &Package{
-		Name:     name,
-		Metadata: make(map[string]string),
-	}
-	db.Packages = append(db.Packages, pkg)
-	return pkg
 }
 
 func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Function, args starlark.Tuple) error {
@@ -781,19 +427,56 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 
 func (db *PackageDatabase) FetchAll() error {
 	for _, fetcher := range db.Fetchers {
-		thread := &starlark.Thread{}
+		key, err := fetcher.Key()
+		if err != nil {
+			return fmt.Errorf("failed to get fetcher key: %s", err)
+		}
 
-		_, err := starlark.Call(thread, fetcher.Func,
-			append(starlark.Tuple{fetcher}, fetcher.Args...),
-			[]starlark.Tuple{},
+		err = db.Eif.CacheObjects(
+			key, int(PackageMetadataVersionCurrent), 24*time.Hour,
+			func(write func(obj any) error) error {
+				slog.Info("fetching", "key", key)
+
+				thread := &starlark.Thread{}
+
+				_, err = starlark.Call(thread, fetcher.Func,
+					append(starlark.Tuple{fetcher}, fetcher.Args...),
+					[]starlark.Tuple{},
+				)
+				if err != nil {
+					return err
+				}
+
+				for _, pkg := range fetcher.Packages {
+					if err := write(pkg); err != nil {
+						return err
+					}
+				}
+
+				return nil
+			},
+			func(read func(obj any) error) error {
+				for {
+					pkg := NewPackage()
+
+					err := read(pkg)
+					if err == io.EOF {
+						return nil
+					} else if err != nil {
+						return err
+					} else {
+						db.Packages = append(db.Packages, pkg)
+					}
+				}
+			},
 		)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to load %s: %s", key, err)
 		}
 	}
 
+	// Get the package index.
 	db.PackageMap = make(map[string]*Package)
-
 	for _, pkg := range db.Packages {
 		db.PackageMap[pkg.Name.String()] = pkg
 	}
@@ -831,7 +514,9 @@ func (db *PackageDatabase) GetBuildScript(script BuildScript) (starlark.Value, e
 
 			args := starlark.Tuple{fetcher}
 			args = append(args, fetcher.Args...)
-			args = append(args, script.Args...)
+			for _, arg := range script.Args {
+				args = append(args, starlark.String(arg))
+			}
 
 			ret, err := starlark.Call(thread, fetcher.Func,
 				args,
