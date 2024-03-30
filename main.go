@@ -21,6 +21,7 @@ var (
 	makePlan          = flag.String("plan", "", "make a installation plan for a series of packages separated by commas")
 	makeTinyrangePlan = flag.String("trplan", "", "make a tinyrange package definition executing the plan")
 	allowLocal        = flag.Bool("allowLocal", false, "allow reading local files")
+	forceRefresh      = flag.Bool("forceRefresh", false, "always refresh repository cache files")
 )
 
 func main() {
@@ -34,7 +35,7 @@ func main() {
 		slog.Warn("scripts can read local files with the -allowLocal flag")
 	}
 
-	pkgDb := &db.PackageDatabase{Eif: eif, AllowLocal: *allowLocal}
+	pkgDb := &db.PackageDatabase{Eif: eif, AllowLocal: *allowLocal, ForceRefresh: *forceRefresh}
 
 	start := time.Now()
 

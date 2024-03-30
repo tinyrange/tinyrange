@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	xj "github.com/basgys/goxml2json"
 	"github.com/icza/dyno"
 	"github.com/minio/sha256-simd"
 	"github.com/tinyrange/pkg2/core"
@@ -174,6 +175,7 @@ type PackageDatabase struct {
 	Packages       []*Package
 	PackageMap     map[string]*Package
 	AllowLocal     bool
+	ForceRefresh   bool
 }
 
 func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Function, args starlark.Tuple) error {
@@ -347,6 +349,34 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 				)
 			}
 		}),
+		"parse_xml": starlark.NewBuiltin("parse_xml", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				contents string
+			)
+
+			if err := starlark.UnpackArgs("parse_yaml", args, kwargs,
+				"contents", &contents,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			json, err := xj.Convert(strings.NewReader(contents))
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.Call(
+				thread,
+				starlarkjson.Module.Members["decode"],
+				starlark.Tuple{starlark.String(json.String())},
+				[]starlark.Tuple{},
+			)
+		}),
 		"parse_nix_derivation": starlark.NewBuiltin("parse_nix_derivation", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -432,8 +462,13 @@ func (db *PackageDatabase) FetchAll() error {
 			return fmt.Errorf("failed to get fetcher key: %s", err)
 		}
 
+		expireTime := 24 * time.Hour
+		if db.ForceRefresh {
+			expireTime = 0
+		}
+
 		err = db.Eif.CacheObjects(
-			key, int(PackageMetadataVersionCurrent), 24*time.Hour,
+			key, int(PackageMetadataVersionCurrent), expireTime,
 			func(write func(obj any) error) error {
 				slog.Info("fetching", "key", key)
 
