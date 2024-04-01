@@ -18,6 +18,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 	"gopkg.in/yaml.v3"
+	"howett.net/plist"
 )
 
 func getSha256(val []byte) string {
@@ -359,7 +360,7 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 				contents string
 			)
 
-			if err := starlark.UnpackArgs("parse_yaml", args, kwargs,
+			if err := starlark.UnpackArgs("parse_xml", args, kwargs,
 				"contents", &contents,
 			); err != nil {
 				return starlark.None, err
@@ -387,13 +388,47 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 				contents string
 			)
 
-			if err := starlark.UnpackArgs("parse_yaml", args, kwargs,
+			if err := starlark.UnpackArgs("parse_nix_derivation", args, kwargs,
 				"contents", &contents,
 			); err != nil {
 				return starlark.None, err
 			}
 
 			return parseNixDerivation(thread, contents)
+		}),
+		"parse_plist": starlark.NewBuiltin("parse_plist", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				contents string
+			)
+
+			if err := starlark.UnpackArgs("parse_plist", args, kwargs,
+				"contents", &contents,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			var obj any
+
+			if _, err := plist.Unmarshal([]byte(contents), &obj); err != nil {
+				return starlark.None, err
+			}
+
+			bytes, err := json.Marshal(obj)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.Call(
+				thread,
+				starlarkjson.Module.Members["decode"],
+				starlark.Tuple{starlark.String(bytes)},
+				[]starlark.Tuple{},
+			)
 		}),
 		"open": starlark.NewBuiltin("open", func(
 			thread *starlark.Thread,

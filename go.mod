@@ -15,6 +15,7 @@ require (
 	go.starlark.net v0.0.0-20240314022150-ee8ed142361c
 	golang.org/x/exp v0.0.0-20240318143956-a85f2c67cd81
 	gopkg.in/yaml.v3 v3.0.1
+	howett.net/plist v1.0.1
 	mvdan.cc/sh/v3 v3.8.0
 )
 
