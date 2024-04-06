@@ -48,6 +48,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 		pkg, ok := pkgDb.Get(key)
 		if !ok {
 			http.Error(w, "not found", http.StatusNotFound)
+			return
 		}
 
 		if err := templates.ExecuteTemplate(w, "info.html", pkg); err != nil {
