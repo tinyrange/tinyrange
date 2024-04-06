@@ -69,17 +69,70 @@ func (name PackageName) ShortName() string {
 	return fmt.Sprintf("@/%s:%s", name.Namespace, name.Name)
 }
 
+// Attr implements starlark.HasAttrs.
+func (n PackageName) Attr(name string) (starlark.Value, error) {
+	if name == "distribution" {
+		return starlark.String(n.Distribution), nil
+	} else if name == "namespace" {
+		return starlark.String(n.Namespace), nil
+	} else if name == "name" {
+		return starlark.String(n.Name), nil
+	} else if name == "version" {
+		return starlark.String(n.Version), nil
+	} else if name == "architecture" {
+		return starlark.String(n.Architecture), nil
+	} else if name == "set_version" {
+		return starlark.NewBuiltin("PackageName.set_version", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				version string
+			)
+
+			if err := starlark.UnpackArgs("PackageName.set_version", args, kwargs,
+				"version", &version,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return PackageName{
+				Distribution: n.Distribution,
+				Namespace:    n.Namespace,
+				Name:         n.Name,
+				Version:      version,
+				Architecture: n.Architecture,
+			}, nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (name PackageName) AttrNames() []string {
+	return []string{"distribution", "namespace", "name", "version", "architecture"}
+}
+
 func (PackageName) Type() string          { return "PackageName" }
 func (PackageName) Hash() (uint32, error) { return 0, fmt.Errorf("PackageName is not hashable") }
 func (PackageName) Truth() starlark.Bool  { return starlark.True }
 func (PackageName) Freeze()               {}
 
 var (
-	_ starlark.Value = PackageName{}
+	_ starlark.Value    = PackageName{}
+	_ starlark.HasAttrs = PackageName{}
 )
 
 func ParsePackageName(s string) (PackageName, error) {
-	return PackageName{Name: s}, nil
+	if strings.Contains(s, "/") {
+		distro, name, _ := strings.Cut(s, "/")
+		return PackageName{Distribution: distro, Name: name}, nil
+	} else {
+		return PackageName{Name: s}, nil
+	}
 }
 
 type BuildScript struct {

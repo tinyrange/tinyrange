@@ -169,14 +169,147 @@ var (
 	_ starlark.HasAttrs = &ScriptFetcher{}
 )
 
+type SearchProvider struct {
+	db           *PackageDatabase
+	Distribution string
+	Func         *starlark.Function
+	Args         starlark.Tuple
+
+	Packages []*Package
+}
+
+func (s *SearchProvider) addPackage(name PackageName) starlark.Value {
+	pkg := NewPackage()
+	pkg.Name = name
+	s.Packages = append(s.Packages, pkg)
+	return pkg
+}
+
+// Attr implements starlark.HasAttrs.
+func (s *SearchProvider) Attr(name string) (starlark.Value, error) {
+	if name == "add_package" {
+		return starlark.NewBuiltin("Search.add_package", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				name PackageName
+			)
+
+			if err := starlark.UnpackArgs("Search.add_package", args, kwargs,
+				"name", &name,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return s.addPackage(name), nil
+		}), nil
+	} else if name == "name" {
+		return starlark.NewBuiltin("Search.name", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				namespace    string
+				name         string
+				version      string
+				distro       string
+				architecture string
+			)
+
+			if err := starlark.UnpackArgs("Search.name", args, kwargs,
+				"namespace?", &namespace,
+				"name", &name,
+				"version?", &version,
+				"distro?", &distro,
+				"architecture?", &architecture,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if distro == "" {
+				distro = s.Distribution
+			}
+
+			return PackageName{
+				Distribution: distro,
+				Namespace:    namespace,
+				Name:         name,
+				Version:      version,
+				Architecture: architecture,
+			}, nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (s *SearchProvider) AttrNames() []string {
+	return []string{}
+}
+
+func (*SearchProvider) String() string { return "SearchProvider" }
+func (*SearchProvider) Type() string   { return "SearchProvider" }
+func (*SearchProvider) Hash() (uint32, error) {
+	return 0, fmt.Errorf("ScriptFetcher is not hashable")
+}
+func (*SearchProvider) Truth() starlark.Bool { return starlark.True }
+func (*SearchProvider) Freeze()              {}
+
+func (s *SearchProvider) searchExisting(name PackageName, maxResults int) ([]*Package, error) {
+	var ret []*Package
+
+	for _, pkg := range s.Packages {
+		if pkg.Matches(name) {
+			ret = append(ret, pkg)
+			if maxResults != 0 && len(ret) >= maxResults {
+				break
+			}
+		}
+	}
+
+	return ret, nil
+}
+
+func (s *SearchProvider) Search(name PackageName, maxResults int) ([]*Package, error) {
+	results, err := s.searchExisting(name, maxResults)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) != 0 {
+		return results, nil
+	}
+
+	// Call the user provided function to do the search.
+	thread := &starlark.Thread{}
+
+	_, err = starlark.Call(thread, s.Func, starlark.Tuple{s, name}, []starlark.Tuple{})
+	if err != nil {
+		return nil, err
+	}
+
+	return s.searchExisting(name, maxResults)
+}
+
+var (
+	_ starlark.Value    = &SearchProvider{}
+	_ starlark.HasAttrs = &SearchProvider{}
+)
+
 type PackageDatabase struct {
-	Eif            *core.EnvironmentInterface
-	Fetchers       []*RepositoryFetcher
-	ScriptFetchers []*ScriptFetcher
-	Packages       []*Package
-	PackageMap     map[string]*Package
-	AllowLocal     bool
-	ForceRefresh   bool
+	Eif             *core.EnvironmentInterface
+	Fetchers        []*RepositoryFetcher
+	ScriptFetchers  []*ScriptFetcher
+	SearchProviders []*SearchProvider
+	Packages        []*Package
+	PackageMap      map[string]*Package
+	AllowLocal      bool
+	ForceRefresh    bool
 }
 
 func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Function, args starlark.Tuple) error {
@@ -196,6 +329,17 @@ func (db *PackageDatabase) addScriptFetcher(name string, f *starlark.Function, a
 		Name: name,
 		Func: f,
 		Args: args,
+	})
+
+	return nil
+}
+
+func (db *PackageDatabase) addSearchProvider(distro string, f *starlark.Function, args starlark.Tuple) error {
+	db.SearchProviders = append(db.SearchProviders, &SearchProvider{
+		db:           db,
+		Distribution: distro,
+		Func:         f,
+		Args:         args,
 	})
 
 	return nil
@@ -267,6 +411,32 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 			}
 
 			if err := db.addScriptFetcher(name, f, fArgs); err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.None, nil
+		}),
+		"register_search_provider": starlark.NewBuiltin("register_search_provider", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				distro string
+				f      *starlark.Function
+				fArgs  starlark.Tuple
+			)
+
+			if err := starlark.UnpackArgs("register_search_provider", args, kwargs,
+				"distro", &distro,
+				"f", &f,
+				"fArgs", &fArgs,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if err := db.addSearchProvider(distro, f, fArgs); err != nil {
 				return starlark.None, err
 			}
 
@@ -554,6 +724,23 @@ func (db *PackageDatabase) FetchAll() error {
 	return nil
 }
 
+func (db *PackageDatabase) searchWithProviders(query PackageName, maxResults int) ([]*Package, error) {
+	for _, searchProvider := range db.SearchProviders {
+		if query.Distribution != searchProvider.Distribution {
+			continue
+		}
+
+		results, err := searchProvider.Search(query, maxResults)
+		if err != nil {
+			return nil, err
+		}
+
+		return results, nil
+	}
+
+	return []*Package{}, nil
+}
+
 func (db *PackageDatabase) Search(query PackageName, maxResults int) ([]*Package, error) {
 	var ret []*Package
 
@@ -568,7 +755,11 @@ func (db *PackageDatabase) Search(query PackageName, maxResults int) ([]*Package
 		}
 	}
 
-	return ret, nil
+	if len(ret) == 0 {
+		return db.searchWithProviders(query, maxResults)
+	} else {
+		return ret, nil
+	}
 }
 
 func (db *PackageDatabase) Get(key string) (*Package, bool) {
