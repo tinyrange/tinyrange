@@ -8,11 +8,13 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	xj "github.com/basgys/goxml2json"
 	"github.com/icza/dyno"
 	"github.com/minio/sha256-simd"
+	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/pkg2/core"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
@@ -133,6 +135,57 @@ func (*RepositoryFetcher) Hash() (uint32, error) {
 }
 func (*RepositoryFetcher) Truth() starlark.Bool { return starlark.True }
 func (*RepositoryFetcher) Freeze()              {}
+
+func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, key string, forceRefresh bool) error {
+	expireTime := 24 * time.Hour
+	if forceRefresh {
+		expireTime = 0
+	}
+
+	err := eif.CacheObjects(
+		key, int(PackageMetadataVersionCurrent), expireTime,
+		func(write func(obj any) error) error {
+			slog.Info("fetching", "key", key)
+
+			thread := &starlark.Thread{}
+
+			_, err := starlark.Call(thread, fetcher.Func,
+				append(starlark.Tuple{fetcher}, fetcher.Args...),
+				[]starlark.Tuple{},
+			)
+			if err != nil {
+				return err
+			}
+
+			for _, pkg := range fetcher.Packages {
+				if err := write(pkg); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		},
+		func(read func(obj any) error) error {
+			for {
+				pkg := NewPackage()
+
+				err := read(pkg)
+				if err == io.EOF {
+					return nil
+				} else if err != nil {
+					return err
+				} else {
+					fetcher.Packages = append(fetcher.Packages, pkg)
+				}
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
 
 var (
 	_ starlark.Value    = &RepositoryFetcher{}
@@ -306,7 +359,6 @@ type PackageDatabase struct {
 	Fetchers        []*RepositoryFetcher
 	ScriptFetchers  []*ScriptFetcher
 	SearchProviders []*SearchProvider
-	Packages        []*Package
 	PackageMap      map[string]*Package
 	AllowLocal      bool
 	ForceRefresh    bool
@@ -690,73 +742,50 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 	return nil
 }
 
-func (db *PackageDatabase) fetchWithKey(key string, fetcher *RepositoryFetcher) error {
-	expireTime := 24 * time.Hour
-	if db.ForceRefresh {
-		expireTime = 0
-	}
-
-	err := db.Eif.CacheObjects(
-		key, int(PackageMetadataVersionCurrent), expireTime,
-		func(write func(obj any) error) error {
-			slog.Info("fetching", "key", key)
-
-			thread := &starlark.Thread{}
-
-			_, err := starlark.Call(thread, fetcher.Func,
-				append(starlark.Tuple{fetcher}, fetcher.Args...),
-				[]starlark.Tuple{},
-			)
-			if err != nil {
-				return err
-			}
-
-			for _, pkg := range fetcher.Packages {
-				if err := write(pkg); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		},
-		func(read func(obj any) error) error {
-			for {
-				pkg := NewPackage()
-
-				err := read(pkg)
-				if err == io.EOF {
-					return nil
-				} else if err != nil {
-					return err
-				} else {
-					db.Packages = append(db.Packages, pkg)
-				}
-			}
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (db *PackageDatabase) FetchAll() error {
+	wg := sync.WaitGroup{}
+	done := make(chan bool)
+	errors := make(chan error)
+
+	pb := progressbar.Default(int64(len(db.Fetchers)))
+	defer pb.Close()
+
 	for _, fetcher := range db.Fetchers {
 		key, err := fetcher.Key()
 		if err != nil {
 			return fmt.Errorf("failed to get fetcher key: %s", err)
 		}
 
-		if err := db.fetchWithKey(key, fetcher); err != nil {
-			return fmt.Errorf("failed to load %s: %s", key, err)
-		}
+		wg.Add(1)
+		go func(key string, fetcher *RepositoryFetcher) {
+			defer wg.Done()
+			if err := fetcher.fetchWithKey(db.Eif, key, db.ForceRefresh); err != nil {
+				errors <- fmt.Errorf("failed to load %s: %s", key, err)
+			}
+
+			pb.Add(1)
+		}(key, fetcher)
+	}
+
+	go func() {
+		wg.Wait()
+
+		done <- true
+	}()
+
+	select {
+	case err := <-errors:
+		return err
+	case <-done:
+		break
 	}
 
 	// Get the package index.
 	db.PackageMap = make(map[string]*Package)
-	for _, pkg := range db.Packages {
-		db.PackageMap[pkg.Name.String()] = pkg
+	for _, fetcher := range db.Fetchers {
+		for _, pkg := range fetcher.Packages {
+			db.PackageMap[pkg.Name.String()] = pkg
+		}
 	}
 
 	return nil
@@ -784,11 +813,13 @@ func (db *PackageDatabase) Search(query PackageName, maxResults int) ([]*Package
 
 	slog.Info("search", "query", query)
 
-	for _, pkg := range db.Packages {
-		if pkg.Matches(query) {
-			ret = append(ret, pkg)
-			if maxResults != 0 && len(ret) >= maxResults {
-				break
+	for _, fetcher := range db.Fetchers {
+		for _, pkg := range fetcher.Packages {
+			if pkg.Matches(query) {
+				ret = append(ret, pkg)
+				if maxResults != 0 && len(ret) >= maxResults {
+					break
+				}
 			}
 		}
 	}
