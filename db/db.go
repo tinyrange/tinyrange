@@ -345,9 +345,7 @@ func (db *PackageDatabase) addSearchProvider(distro string, f *starlark.Function
 	return nil
 }
 
-func (db *PackageDatabase) LoadScript(filename string) error {
-	thread := &starlark.Thread{}
-
+func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) {
 	globals := starlark.StringDict{
 		"fetch_http": starlark.NewBuiltin("fetch_http", func(
 			thread *starlark.Thread,
@@ -645,10 +643,40 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 
 			return starlark.None, fmt.Errorf("%s", message)
 		}),
-		"json": starlarkjson.Module,
+		"json":     starlarkjson.Module,
+		"__name__": starlark.String(name),
 	}
 
-	_, err := starlark.ExecFileOptions(&syntax.FileOptions{
+	return globals, nil
+}
+
+func (db *PackageDatabase) LoadScript(filename string) error {
+	thread := &starlark.Thread{
+		Load: func(thread *starlark.Thread, module string) (starlark.StringDict, error) {
+			globals, err := db.getGlobals(module)
+			if err != nil {
+				return nil, err
+			}
+
+			ret, err := starlark.ExecFileOptions(&syntax.FileOptions{
+				TopLevelControl: true,
+				Recursion:       true,
+				Set:             true,
+			}, thread, module, nil, globals)
+			if err != nil {
+				return nil, err
+			}
+
+			return ret, nil
+		},
+	}
+
+	globals, err := db.getGlobals("__main__")
+	if err != nil {
+		return err
+	}
+
+	_, err = starlark.ExecFileOptions(&syntax.FileOptions{
 		TopLevelControl: true,
 		Recursion:       true,
 		Set:             true,

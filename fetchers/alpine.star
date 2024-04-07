@@ -2,8 +2,6 @@
 Alpine Linux Package Fetcher
 """
 
-alpine_mirror = "https://dl-cdn.alpinelinux.org/alpine"
-
 def split_maybe(s, split, count, default = ""):
     ret = []
 
@@ -110,12 +108,3 @@ register_script_fetcher(
     fetch_alpine_build_script,
     ("git://git.alpinelinux.org/aports",),
 )
-
-for version in ["v3.19"]:
-    for repo in ["main", "community"]:
-        for arch in ["x86_64"]:
-            fetch_repo(
-                fetch_alpine_repository,
-                ("{}/{}/{}/{}".format(alpine_mirror, version, repo, arch), repo),
-                distro = "alpine@{}".format(version),
-            )
