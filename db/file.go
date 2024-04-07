@@ -30,7 +30,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 		) (starlark.Value, error) {
 			contents, err := io.ReadAll(f.f)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to read file: %s", err)
 			}
 
 			return starlark.String(contents), nil
@@ -54,7 +54,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 			reader, err := ReadArchive(f.f, ext)
 			if err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("failed to read archive: %s", err)
 			}
 
 			return &StarArchive{r: reader}, nil
@@ -79,7 +79,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			if strings.HasSuffix(ext, ".gz") {
 				r, err := gzip.NewReader(f.f)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("failed to read compressed")
 				}
 				return &StarFile{f: r, name: strings.TrimSuffix(f.name, ext)}, nil
 			} else {

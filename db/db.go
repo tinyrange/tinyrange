@@ -76,7 +76,7 @@ func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
 			if err := starlark.UnpackArgs("Repo.add_package", args, kwargs,
 				"name", &name,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return r.addPackage(name), nil
@@ -103,7 +103,7 @@ func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
 				"distro?", &distro,
 				"architecture?", &architecture,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			if distro == "" {
@@ -128,8 +128,17 @@ func (*RepositoryFetcher) AttrNames() []string {
 	return []string{"add_package"}
 }
 
-func (*RepositoryFetcher) String() string { return "RepositoryFetcher" }
-func (*RepositoryFetcher) Type() string   { return "RepositoryFetcher" }
+func (fetcher *RepositoryFetcher) String() string {
+	name := fetcher.Func.Name()
+
+	var args []string
+	for _, arg := range fetcher.Args {
+		args = append(args, arg.String())
+	}
+
+	return fmt.Sprintf("%s(%s)", name, strings.Join(args, ", "))
+}
+func (*RepositoryFetcher) Type() string { return "RepositoryFetcher" }
 func (*RepositoryFetcher) Hash() (uint32, error) {
 	return 0, fmt.Errorf("RepositoryFetcher is not hashable")
 }
@@ -145,7 +154,7 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 	err := eif.CacheObjects(
 		key, int(PackageMetadataVersionCurrent), expireTime,
 		func(write func(obj any) error) error {
-			slog.Info("fetching", "key", key)
+			slog.Info("fetching", "fetcher", fetcher.String())
 
 			thread := &starlark.Thread{}
 
@@ -154,18 +163,20 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 				[]starlark.Tuple{},
 			)
 			if err != nil {
-				return err
+				return fmt.Errorf("error calling user callback: %s", err)
 			}
 
 			for _, pkg := range fetcher.Packages {
 				if err := write(pkg); err != nil {
-					return err
+					return fmt.Errorf("failed to write package: %s", err)
 				}
 			}
 
 			return nil
 		},
 		func(read func(obj any) error) error {
+			fetcher.Packages = []*Package{}
+
 			for {
 				pkg := NewPackage()
 
@@ -254,7 +265,7 @@ func (s *SearchProvider) Attr(name string) (starlark.Value, error) {
 			if err := starlark.UnpackArgs("Search.add_package", args, kwargs,
 				"name", &name,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return s.addPackage(name), nil
@@ -281,7 +292,7 @@ func (s *SearchProvider) Attr(name string) (starlark.Value, error) {
 				"distro?", &distro,
 				"architecture?", &architecture,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			if distro == "" {
@@ -412,14 +423,14 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			if err := starlark.UnpackArgs("fetch_http", args, kwargs,
 				"url", &url,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			f, err := db.Eif.HttpGetReader(url)
 			if err == core.ErrNotFound {
 				return starlark.None, nil
 			} else if err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return &StarFile{f: f, name: url}, nil
@@ -437,7 +448,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			if err := starlark.UnpackArgs("fetch_git", args, kwargs,
 				"url", &url,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return db.fetchGit(url)
@@ -459,11 +470,11 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				"f", &f,
 				"fArgs", &fArgs,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			if err := db.addScriptFetcher(name, f, fArgs); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return starlark.None, nil
@@ -485,11 +496,11 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				"f", &f,
 				"fArgs", &fArgs,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			if err := db.addSearchProvider(distro, f, fArgs); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return starlark.None, nil
@@ -511,11 +522,11 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				"fArgs", &fArgs,
 				"distro?", &distro,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			if err := db.addRepositoryFetcher(distro, f, fArgs); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return starlark.None, nil
@@ -533,7 +544,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			if err := starlark.UnpackArgs("parse_shell", args, kwargs,
 				"contents", &contents,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return parseShell(contents)
@@ -551,18 +562,18 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			if err := starlark.UnpackArgs("parse_yaml", args, kwargs,
 				"contents", &contents,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			var body interface{}
 			if err := yaml.Unmarshal([]byte(contents), &body); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			body = dyno.ConvertMapI2MapS(body)
 
 			if b, err := json.Marshal(body); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			} else {
 				return starlark.Call(
 					thread,
@@ -585,12 +596,12 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			if err := starlark.UnpackArgs("parse_xml", args, kwargs,
 				"contents", &contents,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			json, err := xj.Convert(strings.NewReader(contents))
 			if err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return starlark.Call(
@@ -613,7 +624,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			if err := starlark.UnpackArgs("parse_nix_derivation", args, kwargs,
 				"contents", &contents,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return parseNixDerivation(thread, contents)
@@ -631,18 +642,18 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			if err := starlark.UnpackArgs("parse_plist", args, kwargs,
 				"contents", &contents,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			var obj any
 
 			if _, err := plist.Unmarshal([]byte(contents), &obj); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			bytes, err := json.Marshal(obj)
 			if err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return starlark.Call(
@@ -665,7 +676,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			if err := starlark.UnpackArgs("open", args, kwargs,
 				"filename", &filename,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			if !db.AllowLocal {
@@ -674,7 +685,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 
 			f, err := os.Open(filename)
 			if err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return &StarFile{f: f}, nil
@@ -692,7 +703,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			if err := starlark.UnpackArgs("error", args, kwargs,
 				"message", &message,
 			); err != nil {
-				return starlark.None, err
+				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			return starlark.None, fmt.Errorf("%s", message)
@@ -760,7 +771,7 @@ func (db *PackageDatabase) FetchAll() error {
 		go func(key string, fetcher *RepositoryFetcher) {
 			defer wg.Done()
 			if err := fetcher.fetchWithKey(db.Eif, key, db.ForceRefresh); err != nil {
-				errors <- fmt.Errorf("failed to load %s: %s", key, err)
+				errors <- fmt.Errorf("failed to load %s: %s", fetcher.String(), err)
 			}
 
 			pb.Add(1)

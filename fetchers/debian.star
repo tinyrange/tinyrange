@@ -2,47 +2,7 @@
 Debian Package Fetcher
 """
 
-ubuntu_versions = {
-    "mantic": "23.10",
-    "lunar": "23.04",
-    "kinetic": "22.10",
-    "jammy": "22.04",
-    "impish": "21.10",
-    "hirsute": "21.04",
-    "groovy": "20.10",
-    "focal": "20.04",
-    "eoan": "19.10",
-    "disco": "19.04",
-    "cosmic": "18.10",
-    "bionic": "18.04",
-    "artful": "17.10",
-    "zesty": "17.04",
-    "yakkety": "16.10",
-    "xenial": "16.04",
-    "wily": "15.10",
-    "vivid": "15.04",
-    "utopic": "14.10",
-    "trusty": "14.04",
-    "saucy": "13.10",
-    "raring": "13.04",
-    "quantal": "12.10",
-    "precise": "12.04",
-    "oneiric": "11.10",
-    "natty": "11.04",
-    "maverick": "10.10",
-    "lucid": "10.04",
-    "karmic": "9.10",
-    "jaunty": "9.04",
-    "intrepid": "8.10",
-    "hardy": "8.04",
-    "gutsy": "7.10",
-    "feisty": "7.04",
-    "edgy": "6.10",
-    "dapper": "6.06",
-    "breezy": "5.10",
-    "hoary": "5.04",
-    "warty": "4.10",
-}
+load("common/common.star", "opt", "split_dict_maybe")
 
 def parse_debian_index(contents):
     lines = contents.splitlines()
@@ -55,27 +15,20 @@ def parse_debian_index(contents):
         if ": " in line:
             key, value = line.split(": ", 1)
             ent[key.lower()] = value
-            last_ent = key
+            last_ent = key.lower()
+        elif ":" in line:
+            key = line.removesuffix(":")
+            ent[key.lower()] = ""
+            last_ent = key.lower()
+        elif line.startswith(" ") or line.startswith("\t"):
+            ent[last_ent] += line.strip() + "\n"
         elif len(line) == 0:
             ret.append(ent)
             ent = {}
         else:
-            print(line)
-            error("not implemented")
+            error("line not implemented: " + line)
 
     return ret
-
-def opt(d, key, default = ""):
-    if key in d:
-        return d[key]
-    else:
-        return default
-
-def split_dict_maybe(d, key, split):
-    if key in d:
-        return d[key].split(split)
-    else:
-        return []
 
 def parse_debian_name(ctx, name, arch):
     options = name.split(" | ")
@@ -93,9 +46,20 @@ def parse_debian_name(ctx, name, arch):
 
         return ctx.name(name = name, version = version, architecture = arch)
 
-def fetch_debian_repository(ctx, base, url):
+def fetch_debian_repository(ctx, base, fallback, url):
     packages_url = "{}/{}/Packages.gz".format(base, url)
-    packages_contents = fetch_http(packages_url).read_compressed(".gz")
+    packages_resp = fetch_http(packages_url)
+
+    if packages_resp == None:
+        if fallback == None:
+            return None  # Nothing we can do.
+
+        packages_url = "{}/{}/Packages.gz".format(fallback, url)
+        packages_resp = fetch_http(packages_url)
+        if packages_resp == None:
+            return None  # Assume the package doesn't exist.
+
+    packages_contents = packages_resp.read_compressed(".gz")
 
     contents = parse_debian_index(packages_contents.read())
 
@@ -132,14 +96,4 @@ def fetch_debian_repository(ctx, base, url):
         for conflict in split_dict_maybe(ent, "conflicts", ", "):
             pkg.add_alias(parse_debian_name(ctx, conflict, pkg.arch), kind = "conflict")
 
-for version in ["jammy"]:
-    for pool in ["main", "universe", "multiverse", "restricted"]:
-        for arch in ["amd64"]:
-            fetch_repo(
-                fetch_debian_repository,
-                (
-                    "http://au.archive.ubuntu.com/ubuntu",
-                    "dists/{}/{}/binary-{}".format(version, pool, arch),
-                ),
-                distro = "ubuntu@{}".format(version),
-            )
+    return None

@@ -2,34 +2,7 @@
 Arch Linux Package Fetcher
 """
 
-arch_mirror = "https://mirror.aarnet.edu.au/pub/archlinux"
-
-def opt(d, key, default = ""):
-    if key in d:
-        return d[key]
-    else:
-        return default
-
-def split_maybe(s, split, count, default = ""):
-    ret = []
-
-    if s != None:
-        tokens = s.split(split, count - 1)
-        for tk in tokens:
-            ret.append(tk)
-        for _ in range(count - len(tokens)):
-            ret.append(default)
-    else:
-        for _ in range(count):
-            ret.append(default)
-
-    return ret
-
-def split_dict_maybe(d, key, split):
-    if key in d:
-        return d[key].split(split)
-    else:
-        return []
+load("common/common.star", "opt", "split_dict_maybe", "split_maybe")
 
 def parse_arch_package(contents):
     lines = contents.splitlines()
@@ -126,25 +99,5 @@ def fetch_aur_repository(ctx):
 
         for alias in opt(ent, "Provides", default = []):
             pkg.add_alias(parse_arch_name(ctx, alias))
-
-for pool in ["core", "community", "extra", "multilib"]:
-    for arch in ["x86_64"]:
-        fetch_repo(
-            fetch_arch_repository,
-            (
-                "{}/{}/os/{}".format(arch_mirror, pool, arch),
-                pool,
-                True,
-            ),
-            distro = "arch",
-        )
-
-fetch_repo(fetch_arch_repository, (
-    "https://repo.bioarchlinux.org/x86_64",
-    "bioarchlinux",
-    False,
-), distro = "arch")
-
-fetch_repo(fetch_aur_repository, (), distro = "arch")
 
 register_script_fetcher("arch", fetch_arch_build_script, ())
