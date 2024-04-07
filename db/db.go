@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -377,6 +378,7 @@ type PackageDatabase struct {
 	AllowLocal      bool
 	ForceRefresh    bool
 	NoParallel      bool
+	PackageBase     string
 }
 
 func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Function, args starlark.Tuple) error {
@@ -731,11 +733,13 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 				return nil, err
 			}
 
+			filename := filepath.Join(db.PackageBase, module)
+
 			ret, err := starlark.ExecFileOptions(&syntax.FileOptions{
 				TopLevelControl: true,
 				Recursion:       true,
 				Set:             true,
-			}, thread, module, nil, globals)
+			}, thread, filename, nil, globals)
 			if err != nil {
 				return nil, err
 			}
@@ -748,6 +752,8 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 	if err != nil {
 		return err
 	}
+
+	filename = filepath.Join(db.PackageBase, filename)
 
 	_, err = starlark.ExecFileOptions(&syntax.FileOptions{
 		TopLevelControl: true,

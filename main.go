@@ -23,6 +23,8 @@ var (
 	allowLocal        = flag.Bool("allowLocal", false, "allow reading local files")
 	forceRefresh      = flag.Bool("forceRefresh", false, "always refresh repository cache files")
 	noParallel        = flag.Bool("noParallel", false, "use single threaded repository fetchers")
+	cacheDir          = flag.String("cacheDir", "local/cache", "specify the cache dir to use")
+	packageBase       = flag.String("packageBase", "", "the base directory to resolve packages from")
 )
 
 func main() {
@@ -30,13 +32,19 @@ func main() {
 
 	names := flag.Args()
 
-	eif := core.NewEif("local/cache")
+	eif := core.NewEif(*cacheDir)
 
 	if *allowLocal {
 		slog.Warn("scripts can read local files with the -allowLocal flag")
 	}
 
-	pkgDb := &db.PackageDatabase{Eif: eif, AllowLocal: *allowLocal, ForceRefresh: *forceRefresh, NoParallel: *noParallel}
+	pkgDb := &db.PackageDatabase{
+		Eif:          eif,
+		AllowLocal:   *allowLocal,
+		ForceRefresh: *forceRefresh,
+		NoParallel:   *noParallel,
+		PackageBase:  *packageBase,
+	}
 
 	start := time.Now()
 
