@@ -28,7 +28,13 @@ func pageTemplate(name db.PackageName, start time.Time, frags ...htm.Fragment) h
 				bootstrap.Container,
 				bootstrap.Card(
 					bootstrap.CardTitle("WARNING"),
-					html.Text("This software is in beta. Packages are not necessarily up to date and dependency resolution will have errors."),
+					html.Div(
+						html.Text("This software is in beta. Packages are not necessarily up to date and dependency resolution will have errors. Any questions please open a issue at "),
+						html.Link("https://github.com/tinyrange/pkg2", html.Text("https://github.com/tinyrange/pkg2")),
+						html.Text(" or send an email to "),
+						html.Link("mailto:joshua@jscarsbrook.me", html.Text("joshua@jscarsbrook.me")),
+						html.Text("."),
+					),
 				),
 				bootstrap.Card(
 					bootstrap.CardTitle("Search"),
@@ -193,7 +199,10 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		page := pageTemplate(db.PackageName{}, start)
+		page := pageTemplate(db.PackageName{}, start, bootstrap.Card(
+			bootstrap.CardTitle("Package Metadata Search: Alpha"),
+			html.Div(html.Textf("Currently Indexing: %d Packages", pkgDb.Count())),
+		))
 
 		if err := htm.Render(r.Context(), w, page); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
