@@ -163,6 +163,9 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 				[]starlark.Tuple{},
 			)
 			if err != nil {
+				if sErr, ok := err.(*starlark.EvalError); ok {
+					slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+				}
 				return fmt.Errorf("error calling user callback: %s", err)
 			}
 
@@ -373,6 +376,7 @@ type PackageDatabase struct {
 	PackageMap      map[string]*Package
 	AllowLocal      bool
 	ForceRefresh    bool
+	NoParallel      bool
 }
 
 func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Function, args starlark.Tuple) error {
@@ -417,16 +421,20 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				url string
+				url          string
+				expectedSize int64
 			)
 
 			if err := starlark.UnpackArgs("fetch_http", args, kwargs,
 				"url", &url,
+				"expected_size?", &expectedSize,
 			); err != nil {
 				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
-			f, err := db.Eif.HttpGetReader(url)
+			f, err := db.Eif.HttpGetReader(url, core.HttpOptions{
+				ExpectedSize: expectedSize,
+			})
 			if err == core.ErrNotFound {
 				return starlark.None, nil
 			} else if err != nil {
@@ -768,14 +776,20 @@ func (db *PackageDatabase) FetchAll() error {
 		}
 
 		wg.Add(1)
-		go func(key string, fetcher *RepositoryFetcher) {
-			defer wg.Done()
+		if db.NoParallel {
 			if err := fetcher.fetchWithKey(db.Eif, key, db.ForceRefresh); err != nil {
-				errors <- fmt.Errorf("failed to load %s: %s", fetcher.String(), err)
+				return fmt.Errorf("failed to load %s: %s", fetcher.String(), err)
 			}
+		} else {
+			go func(key string, fetcher *RepositoryFetcher) {
+				defer wg.Done()
+				if err := fetcher.fetchWithKey(db.Eif, key, db.ForceRefresh); err != nil {
+					errors <- fmt.Errorf("failed to load %s: %s", fetcher.String(), err)
+				}
 
-			pb.Add(1)
-		}(key, fetcher)
+				pb.Add(1)
+			}(key, fetcher)
+		}
 	}
 
 	go func() {

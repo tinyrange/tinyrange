@@ -61,7 +61,11 @@ func (eif *EnvironmentInterface) GetCachePath(key string) (string, error) {
 	return filepath.Join(eif.cachePath, keyPath), nil
 }
 
-func (eif *EnvironmentInterface) HttpGetReader(url string) (io.ReadCloser, error) {
+type HttpOptions struct {
+	ExpectedSize int64
+}
+
+func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) (io.ReadCloser, error) {
 	path, err := eif.GetCachePath(url)
 	if err != nil {
 		return nil, err
@@ -69,8 +73,12 @@ func (eif *EnvironmentInterface) HttpGetReader(url string) (io.ReadCloser, error
 
 	if info, err := os.Stat(path); err == nil {
 		// slog.Info("checking refresh", "url", url, "age", time.Since(info.ModTime()))
-		if !eif.needsRefresh(url, time.Since(info.ModTime())) {
-			return os.Open(path)
+		if options.ExpectedSize != 0 && info.Size() != options.ExpectedSize {
+			// Assume the file is corrupted and fall though.
+		} else {
+			if !eif.needsRefresh(url, time.Since(info.ModTime())) {
+				return os.Open(path)
+			}
 		}
 	}
 
@@ -95,20 +103,40 @@ func (eif *EnvironmentInterface) HttpGetReader(url string) (io.ReadCloser, error
 		return nil, fmt.Errorf("http error: %s", resp.Status)
 	}
 
-	out, err := os.Create(path)
+	if options.ExpectedSize != 0 && resp.ContentLength != options.ExpectedSize {
+		return nil, fmt.Errorf("size mismatch: %d != %d", resp.ContentLength, options.ExpectedSize)
+	}
+
+	tmpFilename := path + ".tmp"
+
+	out, err := os.Create(tmpFilename)
 	if err != nil {
 		return nil, err
 	}
-	defer out.Close()
 
 	pb := progressbar.DefaultBytes(resp.ContentLength, fmt.Sprintf("downloading %s", url))
 	defer pb.Close()
 
-	if _, err := io.Copy(io.MultiWriter(pb, out), resp.Body); err != nil {
+	var n int64
+	if n, err = io.Copy(io.MultiWriter(pb, out), resp.Body); err != nil {
+		out.Close()
 		return nil, err
 	}
 
-	return eif.HttpGetReader(url)
+	if options.ExpectedSize != 0 && n != options.ExpectedSize {
+		out.Close()
+		return nil, fmt.Errorf("size mismatch: %d != %d", n, options.ExpectedSize)
+	}
+
+	if err := out.Close(); err != nil {
+		return nil, err
+	}
+
+	if err := os.Rename(tmpFilename, path); err != nil {
+		return nil, err
+	}
+
+	return eif.HttpGetReader(url, options)
 }
 
 // A generic interface to caching arbitrary data.
