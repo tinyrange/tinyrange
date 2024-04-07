@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 
 	"go.starlark.net/starlark"
@@ -114,6 +115,15 @@ func (n PackageName) Attr(name string) (starlark.Value, error) {
 // AttrNames implements starlark.HasAttrs.
 func (name PackageName) AttrNames() []string {
 	return []string{"distribution", "namespace", "name", "version", "architecture"}
+}
+
+func (name PackageName) UrlParams() string {
+	values := url.Values{}
+	values.Add("distribution", name.Distribution)
+	values.Add("name", name.Name)
+	values.Add("version", name.Version)
+	values.Add("architecture", name.Architecture)
+	return values.Encode()
 }
 
 func (PackageName) Type() string          { return "PackageName" }
