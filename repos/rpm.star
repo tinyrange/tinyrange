@@ -55,5 +55,21 @@ def add_fedora_fetchers(only_latest = True):
                 distro = "fedora@{}".format(version),
             )
 
+almalinux_mirror = "https://mirror.aarnet.edu.au/pub/almalinux"
+latest_almalinux_version = 9
+
+def add_almalinux_fetchers(only_latest = True):
+    for version in ["8", "9"]:
+        for group in ["AppStream", "BaseOS", "HighAvailability", "NFV", "RT", "ResilientStorage", "SAP", "SAPHANA", "devel", "extras"]:
+            for arch in ["x86_64"]:
+                if only_latest and version != latest_almalinux_version:
+                    continue
+
+                fetch_repo(
+                    fetch_rpm_repostiory,
+                    ("{}/{}/{}/{}/os/".format(almalinux_mirror, version, group, arch),),
+                    distro = "almalinux@{}".format(version),
+                )
+
 if __name__ == "__main__":
-    add_fedora_fetchers(only_latest = False)
+    add_almalinux_fetchers(only_latest = False)
