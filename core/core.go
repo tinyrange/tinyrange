@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/schollz/progressbar/v3"
@@ -36,6 +37,7 @@ var (
 type EnvironmentInterface struct {
 	cachePath string
 	client    *http.Client
+	httpMutex sync.Mutex
 }
 
 func (eif *EnvironmentInterface) needsRefresh(url string, age time.Duration) bool {
@@ -71,6 +73,12 @@ func (eif *EnvironmentInterface) HttpGetReader(url string) (io.ReadCloser, error
 			return os.Open(path)
 		}
 	}
+
+	// miss
+
+	// Lock the mutex to prevent concurrent downloads.
+	eif.httpMutex.Lock()
+	defer eif.httpMutex.Unlock()
 
 	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
 		return nil, err

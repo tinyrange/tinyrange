@@ -364,7 +364,9 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			}
 
 			f, err := db.Eif.HttpGetReader(url)
-			if err != nil {
+			if err == core.ErrNotFound {
+				return starlark.None, nil
+			} else if err != nil {
 				return starlark.None, err
 			}
 
@@ -688,6 +690,57 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 	return nil
 }
 
+func (db *PackageDatabase) fetchWithKey(key string, fetcher *RepositoryFetcher) error {
+	expireTime := 24 * time.Hour
+	if db.ForceRefresh {
+		expireTime = 0
+	}
+
+	err := db.Eif.CacheObjects(
+		key, int(PackageMetadataVersionCurrent), expireTime,
+		func(write func(obj any) error) error {
+			slog.Info("fetching", "key", key)
+
+			thread := &starlark.Thread{}
+
+			_, err := starlark.Call(thread, fetcher.Func,
+				append(starlark.Tuple{fetcher}, fetcher.Args...),
+				[]starlark.Tuple{},
+			)
+			if err != nil {
+				return err
+			}
+
+			for _, pkg := range fetcher.Packages {
+				if err := write(pkg); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		},
+		func(read func(obj any) error) error {
+			for {
+				pkg := NewPackage()
+
+				err := read(pkg)
+				if err == io.EOF {
+					return nil
+				} else if err != nil {
+					return err
+				} else {
+					db.Packages = append(db.Packages, pkg)
+				}
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (db *PackageDatabase) FetchAll() error {
 	for _, fetcher := range db.Fetchers {
 		key, err := fetcher.Key()
@@ -695,50 +748,7 @@ func (db *PackageDatabase) FetchAll() error {
 			return fmt.Errorf("failed to get fetcher key: %s", err)
 		}
 
-		expireTime := 24 * time.Hour
-		if db.ForceRefresh {
-			expireTime = 0
-		}
-
-		err = db.Eif.CacheObjects(
-			key, int(PackageMetadataVersionCurrent), expireTime,
-			func(write func(obj any) error) error {
-				slog.Info("fetching", "key", key)
-
-				thread := &starlark.Thread{}
-
-				_, err = starlark.Call(thread, fetcher.Func,
-					append(starlark.Tuple{fetcher}, fetcher.Args...),
-					[]starlark.Tuple{},
-				)
-				if err != nil {
-					return err
-				}
-
-				for _, pkg := range fetcher.Packages {
-					if err := write(pkg); err != nil {
-						return err
-					}
-				}
-
-				return nil
-			},
-			func(read func(obj any) error) error {
-				for {
-					pkg := NewPackage()
-
-					err := read(pkg)
-					if err == io.EOF {
-						return nil
-					} else if err != nil {
-						return err
-					} else {
-						db.Packages = append(db.Packages, pkg)
-					}
-				}
-			},
-		)
-		if err != nil {
+		if err := db.fetchWithKey(key, fetcher); err != nil {
 			return fmt.Errorf("failed to load %s: %s", key, err)
 		}
 	}

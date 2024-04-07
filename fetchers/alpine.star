@@ -60,7 +60,13 @@ def parse_apk_name(ctx, s):
         return ctx.name(name = pkg, version = version)
 
 def fetch_alpine_repository(ctx, url, repo):
+    print("fetch", url + "/APKINDEX.tar.gz")
+
     resp = fetch_http(url + "/APKINDEX.tar.gz")
+
+    if resp == None:
+        return
+
     apk_index = resp.read_archive(".tar.gz")["APKINDEX"]
 
     contents = parse_apk_index(apk_index.read())
@@ -73,9 +79,11 @@ def fetch_alpine_repository(ctx, url, repo):
         ))
 
         pkg.set_description(ent["T"])
-        pkg.set_license(ent["L"])
+        if "L" in ent:
+            pkg.set_license(ent["L"])
         pkg.set_size(int(ent["S"]))
-        pkg.set_installed_size(int(ent["I"]))
+        if "I" in ent:
+            pkg.set_installed_size(int(ent["I"]))
 
         pkg.add_source(url = "{}/{}-{}.apk".format(url, pkg.name, pkg.version))
         if opt(ent, "c") != "":
