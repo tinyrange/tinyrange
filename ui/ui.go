@@ -14,7 +14,11 @@ import (
 
 func pageTemplate(name db.PackageName, start time.Time, frags ...htm.Fragment) htm.Fragment {
 	return html.Html(
+		htm.Attr("lang", "en"),
 		html.Head(
+			html.MetaCharset("UTF-8"),
+			html.Title("Package Metadata Search: Alpha"),
+			html.MetaViewport("width=device-width, initial-scale=1"),
 			bootstrap.CSSSrc,
 			bootstrap.JavaScriptSrc,
 			bootstrap.ColorPickerSrc,
@@ -22,7 +26,7 @@ func pageTemplate(name db.PackageName, start time.Time, frags ...htm.Fragment) h
 		),
 		html.Body(
 			bootstrap.Navbar(
-				bootstrap.NavbarBrand("/", html.Text("Package Metadata Search")),
+				bootstrap.NavbarBrand("/", html.Text("Package Metadata Search: Alpha")),
 			),
 			html.Div(
 				bootstrap.Container,
