@@ -2,10 +2,6 @@
 XBPS Package Fetcher
 """
 
-# mirror = "https://repo-default.voidlinux.org"
-
-mirror = "https://mirror.aarnet.edu.au/pub/voidlinux"
-
 def parse_xbps_name(ctx, name):
     if ">=" in name:
         name, version = name.split(">=", 1)
@@ -42,9 +38,12 @@ def fetch_xbps_repository(ctx, url, arch):
         pkg = ctx.add_package(ctx.name(
             name = name,
             version = version,
+            architecture = ent["architecture"],
         ))
         pkg.set_license(ent["license"])
         pkg.set_description(ent["short_desc"])
+        if "filename_size" in ent:
+            pkg.set_size(ent["filename_size"])
         pkg.set_installed_size(ent["installed_size"])
 
         download_url = "{}/{}.{}.xbps".format(url, ent["pkgver"], arch)
@@ -57,9 +56,3 @@ def fetch_xbps_repository(ctx, url, arch):
         if "provides" in ent:
             for depend in ent["provides"]:
                 pkg.add_alias(parse_xbps_name(ctx, depend))
-
-fetch_repo(
-    fetch_xbps_repository,
-    (mirror + "/current/musl", "x86_64-musl"),
-    distro = "voidlinux@current",
-)
