@@ -21,11 +21,17 @@ load(
     "add_ubuntu_fetchers",
 )
 load(
+    "repos/openwrt.star",
+    "add_openwrt_fetchers",
+)
+load(
     "repos/rpm.star",
     "add_almalinux_fetchers",
     "add_amazonlinux_fetchers",
     "add_centos_stream_fetchers",
     "add_fedora_fetchers",
+    "add_opensuse_fetchers",
+    "add_oraclelinux_fetchers",
 )
 load(
     "repos/xbps.star",
@@ -55,3 +61,8 @@ add_fedora_fetchers(only_latest = False)
 add_almalinux_fetchers(only_latest = False)
 add_amazonlinux_fetchers()
 add_centos_stream_fetchers(only_latest = False)
+add_opensuse_fetchers(only_latest = False)
+add_oraclelinux_fetchers(only_latest = False)
+
+# OpenWRT
+add_openwrt_fetchers(only_latest = False)

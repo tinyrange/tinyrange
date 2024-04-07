@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/tinyrange/pkg2/memtar"
 	"go.starlark.net/starlark"
 )
@@ -78,6 +79,12 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 			if strings.HasSuffix(ext, ".gz") {
 				r, err := gzip.NewReader(f.f)
+				if err != nil {
+					return nil, fmt.Errorf("failed to read compressed")
+				}
+				return &StarFile{f: r, name: strings.TrimSuffix(f.name, ext)}, nil
+			} else if strings.HasSuffix(ext, ".zst") {
+				r, err := zstd.NewReader(f.f)
 				if err != nil {
 					return nil, fmt.Errorf("failed to read compressed")
 				}

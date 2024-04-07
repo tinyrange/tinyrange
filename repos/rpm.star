@@ -94,5 +94,60 @@ def add_centos_stream_fetchers(only_latest = True):
                     distro = "centos-stream@{}".format(version),
                 )
 
+opensuse_mirror = "https://mirror.aarnet.edu.au/pub/opensuse"
+latest_opensuse_version = "15.6"
+
+def add_opensuse_fetchers(only_latest = True):
+    for version in ["15.2", "15.3", "15.4", "15.5", "15.6"]:
+        for license in ["oss", "non-oss"]:
+            if only_latest and version != latest_opensuse_version:
+                continue
+
+            fetch_repo(
+                fetch_rpm_repostiory,
+                ("{}/opensuse/distribution/leap/{}/repo/{}/".format(opensuse_mirror, version, license),),
+                distro = "opensuse-leap@{}".format(version),
+            )
+
+    for license in ["oss", "non-oss"]:
+        if only_latest:
+            continue
+
+        fetch_repo(
+            fetch_rpm_repostiory,
+            ("{}/tumbleweed/repo/{}/".format(opensuse_mirror, license),),
+            distro = "opensuse-tumbleweed",
+        )
+
+oraclelinux_mirror = "https://yum.oracle.com"
+latest_oraclelinux_version = "OL9"
+
+def add_oraclelinux_fetchers(only_latest = True):
+    # Older
+    for version in ["OL5", "OL6", "OL7"]:
+        for group in ["latest"]:
+            for arch in ["x86_64"]:
+                if only_latest and version != latest_opensuse_version:
+                    continue
+
+                fetch_repo(
+                    fetch_rpm_repostiory,
+                    ("{}/repo/OracleLinux/{}/{}/{}/".format(oraclelinux_mirror, version, group, arch),),
+                    distro = "oraclelinux@{}".format(version),
+                )
+
+    # Current
+    for version in ["OL9", "OL8"]:
+        for group in ["baseos/latest", "appstream"]:
+            for arch in ["x86_64"]:
+                if only_latest and version != latest_opensuse_version:
+                    continue
+
+                fetch_repo(
+                    fetch_rpm_repostiory,
+                    ("{}/repo/OracleLinux/{}/{}/{}/".format(oraclelinux_mirror, version, group, arch),),
+                    distro = "oraclelinux@{}".format(version),
+                )
+
 if __name__ == "__main__":
-    add_centos_stream_fetchers(only_latest = False)
+    add_oraclelinux_fetchers(only_latest = False)
