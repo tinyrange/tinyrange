@@ -32,6 +32,7 @@ load(
     "add_fedora_fetchers",
     "add_opensuse_fetchers",
     "add_oraclelinux_fetchers",
+    "add_rockylinux_fetchers",
 )
 load(
     "repos/xbps.star",
@@ -63,6 +64,7 @@ add_amazonlinux_fetchers()
 add_centos_stream_fetchers(only_latest = False)
 add_opensuse_fetchers(only_latest = False)
 add_oraclelinux_fetchers(only_latest = False)
+add_rockylinux_fetchers(only_latest = False)
 
 # OpenWRT
 add_openwrt_fetchers(only_latest = False)

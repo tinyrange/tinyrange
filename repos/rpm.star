@@ -149,5 +149,21 @@ def add_oraclelinux_fetchers(only_latest = True):
                     distro = "oraclelinux@{}".format(version),
                 )
 
+rockylinux_mirror = "https://mirror.aarnet.edu.au/pub/rocky"
+latest_rockylinux_version = 9
+
+def add_rockylinux_fetchers(only_latest = True):
+    for version in ["8", "9"]:
+        for group in ["AppStream", "BaseOS", "HighAvailability", "NFV", "RT", "ResilientStorage", "devel", "extras"]:
+            for arch in ["x86_64"]:
+                if only_latest and version != latest_rockylinux_version:
+                    continue
+
+                fetch_repo(
+                    fetch_rpm_repostiory,
+                    ("{}/{}/{}/{}/os/".format(rockylinux_mirror, version, group, arch),),
+                    distro = "rockylinux@{}".format(version),
+                )
+
 if __name__ == "__main__":
-    add_oraclelinux_fetchers(only_latest = False)
+    add_rockylinux_fetchers(only_latest = False)

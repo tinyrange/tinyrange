@@ -39,7 +39,8 @@ def fetch_rpm_repostiory(ctx, url):
             architecture = ent["arch"],
         ))
 
-        pkg.set_description(ent["description"])
+        if "description" in ent:
+            pkg.set_description(ent["description"])
         pkg.set_license(opt(ent, "license"))
         pkg.add_source(url = url + ent["location"]["-href"])
 
