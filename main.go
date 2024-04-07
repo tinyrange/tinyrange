@@ -49,7 +49,7 @@ func main() {
 		log.Fatal("failed to fetch: ", err)
 	}
 
-	slog.Info("finished loading all repositories", "took", time.Since(start))
+	slog.Info("finished loading all repositories", "took", time.Since(start), "packages", pkgDb.Count())
 
 	if *makePlan != "" {
 		var names []db.PackageName

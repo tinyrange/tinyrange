@@ -958,3 +958,13 @@ func (db *PackageDatabase) MakeInstallationPlan(packages []PackageName) (*Instal
 
 	return plan, nil
 }
+
+func (db *PackageDatabase) Count() int64 {
+	var ret int64 = 0
+
+	for _, fetcher := range db.Fetchers {
+		ret += int64(len(fetcher.Packages))
+	}
+
+	return ret
+}

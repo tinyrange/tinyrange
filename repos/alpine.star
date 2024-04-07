@@ -53,5 +53,17 @@ def add_wolfi_fetchers():
             distro = "wolfi",
         )
 
+def add_postmarketos_fetchers(only_latest = True):
+    for version in ["master", "staging", "v20.05", "v21.03", "v21.06", "v21.12", "v22.06", "v22.12", "v23.06", "v23.12"]:
+        for arch in ["x86_64"]:
+            if only_latest and version != "master":
+                continue
+
+            fetch_repo(
+                fetch_alpine_repository,
+                ("https://mirror.postmarketos.org/postmarketos/{}/{}".format(version, arch), "postmarketos"),
+                distro = "postmarketos@{}".format(version),
+            )
+
 if __name__ == "__main__":
     add_alpine_fetchers()
