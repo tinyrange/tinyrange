@@ -29,12 +29,37 @@ func getSha256(val []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+type RepositoryFetcherStatus int
+
+func (status RepositoryFetcherStatus) String() string {
+	switch status {
+	case RepositoryFetcherStatusNotLoaded:
+		return "Not Loaded"
+	case RepositoryFetcherStatusLoading:
+		return "Loading"
+	case RepositoryFetcherStatusLoaded:
+		return "Loaded"
+	default:
+		return "<unknown>"
+	}
+}
+
+const (
+	RepositoryFetcherStatusNotLoaded RepositoryFetcherStatus = iota
+	RepositoryFetcherStatusLoading
+	RepositoryFetcherStatusLoaded
+	RepositoryFetcherStatusError
+)
+
 type RepositoryFetcher struct {
-	db       *PackageDatabase
-	Packages []*Package
-	Distro   string
-	Func     *starlark.Function
-	Args     starlark.Tuple
+	db             *PackageDatabase
+	Packages       []*Package
+	Distro         string
+	Func           *starlark.Function
+	Args           starlark.Tuple
+	Status         RepositoryFetcherStatus
+	updateMutex    sync.Mutex
+	LastUpdateTime time.Duration
 }
 
 func (r *RepositoryFetcher) Key() (string, error) {
@@ -147,7 +172,15 @@ func (*RepositoryFetcher) Truth() starlark.Bool { return starlark.True }
 func (*RepositoryFetcher) Freeze()              {}
 
 func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, key string, forceRefresh bool) error {
-	expireTime := 24 * time.Hour
+	// Only allow a single thread to update a fetcher at the same time.
+	fetcher.updateMutex.Lock()
+	defer fetcher.updateMutex.Unlock()
+
+	start := time.Now()
+
+	fetcher.Status = RepositoryFetcherStatusLoading
+
+	expireTime := 8 * time.Hour
 	if forceRefresh {
 		expireTime = 0
 	}
@@ -196,8 +229,14 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 		},
 	)
 	if err != nil {
+		fetcher.Status = RepositoryFetcherStatusError
+
 		return err
 	}
+
+	fetcher.Status = RepositoryFetcherStatusLoaded
+
+	fetcher.LastUpdateTime = time.Since(start)
 
 	return nil
 }
@@ -374,7 +413,8 @@ type PackageDatabase struct {
 	Fetchers        []*RepositoryFetcher
 	ScriptFetchers  []*ScriptFetcher
 	SearchProviders []*SearchProvider
-	PackageMap      map[string]*Package
+	packageMap      map[string]*Package
+	packageMapMutex sync.Mutex
 	AllowLocal      bool
 	ForceRefresh    bool
 	NoParallel      bool
@@ -812,14 +852,66 @@ func (db *PackageDatabase) FetchAll() error {
 	}
 
 	// Get the package index.
-	db.PackageMap = make(map[string]*Package)
+	db.packageMapMutex.Lock()
+	defer db.packageMapMutex.Unlock()
+	db.packageMap = make(map[string]*Package)
+
 	for _, fetcher := range db.Fetchers {
 		for _, pkg := range fetcher.Packages {
-			db.PackageMap[pkg.Name.String()] = pkg
+			db.packageMap[pkg.Name.String()] = pkg
 		}
 	}
 
 	return nil
+}
+
+// Start a series of go routines to automatically refresh each package fetcher every refreshTime.
+func (db *PackageDatabase) StartAutoRefresh(maxParallelFetchers int, refreshTime time.Duration) {
+	// Initialize the package map.
+	db.packageMap = make(map[string]*Package)
+
+	updateRequests := make(chan *RepositoryFetcher, maxParallelFetchers)
+
+	for _, fetcher := range db.Fetchers {
+		go func(fetcher *RepositoryFetcher) {
+			ticker := time.NewTicker(refreshTime)
+
+			updateRequests <- fetcher
+
+			for range ticker.C {
+				updateRequests <- fetcher
+			}
+		}(fetcher)
+	}
+
+	for i := 0; i < maxParallelFetchers; i++ {
+		go func() {
+			for {
+				updateRequest := <-updateRequests
+
+				key, err := updateRequest.Key()
+				if err != nil {
+					slog.Warn("could not get fetcher key", "fetcher", updateRequest.String(), "error", err)
+					continue
+				}
+
+				if err := updateRequest.fetchWithKey(db.Eif, key, false); err != nil {
+					slog.Warn("could not get update fetcher", "fetcher", updateRequest.String(), "error", err)
+					continue
+				}
+
+				{
+					db.packageMapMutex.Lock()
+
+					for _, pkg := range updateRequest.Packages {
+						db.packageMap[pkg.Name.String()] = pkg
+					}
+
+					db.packageMapMutex.Unlock()
+				}
+			}
+		}()
+	}
 }
 
 func (db *PackageDatabase) searchWithProviders(query PackageName, maxResults int) ([]*Package, error) {
@@ -863,7 +955,10 @@ func (db *PackageDatabase) Search(query PackageName, maxResults int) ([]*Package
 }
 
 func (db *PackageDatabase) Get(key string) (*Package, bool) {
-	pkg, ok := db.PackageMap[key]
+	db.packageMapMutex.Lock()
+	defer db.packageMapMutex.Unlock()
+
+	pkg, ok := db.packageMap[key]
 
 	return pkg, ok
 }
@@ -998,4 +1093,26 @@ func (db *PackageDatabase) Count() int64 {
 	}
 
 	return ret
+}
+
+type FetcherStatus struct {
+	Name           string
+	Status         RepositoryFetcherStatus
+	PackageCount   int
+	LastUpdateTime time.Duration
+}
+
+func (db *PackageDatabase) FetcherStatus() ([]FetcherStatus, error) {
+	var ret []FetcherStatus
+
+	for _, fetcher := range db.Fetchers {
+		ret = append(ret, FetcherStatus{
+			Name:           fetcher.String(),
+			Status:         fetcher.Status,
+			PackageCount:   len(fetcher.Packages),
+			LastUpdateTime: fetcher.LastUpdateTime,
+		})
+	}
+
+	return ret, nil
 }

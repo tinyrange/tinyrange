@@ -201,8 +201,46 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 		}
 	})
 
+	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		var rows []htm.Group
+
+		status, err := pkgDb.FetcherStatus()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		for _, row := range status {
+			rows = append(rows, htm.Group{
+				html.Code(html.Textf("%s", row.Name[:min(len(row.Name), 100)])),
+				html.Textf("%s", row.Status.String()),
+				html.Textf("%s", row.LastUpdateTime.String()),
+				html.Textf("%d", row.PackageCount),
+			})
+		}
+
+		page := pageTemplate(db.PackageName{}, start,
+			bootstrap.Card(
+				bootstrap.CardTitle("Fetcher Status"),
+				bootstrap.Table(htm.Group{
+					html.Textf("Name"),
+					html.Textf("Status"),
+					html.Textf("Last Update Time"),
+					html.Textf("Package Count"),
+				}, rows),
+			),
+		)
+
+		if err := htm.Render(r.Context(), w, page); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+
 		page := pageTemplate(db.PackageName{}, start, bootstrap.Card(
 			bootstrap.CardTitle("Package Metadata Search: Alpha"),
 			html.Div(html.Textf("Currently Indexing: %d Packages", pkgDb.Count())),

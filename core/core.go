@@ -20,14 +20,24 @@ var CACHE_EXPIRE_RULES = []struct {
 	maxAge time.Duration
 }{
 	// Alpine Linux
-	{regexp.MustCompile(".*/APKINDEX.tar.gz"), 24 * time.Hour},
+	{regexp.MustCompile(".*/APKINDEX.tar.gz"), 8 * time.Hour},
 
 	// Ubuntu/Debian
-	{regexp.MustCompile(".*/archive/dists/.*/InRelease"), 24 * time.Hour},
-	{regexp.MustCompile(".*/archive/dists/.*/by-hash/.*"), 24 * time.Hour},
+	{regexp.MustCompile(".*/old-releases.ubuntu.com/.*/Packages.gz"), 7 * 24 * time.Hour},
+	{regexp.MustCompile(".*/Packages.gz"), 8 * time.Hour},
 
-	// Alpine Linux
-	{regexp.MustCompile(".*.db.tar.gz"), 24 * time.Hour},
+	// Arch Linux
+	{regexp.MustCompile(".*.db.tar.gz"), 8 * time.Hour},
+	{regexp.MustCompile(".*/packages-meta-ext-v1.json.gz"), 8 * time.Hour},
+
+	// RPM
+	{regexp.MustCompile(".*/repodata/repomd.xml"), 8 * time.Hour},
+
+	// Conda
+	{regexp.MustCompile(".*/repodata.json"), 8 * time.Hour},
+
+	// XBPS
+	{regexp.MustCompile(".*/.*-repodata"), 8 * time.Hour},
 }
 
 var (

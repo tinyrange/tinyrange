@@ -46,21 +46,23 @@ func main() {
 		PackageBase:  *packageBase,
 	}
 
-	start := time.Now()
-
 	for _, name := range names {
 		if err := pkgDb.LoadScript(name); err != nil {
 			log.Fatal("failed to load script: ", err)
 		}
 	}
 
-	if err := pkgDb.FetchAll(); err != nil {
-		log.Fatal("failed to fetch: ", err)
-	}
-
-	slog.Info("finished loading all repositories", "took", time.Since(start), "packages", pkgDb.Count())
+	slog.Info("loaded scripts")
 
 	if *makePlan != "" {
+		start := time.Now()
+
+		if err := pkgDb.FetchAll(); err != nil {
+			log.Fatal("failed to fetch: ", err)
+		}
+
+		slog.Info("finished loading all repositories", "took", time.Since(start), "packages", pkgDb.Count())
+
 		var names []db.PackageName
 
 		for _, token := range strings.Split(*makePlan, ",") {
@@ -107,6 +109,14 @@ func main() {
 			}
 		}
 	} else if *buildScript != "" {
+		start := time.Now()
+
+		if err := pkgDb.FetchAll(); err != nil {
+			log.Fatal("failed to fetch: ", err)
+		}
+
+		slog.Info("finished loading all repositories", "took", time.Since(start), "packages", pkgDb.Count())
+
 		pkg, ok := pkgDb.Get(*buildScript)
 		if !ok {
 			log.Fatalf("could not find package: %s", *buildScript)
@@ -121,6 +131,8 @@ func main() {
 			slog.Info("", "scriptInfo", scriptInfo)
 		}
 	} else {
+		pkgDb.StartAutoRefresh(1, 8*time.Hour)
+
 		ui.RegisterHandlers(pkgDb, http.DefaultServeMux)
 
 		slog.Info("http server listening", "addr", "http://"+*httpAddress)
