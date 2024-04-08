@@ -67,16 +67,13 @@ type RepositoryFetcher struct {
 }
 
 func (r *RepositoryFetcher) Matches(query PackageName) bool {
-	r.updateMutex.Lock()
-	defer r.updateMutex.Unlock()
-
-	if query.Distribution != "" {
+	if query.Distribution != "" && r.Distributions != nil {
 		_, ok := r.Distributions[query.Distribution]
 
 		return ok
 	}
 
-	if query.Architecture != "" {
+	if query.Architecture != "" && r.Architectures != nil {
 		_, ok := r.Architectures[query.Architecture]
 
 		return ok
@@ -208,6 +205,9 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 		expireTime = 0
 	}
 
+	distributionIndex := map[string]bool{}
+	architectureIndex := map[string]bool{}
+
 	err := eif.CacheObjects(
 		key, int(PackageMetadataVersionCurrent), expireTime,
 		func(write func(obj any) error) error {
@@ -249,10 +249,10 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 					fetcher.Packages = append(fetcher.Packages, pkg)
 
 					// Add to the distribution index.
-					fetcher.Distributions[pkg.Name.Distribution] = true
+					distributionIndex[pkg.Name.Distribution] = true
 
 					// Add to the architecture index.
-					fetcher.Architectures[pkg.Name.Architecture] = true
+					architectureIndex[pkg.Name.Architecture] = true
 				}
 			}
 		},
@@ -264,6 +264,9 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 	}
 
 	fetcher.Status = RepositoryFetcherStatusLoaded
+
+	fetcher.Architectures = architectureIndex
+	fetcher.Distributions = distributionIndex
 
 	fetcher.LastUpdateTime = time.Since(fetcher.LastUpdated)
 
@@ -452,12 +455,10 @@ type PackageDatabase struct {
 
 func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Function, args starlark.Tuple) error {
 	db.Fetchers = append(db.Fetchers, &RepositoryFetcher{
-		db:            db,
-		Distro:        distro,
-		Func:          f,
-		Args:          args,
-		Distributions: make(map[string]bool),
-		Architectures: make(map[string]bool),
+		db:     db,
+		Distro: distro,
+		Func:   f,
+		Args:   args,
 	})
 
 	return nil
@@ -1196,8 +1197,9 @@ func (db *PackageDatabase) DistributionList() []string {
 	set := map[string]bool{"": true}
 
 	for _, fetcher := range db.Fetchers {
-		fetcher.updateMutex.Lock()
-		defer fetcher.updateMutex.Unlock()
+		if fetcher.Distributions == nil {
+			continue
+		}
 
 		for distro := range fetcher.Distributions {
 			set[distro] = true
@@ -1216,8 +1218,9 @@ func (db *PackageDatabase) ArchitectureList() []string {
 	set := map[string]bool{"": true}
 
 	for _, fetcher := range db.Fetchers {
-		fetcher.updateMutex.Lock()
-		defer fetcher.updateMutex.Unlock()
+		if fetcher.Architectures == nil {
+			continue
+		}
 
 		for distro := range fetcher.Architectures {
 			set[distro] = true
