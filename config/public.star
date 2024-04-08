@@ -12,7 +12,7 @@ load(
 )
 
 # Alpine Linux
-add_alpine_fetchers(only_latest = True)
+add_alpine_fetchers(only_latest = False)
 
 # Ubuntu
 add_ubuntu_fetchers(only_latest = True)

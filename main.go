@@ -131,7 +131,7 @@ func main() {
 			slog.Info("", "scriptInfo", scriptInfo)
 		}
 	} else {
-		pkgDb.StartAutoRefresh(1, 8*time.Hour)
+		pkgDb.StartAutoRefresh(4, 8*time.Hour, *forceRefresh)
 
 		ui.RegisterHandlers(pkgDb, http.DefaultServeMux)
 

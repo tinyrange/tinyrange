@@ -60,6 +60,7 @@ type RepositoryFetcher struct {
 	Status         RepositoryFetcherStatus
 	updateMutex    sync.Mutex
 	LastUpdateTime time.Duration
+	LastUpdated    time.Time
 }
 
 func (r *RepositoryFetcher) Key() (string, error) {
@@ -176,7 +177,7 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 	fetcher.updateMutex.Lock()
 	defer fetcher.updateMutex.Unlock()
 
-	start := time.Now()
+	fetcher.LastUpdated = time.Now()
 
 	fetcher.Status = RepositoryFetcherStatusLoading
 
@@ -236,7 +237,7 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 
 	fetcher.Status = RepositoryFetcherStatusLoaded
 
-	fetcher.LastUpdateTime = time.Since(start)
+	fetcher.LastUpdateTime = time.Since(fetcher.LastUpdated)
 
 	return nil
 }
@@ -866,20 +867,35 @@ func (db *PackageDatabase) FetchAll() error {
 }
 
 // Start a series of go routines to automatically refresh each package fetcher every refreshTime.
-func (db *PackageDatabase) StartAutoRefresh(maxParallelFetchers int, refreshTime time.Duration) {
+func (db *PackageDatabase) StartAutoRefresh(maxParallelFetchers int, refreshTime time.Duration, forceRefresh bool) {
 	// Initialize the package map.
 	db.packageMap = make(map[string]*Package)
 
-	updateRequests := make(chan *RepositoryFetcher, maxParallelFetchers)
+	updateRequests := make(chan struct {
+		fetcher *RepositoryFetcher
+		force   bool
+	}, maxParallelFetchers)
 
 	for _, fetcher := range db.Fetchers {
 		go func(fetcher *RepositoryFetcher) {
 			ticker := time.NewTicker(refreshTime)
 
-			updateRequests <- fetcher
+			updateRequests <- struct {
+				fetcher *RepositoryFetcher
+				force   bool
+			}{
+				fetcher: fetcher,
+				force:   forceRefresh,
+			}
 
 			for range ticker.C {
-				updateRequests <- fetcher
+				updateRequests <- struct {
+					fetcher *RepositoryFetcher
+					force   bool
+				}{
+					fetcher: fetcher,
+					force:   true,
+				}
 			}
 		}(fetcher)
 	}
@@ -889,21 +905,21 @@ func (db *PackageDatabase) StartAutoRefresh(maxParallelFetchers int, refreshTime
 			for {
 				updateRequest := <-updateRequests
 
-				key, err := updateRequest.Key()
+				key, err := updateRequest.fetcher.Key()
 				if err != nil {
-					slog.Warn("could not get fetcher key", "fetcher", updateRequest.String(), "error", err)
+					slog.Warn("could not get fetcher key", "fetcher", updateRequest.fetcher.String(), "error", err)
 					continue
 				}
 
-				if err := updateRequest.fetchWithKey(db.Eif, key, false); err != nil {
-					slog.Warn("could not get update fetcher", "fetcher", updateRequest.String(), "error", err)
+				if err := updateRequest.fetcher.fetchWithKey(db.Eif, key, updateRequest.force); err != nil {
+					slog.Warn("could not get update fetcher", "fetcher", updateRequest.fetcher.String(), "error", err)
 					continue
 				}
 
 				{
 					db.packageMapMutex.Lock()
 
-					for _, pkg := range updateRequest.Packages {
+					for _, pkg := range updateRequest.fetcher.Packages {
 						db.packageMap[pkg.Name.String()] = pkg
 					}
 
@@ -1099,6 +1115,7 @@ type FetcherStatus struct {
 	Name           string
 	Status         RepositoryFetcherStatus
 	PackageCount   int
+	LastUpdated    time.Time
 	LastUpdateTime time.Duration
 }
 
@@ -1110,6 +1127,7 @@ func (db *PackageDatabase) FetcherStatus() ([]FetcherStatus, error) {
 			Name:           fetcher.String(),
 			Status:         fetcher.Status,
 			PackageCount:   len(fetcher.Packages),
+			LastUpdated:    fetcher.LastUpdated,
 			LastUpdateTime: fetcher.LastUpdateTime,
 		})
 	}

@@ -214,9 +214,10 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 
 		for _, row := range status {
 			rows = append(rows, htm.Group{
-				html.Code(html.Textf("%s", row.Name[:min(len(row.Name), 100)])),
+				html.Code(html.Textf("%s", row.Name[:min(len(row.Name), 80)])),
 				html.Textf("%s", row.Status.String()),
 				html.Textf("%s", row.LastUpdateTime.String()),
+				html.Textf("%s", row.LastUpdated.Format(time.UnixDate)),
 				html.Textf("%d", row.PackageCount),
 			})
 		}
@@ -228,6 +229,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 					html.Textf("Name"),
 					html.Textf("Status"),
 					html.Textf("Last Update Time"),
+					html.Textf("Last Updated"),
 					html.Textf("Package Count"),
 				}, rows),
 			),
