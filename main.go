@@ -25,6 +25,7 @@ var (
 	noParallel        = flag.Bool("noParallel", false, "use single threaded repository fetchers")
 	cacheDir          = flag.String("cacheDir", "local/cache", "specify the cache dir to use")
 	packageBase       = flag.String("packageBase", "", "the base directory to resolve packages from")
+	test              = flag.Bool("test", false, "just fetch all repos")
 )
 
 func main() {
@@ -130,6 +131,14 @@ func main() {
 
 			slog.Info("", "scriptInfo", scriptInfo)
 		}
+	} else if *test {
+		start := time.Now()
+
+		if err := pkgDb.FetchAll(); err != nil {
+			log.Fatal("failed to fetch: ", err)
+		}
+
+		slog.Info("finished loading all repositories", "took", time.Since(start), "packages", pkgDb.Count())
 	} else {
 		pkgDb.StartAutoRefresh(2, 2*time.Hour, *forceRefresh)
 

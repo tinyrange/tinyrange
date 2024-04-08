@@ -8,6 +8,8 @@ old_debian_fallback = "http://archive.debian.org/debian"
 
 kali_mirror = "https://mirror.aarnet.edu.au/pub/kali/kali"
 
+neurodebian_mirror = "https://mirror.aarnet.edu.au/pub/neurodebian"
+
 ubuntu_versions = {
     "mantic": "23.10",
     "lunar": "23.04",
@@ -69,7 +71,27 @@ def add_ubuntu_fetchers(only_latest = True):
                     distro = "ubuntu@{}".format(version),
                 )
 
-debian_versions = ["testing", "sid", "bookworm", "bullseye", "buster", "stretch", "jessie", "wheezy", "squeeze", "lenny", "etch", "sarge", "woody", "potato", "slink", "hamm", "bo", "rex", "buzz"]
+debian_versions = [
+    "testing",
+    "sid",
+    "bookworm",
+    "bullseye",
+    "buster",
+    "stretch",
+    "jessie",
+    "wheezy",
+    "squeeze",
+    "lenny",
+    "etch",
+    "sarge",
+    "woody",
+    "potato",
+    "slink",
+    "hamm",
+    "bo",
+    "rex",
+    "buzz",
+]
 
 latest_debian_version = "bookworm"
 
@@ -102,6 +124,23 @@ def add_kali_fetchers():
                         "dists/{}/{}/binary-{}".format(version, component, arch),
                     ),
                     distro = "kali@{}".format(version),
+                )
+
+def add_neurodebian_fetchers(only_latest = True):
+    for version in ["jammy", "trusty", "noble", "mantic", "lunar", "focal", "devel", "bionic"]:
+        for component in ["main", "contrib", "non-free"]:
+            for arch in ["amd64"]:
+                if only_latest and version != latest_ubuntu_version:
+                    continue
+
+                fetch_repo(
+                    fetch_debian_repository,
+                    (
+                        neurodebian_mirror,
+                        None,
+                        "dists/{}/{}/binary-{}".format(version, component, arch),
+                    ),
+                    distro = "ubuntu@{}".format(version),
                 )
 
 if __name__ == "__main__":

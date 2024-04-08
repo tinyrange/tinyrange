@@ -15,9 +15,14 @@ load(
     "add_bioarch_fetchers",
 )
 load(
+    "repos/cran.star",
+    "add_cran_fetchers",
+)
+load(
     "repos/debian.star",
     "add_debian_fetchers",
     "add_kali_fetchers",
+    "add_neurodebian_fetchers",
     "add_ubuntu_fetchers",
 )
 load(
@@ -53,6 +58,7 @@ add_aur_fetchers()
 add_ubuntu_fetchers(only_latest = False)
 add_debian_fetchers(only_latest = False)
 add_kali_fetchers()
+add_neurodebian_fetchers(only_latest = False)
 
 # Void Linux
 add_void_fetchers()
@@ -68,3 +74,6 @@ add_rockylinux_fetchers(only_latest = False)
 
 # OpenWRT
 add_openwrt_fetchers(only_latest = False)
+
+# CRAN
+add_cran_fetchers(only_latest = False)
