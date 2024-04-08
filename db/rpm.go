@@ -1,9 +1,9 @@
 package db
 
 import (
-	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
@@ -89,9 +89,67 @@ type rpmPackage struct {
 	} `xml:"format"`
 }
 
+type rpmRepoPrimaryIterator struct {
+	primary *rpmRepoPrimary
+	index   int
+}
+
+// Done implements starlark.Iterator.
+func (it *rpmRepoPrimaryIterator) Done() {
+	it.index = len(it.primary.Packages)
+}
+
+// Next implements starlark.Iterator.
+func (it *rpmRepoPrimaryIterator) Next(p *starlark.Value) bool {
+	if it.index >= len(it.primary.Packages) {
+		return false
+	}
+
+	ent := it.primary.Packages[it.index]
+
+	bytes, err := json.Marshal(&ent)
+	if err != nil {
+		it.Done()
+		return false
+	}
+
+	val, err := starlark.Call(
+		&starlark.Thread{},
+		starlarkjson.Module.Members["decode"],
+		starlark.Tuple{starlark.String(bytes)},
+		[]starlark.Tuple{},
+	)
+	if err != nil {
+		it.Done()
+		return false
+	}
+
+	*p = val
+
+	it.index += 1
+
+	return true
+}
+
 type rpmRepoPrimary struct {
 	Packages []rpmPackage `xml:"package"`
 }
+
+// Iterate implements starlark.Iterable.
+func (r *rpmRepoPrimary) Iterate() starlark.Iterator {
+	return &rpmRepoPrimaryIterator{primary: r}
+}
+
+func (*rpmRepoPrimary) String() string        { return "rpmRepoPrimary" }
+func (*rpmRepoPrimary) Type() string          { return "rpmRepoPrimary" }
+func (*rpmRepoPrimary) Hash() (uint32, error) { return 0, fmt.Errorf("rpmRepoPrimary is not hashable") }
+func (*rpmRepoPrimary) Truth() starlark.Bool  { return starlark.True }
+func (*rpmRepoPrimary) Freeze()               {}
+
+var (
+	_ starlark.Value    = &rpmRepoPrimary{}
+	_ starlark.Iterable = &rpmRepoPrimary{}
+)
 
 func rpmReadXml(thread *starlark.Thread, f File) (starlark.Value, error) {
 	dec := xml.NewDecoder(f)
@@ -102,18 +160,5 @@ func rpmReadXml(thread *starlark.Thread, f File) (starlark.Value, error) {
 		return starlark.None, err
 	}
 
-	buf := bytes.Buffer{}
-
-	enc := json.NewEncoder(&buf)
-
-	if err := enc.Encode(primary); err != nil {
-		return starlark.None, err
-	}
-
-	return starlark.Call(
-		thread,
-		starlarkjson.Module.Members["decode"],
-		starlark.Tuple{starlark.String(buf.Bytes())},
-		[]starlark.Tuple{},
-	)
+	return &primary, nil
 }

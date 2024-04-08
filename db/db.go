@@ -200,7 +200,7 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 
 	fetcher.Status = RepositoryFetcherStatusLoading
 
-	expireTime := 8 * time.Hour
+	expireTime := 2 * time.Hour
 	if forceRefresh {
 		expireTime = 0
 	}
@@ -771,6 +771,14 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			}
 
 			return &StarFile{f: f}, nil
+		}),
+		"mutex": starlark.NewBuiltin("mutex", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			return &StarMutex{}, nil
 		}),
 		"error": starlark.NewBuiltin("error", func(
 			thread *starlark.Thread,

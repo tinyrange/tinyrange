@@ -23,7 +23,7 @@ def fetch_rpm_repostiory(ctx, url):
         expected_size = primary_size,
     ).read_compressed(primary_url).read_rpm_xml()
 
-    for ent in primary["Packages"]:
+    for ent in primary:
         pkg = ctx.add_package(ctx.name(
             name = ent["Name"],
             version = ent["Version"]["Ver"],
