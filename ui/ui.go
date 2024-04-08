@@ -36,7 +36,7 @@ func pageTemplate(pkgDb *db.PackageDatabase, name db.PackageName, start time.Tim
 				bootstrap.Card(
 					bootstrap.CardTitle("WARNING"),
 					html.Div(
-						html.Text("This software is in beta. Packages are not necessarily up to date and dependency resolution will have errors. Any questions please open a issue at "),
+						html.Text("This software is in alpha. Packages are not necessarily up to date and dependency resolution will have errors. Any questions please open a issue at "),
 						html.Link("https://github.com/tinyrange/pkg2", html.Text("https://github.com/tinyrange/pkg2")),
 						html.Text(" or send an email to "),
 						html.Link("mailto:joshua@jscarsbrook.me", html.Text("joshua@jscarsbrook.me")),
