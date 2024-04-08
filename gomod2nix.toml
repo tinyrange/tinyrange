@@ -40,6 +40,15 @@ schema = 3
   [mod."github.com/icza/dyno"]
     version = "v0.0.0-20230330125955-09f820a8d9c0"
     hash = "sha256-PnXvbfwzNx8dksqU/LAy1InD/YcEaesFsnpUnW7iEvg="
+  [mod."github.com/jackc/pgpassfile"]
+    version = "v1.0.0"
+    hash = "sha256-H0nFbC34/3pZUFnuiQk9W7yvAMh6qJDrqvHp+akBPLM="
+  [mod."github.com/jackc/pgservicefile"]
+    version = "v0.0.0-20221227161230-091c0ba34f0a"
+    hash = "sha256-rBtUw15WPPDp2eulHXH5e2zCIed1OPFYwlCpgDOnGRM="
+  [mod."github.com/jackc/pgx/v5"]
+    version = "v5.5.5"
+    hash = "sha256-Uy9f1EVJwwf5eZtx/JuacqYMe7m/iOx/jHI81hRWqv8="
   [mod."github.com/jbenet/go-context"]
     version = "v0.0.0-20150711004518-d14ea06fba99"
     hash = "sha256-VANNCWNNpARH/ILQV9sCQsBWgyL2iFT+4AHZREpxIWE="

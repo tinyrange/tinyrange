@@ -54,6 +54,7 @@ const (
 type RepositoryFetcher struct {
 	db             *PackageDatabase
 	Packages       []*Package
+	Distributions  map[string]bool
 	Distro         string
 	Func           *starlark.Function
 	Args           starlark.Tuple
@@ -61,6 +62,16 @@ type RepositoryFetcher struct {
 	updateMutex    sync.Mutex
 	LastUpdateTime time.Duration
 	LastUpdated    time.Time
+}
+
+func (r *RepositoryFetcher) Matches(query PackageName) bool {
+	if query.Distribution != "" {
+		_, ok := r.Distributions[query.Distribution]
+
+		return ok
+	}
+
+	return true
 }
 
 func (r *RepositoryFetcher) Key() (string, error) {
@@ -225,6 +236,12 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 					return err
 				} else {
 					fetcher.Packages = append(fetcher.Packages, pkg)
+
+					// Add to the distribution index.
+					fetcher.Distributions[pkg.Name.Distribution] = true
+					for _, alias := range pkg.Aliases {
+						fetcher.Distributions[alias.Distribution] = true
+					}
 				}
 			}
 		},
@@ -424,10 +441,11 @@ type PackageDatabase struct {
 
 func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Function, args starlark.Tuple) error {
 	db.Fetchers = append(db.Fetchers, &RepositoryFetcher{
-		db:     db,
-		Distro: distro,
-		Func:   f,
-		Args:   args,
+		db:            db,
+		Distro:        distro,
+		Func:          f,
+		Args:          args,
+		Distributions: make(map[string]bool),
 	})
 
 	return nil
@@ -952,12 +970,19 @@ func (db *PackageDatabase) Search(query PackageName, maxResults int) ([]*Package
 
 	slog.Info("search", "query", query)
 
+outer:
 	for _, fetcher := range db.Fetchers {
+		// If the fetcher doesn't possibly match this query then early out.
+		if !fetcher.Matches(query) {
+			continue
+		}
+
+		// Search though each package.
 		for _, pkg := range fetcher.Packages {
 			if pkg.Matches(query) {
 				ret = append(ret, pkg)
 				if maxResults != 0 && len(ret) >= maxResults {
-					break
+					break outer
 				}
 			}
 		}
@@ -1133,4 +1158,24 @@ func (db *PackageDatabase) FetcherStatus() ([]FetcherStatus, error) {
 	}
 
 	return ret, nil
+}
+
+func (db *PackageDatabase) WriteNames(w io.Writer) error {
+	enc := json.NewEncoder(w)
+
+	for _, fetcher := range db.Fetchers {
+		for _, pkg := range fetcher.Packages {
+			if err := enc.Encode(pkg.Name); err != nil {
+				return err
+			}
+
+			for _, alias := range pkg.Aliases {
+				if err := enc.Encode(alias); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
 }

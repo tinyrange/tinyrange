@@ -80,10 +80,10 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 
 		r.ParseForm()
 
-		distro := strings.Trim(r.FormValue("distribution"), " ")
-		name := strings.Trim(r.FormValue("name"), " ")
-		version := strings.Trim(r.FormValue("version"), " ")
-		architecture := strings.Trim(r.FormValue("architecture"), " ")
+		distro := strings.Trim(r.FormValue("distribution"), " \t")
+		name := strings.Trim(r.FormValue("name"), " \t")
+		version := strings.Trim(r.FormValue("version"), " \t")
+		architecture := strings.Trim(r.FormValue("architecture"), " \t")
 
 		search := db.PackageName{
 			Distribution: distro,
@@ -103,6 +103,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 		for _, pkg := range results {
 			rows = append(rows, htm.Group{
 				html.Textf("%s", pkg.Name.Distribution),
+				html.Textf("%s", pkg.Name.Namespace),
 				html.Link("/info?key="+url.QueryEscape(pkg.Id()), html.Textf(pkg.Name.Name)),
 				html.Textf("%s", pkg.Name.Version),
 				html.Textf("%s", pkg.Name.Architecture),
@@ -111,6 +112,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 
 		page := pageTemplate(search, start, bootstrap.Table(htm.Group{
 			html.Textf("Distribution"),
+			html.Textf("Namespace"),
 			html.Textf("Name"),
 			html.Textf("Version"),
 			html.Textf("Architecture"),
@@ -139,9 +141,10 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 			for _, option := range optionList {
 				dependList = append(dependList, htm.Group{
 					html.Textf("%s", option.Distribution),
+					html.Textf("%s", option.Namespace),
 					html.Link("/search?"+option.UrlParams(), html.Textf("%s", option.Name)),
-					html.Textf("%s", pkg.Name.Version),
-					html.Textf("%s", pkg.Name.Architecture),
+					html.Textf("%s", option.Version),
+					html.Textf("%s", option.Architecture),
 				})
 			}
 		}
@@ -150,9 +153,10 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 		for _, alias := range pkg.Aliases {
 			aliasList = append(aliasList, htm.Group{
 				html.Textf("%s", alias.Distribution),
+				html.Textf("%s", alias.Namespace),
 				html.Textf("%s", alias.Name),
-				html.Textf("%s", pkg.Name.Version),
-				html.Textf("%s", pkg.Name.Architecture),
+				html.Textf("%s", alias.Version),
+				html.Textf("%s", alias.Architecture),
 			})
 		}
 
@@ -180,6 +184,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 				bootstrap.CardTitle("Depends"),
 				bootstrap.Table(htm.Group{
 					html.Textf("Distribution"),
+					html.Textf("Namespace"),
 					html.Textf("Name"),
 					html.Textf("Version"),
 					html.Textf("Architecture"),
@@ -189,6 +194,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 				bootstrap.CardTitle("Aliases"),
 				bootstrap.Table(htm.Group{
 					html.Textf("Distribution"),
+					html.Textf("Namespace"),
 					html.Textf("Name"),
 					html.Textf("Version"),
 					html.Textf("Architecture"),
