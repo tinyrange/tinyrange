@@ -135,6 +135,33 @@ func FormField(label string, name string, opts html.FormOptions, children ...htm
 			htm.Attr("placeholder", opts.Placeholder),
 			requiredFrag,
 		)
+	case html.FormFieldSelect:
+		var options htm.Group
+		for _, opt := range opts.Options {
+			if opts.Value.(string) == opt {
+				options = append(options,
+					htm.NewHtmlFragment("option",
+						htm.Attr("value", opt),
+						htm.Attr("selected", ""),
+						html.Text(opt),
+					),
+				)
+			} else {
+				options = append(options,
+					htm.NewHtmlFragment("option",
+						htm.Attr("value", opt),
+						html.Text(opt),
+					),
+				)
+			}
+		}
+
+		input = htm.NewHtmlFragment("select",
+			htm.Attr("name", name),
+			htm.Class("form-select"),
+			fieldId,
+			options,
+		)
 	default:
 		input = htm.NewHtmlFragment("input",
 			htm.Attr("type", "input"),

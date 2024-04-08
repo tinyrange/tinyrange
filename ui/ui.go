@@ -12,7 +12,10 @@ import (
 	"github.com/tinyrange/pkg2/htm/html"
 )
 
-func pageTemplate(name db.PackageName, start time.Time, frags ...htm.Fragment) htm.Fragment {
+func pageTemplate(pkgDb *db.PackageDatabase, name db.PackageName, start time.Time, frags ...htm.Fragment) htm.Fragment {
+	distributions := pkgDb.DistributionList()
+	architectures := pkgDb.ArchitectureList()
+
 	return html.Html(
 		htm.Attr("lang", "en"),
 		html.Head(
@@ -45,9 +48,10 @@ func pageTemplate(name db.PackageName, start time.Time, frags ...htm.Fragment) h
 					html.Form(
 						html.FormTarget("GET", "/search"),
 						bootstrap.FormField("Distribution", "distribution", html.FormOptions{
-							Kind:          html.FormFieldText,
+							Kind:          html.FormFieldSelect,
 							Value:         name.Distribution,
 							LabelSameLine: true,
+							Options:       distributions,
 						}),
 						bootstrap.FormField("Package Name", "name", html.FormOptions{
 							Kind:          html.FormFieldText,
@@ -60,9 +64,10 @@ func pageTemplate(name db.PackageName, start time.Time, frags ...htm.Fragment) h
 							LabelSameLine: true,
 						}),
 						bootstrap.FormField("Package Architecture", "architecture", html.FormOptions{
-							Kind:          html.FormFieldText,
+							Kind:          html.FormFieldSelect,
 							Value:         name.Architecture,
 							LabelSameLine: true,
+							Options:       architectures,
 						}),
 						bootstrap.SubmitButton("Search", bootstrap.ButtonColorPrimary),
 					),
@@ -110,7 +115,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 			})
 		}
 
-		page := pageTemplate(search, start, bootstrap.Table(htm.Group{
+		page := pageTemplate(pkgDb, search, start, bootstrap.Table(htm.Group{
 			html.Textf("Distribution"),
 			html.Textf("Namespace"),
 			html.Textf("Name"),
@@ -167,7 +172,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 			})
 		}
 
-		page := pageTemplate(pkg.Name, start,
+		page := pageTemplate(pkgDb, pkg.Name, start,
 			bootstrap.Card(
 				html.H4(html.Textf("%s @ %s", pkg.Name.Name, pkg.Name.Version)),
 				html.H5(html.Textf("License: %s", pkg.License)),
@@ -228,7 +233,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 			})
 		}
 
-		page := pageTemplate(db.PackageName{}, start,
+		page := pageTemplate(pkgDb, db.PackageName{}, start,
 			bootstrap.Card(
 				bootstrap.CardTitle("Fetcher Status"),
 				bootstrap.Table(htm.Group{
@@ -249,7 +254,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		page := pageTemplate(db.PackageName{}, start, bootstrap.Card(
+		page := pageTemplate(pkgDb, db.PackageName{}, start, bootstrap.Card(
 			bootstrap.CardTitle("Package Metadata Search: Alpha"),
 			html.Div(html.Textf("Currently Indexing: %d Packages", pkgDb.Count())),
 		))

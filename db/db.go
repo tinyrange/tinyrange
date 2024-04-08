@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -55,6 +56,7 @@ type RepositoryFetcher struct {
 	db             *PackageDatabase
 	Packages       []*Package
 	Distributions  map[string]bool
+	Architectures  map[string]bool
 	Distro         string
 	Func           *starlark.Function
 	Args           starlark.Tuple
@@ -65,8 +67,17 @@ type RepositoryFetcher struct {
 }
 
 func (r *RepositoryFetcher) Matches(query PackageName) bool {
+	r.updateMutex.Lock()
+	defer r.updateMutex.Unlock()
+
 	if query.Distribution != "" {
 		_, ok := r.Distributions[query.Distribution]
+
+		return ok
+	}
+
+	if query.Architecture != "" {
+		_, ok := r.Architectures[query.Architecture]
 
 		return ok
 	}
@@ -239,9 +250,9 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 
 					// Add to the distribution index.
 					fetcher.Distributions[pkg.Name.Distribution] = true
-					for _, alias := range pkg.Aliases {
-						fetcher.Distributions[alias.Distribution] = true
-					}
+
+					// Add to the architecture index.
+					fetcher.Architectures[pkg.Name.Architecture] = true
 				}
 			}
 		},
@@ -446,6 +457,7 @@ func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Funct
 		Func:          f,
 		Args:          args,
 		Distributions: make(map[string]bool),
+		Architectures: make(map[string]bool),
 	})
 
 	return nil
@@ -1178,4 +1190,44 @@ func (db *PackageDatabase) WriteNames(w io.Writer) error {
 	}
 
 	return nil
+}
+
+func (db *PackageDatabase) DistributionList() []string {
+	set := map[string]bool{"": true}
+
+	for _, fetcher := range db.Fetchers {
+		fetcher.updateMutex.Lock()
+		defer fetcher.updateMutex.Unlock()
+
+		for distro := range fetcher.Distributions {
+			set[distro] = true
+		}
+	}
+
+	var ret []string
+	for name := range set {
+		ret = append(ret, name)
+	}
+	slices.Sort(ret)
+	return ret
+}
+
+func (db *PackageDatabase) ArchitectureList() []string {
+	set := map[string]bool{"": true}
+
+	for _, fetcher := range db.Fetchers {
+		fetcher.updateMutex.Lock()
+		defer fetcher.updateMutex.Unlock()
+
+		for distro := range fetcher.Architectures {
+			set[distro] = true
+		}
+	}
+
+	var ret []string
+	for name := range set {
+		ret = append(ret, name)
+	}
+	slices.Sort(ret)
+	return ret
 }

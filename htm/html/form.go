@@ -30,6 +30,7 @@ const (
 	FormFieldNumber        FormFieldKind = "number"
 	FormFieldCheckbox      FormFieldKind = "checkbox"
 	FormFieldMultilineText FormFieldKind = "textarea"
+	FormFieldSelect        FormFieldKind = "select"
 )
 
 type FormOptions struct {
@@ -38,6 +39,7 @@ type FormOptions struct {
 	Placeholder   string
 	Required      bool
 	LabelSameLine bool
+	Options       []string
 }
 
 func boolToString(b bool) string {
