@@ -196,8 +196,13 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 	fetcher.updateMutex.Lock()
 	defer fetcher.updateMutex.Unlock()
 
-	fetcher.LastUpdated = time.Now()
+	// Reset package list.
+	fetcher.Packages = []*Package{}
+	fetcher.Architectures = nil
+	fetcher.Distributions = nil
 
+	// Update Status
+	fetcher.LastUpdated = time.Now()
 	fetcher.Status = RepositoryFetcherStatusLoading
 
 	expireTime := 2 * time.Hour
