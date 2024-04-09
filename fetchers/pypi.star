@@ -32,27 +32,26 @@ def parse_python_metadata(contents):
 
     return ret
 
+pypi_name = re.compile("^[a-z0-9]+(-[a-z0-9]+)*")
+
 def parse_pypi_name(ctx, name):
-    options = name.split(" | ")
-    if len(options) > 1:
-        return [parse_pypi_name(ctx, option) for option in options]
-    else:
-        version = ""
+    name = name.lower().replace("_", "-")
 
-        if " (" in name:
-            name, version = name.split(" (", 1)
-            version = version.removesuffix(")")
+    if ";" in name:
+        name, attrs = name.split(";", 1)
+        if "extra" in attrs or "platform_system" in attrs:
+            return None
 
-        return ctx.name(name = name, version = version)
+    name = pypi_name.find(name).strip()
+
+    return ctx.name(name = name)
 
 def add_pypi_package(ctx, download_url, metadata):
-    # print(metadata)
-
     if "Name" not in metadata:
         return
 
     pkg = ctx.add_package(ctx.name(
-        name = metadata["Name"][0],
+        name = metadata["Name"][0].lower().replace("_", "-"),
         version = metadata["Version"][0],
     ))
 
@@ -66,7 +65,9 @@ def add_pypi_package(ctx, download_url, metadata):
 
     if "Requires-Dist" in metadata:
         for depend in metadata["Requires-Dist"]:
-            pkg.add_dependency(parse_pypi_name(ctx, depend))
+            name = parse_pypi_name(ctx, depend)
+            if name != None:
+                pkg.add_dependency(name)
 
 def fetch_pypi_package_versions(ctx, url, proj):
     project_url = "{}/simple/{}/".format(url, proj["name"])
@@ -121,6 +122,7 @@ def fetch_pypi_repository(ctx, url):
         simple_url,
         accept = "application/vnd.pypi.simple.v1+json",
         use_etag = True,
+        expire_time = duration(hours = 2),
     ).read())
 
     ctx.parallel_for(resp["projects"], fetch_pypi_package_versions, (url,), jobs = parallel_jobs)

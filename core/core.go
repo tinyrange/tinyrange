@@ -78,6 +78,7 @@ type HttpOptions struct {
 	Accept       string
 	UseETag      bool
 	FastDownload bool
+	ExpireTime   time.Duration
 }
 
 func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) (io.ReadCloser, error) {
@@ -91,7 +92,15 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 		if options.ExpectedSize != 0 && info.Size() != options.ExpectedSize {
 			// Assume the file is corrupted and fall though.
 		} else {
-			if !eif.needsRefresh(url, time.Since(info.ModTime())) {
+			var needsRefresh = false
+
+			if options.ExpireTime != 0 {
+				needsRefresh = time.Since(info.ModTime()) > options.ExpireTime
+			} else {
+				needsRefresh = eif.needsRefresh(url, time.Since(info.ModTime()))
+			}
+
+			if !needsRefresh {
 				return os.Open(path)
 			} else {
 				slog.Info("checking server for updates", "url", url)
