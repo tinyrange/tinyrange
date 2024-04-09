@@ -75,6 +75,9 @@ func (eif *EnvironmentInterface) GetCachePath(key string) (string, error) {
 
 type HttpOptions struct {
 	ExpectedSize int64
+	Accept       string
+	UseETag      bool
+	FastDownload bool
 }
 
 func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) (io.ReadCloser, error) {
@@ -122,15 +125,26 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 
 	// miss
 
-	// Lock the mutex to prevent concurrent downloads.
-	eif.httpMutex.Lock()
-	defer eif.httpMutex.Unlock()
+	if !options.FastDownload {
+		// Lock the mutex to prevent concurrent downloads.
+		eif.httpMutex.Lock()
+		defer eif.httpMutex.Unlock()
+	}
 
 	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
 		return nil, err
 	}
 
-	resp, err := eif.client.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if options.Accept != "" {
+		req.Header.Add("Accept", options.Accept)
+	}
+
+	resp, err := eif.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -152,11 +166,19 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 		return nil, err
 	}
 
-	pb := progressbar.DefaultBytes(resp.ContentLength, fmt.Sprintf("downloading %s", url))
-	defer pb.Close()
+	var writer io.Writer = out
+
+	if resp.ContentLength < 100000 {
+		// Don't display the progress bar for downloads under 100k
+	} else {
+		pb := progressbar.DefaultBytes(resp.ContentLength, fmt.Sprintf("downloading %s", url))
+		defer pb.Close()
+
+		writer = io.MultiWriter(pb, out)
+	}
 
 	var n int64
-	if n, err = io.Copy(io.MultiWriter(pb, out), resp.Body); err != nil {
+	if n, err = io.Copy(writer, resp.Body); err != nil {
 		out.Close()
 		return nil, err
 	}

@@ -53,17 +53,18 @@ const (
 )
 
 type RepositoryFetcher struct {
-	db             *PackageDatabase
-	Packages       []*Package
-	Distributions  map[string]bool
-	Architectures  map[string]bool
-	Distro         string
-	Func           *starlark.Function
-	Args           starlark.Tuple
-	Status         RepositoryFetcherStatus
-	updateMutex    sync.Mutex
-	LastUpdateTime time.Duration
-	LastUpdated    time.Time
+	db              *PackageDatabase
+	Packages        []*Package
+	addPackageMutex sync.Mutex
+	Distributions   map[string]bool
+	Architectures   map[string]bool
+	Distro          string
+	Func            *starlark.Function
+	Args            starlark.Tuple
+	Status          RepositoryFetcherStatus
+	updateMutex     sync.Mutex
+	LastUpdateTime  time.Duration
+	LastUpdated     time.Time
 }
 
 func (r *RepositoryFetcher) Matches(query PackageName) bool {
@@ -100,6 +101,9 @@ func (r *RepositoryFetcher) Key() (string, error) {
 }
 
 func (r *RepositoryFetcher) addPackage(name PackageName) starlark.Value {
+	r.addPackageMutex.Lock()
+	defer r.addPackageMutex.Unlock()
+
 	pkg := NewPackage()
 	pkg.Name = name
 	r.Packages = append(r.Packages, pkg)
@@ -164,6 +168,89 @@ func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
 				Architecture: architecture,
 			}, nil
 		}), nil
+	} else if name == "parallel_for" {
+		return starlark.NewBuiltin("Repo.parallel_for", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				target *starlark.List
+				f      *starlark.Function
+				fArgs  starlark.Tuple
+				jobs   int
+			)
+
+			if err := starlark.UnpackArgs("Repo.parallel_for", args, kwargs,
+				"target", &target,
+				"f", &f,
+				"fArgs", &fArgs,
+				"jobs", &jobs,
+			); err != nil {
+				return starlark.None, fmt.Errorf("TODO: %s", err)
+			}
+
+			var elements []starlark.Value
+
+			target.Elements(func(v starlark.Value) bool {
+				elements = append(elements, v)
+				return true
+			})
+
+			reqs := make(chan starlark.Value)
+
+			if jobs == 0 {
+				jobs = 1
+			}
+
+			pb := progressbar.Default(int64(len(elements)))
+			defer pb.Close()
+
+			if jobs == 1 {
+				for _, element := range elements {
+					_, err := starlark.Call(thread, f, append(append(starlark.Tuple{r}, fArgs...), element), []starlark.Tuple{})
+					if err != nil {
+						if sErr, ok := err.(*starlark.EvalError); ok {
+							slog.Error("parallel_for thread got error", "error", sErr, "backtrace", sErr.Backtrace())
+						} else {
+							slog.Warn("parallel_for thread got error", "error", err)
+						}
+						return starlark.None, err
+					}
+
+					pb.Add(1)
+				}
+			} else {
+				for i := 0; i < jobs; i++ {
+					go func() {
+						thread := &starlark.Thread{}
+
+						for req := range reqs {
+							_, err := starlark.Call(thread, f, append(append(starlark.Tuple{r}, fArgs...), req), []starlark.Tuple{})
+							if err != nil {
+								if sErr, ok := err.(*starlark.EvalError); ok {
+									slog.Error("parallel_for thread got error", "error", sErr, "backtrace", sErr.Backtrace())
+								} else {
+									slog.Warn("parallel_for thread got error", "error", err)
+								}
+								return
+							}
+
+							pb.Add(1)
+						}
+					}()
+				}
+
+				for _, element := range elements {
+					reqs <- element
+				}
+
+				close(reqs)
+			}
+
+			return starlark.None, nil
+		}), nil
 	} else {
 		return nil, nil
 	}
@@ -171,7 +258,7 @@ func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (*RepositoryFetcher) AttrNames() []string {
-	return []string{"add_package"}
+	return []string{"add_package", "name", "parallel_for"}
 }
 
 func (fetcher *RepositoryFetcher) String() string {
@@ -502,17 +589,26 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			var (
 				url          string
 				expectedSize int64
+				accept       string
+				useETag      bool
+				fast         bool
 			)
 
 			if err := starlark.UnpackArgs("fetch_http", args, kwargs,
 				"url", &url,
 				"expected_size?", &expectedSize,
+				"accept?", &accept,
+				"use_etag?", &useETag,
+				"fast?", &fast,
 			); err != nil {
 				return starlark.None, fmt.Errorf("TODO: %s", err)
 			}
 
 			f, err := db.Eif.HttpGetReader(url, core.HttpOptions{
 				ExpectedSize: expectedSize,
+				Accept:       accept,
+				UseETag:      useETag,
+				FastDownload: fast,
 			})
 			if err == core.ErrNotFound {
 				return starlark.None, nil
