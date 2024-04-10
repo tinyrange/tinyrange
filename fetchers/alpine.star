@@ -60,8 +60,6 @@ def parse_apk_name(ctx, s):
         return ctx.name(name = pkg, version = version)
 
 def fetch_alpine_repository(ctx, url, repo):
-    print("fetch", url + "/APKINDEX.tar.gz")
-
     resp = fetch_http(url + "/APKINDEX.tar.gz")
 
     if resp == None:

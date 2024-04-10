@@ -14,6 +14,7 @@ require (
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
 	go.starlark.net v0.0.0-20240314022150-ee8ed142361c
 	golang.org/x/exp v0.0.0-20240318143956-a85f2c67cd81
+	golang.org/x/net v0.22.0
 	gopkg.in/yaml.v3 v3.0.1
 	howett.net/plist v1.0.1
 	mvdan.cc/sh/v3 v3.8.0
@@ -44,7 +45,6 @@ require (
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	golang.org/x/crypto v0.21.0 // indirect
 	golang.org/x/mod v0.16.0 // indirect
-	golang.org/x/net v0.22.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/term v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect

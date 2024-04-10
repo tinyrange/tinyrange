@@ -7,6 +7,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -28,12 +30,56 @@ func getSha256(val []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+type RepositoryFetcherStatus int
+
+func (status RepositoryFetcherStatus) String() string {
+	switch status {
+	case RepositoryFetcherStatusNotLoaded:
+		return "Not Loaded"
+	case RepositoryFetcherStatusLoading:
+		return "Loading"
+	case RepositoryFetcherStatusLoaded:
+		return "Loaded"
+	default:
+		return "<unknown>"
+	}
+}
+
+const (
+	RepositoryFetcherStatusNotLoaded RepositoryFetcherStatus = iota
+	RepositoryFetcherStatusLoading
+	RepositoryFetcherStatusLoaded
+	RepositoryFetcherStatusError
+)
+
 type RepositoryFetcher struct {
-	db       *PackageDatabase
-	Packages []*Package
-	Distro   string
-	Func     *starlark.Function
-	Args     starlark.Tuple
+	db             *PackageDatabase
+	Packages       []*Package
+	Distributions  map[string]bool
+	Architectures  map[string]bool
+	Distro         string
+	Func           *starlark.Function
+	Args           starlark.Tuple
+	Status         RepositoryFetcherStatus
+	updateMutex    sync.Mutex
+	LastUpdateTime time.Duration
+	LastUpdated    time.Time
+}
+
+func (r *RepositoryFetcher) Matches(query PackageName) bool {
+	if query.Distribution != "" && r.Distributions != nil {
+		_, ok := r.Distributions[query.Distribution]
+
+		return ok
+	}
+
+	if query.Architecture != "" && r.Architectures != nil {
+		_, ok := r.Architectures[query.Architecture]
+
+		return ok
+	}
+
+	return true
 }
 
 func (r *RepositoryFetcher) Key() (string, error) {
@@ -146,10 +192,26 @@ func (*RepositoryFetcher) Truth() starlark.Bool { return starlark.True }
 func (*RepositoryFetcher) Freeze()              {}
 
 func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, key string, forceRefresh bool) error {
-	expireTime := 24 * time.Hour
+	// Only allow a single thread to update a fetcher at the same time.
+	fetcher.updateMutex.Lock()
+	defer fetcher.updateMutex.Unlock()
+
+	// Reset package list.
+	fetcher.Packages = []*Package{}
+	fetcher.Architectures = nil
+	fetcher.Distributions = nil
+
+	// Update Status
+	fetcher.LastUpdated = time.Now()
+	fetcher.Status = RepositoryFetcherStatusLoading
+
+	expireTime := 2 * time.Hour
 	if forceRefresh {
 		expireTime = 0
 	}
+
+	distributionIndex := map[string]bool{}
+	architectureIndex := map[string]bool{}
 
 	err := eif.CacheObjects(
 		key, int(PackageMetadataVersionCurrent), expireTime,
@@ -190,13 +252,28 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 					return err
 				} else {
 					fetcher.Packages = append(fetcher.Packages, pkg)
+
+					// Add to the distribution index.
+					distributionIndex[pkg.Name.Distribution] = true
+
+					// Add to the architecture index.
+					architectureIndex[pkg.Name.Architecture] = true
 				}
 			}
 		},
 	)
 	if err != nil {
+		fetcher.Status = RepositoryFetcherStatusError
+
 		return err
 	}
+
+	fetcher.Status = RepositoryFetcherStatusLoaded
+
+	fetcher.Architectures = architectureIndex
+	fetcher.Distributions = distributionIndex
+
+	fetcher.LastUpdateTime = time.Since(fetcher.LastUpdated)
 
 	return nil
 }
@@ -373,10 +450,12 @@ type PackageDatabase struct {
 	Fetchers        []*RepositoryFetcher
 	ScriptFetchers  []*ScriptFetcher
 	SearchProviders []*SearchProvider
-	PackageMap      map[string]*Package
+	packageMap      map[string]*Package
+	packageMapMutex sync.Mutex
 	AllowLocal      bool
 	ForceRefresh    bool
 	NoParallel      bool
+	PackageBase     string
 }
 
 func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Function, args starlark.Tuple) error {
@@ -698,6 +777,14 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 
 			return &StarFile{f: f}, nil
 		}),
+		"mutex": starlark.NewBuiltin("mutex", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			return &StarMutex{}, nil
+		}),
 		"error": starlark.NewBuiltin("error", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -731,11 +818,13 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 				return nil, err
 			}
 
+			filename := filepath.Join(db.PackageBase, module)
+
 			ret, err := starlark.ExecFileOptions(&syntax.FileOptions{
 				TopLevelControl: true,
 				Recursion:       true,
 				Set:             true,
-			}, thread, module, nil, globals)
+			}, thread, filename, nil, globals)
 			if err != nil {
 				return nil, err
 			}
@@ -748,6 +837,8 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 	if err != nil {
 		return err
 	}
+
+	filename = filepath.Join(db.PackageBase, filename)
 
 	_, err = starlark.ExecFileOptions(&syntax.FileOptions{
 		TopLevelControl: true,
@@ -806,14 +897,81 @@ func (db *PackageDatabase) FetchAll() error {
 	}
 
 	// Get the package index.
-	db.PackageMap = make(map[string]*Package)
+	db.packageMapMutex.Lock()
+	defer db.packageMapMutex.Unlock()
+	db.packageMap = make(map[string]*Package)
+
 	for _, fetcher := range db.Fetchers {
 		for _, pkg := range fetcher.Packages {
-			db.PackageMap[pkg.Name.String()] = pkg
+			db.packageMap[pkg.Name.String()] = pkg
 		}
 	}
 
 	return nil
+}
+
+// Start a series of go routines to automatically refresh each package fetcher every refreshTime.
+func (db *PackageDatabase) StartAutoRefresh(maxParallelFetchers int, refreshTime time.Duration, forceRefresh bool) {
+	// Initialize the package map.
+	db.packageMap = make(map[string]*Package)
+
+	updateRequests := make(chan struct {
+		fetcher *RepositoryFetcher
+		force   bool
+	}, maxParallelFetchers)
+
+	for _, fetcher := range db.Fetchers {
+		go func(fetcher *RepositoryFetcher) {
+			ticker := time.NewTicker(refreshTime)
+
+			updateRequests <- struct {
+				fetcher *RepositoryFetcher
+				force   bool
+			}{
+				fetcher: fetcher,
+				force:   forceRefresh,
+			}
+
+			for range ticker.C {
+				updateRequests <- struct {
+					fetcher *RepositoryFetcher
+					force   bool
+				}{
+					fetcher: fetcher,
+					force:   true,
+				}
+			}
+		}(fetcher)
+	}
+
+	for i := 0; i < maxParallelFetchers; i++ {
+		go func() {
+			for {
+				updateRequest := <-updateRequests
+
+				key, err := updateRequest.fetcher.Key()
+				if err != nil {
+					slog.Warn("could not get fetcher key", "fetcher", updateRequest.fetcher.String(), "error", err)
+					continue
+				}
+
+				if err := updateRequest.fetcher.fetchWithKey(db.Eif, key, updateRequest.force); err != nil {
+					slog.Warn("could not get update fetcher", "fetcher", updateRequest.fetcher.String(), "error", err)
+					continue
+				}
+
+				{
+					db.packageMapMutex.Lock()
+
+					for _, pkg := range updateRequest.fetcher.Packages {
+						db.packageMap[pkg.Name.String()] = pkg
+					}
+
+					db.packageMapMutex.Unlock()
+				}
+			}
+		}()
+	}
 }
 
 func (db *PackageDatabase) searchWithProviders(query PackageName, maxResults int) ([]*Package, error) {
@@ -838,12 +996,19 @@ func (db *PackageDatabase) Search(query PackageName, maxResults int) ([]*Package
 
 	slog.Info("search", "query", query)
 
+outer:
 	for _, fetcher := range db.Fetchers {
+		// If the fetcher doesn't possibly match this query then early out.
+		if !fetcher.Matches(query) {
+			continue
+		}
+
+		// Search though each package.
 		for _, pkg := range fetcher.Packages {
 			if pkg.Matches(query) {
 				ret = append(ret, pkg)
 				if maxResults != 0 && len(ret) >= maxResults {
-					break
+					break outer
 				}
 			}
 		}
@@ -857,7 +1022,10 @@ func (db *PackageDatabase) Search(query PackageName, maxResults int) ([]*Package
 }
 
 func (db *PackageDatabase) Get(key string) (*Package, bool) {
-	pkg, ok := db.PackageMap[key]
+	db.packageMapMutex.Lock()
+	defer db.packageMapMutex.Unlock()
+
+	pkg, ok := db.packageMap[key]
 
 	return pkg, ok
 }
@@ -991,5 +1159,91 @@ func (db *PackageDatabase) Count() int64 {
 		ret += int64(len(fetcher.Packages))
 	}
 
+	return ret
+}
+
+type FetcherStatus struct {
+	Name           string
+	Status         RepositoryFetcherStatus
+	PackageCount   int
+	LastUpdated    time.Time
+	LastUpdateTime time.Duration
+}
+
+func (db *PackageDatabase) FetcherStatus() ([]FetcherStatus, error) {
+	var ret []FetcherStatus
+
+	for _, fetcher := range db.Fetchers {
+		ret = append(ret, FetcherStatus{
+			Name:           fetcher.String(),
+			Status:         fetcher.Status,
+			PackageCount:   len(fetcher.Packages),
+			LastUpdated:    fetcher.LastUpdated,
+			LastUpdateTime: fetcher.LastUpdateTime,
+		})
+	}
+
+	return ret, nil
+}
+
+func (db *PackageDatabase) WriteNames(w io.Writer) error {
+	enc := json.NewEncoder(w)
+
+	for _, fetcher := range db.Fetchers {
+		for _, pkg := range fetcher.Packages {
+			if err := enc.Encode(pkg.Name); err != nil {
+				return err
+			}
+
+			for _, alias := range pkg.Aliases {
+				if err := enc.Encode(alias); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (db *PackageDatabase) DistributionList() []string {
+	set := map[string]bool{"": true}
+
+	for _, fetcher := range db.Fetchers {
+		if fetcher.Distributions == nil {
+			continue
+		}
+
+		for distro := range fetcher.Distributions {
+			set[distro] = true
+		}
+	}
+
+	var ret []string
+	for name := range set {
+		ret = append(ret, name)
+	}
+	slices.Sort(ret)
+	return ret
+}
+
+func (db *PackageDatabase) ArchitectureList() []string {
+	set := map[string]bool{"": true}
+
+	for _, fetcher := range db.Fetchers {
+		if fetcher.Architectures == nil {
+			continue
+		}
+
+		for distro := range fetcher.Architectures {
+			set[distro] = true
+		}
+	}
+
+	var ret []string
+	for name := range set {
+		ret = append(ret, name)
+	}
+	slices.Sort(ret)
 	return ret
 }

@@ -23,6 +23,9 @@ var (
 	allowLocal        = flag.Bool("allowLocal", false, "allow reading local files")
 	forceRefresh      = flag.Bool("forceRefresh", false, "always refresh repository cache files")
 	noParallel        = flag.Bool("noParallel", false, "use single threaded repository fetchers")
+	cacheDir          = flag.String("cacheDir", "local/cache", "specify the cache dir to use")
+	packageBase       = flag.String("packageBase", "", "the base directory to resolve packages from")
+	test              = flag.Bool("test", false, "just fetch all repos")
 )
 
 func main() {
@@ -30,15 +33,19 @@ func main() {
 
 	names := flag.Args()
 
-	eif := core.NewEif("local/cache")
+	eif := core.NewEif(*cacheDir)
 
 	if *allowLocal {
 		slog.Warn("scripts can read local files with the -allowLocal flag")
 	}
 
-	pkgDb := &db.PackageDatabase{Eif: eif, AllowLocal: *allowLocal, ForceRefresh: *forceRefresh, NoParallel: *noParallel}
-
-	start := time.Now()
+	pkgDb := &db.PackageDatabase{
+		Eif:          eif,
+		AllowLocal:   *allowLocal,
+		ForceRefresh: *forceRefresh,
+		NoParallel:   *noParallel,
+		PackageBase:  *packageBase,
+	}
 
 	for _, name := range names {
 		if err := pkgDb.LoadScript(name); err != nil {
@@ -46,13 +53,17 @@ func main() {
 		}
 	}
 
-	if err := pkgDb.FetchAll(); err != nil {
-		log.Fatal("failed to fetch: ", err)
-	}
-
-	slog.Info("finished loading all repositories", "took", time.Since(start), "packages", pkgDb.Count())
+	slog.Info("loaded scripts")
 
 	if *makePlan != "" {
+		start := time.Now()
+
+		if err := pkgDb.FetchAll(); err != nil {
+			log.Fatal("failed to fetch: ", err)
+		}
+
+		slog.Info("finished loading all repositories", "took", time.Since(start), "packages", pkgDb.Count())
+
 		var names []db.PackageName
 
 		for _, token := range strings.Split(*makePlan, ",") {
@@ -99,6 +110,14 @@ func main() {
 			}
 		}
 	} else if *buildScript != "" {
+		start := time.Now()
+
+		if err := pkgDb.FetchAll(); err != nil {
+			log.Fatal("failed to fetch: ", err)
+		}
+
+		slog.Info("finished loading all repositories", "took", time.Since(start), "packages", pkgDb.Count())
+
 		pkg, ok := pkgDb.Get(*buildScript)
 		if !ok {
 			log.Fatalf("could not find package: %s", *buildScript)
@@ -112,7 +131,17 @@ func main() {
 
 			slog.Info("", "scriptInfo", scriptInfo)
 		}
+	} else if *test {
+		start := time.Now()
+
+		if err := pkgDb.FetchAll(); err != nil {
+			log.Fatal("failed to fetch: ", err)
+		}
+
+		slog.Info("finished loading all repositories", "took", time.Since(start), "packages", pkgDb.Count())
 	} else {
+		pkgDb.StartAutoRefresh(2, 2*time.Hour, *forceRefresh)
+
 		ui.RegisterHandlers(pkgDb, http.DefaultServeMux)
 
 		slog.Info("http server listening", "addr", "http://"+*httpAddress)

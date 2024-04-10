@@ -93,6 +93,15 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 				return starlark.None, fmt.Errorf("unsupported extension: %s", ext)
 			}
 		}), nil
+	} else if name == "read_rpm_xml" {
+		return starlark.NewBuiltin("File.read_rpm_xml", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			return rpmReadXml(thread, f.f)
+		}), nil
 	} else if name == "name" {
 		return starlark.String(f.name), nil
 	} else {
@@ -102,7 +111,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (*StarFile) AttrNames() []string {
-	return []string{"read", "read_archive", "read_compressed", "name"}
+	return []string{"read", "read_archive", "read_compressed", "read_rpm_xml", "name"}
 }
 
 func (f *StarFile) String() string      { return fmt.Sprintf("File{%s}", f.name) }

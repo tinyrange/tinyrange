@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -15,19 +16,30 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
+var REFRESH_TIME = 1 * time.Hour
+
 var CACHE_EXPIRE_RULES = []struct {
 	re     *regexp.Regexp
 	maxAge time.Duration
 }{
 	// Alpine Linux
-	{regexp.MustCompile(".*/APKINDEX.tar.gz"), 24 * time.Hour},
+	{regexp.MustCompile(".*/APKINDEX.tar.gz"), REFRESH_TIME},
 
 	// Ubuntu/Debian
-	{regexp.MustCompile(".*/archive/dists/.*/InRelease"), 24 * time.Hour},
-	{regexp.MustCompile(".*/archive/dists/.*/by-hash/.*"), 24 * time.Hour},
+	{regexp.MustCompile(".*/Packages.gz"), REFRESH_TIME},
 
-	// Alpine Linux
-	{regexp.MustCompile(".*.db.tar.gz"), 24 * time.Hour},
+	// Arch Linux
+	{regexp.MustCompile(".*.db.tar.gz"), REFRESH_TIME},
+	{regexp.MustCompile(".*/packages-meta-ext-v1.json.gz"), REFRESH_TIME},
+
+	// RPM
+	{regexp.MustCompile(".*/repodata/repomd.xml"), REFRESH_TIME},
+
+	// Conda
+	{regexp.MustCompile(".*/repodata.json"), REFRESH_TIME},
+
+	// XBPS
+	{regexp.MustCompile(".*/.*-repodata"), REFRESH_TIME},
 }
 
 var (
@@ -78,6 +90,32 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 		} else {
 			if !eif.needsRefresh(url, time.Since(info.ModTime())) {
 				return os.Open(path)
+			} else {
+				slog.Info("checking server for updates", "url", url)
+				resp, err := eif.client.Head(url)
+				if err != nil {
+					return nil, err
+				}
+
+				lastModified := resp.Header.Get("Last-Modified")
+				if lastModified != "" {
+					date, err := time.Parse(http.TimeFormat, lastModified)
+					if err == nil && date.After(info.ModTime()) {
+						// fall through
+					} else {
+						if err := os.Chtimes(path, time.Now(), time.Now()); err != nil {
+							return nil, err
+						}
+
+						return os.Open(path)
+					}
+				} else {
+					if err := os.Chtimes(path, time.Now(), time.Now()); err != nil {
+						return nil, err
+					}
+
+					return os.Open(path)
+				}
 			}
 		}
 	}
