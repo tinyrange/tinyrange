@@ -79,6 +79,8 @@ type GitTree struct {
 func (g *GitTree) Attr(name string) (starlark.Value, error) {
 	if name == "name" {
 		return starlark.String(g.name), nil
+	} else if name == "base" {
+		return starlark.String(path.Base(g.name)), nil
 	} else {
 		return nil, nil
 	}
@@ -86,7 +88,7 @@ func (g *GitTree) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (g *GitTree) AttrNames() []string {
-	return []string{"name"}
+	return []string{"name", "base"}
 }
 
 // Iterate implements starlark.Iterable.
