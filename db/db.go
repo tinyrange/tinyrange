@@ -863,6 +863,19 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 
 			return evalStarlark(contents, kwargs)
 		}),
+		"eval_python": starlark.NewBuiltin("eval_python", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			contents, ok := starlark.AsString(args[0])
+			if !ok {
+				return starlark.None, fmt.Errorf("could not convert %s to string", args[0].Type())
+			}
+
+			return evalPython(contents, kwargs)
+		}),
 		"open": starlark.NewBuiltin("open", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,

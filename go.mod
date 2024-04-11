@@ -1,11 +1,12 @@
 module github.com/tinyrange/pkg2
 
-go 1.22.1
+go 1.22.2
 
 require (
 	github.com/basgys/goxml2json v1.1.0
 	github.com/go-git/go-billy/v5 v5.5.0
 	github.com/go-git/go-git/v5 v5.11.0
+	github.com/go-python/gpython v0.2.0
 	github.com/icza/dyno v0.0.0-20230330125955-09f820a8d9c0
 	github.com/klauspost/compress v1.17.7
 	github.com/minio/sha256-simd v1.0.0

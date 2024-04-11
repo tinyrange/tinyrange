@@ -1,7 +1,3 @@
-fix_string_newline = re.compile("\"\\n\\s+\"")
-fix_string_newline_2 = re.compile("'\\n\\s+'")
-fix_string_newline_3 = re.compile("'\\s*\\\\\\n\\s+'")
-
 def fetch_easybuild_repo(ctx, url, branch):
     repo = fetch_git(url)
     tree = repo.branch(branch)["easybuild/easyconfigs"]
@@ -16,22 +12,12 @@ def fetch_easybuild_repo(ctx, url, branch):
 
                 contents = file.read()
 
-                contents = fix_string_newline.replace_all(contents, "")
-                contents = fix_string_newline_2.replace_all(contents, "")
-                contents = fix_string_newline_3.replace_all(contents, "")
-                contents = contents.replace("local_arlsumstat_bin = 'arlsumstat_linux/arlsumstat%s_64bit' % local_ver,", "local_arlsumstat_bin = 'arlsumstat_linux/arlsumstat%s_64bit' % local_ver")
-                contents = contents.replace("local_verdir = ''.join(char for char in version if not char.isalpha())", "local_verdir = ''.join([char for char in version.elems() if not char.isalpha()])")
-                contents = contents.replace("builddependencies = {\n    ('binutils', '2.35'),\n}", "builddependencies = [\n    ('binutils', '2.35'),\n]")
-                contents = contents.replace("builddependencies = {\n    ('binutils', '2.36.1'),\n}", "builddependencies = [\n    ('binutils', '2.36.1'),\n]")
-                contents = contents.replace("builddependencies = {\n    ('binutils', '2.38'),\n}", "builddependencies = [\n    ('binutils', '2.38'),\n]")
-                contents = contents.replace("builddependencies = {\n    ('binutils', '2.39'),\n}", "builddependencies = [\n    ('binutils', '2.39'),\n]")
-                contents = contents.replace("builddependencies = {\n    # Python is required for testing\n    ('Python', '3.9.6'),\n}", "builddependencies = [\n    # Python is required for testing\n    ('Python', '3.9.6'),\n]")
-                contents = contents.replace("checksums = ['9a36bc1265fa83b8e818714c0d4f08b8cec97a1910de0754a321b11e66eb76de'],", "checksums = ['9a36bc1265fa83b8e818714c0d4f08b8cec97a1910de0754a321b11e66eb76de']")
-
                 print(file)
                 print(contents)
 
-                obj = eval_starlark(
+                contents = contents.replace("local_verdir = ''.join(char for char in version if not char.isalpha())", "local_verdir = ''.join(char for char in version.elems() if not char.isalpha())")
+
+                obj = eval_python(
                     contents,
                     GNU_SOURCE = "GNU_SOURCE",
                     GNU_SAVANNAH_SOURCE = "GNU_SAVANNAH_SOURCE",
