@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 
 	"github.com/klauspost/compress/zstd"
@@ -104,6 +105,9 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 		}), nil
 	} else if name == "name" {
 		return starlark.String(f.name), nil
+
+	} else if name == "base" {
+		return starlark.String(path.Base(f.name)), nil
 	} else {
 		return nil, nil
 	}
@@ -111,7 +115,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (*StarFile) AttrNames() []string {
-	return []string{"read", "read_archive", "read_compressed", "read_rpm_xml", "name"}
+	return []string{"read", "read_archive", "read_compressed", "read_rpm_xml", "name", "base"}
 }
 
 func (f *StarFile) String() string      { return fmt.Sprintf("File{%s}", f.name) }

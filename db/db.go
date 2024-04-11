@@ -850,6 +850,19 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				[]starlark.Tuple{},
 			)
 		}),
+		"eval_starlark": starlark.NewBuiltin("eval_starlark", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			contents, ok := starlark.AsString(args[0])
+			if !ok {
+				return starlark.None, fmt.Errorf("could not convert %s to string", args[0].Type())
+			}
+
+			return evalStarlark(contents, kwargs)
+		}),
 		"open": starlark.NewBuiltin("open", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -954,6 +967,7 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 				TopLevelControl: true,
 				Recursion:       true,
 				Set:             true,
+				GlobalReassign:  true,
 			}, thread, filename, nil, globals)
 			if err != nil {
 				return nil, err
