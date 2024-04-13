@@ -168,14 +168,9 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 		ret := &syntax.ListExpr{}
 
 		for _, element := range node.Elts {
-			node, err := emitStarlark(element)
+			expr, err := emitExpression(element)
 			if err != nil {
 				return nil, err
-			}
-
-			expr, ok := node.(syntax.Expr)
-			if !ok {
-				return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", element, node)
 			}
 
 			ret.List = append(ret.List, expr)
@@ -186,14 +181,23 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 		ret := &syntax.TupleExpr{}
 
 		for _, element := range node.Elts {
-			node, err := emitStarlark(element)
+			expr, err := emitExpression(element)
 			if err != nil {
 				return nil, err
 			}
 
-			expr, ok := node.(syntax.Expr)
-			if !ok {
-				return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", element, node)
+			ret.List = append(ret.List, expr)
+		}
+
+		return ret, nil
+	case *ast.Set:
+		// Technically incorrect since lists and sets have different semantics.
+		ret := &syntax.ListExpr{}
+
+		for _, element := range node.Elts {
+			expr, err := emitExpression(element)
+			if err != nil {
+				return nil, err
 			}
 
 			ret.List = append(ret.List, expr)
@@ -208,6 +212,10 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 			op = syntax.PERCENT
 		case ast.Add:
 			op = syntax.PLUS
+		case ast.Sub:
+			op = syntax.MINUS
+		case ast.Mult:
+			op = syntax.STAR
 		default:
 			return nil, fmt.Errorf("unknown operation: %+v", node.Op)
 		}
@@ -246,7 +254,7 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 		case ast.USub:
 			op = syntax.MINUS
 		default:
-			return nil, fmt.Errorf("unknown operation: %+v", node.Op)
+			return nil, fmt.Errorf("unknown unary operation: %+v", node.Op)
 		}
 
 		lhs, err := emitStarlark(node.Operand)
@@ -342,37 +350,22 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 	case *ast.ListComp:
 		ret := &syntax.Comprehension{Curly: false}
 
-		value, err := emitStarlark(node.Elt)
+		valueExpr, err := emitExpression(node.Elt)
 		if err != nil {
 			return nil, err
-		}
-
-		valueExpr, ok := value.(syntax.Expr)
-		if !ok {
-			return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", node.Elt, value)
 		}
 
 		ret.Body = valueExpr
 
 		for _, gen := range node.Generators {
-			targetValue, err := emitStarlark(gen.Target)
+			targetExpr, err := emitExpression(gen.Target)
 			if err != nil {
 				return nil, err
 			}
 
-			targetExpr, ok := targetValue.(syntax.Expr)
-			if !ok {
-				return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", gen.Target, targetValue)
-			}
-
-			iterValue, err := emitStarlark(gen.Iter)
+			iterExpr, err := emitExpression(gen.Iter)
 			if err != nil {
 				return nil, err
-			}
-
-			iterExpr, ok := iterValue.(syntax.Expr)
-			if !ok {
-				return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", gen.Iter, iterValue)
 			}
 
 			ret.Clauses = append(ret.Clauses, &syntax.ForClause{
@@ -381,14 +374,56 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 			})
 
 			for _, test := range gen.Ifs {
-				testValue, err := emitStarlark(test)
+				testExpr, err := emitExpression(test)
 				if err != nil {
 					return nil, err
 				}
 
-				testExpr, ok := iterValue.(syntax.Expr)
-				if !ok {
-					return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", test, testValue)
+				ret.Clauses = append(ret.Clauses, &syntax.IfClause{
+					Cond: testExpr,
+				})
+			}
+		}
+
+		return ret, nil
+	case *ast.DictComp:
+		ret := &syntax.Comprehension{Curly: true}
+
+		keyExpr, err := emitExpression(node.Key)
+		if err != nil {
+			return nil, err
+		}
+
+		valueExpr, err := emitExpression(node.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		ret.Body = &syntax.DictEntry{
+			Key:   keyExpr,
+			Value: valueExpr,
+		}
+
+		for _, gen := range node.Generators {
+			targetExpr, err := emitExpression(gen.Target)
+			if err != nil {
+				return nil, err
+			}
+
+			iterExpr, err := emitExpression(gen.Iter)
+			if err != nil {
+				return nil, err
+			}
+
+			ret.Clauses = append(ret.Clauses, &syntax.ForClause{
+				Vars: targetExpr,
+				X:    iterExpr,
+			})
+
+			for _, test := range gen.Ifs {
+				testExpr, err := emitExpression(test)
+				if err != nil {
+					return nil, err
 				}
 
 				ret.Clauses = append(ret.Clauses, &syntax.IfClause{
@@ -401,14 +436,9 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 	case *ast.GeneratorExp:
 		ret := &syntax.Comprehension{Curly: false}
 
-		value, err := emitStarlark(node.Elt)
+		valueExpr, err := emitExpression(node.Elt)
 		if err != nil {
 			return nil, err
-		}
-
-		valueExpr, ok := value.(syntax.Expr)
-		if !ok {
-			return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", node.Elt, value)
 		}
 
 		ret.Body = valueExpr
@@ -419,24 +449,14 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 
 		gen := node.Generators[0]
 
-		targetValue, err := emitStarlark(gen.Target)
+		targetExpr, err := emitExpression(gen.Target)
 		if err != nil {
 			return nil, err
 		}
 
-		targetExpr, ok := targetValue.(syntax.Expr)
-		if !ok {
-			return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", gen.Target, targetValue)
-		}
-
-		iterValue, err := emitStarlark(gen.Iter)
+		iterExpr, err := emitExpression(gen.Iter)
 		if err != nil {
 			return nil, err
-		}
-
-		iterExpr, ok := iterValue.(syntax.Expr)
-		if !ok {
-			return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", gen.Iter, iterValue)
 		}
 
 		ret.Clauses = append(ret.Clauses, &syntax.ForClause{
@@ -445,14 +465,9 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 		})
 
 		for _, test := range gen.Ifs {
-			testValue, err := emitStarlark(test)
+			testExpr, err := emitExpression(test)
 			if err != nil {
 				return nil, err
-			}
-
-			testExpr, ok := iterValue.(syntax.Expr)
-			if !ok {
-				return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", test, testValue)
 			}
 
 			ret.Clauses = append(ret.Clauses, &syntax.IfClause{
@@ -477,28 +492,18 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 		ret.Fn = valueExpr
 
 		for _, arg := range node.Args {
-			argValue, err := emitStarlark(arg)
+			argExpr, err := emitExpression(arg)
 			if err != nil {
 				return nil, err
-			}
-
-			argExpr, ok := argValue.(syntax.Expr)
-			if !ok {
-				return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", arg, argValue)
 			}
 
 			ret.Args = append(ret.Args, argExpr)
 		}
 
 		for _, kw := range node.Keywords {
-			value, err := emitStarlark(kw.Value)
+			valueExpr, err := emitExpression(kw.Value)
 			if err != nil {
 				return nil, err
-			}
-
-			valueExpr, ok := value.(syntax.Expr)
-			if !ok {
-				return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", kw.Value, value)
 			}
 
 			ret.Args = append(ret.Args, &syntax.BinaryExpr{
@@ -533,28 +538,20 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 		switch nodeOp {
 		case ast.NotEq:
 			op = syntax.NEQ
+		case ast.Eq:
+			op = syntax.EQL
 		default:
-			return nil, fmt.Errorf("unknown operation: %+v", nodeOp)
+			return nil, fmt.Errorf("unknown compare operation: %+v", nodeOp)
 		}
 
-		lhs, err := emitStarlark(node.Left)
+		lhsExpr, err := emitExpression(node.Left)
 		if err != nil {
 			return nil, err
 		}
 
-		lhsExpr, ok := lhs.(syntax.Expr)
-		if !ok {
-			return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", node.Left, lhs)
-		}
-
-		rhs, err := emitStarlark(nodeRight)
+		rhsExpr, err := emitExpression(nodeRight)
 		if err != nil {
 			return nil, err
-		}
-
-		rhsExpr, ok := rhs.(syntax.Expr)
-		if !ok {
-			return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", nodeRight, rhs)
 		}
 
 		return &syntax.BinaryExpr{
@@ -562,15 +559,74 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 			Op: op,
 			Y:  rhsExpr,
 		}, nil
-	case *ast.Attribute:
-		value, err := emitStarlark(node.Value)
+	case *ast.If:
+		testExpr, err := emitExpression(node.Test)
 		if err != nil {
 			return nil, err
 		}
 
-		valueExpr, ok := value.(syntax.Expr)
-		if !ok {
-			return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", node.Value, value)
+		ret := &syntax.IfStmt{Cond: testExpr}
+
+		for _, child := range node.Body {
+			childStmt, err := emitStatement(child)
+			if err != nil {
+				return nil, err
+			}
+
+			ret.True = append(ret.True, childStmt)
+		}
+
+		for _, child := range node.Orelse {
+			childStmt, err := emitStatement(child)
+			if err != nil {
+				return nil, err
+			}
+
+			ret.True = append(ret.False, childStmt)
+		}
+
+		return ret, nil
+	case *ast.For:
+		targetExpr, err := emitExpression(node.Target)
+		if err != nil {
+			return nil, err
+		}
+
+		iterExpr, err := emitExpression(node.Iter)
+		if err != nil {
+			return nil, err
+		}
+
+		ret := &syntax.ForStmt{
+			Vars: targetExpr,
+			X:    iterExpr,
+		}
+
+		for _, child := range node.Body {
+			childStmt, err := emitStatement(child)
+			if err != nil {
+				return nil, err
+			}
+
+			ret.Body = append(ret.Body, childStmt)
+		}
+
+		if len(node.Orelse) > 0 {
+			return nil, fmt.Errorf("starlark does not support for, else")
+		}
+
+		return ret, nil
+	case *ast.ExprStmt:
+		expr, err := emitExpression(node.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		return &syntax.ExprStmt{X: expr}, nil
+	case *ast.Attribute:
+		valueExpr, err := emitExpression(node.Value)
+		if err != nil {
+			return nil, err
 		}
 
 		return &syntax.DotExpr{
@@ -585,6 +641,8 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 		switch obj := node.N.(type) {
 		case py.Int:
 			return &syntax.Literal{Token: syntax.INT, Value: int64(obj)}, nil
+		case py.Float:
+			return &syntax.Literal{Token: syntax.FLOAT, Value: float64(obj)}, nil
 		default:
 			return nil, fmt.Errorf("unknown object %T: %+v", obj, obj)
 		}
@@ -593,12 +651,42 @@ func emitStarlark(node ast.Ast) (syntax.Node, error) {
 			return &syntax.Ident{Name: "True"}, nil
 		} else if node.Value == py.False {
 			return &syntax.Ident{Name: "False"}, nil
+		} else if node.Value == py.None {
+			return &syntax.Ident{Name: "None"}, nil
 		} else {
 			return nil, fmt.Errorf("unknown singleton %T: %+v", node.Value, node.Value)
 		}
 	default:
 		return nil, fmt.Errorf("node not implemented %T: %+v", node, node)
 	}
+}
+
+func emitExpression(node ast.Ast) (syntax.Expr, error) {
+	value, err := emitStarlark(node)
+	if err != nil {
+		return nil, err
+	}
+
+	valueExpr, ok := value.(syntax.Expr)
+	if !ok {
+		return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Expr", node, value)
+	}
+
+	return valueExpr, nil
+}
+
+func emitStatement(node ast.Ast) (syntax.Stmt, error) {
+	value, err := emitStarlark(node)
+	if err != nil {
+		return nil, err
+	}
+
+	valueStmt, ok := value.(syntax.Stmt)
+	if !ok {
+		return nil, fmt.Errorf("emitStarlark for %T made a %T but expected syntax.Stmt", node, value)
+	}
+
+	return valueStmt, nil
 }
 
 func evalPython(contents string, kwArgs []starlark.Tuple) (starlark.Value, error) {

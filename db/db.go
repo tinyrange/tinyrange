@@ -983,6 +983,9 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 				GlobalReassign:  true,
 			}, thread, filename, nil, globals)
 			if err != nil {
+				if sErr, ok := err.(*starlark.EvalError); ok {
+					slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+				}
 				return nil, err
 			}
 
@@ -1001,8 +1004,12 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 		TopLevelControl: true,
 		Recursion:       true,
 		Set:             true,
+		GlobalReassign:  true,
 	}, thread, filename, nil, globals)
 	if err != nil {
+		if sErr, ok := err.(*starlark.EvalError); ok {
+			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+		}
 		return err
 	}
 

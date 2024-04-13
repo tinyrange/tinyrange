@@ -1,3 +1,24 @@
+def parse_easybuild_name(ctx, value):
+    if len(value) == 2:
+        name, version = value
+
+        if type(version) == "dict":
+            version = "<complex>"
+
+        return ctx.name(
+            name = name,
+            version = version,
+        )
+    elif len(value) == 3:
+        name, version, _ = value
+        return parse_easybuild_name(ctx, (name, version))
+    elif len(value) == 4:
+        name, version, _, _ = value
+        return parse_easybuild_name(ctx, (name, version))
+    else:
+        print(value)
+        return error("not implemented")
+
 def fetch_easybuild_repo(ctx, url, branch):
     repo = fetch_git(url)
     tree = repo.branch(branch)["easybuild/easyconfigs"]
@@ -12,10 +33,12 @@ def fetch_easybuild_repo(ctx, url, branch):
 
                 contents = file.read()
 
-                print(file)
-                print(contents)
+                if "easybuild/easyconfigs/r/R" in file.name:
+                    contents = "local_dbarts_preinstallopts = \"\"\n" + contents
 
                 contents = contents.replace("local_verdir = ''.join(char for char in version if not char.isalpha())", "local_verdir = ''.join(char for char in version.elems() if not char.isalpha())")
+                contents = contents.replace("local_version_minor_etc += '0' * (3 - len(local_version_minor_etc))", "local_version_minor_etc += ['0' * (3 - len(local_version_minor_etc))]")
+                contents = contents.replace("'%02d' % int(x)", "'{}'.format(int(x))")
 
                 obj = eval_python(
                     contents,
@@ -47,6 +70,7 @@ def fetch_easybuild_repo(ctx, url, branch):
                     XORG_PROTO_SOURCE = "XORG_PROTO_SOURCE",
                     XORG_LIB_SOURCE = "XORG_LIB_SOURCE",
                     XORG_UTIL_SOURCE = "XORG_UTIL_SOURCE",
+                    XORG_DATA_SOURCE = "XORG_DATA_SOURCE",
                     SYSTEM = "SYSTEM",
                     OS_TYPE = "Linux",
                     ARCH = "x86_64",
@@ -58,9 +82,16 @@ def fetch_easybuild_repo(ctx, url, branch):
                     SYS_PYTHON_VERSION = "SYS_PYTHON_VERSION",
                 )
 
-                print(obj)
+                pkg = ctx.add_package(ctx.name(
+                    name = obj["name"],
+                    version = obj["version"],
+                ))
 
-    return error("not implemented")
+                pkg.set_description(file.name)
+
+                if "dependencies" in obj:
+                    for value in obj["dependencies"]:
+                        pkg.add_dependency(parse_easybuild_name(ctx, value))
 
 if __name__ == "__main__":
     fetch_repo(fetch_easybuild_repo, ("https://github.com/easybuilders/easybuild-easyconfigs", "develop"), distro = "easybuild")
