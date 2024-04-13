@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -215,39 +216,100 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		var rows []htm.Group
+		r.ParseForm()
 
-		status, err := pkgDb.FetcherStatus()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+		key := r.FormValue("key")
 
-		for _, row := range status {
-			rows = append(rows, htm.Group{
-				html.Code(html.Textf("%s", row.Name[:min(len(row.Name), 80)])),
-				html.Textf("%s", row.Status.String()),
-				html.Textf("%s", row.LastUpdateTime.String()),
-				html.Textf("%s", row.LastUpdated.Format(time.UnixDate)),
-				html.Textf("%d", row.PackageCount),
-			})
-		}
+		if key != "" {
+			fetcher, err := pkgDb.GetFetcher(key)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 
-		page := pageTemplate(pkgDb, db.PackageName{}, start,
-			bootstrap.Card(
-				bootstrap.CardTitle("Fetcher Status"),
-				bootstrap.Table(htm.Group{
-					html.Textf("Name"),
-					html.Textf("Status"),
-					html.Textf("Last Update Time"),
-					html.Textf("Last Updated"),
-					html.Textf("Package Count"),
-				}, rows),
-			),
-		)
+			var logMessages []string
+			for _, msg := range fetcher.Messages {
+				logMessages = append(logMessages, msg.String())
+			}
 
-		if err := htm.Render(r.Context(), w, page); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			var rows []htm.Group
+
+			for _, pkg := range fetcher.Packages {
+				rows = append(rows, htm.Group{
+					html.Textf("%s", pkg.Name.Distribution),
+					html.Textf("%s", pkg.Name.Namespace),
+					html.Link("/info?key="+url.QueryEscape(pkg.Id()), html.Textf(pkg.Name.Name)),
+					html.Textf("%s", pkg.Name.Version),
+					html.Textf("%s", pkg.Name.Architecture),
+				})
+				if len(rows) > 100 {
+					break
+				}
+			}
+
+			page := pageTemplate(pkgDb, db.PackageName{}, start,
+				bootstrap.Card(
+					bootstrap.CardTitle(fetcher.String()),
+					html.Div(html.Textf("Last Updated: %s", fetcher.LastUpdated)),
+					html.Div(html.Textf("Last Update Time: %s", fetcher.LastUpdateTime)),
+					html.Div(html.Textf("Package Count: %d", len(fetcher.Packages))),
+				),
+				bootstrap.Card(
+					bootstrap.CardTitle("Log"),
+					html.Pre(html.Code(html.Text(strings.Join(logMessages, "\n")))),
+				),
+				bootstrap.Card(
+					bootstrap.CardTitle("Packages (First 100)"),
+					bootstrap.Table(htm.Group{
+						html.Textf("Distribution"),
+						html.Textf("Namespace"),
+						html.Textf("Name"),
+						html.Textf("Version"),
+						html.Textf("Architecture"),
+					}, rows),
+				),
+			)
+
+			if err := htm.Render(r.Context(), w, page); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		} else {
+			var rows []htm.Group
+
+			status, err := pkgDb.FetcherStatus()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			for _, row := range status {
+				rows = append(rows, htm.Group{
+					html.Link(fmt.Sprintf("/status?key=%s", row.Key), html.Code(html.Textf("%s", row.Key[:10]))),
+					html.Code(html.Textf("%s...", row.Name[:min(len(row.Name), 60)])),
+					html.Textf("%s", row.Status.String()),
+					html.Textf("%s", row.LastUpdateTime.String()),
+					html.Textf("%s", row.LastUpdated.Format(time.UnixDate)),
+					html.Textf("%d", row.PackageCount),
+				})
+			}
+
+			page := pageTemplate(pkgDb, db.PackageName{}, start,
+				bootstrap.Card(
+					bootstrap.CardTitle("Fetcher Status"),
+					bootstrap.Table(htm.Group{
+						html.Text("Key"),
+						html.Text("Name"),
+						html.Text("Status"),
+						html.Text("Last Update Time"),
+						html.Text("Last Updated"),
+						html.Text("Count"),
+					}, rows),
+				),
+			)
+
+			if err := htm.Render(r.Context(), w, page); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 		}
 	})
 

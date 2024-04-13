@@ -79,9 +79,12 @@ type HttpOptions struct {
 	UseETag      bool
 	FastDownload bool
 	ExpireTime   time.Duration
+	Logger       Logger
 }
 
 func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) (io.ReadCloser, error) {
+	Log(options.Logger, fmt.Sprintf("got request for %s", url))
+
 	path, err := eif.GetCachePath(url)
 	if err != nil {
 		return nil, err
@@ -103,6 +106,7 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 			if !needsRefresh {
 				return os.Open(path)
 			} else {
+				Log(options.Logger, fmt.Sprintf("checking server for updates: url=%s", url))
 				slog.Info("checking server for updates", "url", url)
 				resp, err := eif.client.Head(url)
 				if err != nil {
@@ -176,6 +180,8 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 	}
 
 	var writer io.Writer = out
+
+	Log(options.Logger, fmt.Sprintf("downloading %s", url))
 
 	if resp.ContentLength < 100000 {
 		// Don't display the progress bar for downloads under 100k

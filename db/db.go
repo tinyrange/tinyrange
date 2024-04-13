@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,7 +14,6 @@ import (
 
 	xj "github.com/basgys/goxml2json"
 	"github.com/icza/dyno"
-	"github.com/minio/sha256-simd"
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/pkg2/core"
 	"github.com/tinyrange/pkg2/third_party/regexp"
@@ -24,513 +22,6 @@ import (
 	"go.starlark.net/syntax"
 	"gopkg.in/yaml.v3"
 	"howett.net/plist"
-)
-
-func getSha256(val []byte) string {
-	sum := sha256.Sum256(val)
-	return hex.EncodeToString(sum[:])
-}
-
-type RepositoryFetcherStatus int
-
-func (status RepositoryFetcherStatus) String() string {
-	switch status {
-	case RepositoryFetcherStatusNotLoaded:
-		return "Not Loaded"
-	case RepositoryFetcherStatusLoading:
-		return "Loading"
-	case RepositoryFetcherStatusLoaded:
-		return "Loaded"
-	default:
-		return "<unknown>"
-	}
-}
-
-const (
-	RepositoryFetcherStatusNotLoaded RepositoryFetcherStatus = iota
-	RepositoryFetcherStatusLoading
-	RepositoryFetcherStatusLoaded
-	RepositoryFetcherStatusError
-)
-
-type RepositoryFetcher struct {
-	db              *PackageDatabase
-	Packages        []*Package
-	addPackageMutex sync.Mutex
-	Distributions   map[string]bool
-	Architectures   map[string]bool
-	Distro          string
-	Func            *starlark.Function
-	Args            starlark.Tuple
-	Status          RepositoryFetcherStatus
-	updateMutex     sync.Mutex
-	LastUpdateTime  time.Duration
-	LastUpdated     time.Time
-}
-
-func (r *RepositoryFetcher) Matches(query PackageName) bool {
-	if query.Distribution != "" && r.Distributions != nil {
-		_, ok := r.Distributions[query.Distribution]
-
-		return ok
-	}
-
-	if query.Architecture != "" && r.Architectures != nil {
-		_, ok := r.Architectures[query.Architecture]
-
-		return ok
-	}
-
-	return true
-}
-
-func (r *RepositoryFetcher) Key() (string, error) {
-	var tokens []string
-
-	tokens = append(tokens, r.Func.Name())
-
-	for _, arg := range r.Args {
-		str, ok := starlark.AsString(arg)
-		if !ok {
-			str = arg.String()
-		}
-
-		tokens = append(tokens, str)
-	}
-
-	return getSha256([]byte(strings.Join(tokens, "_"))), nil
-}
-
-func (r *RepositoryFetcher) addPackage(name PackageName) starlark.Value {
-	r.addPackageMutex.Lock()
-	defer r.addPackageMutex.Unlock()
-
-	pkg := NewPackage()
-	pkg.Name = name
-	r.Packages = append(r.Packages, pkg)
-	return pkg
-}
-
-// Attr implements starlark.HasAttrs.
-func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
-	if name == "add_package" {
-		return starlark.NewBuiltin("Repo.add_package", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				name PackageName
-			)
-
-			if err := starlark.UnpackArgs("Repo.add_package", args, kwargs,
-				"name", &name,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			return r.addPackage(name), nil
-		}), nil
-	} else if name == "name" {
-		return starlark.NewBuiltin("Repo.name", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				namespace    string
-				name         string
-				version      string
-				distro       string
-				architecture string
-			)
-
-			if err := starlark.UnpackArgs("Repo.name", args, kwargs,
-				"namespace?", &namespace,
-				"name", &name,
-				"version?", &version,
-				"distro?", &distro,
-				"architecture?", &architecture,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			if distro == "" {
-				distro = r.Distro
-			}
-
-			return PackageName{
-				Distribution: distro,
-				Namespace:    namespace,
-				Name:         name,
-				Version:      version,
-				Architecture: architecture,
-			}, nil
-		}), nil
-	} else if name == "parallel_for" {
-		return starlark.NewBuiltin("Repo.parallel_for", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				target *starlark.List
-				f      *starlark.Function
-				fArgs  starlark.Tuple
-				jobs   int
-			)
-
-			if err := starlark.UnpackArgs("Repo.parallel_for", args, kwargs,
-				"target", &target,
-				"f", &f,
-				"fArgs", &fArgs,
-				"jobs", &jobs,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			var elements []starlark.Value
-
-			target.Elements(func(v starlark.Value) bool {
-				elements = append(elements, v)
-				return true
-			})
-
-			reqs := make(chan starlark.Value)
-
-			if jobs == 0 {
-				jobs = 1
-			}
-
-			pb := progressbar.Default(int64(len(elements)))
-			defer pb.Close()
-
-			if jobs == 1 {
-				for _, element := range elements {
-					_, err := starlark.Call(thread, f, append(append(starlark.Tuple{r}, fArgs...), element), []starlark.Tuple{})
-					if err != nil {
-						if sErr, ok := err.(*starlark.EvalError); ok {
-							slog.Error("parallel_for thread got error", "error", sErr, "backtrace", sErr.Backtrace())
-						} else {
-							slog.Warn("parallel_for thread got error", "error", err)
-						}
-						return starlark.None, err
-					}
-
-					pb.Add(1)
-				}
-			} else {
-				for i := 0; i < jobs; i++ {
-					go func() {
-						thread := &starlark.Thread{}
-
-						for req := range reqs {
-							_, err := starlark.Call(thread, f, append(append(starlark.Tuple{r}, fArgs...), req), []starlark.Tuple{})
-							if err != nil {
-								if sErr, ok := err.(*starlark.EvalError); ok {
-									slog.Error("parallel_for thread got error", "error", sErr, "backtrace", sErr.Backtrace())
-								} else {
-									slog.Warn("parallel_for thread got error", "error", err)
-								}
-								return
-							}
-
-							pb.Add(1)
-						}
-					}()
-				}
-
-				for _, element := range elements {
-					reqs <- element
-				}
-
-				close(reqs)
-			}
-
-			return starlark.None, nil
-		}), nil
-	} else {
-		return nil, nil
-	}
-}
-
-// AttrNames implements starlark.HasAttrs.
-func (*RepositoryFetcher) AttrNames() []string {
-	return []string{"add_package", "name", "parallel_for"}
-}
-
-func (fetcher *RepositoryFetcher) String() string {
-	name := fetcher.Func.Name()
-
-	var args []string
-	for _, arg := range fetcher.Args {
-		args = append(args, arg.String())
-	}
-
-	return fmt.Sprintf("%s(%s)", name, strings.Join(args, ", "))
-}
-func (*RepositoryFetcher) Type() string { return "RepositoryFetcher" }
-func (*RepositoryFetcher) Hash() (uint32, error) {
-	return 0, fmt.Errorf("RepositoryFetcher is not hashable")
-}
-func (*RepositoryFetcher) Truth() starlark.Bool { return starlark.True }
-func (*RepositoryFetcher) Freeze()              {}
-
-func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, key string, forceRefresh bool) error {
-	// Only allow a single thread to update a fetcher at the same time.
-	fetcher.updateMutex.Lock()
-	defer fetcher.updateMutex.Unlock()
-
-	// Reset package list.
-	fetcher.Packages = []*Package{}
-	fetcher.Architectures = nil
-	fetcher.Distributions = nil
-
-	// Update Status
-	fetcher.LastUpdated = time.Now()
-	fetcher.Status = RepositoryFetcherStatusLoading
-
-	expireTime := 2 * time.Hour
-	if forceRefresh {
-		expireTime = 0
-	}
-
-	distributionIndex := map[string]bool{}
-	architectureIndex := map[string]bool{}
-
-	err := eif.CacheObjects(
-		key, int(PackageMetadataVersionCurrent), expireTime,
-		func(write func(obj any) error) error {
-			slog.Info("fetching", "fetcher", fetcher.String())
-
-			thread := &starlark.Thread{}
-
-			_, err := starlark.Call(thread, fetcher.Func,
-				append(starlark.Tuple{fetcher}, fetcher.Args...),
-				[]starlark.Tuple{},
-			)
-			if err != nil {
-				if sErr, ok := err.(*starlark.EvalError); ok {
-					slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
-				}
-				return fmt.Errorf("error calling user callback: %s", err)
-			}
-
-			for _, pkg := range fetcher.Packages {
-				if err := write(pkg); err != nil {
-					return fmt.Errorf("failed to write package: %s", err)
-				}
-			}
-
-			return nil
-		},
-		func(read func(obj any) error) error {
-			fetcher.Packages = []*Package{}
-
-			for {
-				pkg := NewPackage()
-
-				err := read(pkg)
-				if err == io.EOF {
-					return nil
-				} else if err != nil {
-					return err
-				} else {
-					fetcher.Packages = append(fetcher.Packages, pkg)
-
-					// Add to the distribution index.
-					distributionIndex[pkg.Name.Distribution] = true
-
-					// Add to the architecture index.
-					architectureIndex[pkg.Name.Architecture] = true
-				}
-			}
-		},
-	)
-	if err != nil {
-		fetcher.Status = RepositoryFetcherStatusError
-
-		return err
-	}
-
-	fetcher.Status = RepositoryFetcherStatusLoaded
-
-	fetcher.Architectures = architectureIndex
-	fetcher.Distributions = distributionIndex
-
-	fetcher.LastUpdateTime = time.Since(fetcher.LastUpdated)
-
-	return nil
-}
-
-var (
-	_ starlark.Value    = &RepositoryFetcher{}
-	_ starlark.HasAttrs = &RepositoryFetcher{}
-)
-
-type ScriptFetcher struct {
-	db   *PackageDatabase
-	Name string
-	Func *starlark.Function
-	Args starlark.Tuple
-}
-
-// Attr implements starlark.HasAttrs.
-func (s *ScriptFetcher) Attr(name string) (starlark.Value, error) {
-	return nil, nil
-}
-
-// AttrNames implements starlark.HasAttrs.
-func (s *ScriptFetcher) AttrNames() []string {
-	return []string{}
-}
-
-func (*ScriptFetcher) String() string { return "ScriptFetcher" }
-func (*ScriptFetcher) Type() string   { return "ScriptFetcher" }
-func (*ScriptFetcher) Hash() (uint32, error) {
-	return 0, fmt.Errorf("ScriptFetcher is not hashable")
-}
-func (*ScriptFetcher) Truth() starlark.Bool { return starlark.True }
-func (*ScriptFetcher) Freeze()              {}
-
-var (
-	_ starlark.Value    = &ScriptFetcher{}
-	_ starlark.HasAttrs = &ScriptFetcher{}
-)
-
-type SearchProvider struct {
-	db           *PackageDatabase
-	Distribution string
-	Func         *starlark.Function
-	Args         starlark.Tuple
-
-	Packages []*Package
-}
-
-func (s *SearchProvider) addPackage(name PackageName) starlark.Value {
-	pkg := NewPackage()
-	pkg.Name = name
-	s.Packages = append(s.Packages, pkg)
-	return pkg
-}
-
-// Attr implements starlark.HasAttrs.
-func (s *SearchProvider) Attr(name string) (starlark.Value, error) {
-	if name == "add_package" {
-		return starlark.NewBuiltin("Search.add_package", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				name PackageName
-			)
-
-			if err := starlark.UnpackArgs("Search.add_package", args, kwargs,
-				"name", &name,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			return s.addPackage(name), nil
-		}), nil
-	} else if name == "name" {
-		return starlark.NewBuiltin("Search.name", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				namespace    string
-				name         string
-				version      string
-				distro       string
-				architecture string
-			)
-
-			if err := starlark.UnpackArgs("Search.name", args, kwargs,
-				"namespace?", &namespace,
-				"name", &name,
-				"version?", &version,
-				"distro?", &distro,
-				"architecture?", &architecture,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			if distro == "" {
-				distro = s.Distribution
-			}
-
-			return PackageName{
-				Distribution: distro,
-				Namespace:    namespace,
-				Name:         name,
-				Version:      version,
-				Architecture: architecture,
-			}, nil
-		}), nil
-	} else {
-		return nil, nil
-	}
-}
-
-// AttrNames implements starlark.HasAttrs.
-func (s *SearchProvider) AttrNames() []string {
-	return []string{}
-}
-
-func (*SearchProvider) String() string { return "SearchProvider" }
-func (*SearchProvider) Type() string   { return "SearchProvider" }
-func (*SearchProvider) Hash() (uint32, error) {
-	return 0, fmt.Errorf("ScriptFetcher is not hashable")
-}
-func (*SearchProvider) Truth() starlark.Bool { return starlark.True }
-func (*SearchProvider) Freeze()              {}
-
-func (s *SearchProvider) searchExisting(name PackageName, maxResults int) ([]*Package, error) {
-	var ret []*Package
-
-	for _, pkg := range s.Packages {
-		if pkg.Matches(name) {
-			ret = append(ret, pkg)
-			if maxResults != 0 && len(ret) >= maxResults {
-				break
-			}
-		}
-	}
-
-	return ret, nil
-}
-
-func (s *SearchProvider) Search(name PackageName, maxResults int) ([]*Package, error) {
-	results, err := s.searchExisting(name, maxResults)
-	if err != nil {
-		return nil, err
-	}
-	if len(results) != 0 {
-		return results, nil
-	}
-
-	// Call the user provided function to do the search.
-	thread := &starlark.Thread{}
-
-	_, err = starlark.Call(thread, s.Func, starlark.Tuple{s, name}, []starlark.Tuple{})
-	if err != nil {
-		return nil, err
-	}
-
-	return s.searchExisting(name, maxResults)
-}
-
-var (
-	_ starlark.Value    = &SearchProvider{}
-	_ starlark.HasAttrs = &SearchProvider{}
 )
 
 type PackageDatabase struct {
@@ -613,6 +104,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				UseETag:      useETag,
 				FastDownload: fast,
 				ExpireTime:   time.Duration(expireTime),
+				Logger:       core.GetLogger(thread),
 			})
 			if err == core.ErrNotFound {
 				return starlark.None, nil
@@ -1025,10 +517,7 @@ func (db *PackageDatabase) FetchAll() error {
 	defer pb.Close()
 
 	for _, fetcher := range db.Fetchers {
-		key, err := fetcher.Key()
-		if err != nil {
-			return fmt.Errorf("failed to get fetcher key: %s", err)
-		}
+		key := fetcher.Key()
 
 		wg.Add(1)
 		if db.NoParallel {
@@ -1113,11 +602,7 @@ func (db *PackageDatabase) StartAutoRefresh(maxParallelFetchers int, refreshTime
 			for {
 				updateRequest := <-updateRequests
 
-				key, err := updateRequest.fetcher.Key()
-				if err != nil {
-					slog.Warn("could not get fetcher key", "fetcher", updateRequest.fetcher.String(), "error", err)
-					continue
-				}
+				key := updateRequest.fetcher.Key()
 
 				if err := updateRequest.fetcher.fetchWithKey(db.Eif, key, updateRequest.force); err != nil {
 					slog.Warn("could not get update fetcher", "fetcher", updateRequest.fetcher.String(), "error", err)
@@ -1327,6 +812,7 @@ func (db *PackageDatabase) Count() int64 {
 }
 
 type FetcherStatus struct {
+	Key            string
 	Name           string
 	Status         RepositoryFetcherStatus
 	PackageCount   int
@@ -1339,6 +825,7 @@ func (db *PackageDatabase) FetcherStatus() ([]FetcherStatus, error) {
 
 	for _, fetcher := range db.Fetchers {
 		ret = append(ret, FetcherStatus{
+			Key:            fetcher.Key(),
 			Name:           fetcher.String(),
 			Status:         fetcher.Status,
 			PackageCount:   len(fetcher.Packages),
@@ -1348,6 +835,16 @@ func (db *PackageDatabase) FetcherStatus() ([]FetcherStatus, error) {
 	}
 
 	return ret, nil
+}
+
+func (db *PackageDatabase) GetFetcher(key string) (*RepositoryFetcher, error) {
+	for _, fetcher := range db.Fetchers {
+		if fetcher.Key() == key {
+			return fetcher, nil
+		}
+	}
+
+	return nil, fmt.Errorf("fetcher not found")
 }
 
 func (db *PackageDatabase) WriteNames(w io.Writer) error {

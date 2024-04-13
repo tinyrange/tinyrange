@@ -1,0 +1,402 @@
+package db
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"log/slog"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/schollz/progressbar/v3"
+	"github.com/tinyrange/pkg2/core"
+	"go.starlark.net/starlark"
+)
+
+func getSha256(val []byte) string {
+	sum := sha256.Sum256(val)
+	return hex.EncodeToString(sum[:])
+}
+
+type RepositoryFetcherStatus int
+
+func (status RepositoryFetcherStatus) String() string {
+	switch status {
+	case RepositoryFetcherStatusNotLoaded:
+		return "Not Loaded"
+	case RepositoryFetcherStatusLoading:
+		return "Loading"
+	case RepositoryFetcherStatusLoaded:
+		return "Loaded"
+	default:
+		return "<unknown>"
+	}
+}
+
+const (
+	RepositoryFetcherStatusNotLoaded RepositoryFetcherStatus = iota
+	RepositoryFetcherStatusLoading
+	RepositoryFetcherStatusLoaded
+	RepositoryFetcherStatusError
+)
+
+type logMessage struct {
+	Time    time.Time
+	Message string
+}
+
+func (m logMessage) String() string {
+	return fmt.Sprintf("%s %s", m.Time.Format(time.DateTime), m.Message)
+}
+
+type RepositoryFetcher struct {
+	db              *PackageDatabase
+	Packages        []*Package
+	addPackageMutex sync.Mutex
+	Distributions   map[string]bool
+	Architectures   map[string]bool
+	Distro          string
+	Func            *starlark.Function
+	Args            starlark.Tuple
+	Status          RepositoryFetcherStatus
+	updateMutex     sync.Mutex
+	LastUpdateTime  time.Duration
+	LastUpdated     time.Time
+	Messages        []logMessage
+}
+
+// Log implements Logger.
+func (r *RepositoryFetcher) Log(message string) {
+	r.Messages = append(r.Messages, logMessage{
+		Time:    time.Now(),
+		Message: message,
+	})
+}
+
+func (r *RepositoryFetcher) Matches(query PackageName) bool {
+	if query.Distribution != "" && r.Distributions != nil {
+		_, ok := r.Distributions[query.Distribution]
+
+		return ok
+	}
+
+	if query.Architecture != "" && r.Architectures != nil {
+		_, ok := r.Architectures[query.Architecture]
+
+		return ok
+	}
+
+	return true
+}
+
+func (r *RepositoryFetcher) Key() string {
+	var tokens []string
+
+	tokens = append(tokens, r.Func.Name())
+
+	for _, arg := range r.Args {
+		str, ok := starlark.AsString(arg)
+		if !ok {
+			str = arg.String()
+		}
+
+		tokens = append(tokens, str)
+	}
+
+	return getSha256([]byte(strings.Join(tokens, "_")))
+}
+
+func (r *RepositoryFetcher) addPackage(name PackageName) starlark.Value {
+	r.addPackageMutex.Lock()
+	defer r.addPackageMutex.Unlock()
+
+	pkg := NewPackage()
+	pkg.Name = name
+	r.Packages = append(r.Packages, pkg)
+	return pkg
+}
+
+// Attr implements starlark.HasAttrs.
+func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
+	if name == "add_package" {
+		return starlark.NewBuiltin("Repo.add_package", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				name PackageName
+			)
+
+			if err := starlark.UnpackArgs("Repo.add_package", args, kwargs,
+				"name", &name,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return r.addPackage(name), nil
+		}), nil
+	} else if name == "name" {
+		return starlark.NewBuiltin("Repo.name", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				namespace    string
+				name         string
+				version      string
+				distro       string
+				architecture string
+			)
+
+			if err := starlark.UnpackArgs("Repo.name", args, kwargs,
+				"namespace?", &namespace,
+				"name", &name,
+				"version?", &version,
+				"distro?", &distro,
+				"architecture?", &architecture,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if distro == "" {
+				distro = r.Distro
+			}
+
+			return PackageName{
+				Distribution: distro,
+				Namespace:    namespace,
+				Name:         name,
+				Version:      version,
+				Architecture: architecture,
+			}, nil
+		}), nil
+	} else if name == "parallel_for" {
+		return starlark.NewBuiltin("Repo.parallel_for", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				target *starlark.List
+				f      *starlark.Function
+				fArgs  starlark.Tuple
+				jobs   int
+			)
+
+			if err := starlark.UnpackArgs("Repo.parallel_for", args, kwargs,
+				"target", &target,
+				"f", &f,
+				"fArgs", &fArgs,
+				"jobs", &jobs,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			var elements []starlark.Value
+
+			target.Elements(func(v starlark.Value) bool {
+				elements = append(elements, v)
+				return true
+			})
+
+			reqs := make(chan starlark.Value)
+
+			if jobs == 0 {
+				jobs = 1
+			}
+
+			pb := progressbar.Default(int64(len(elements)))
+			defer pb.Close()
+
+			if jobs == 1 {
+				for _, element := range elements {
+					_, err := starlark.Call(thread, f, append(append(starlark.Tuple{r}, fArgs...), element), []starlark.Tuple{})
+					if err != nil {
+						if sErr, ok := err.(*starlark.EvalError); ok {
+							slog.Error("parallel_for thread got error", "error", sErr, "backtrace", sErr.Backtrace())
+						} else {
+							slog.Warn("parallel_for thread got error", "error", err)
+						}
+						return starlark.None, err
+					}
+
+					pb.Add(1)
+				}
+			} else {
+				for i := 0; i < jobs; i++ {
+					go func() {
+						thread := &starlark.Thread{}
+
+						for req := range reqs {
+							_, err := starlark.Call(thread, f, append(append(starlark.Tuple{r}, fArgs...), req), []starlark.Tuple{})
+							if err != nil {
+								if sErr, ok := err.(*starlark.EvalError); ok {
+									slog.Error("parallel_for thread got error", "error", sErr, "backtrace", sErr.Backtrace())
+								} else {
+									slog.Warn("parallel_for thread got error", "error", err)
+								}
+								return
+							}
+
+							pb.Add(1)
+						}
+					}()
+				}
+
+				for _, element := range elements {
+					reqs <- element
+				}
+
+				close(reqs)
+			}
+
+			return starlark.None, nil
+		}), nil
+	} else if name == "log" {
+		return starlark.NewBuiltin("Repo.log", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var message string
+
+			if err := starlark.UnpackArgs("Repo.log", args, kwargs,
+				"message", &message,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			r.Log(message)
+
+			return starlark.None, nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (*RepositoryFetcher) AttrNames() []string {
+	return []string{"add_package", "name", "parallel_for", "log"}
+}
+
+func (fetcher *RepositoryFetcher) String() string {
+	name := fetcher.Func.Name()
+
+	var args []string
+	for _, arg := range fetcher.Args {
+		args = append(args, arg.String())
+	}
+
+	return fmt.Sprintf("%s(%s)", name, strings.Join(args, ", "))
+}
+func (*RepositoryFetcher) Type() string { return "RepositoryFetcher" }
+func (*RepositoryFetcher) Hash() (uint32, error) {
+	return 0, fmt.Errorf("RepositoryFetcher is not hashable")
+}
+func (*RepositoryFetcher) Truth() starlark.Bool { return starlark.True }
+func (*RepositoryFetcher) Freeze()              {}
+
+func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, key string, forceRefresh bool) error {
+	// Only allow a single thread to update a fetcher at the same time.
+	fetcher.updateMutex.Lock()
+	defer fetcher.updateMutex.Unlock()
+
+	// Reset package list.
+	fetcher.Packages = []*Package{}
+	fetcher.Architectures = nil
+	fetcher.Distributions = nil
+	fetcher.Messages = []logMessage{}
+
+	// Update Status
+	fetcher.LastUpdated = time.Now()
+	fetcher.Status = RepositoryFetcherStatusLoading
+
+	expireTime := 2 * time.Hour
+	if forceRefresh {
+		expireTime = 0
+	}
+
+	distributionIndex := map[string]bool{}
+	architectureIndex := map[string]bool{}
+
+	err := eif.CacheObjects(
+		key, int(PackageMetadataVersionCurrent), expireTime,
+		func(write func(obj any) error) error {
+			slog.Info("fetching", "fetcher", fetcher.String())
+
+			thread := &starlark.Thread{}
+
+			core.SetLogger(thread, fetcher)
+
+			_, err := starlark.Call(thread, fetcher.Func,
+				append(starlark.Tuple{fetcher}, fetcher.Args...),
+				[]starlark.Tuple{},
+			)
+			if err != nil {
+				if sErr, ok := err.(*starlark.EvalError); ok {
+					slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+				}
+				return fmt.Errorf("error calling user callback: %s", err)
+			}
+
+			for _, pkg := range fetcher.Packages {
+				if err := write(pkg); err != nil {
+					return fmt.Errorf("failed to write package: %s", err)
+				}
+			}
+
+			return nil
+		},
+		func(read func(obj any) error) error {
+			fetcher.Packages = []*Package{}
+
+			for {
+				pkg := NewPackage()
+
+				err := read(pkg)
+				if err == io.EOF {
+					return nil
+				} else if err != nil {
+					return err
+				} else {
+					fetcher.Packages = append(fetcher.Packages, pkg)
+
+					// Add to the distribution index.
+					distributionIndex[pkg.Name.Distribution] = true
+
+					// Add to the architecture index.
+					architectureIndex[pkg.Name.Architecture] = true
+				}
+			}
+		},
+	)
+	if err != nil {
+		fetcher.Status = RepositoryFetcherStatusError
+
+		return err
+	}
+
+	fetcher.Status = RepositoryFetcherStatusLoaded
+
+	fetcher.Architectures = architectureIndex
+	fetcher.Distributions = distributionIndex
+
+	fetcher.LastUpdateTime = time.Since(fetcher.LastUpdated)
+
+	return nil
+}
+
+var (
+	_ starlark.Value    = &RepositoryFetcher{}
+	_ starlark.HasAttrs = &RepositoryFetcher{}
+	_ core.Logger       = &RepositoryFetcher{}
+)
