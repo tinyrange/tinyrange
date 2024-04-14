@@ -147,28 +147,26 @@ func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				namespace    string
+				distribution string
 				name         string
 				version      string
-				distro       string
 				architecture string
 			)
 
 			if err := starlark.UnpackArgs("Repo.name", args, kwargs,
-				"namespace?", &namespace,
 				"name", &name,
 				"version?", &version,
-				"distro?", &distro,
+				"distribution?", &distribution,
 				"architecture?", &architecture,
 			); err != nil {
 				return starlark.None, err
 			}
 
-			if distro == "" {
-				distro = r.Distro
+			if distribution == "" {
+				distribution = r.Distro
 			}
 
-			return NewPackageName(distro, namespace, name, version, architecture)
+			return NewPackageName(distribution, name, version, architecture)
 		}), nil
 	} else if name == "parallel_for" {
 		return starlark.NewBuiltin("Repo.parallel_for", func(

@@ -20,7 +20,6 @@ func versionLessThan(a, b string) bool {
 
 type PackageName struct {
 	Distribution string
-	Namespace    string
 	Name         string
 	Version      string
 	Architecture string
@@ -62,20 +61,22 @@ func (name PackageName) Matches(query PackageName) bool {
 	return true
 }
 
+func (name PackageName) Path() []string {
+	return []string{name.Distribution, name.Name, name.Version, name.Architecture}
+}
+
 func (name PackageName) String() string {
-	return fmt.Sprintf("%s/%s:%s@%s:%s", name.Distribution, name.Namespace, name.Name, name.Version, name.Architecture)
+	return fmt.Sprintf("%s/%s@%s:%s", name.Distribution, name.Name, name.Version, name.Architecture)
 }
 
 func (name PackageName) ShortName() string {
-	return fmt.Sprintf("@/%s:%s", name.Namespace, name.Name)
+	return fmt.Sprintf("@/%s", name.Name)
 }
 
 // Attr implements starlark.HasAttrs.
 func (n PackageName) Attr(name string) (starlark.Value, error) {
 	if name == "distribution" {
 		return starlark.String(n.Distribution), nil
-	} else if name == "namespace" {
-		return starlark.String(n.Namespace), nil
 	} else if name == "name" {
 		return starlark.String(n.Name), nil
 	} else if name == "version" {
@@ -99,7 +100,7 @@ func (n PackageName) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return NewPackageName(n.Distribution, n.Namespace, n.Name, version, n.Architecture)
+			return NewPackageName(n.Distribution, n.Name, version, n.Architecture)
 		}), nil
 	} else {
 		return nil, nil
@@ -108,7 +109,7 @@ func (n PackageName) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (name PackageName) AttrNames() []string {
-	return []string{"distribution", "namespace", "name", "version", "architecture"}
+	return []string{"distribution", "name", "version", "architecture", "set_version"}
 }
 
 func (name PackageName) UrlParams() string {
@@ -130,10 +131,9 @@ var (
 	_ starlark.HasAttrs = PackageName{}
 )
 
-func NewPackageName(distribution, namespace, name, version, architecture string) (PackageName, error) {
+func NewPackageName(distribution, name, version, architecture string) (PackageName, error) {
 	return PackageName{
 		Distribution: distribution,
-		Namespace:    namespace,
 		Name:         name,
 		Version:      version,
 		Architecture: architecture,
@@ -143,9 +143,9 @@ func NewPackageName(distribution, namespace, name, version, architecture string)
 func ParsePackageName(s string) (PackageName, error) {
 	if strings.Contains(s, "/") {
 		distribution, name, _ := strings.Cut(s, "/")
-		return NewPackageName(distribution, "", name, "", "")
+		return NewPackageName(distribution, name, "", "")
 	} else {
-		return NewPackageName("", "", s, "", "")
+		return NewPackageName("", s, "", "")
 	}
 }
 

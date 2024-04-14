@@ -51,7 +51,6 @@ func (s *SearchProvider) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				namespace    string
 				name         string
 				version      string
 				distro       string
@@ -59,7 +58,6 @@ func (s *SearchProvider) Attr(name string) (starlark.Value, error) {
 			)
 
 			if err := starlark.UnpackArgs("Search.name", args, kwargs,
-				"namespace?", &namespace,
 				"name", &name,
 				"version?", &version,
 				"distro?", &distro,
@@ -72,7 +70,7 @@ func (s *SearchProvider) Attr(name string) (starlark.Value, error) {
 				distro = s.Distribution
 			}
 
-			return NewPackageName(distro, namespace, name, version, architecture)
+			return NewPackageName(distro, name, version, architecture)
 		}), nil
 	} else {
 		return nil, nil

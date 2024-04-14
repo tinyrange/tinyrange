@@ -53,11 +53,7 @@ def parse_apk_name(ctx, s):
         version = ">" + version
     else:
         pkg, version = split_maybe(s, "=", 2)
-    if ":" in pkg:
-        namespace, pkg = pkg.split(":", 1)
-        return ctx.name(namespace = namespace, name = pkg, version = version)
-    else:
-        return ctx.name(name = pkg, version = version)
+    return ctx.name(name = pkg, version = version)
 
 def fetch_alpine_repository(ctx, url, repo):
     resp = fetch_http(url + "/APKINDEX.tar.gz")
