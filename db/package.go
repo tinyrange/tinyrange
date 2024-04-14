@@ -62,7 +62,12 @@ func (name PackageName) Matches(query PackageName) bool {
 }
 
 func (name PackageName) Path() []string {
-	return []string{name.Distribution, name.Name, name.Version, name.Architecture}
+	distributionName, distributionVersion, ok := strings.Cut(name.Distribution, "@")
+	if !ok {
+		distributionVersion = "latest"
+	}
+
+	return []string{name.Name, name.Version, distributionName, distributionVersion, name.Architecture}
 }
 
 func (name PackageName) String() string {

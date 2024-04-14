@@ -1,7 +1,9 @@
 package db
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/gob"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/pkg2/core"
+	"go.etcd.io/bbolt"
 	"go.starlark.net/starlark"
 )
 
@@ -375,6 +378,34 @@ func (fetcher *RepositoryFetcher) fetchWithKey(eif *core.EnvironmentInterface, k
 		fetcher.Status = RepositoryFetcherStatusError
 
 		return err
+	}
+
+	if fetcher.db.db != nil {
+		fetcher.db.db.Batch(func(tx *bbolt.Tx) error {
+			bkt, err := tx.CreateBucketIfNotExists([]byte("PACKAGES"))
+			if err != nil {
+				return err
+			}
+
+			for _, pkg := range fetcher.Packages {
+				var buf bytes.Buffer
+
+				enc := gob.NewEncoder(&buf)
+
+				err := enc.Encode(pkg)
+				if err != nil {
+					return err
+				}
+
+				pkgKey := strings.Join(pkg.Name.Path(), "/")
+
+				if err := bkt.Put([]byte(pkgKey), buf.Bytes()); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
 	}
 
 	fetcher.Status = RepositoryFetcherStatusLoaded

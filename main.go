@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -26,6 +27,8 @@ var (
 	cacheDir          = flag.String("cacheDir", "local/cache", "specify the cache dir to use")
 	packageBase       = flag.String("packageBase", "", "the base directory to resolve packages from")
 	test              = flag.Bool("test", false, "just fetch all repos")
+	printPaths        = flag.Bool("paths", false, "print all package paths")
+	database          = flag.String("database", "", "create a BoltDB database")
 )
 
 func main() {
@@ -45,6 +48,14 @@ func main() {
 		ForceRefresh: *forceRefresh,
 		NoParallel:   *noParallel,
 		PackageBase:  *packageBase,
+	}
+
+	if *database != "" {
+		closer, err := pkgDb.OpenDatabase(*database)
+		if err != nil {
+			log.Fatal("failed to open database: ", err)
+		}
+		defer closer.Close()
 	}
 
 	for _, name := range names {
@@ -139,6 +150,12 @@ func main() {
 		}
 
 		slog.Info("finished loading all repositories", "took", time.Since(start), "packages", pkgDb.Count())
+
+		if *printPaths {
+			for _, name := range pkgDb.AllNames() {
+				fmt.Printf("%s\n", filepath.Join(append([]string{"local", "packages"}, name.Path()...)...))
+			}
+		}
 	} else {
 		pkgDb.StartAutoRefresh(2, 2*time.Hour, *forceRefresh)
 

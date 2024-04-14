@@ -17,6 +17,7 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/pkg2/core"
 	"github.com/tinyrange/pkg2/third_party/regexp"
+	bolt "go.etcd.io/bbolt"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -35,6 +36,7 @@ type PackageDatabase struct {
 	ForceRefresh    bool
 	NoParallel      bool
 	PackageBase     string
+	db              *bolt.DB
 }
 
 func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Function, args starlark.Tuple) error {
@@ -867,6 +869,18 @@ func (db *PackageDatabase) WriteNames(w io.Writer) error {
 	return nil
 }
 
+func (db *PackageDatabase) AllNames() []PackageName {
+	var ret []PackageName
+
+	for _, fetcher := range db.Fetchers {
+		for _, pkg := range fetcher.Packages {
+			ret = append(ret, pkg.Name)
+		}
+	}
+
+	return ret
+}
+
 func (db *PackageDatabase) DistributionList() []string {
 	set := map[string]bool{"": true}
 
@@ -907,4 +921,15 @@ func (db *PackageDatabase) ArchitectureList() []string {
 	}
 	slices.Sort(ret)
 	return ret
+}
+
+func (db *PackageDatabase) OpenDatabase(filename string) (io.Closer, error) {
+	var err error
+
+	db.db, err = bolt.Open(filename, os.FileMode(0755), bolt.DefaultOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	return db.db, nil
 }

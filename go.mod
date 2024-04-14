@@ -44,6 +44,7 @@ require (
 	github.com/skeema/knownhosts v1.2.1 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
+	go.etcd.io/bbolt v1.3.9 // indirect
 	golang.org/x/crypto v0.21.0 // indirect
 	golang.org/x/mod v0.16.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
