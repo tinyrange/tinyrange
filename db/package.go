@@ -99,13 +99,7 @@ func (n PackageName) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return PackageName{
-				Distribution: n.Distribution,
-				Namespace:    n.Namespace,
-				Name:         n.Name,
-				Version:      version,
-				Architecture: n.Architecture,
-			}, nil
+			return NewPackageName(n.Distribution, n.Namespace, n.Name, version, n.Architecture)
 		}), nil
 	} else {
 		return nil, nil
@@ -136,12 +130,22 @@ var (
 	_ starlark.HasAttrs = PackageName{}
 )
 
+func NewPackageName(distribution, namespace, name, version, architecture string) (PackageName, error) {
+	return PackageName{
+		Distribution: distribution,
+		Namespace:    namespace,
+		Name:         name,
+		Version:      version,
+		Architecture: architecture,
+	}, nil
+}
+
 func ParsePackageName(s string) (PackageName, error) {
 	if strings.Contains(s, "/") {
-		distro, name, _ := strings.Cut(s, "/")
-		return PackageName{Distribution: distro, Name: name}, nil
+		distribution, name, _ := strings.Cut(s, "/")
+		return NewPackageName(distribution, "", name, "", "")
 	} else {
-		return PackageName{Name: s}, nil
+		return NewPackageName("", "", s, "", "")
 	}
 }
 

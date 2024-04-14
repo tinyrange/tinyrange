@@ -86,16 +86,15 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 
 		r.ParseForm()
 
-		distro := strings.Trim(r.FormValue("distribution"), " \t")
+		distribution := strings.Trim(r.FormValue("distribution"), " \t")
 		name := strings.Trim(r.FormValue("name"), " \t")
 		version := strings.Trim(r.FormValue("version"), " \t")
 		architecture := strings.Trim(r.FormValue("architecture"), " \t")
 
-		search := db.PackageName{
-			Distribution: distro,
-			Name:         name,
-			Version:      version,
-			Architecture: architecture,
+		search, err := db.NewPackageName(distribution, "", name, version, architecture)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 
 		results, err := pkgDb.Search(search, 50)

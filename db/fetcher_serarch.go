@@ -72,13 +72,7 @@ func (s *SearchProvider) Attr(name string) (starlark.Value, error) {
 				distro = s.Distribution
 			}
 
-			return PackageName{
-				Distribution: distro,
-				Namespace:    namespace,
-				Name:         name,
-				Version:      version,
-				Architecture: architecture,
-			}, nil
+			return NewPackageName(distro, namespace, name, version, architecture)
 		}), nil
 	} else {
 		return nil, nil
