@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -168,6 +169,20 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 			})
 		}
 
+		var builders htm.Group
+		for _, builder := range pkg.Builders {
+			contents, err := json.MarshalIndent(builder, "", "  ")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			builders = append(builders, bootstrap.Card(
+				bootstrap.CardTitle("Builder: "+builder.Name.String()),
+				html.Code(html.Pre(html.Text(string(contents)))),
+			))
+		}
+
 		page := pageTemplate(pkgDb, pkg.Name, start,
 			bootstrap.Card(
 				html.H4(html.Textf("%s @ %s", pkg.Name.Name, pkg.Name.Version)),
@@ -199,6 +214,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 					html.Textf("Architecture"),
 				}, aliasList),
 			),
+			builders,
 		)
 
 		if err := htm.Render(r.Context(), w, page); err != nil {

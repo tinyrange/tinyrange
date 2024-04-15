@@ -114,7 +114,11 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				return starlark.None, err
 			}
 
-			return &StarFile{f: f, name: url}, nil
+			return &StarFile{source: DownloadSource{
+				Kind:   "Download",
+				Url:    url,
+				Accept: accept,
+			}, f: f, name: url}, nil
 		}),
 		"fetch_git": starlark.NewBuiltin("fetch_git", func(
 			thread *starlark.Thread,
@@ -395,7 +399,10 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				return starlark.None, err
 			}
 
-			return &StarFile{f: f}, nil
+			return &StarFile{source: LocalFileSource{
+				Kind:     "LocalFile",
+				Filename: filename,
+			}, f: f, name: filename}, nil
 		}),
 		"mutex": starlark.NewBuiltin("mutex", func(
 			thread *starlark.Thread,
@@ -433,6 +440,48 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 					seconds*int64(time.Second) +
 					milliseconds*int64(time.Millisecond),
 			), nil
+		}),
+		"builder": starlark.NewBuiltin("duration", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				name PackageName
+			)
+
+			if err := starlark.UnpackArgs("duration", args, kwargs,
+				"name", &name,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return NewBuilder(name), nil
+		}),
+		"name": starlark.NewBuiltin("name", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				distribution string
+				name         string
+				version      string
+				architecture string
+			)
+
+			if err := starlark.UnpackArgs("name", args, kwargs,
+				"name", &name,
+				"version?", &version,
+				"distribution?", &distribution,
+				"architecture?", &architecture,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return NewPackageName(distribution, name, version, architecture)
 		}),
 		"error": starlark.NewBuiltin("error", func(
 			thread *starlark.Thread,
