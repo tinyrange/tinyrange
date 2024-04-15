@@ -2,56 +2,34 @@
 Conda Package Fetcher
 """
 
-def opt(d, key, default = ""):
-    if key in d:
-        if d[key] != None:
-            return d[key]
-    return default
+load("common/common.star", "opt", "split_maybe")
 
-def split_maybe(s, split, count, default = ""):
-    ret = []
-
-    if s != None:
-        tokens = s.split(split, count - 1)
-        for tk in tokens:
-            ret.append(tk)
-        for _ in range(count - len(tokens)):
-            ret.append(default)
-    else:
-        for _ in range(count):
-            ret.append(default)
-
-    return ret
-
-def parse_conda_name(ctx, name, arch, distro):
+def parse_conda_name(ctx, name, arch):
     name, version = split_maybe(name, " ", 2)
-    return ctx.name(name = name, version = version, architecture = arch, distro = distro)
+    return ctx.name(name = name, version = version, architecture = arch)
 
-def fetch_conda_repository(ctx, url):
-    resp = fetch_http(url + "repodata.json")
+def fetch_conda_repository(ctx, url, architecture):
+    resp = fetch_http(url + "repodata.json.bz2").read_compressed(".bz2")
 
     data = json.decode(resp.read())
 
     for filename in data["packages"]:
         ent = data["packages"][filename]
 
-        distro = "conda@{}".format(ent["build"])
+        # distro = "conda@{}".format(ent["build"])
 
         pkg = ctx.add_package(ctx.name(
             name = ent["name"],
             version = ent["version"],
-            architecture = "x86_64",
-            distro = distro,
+            architecture = architecture,
         ))
 
         pkg.set_license(opt(ent, "license"))
 
         for depend in ent["depends"]:
-            pkg.add_dependency(parse_conda_name(ctx, depend, "x86_64", distro))
+            pkg.add_dependency(parse_conda_name(ctx, depend, architecture))
 
-    for filename in data["packages.conda"]:
-        pkg = data["packages.conda"][filename]
-        break
-
-fetch_repo(fetch_conda_repository, ("https://repo.anaconda.com/pkgs/main/linux-64/",), distro = "conda")
-# fetch_repo(fetch_conda_repository, ("https://conda-static.anaconda.org/conda-forge/linux-64/",), distro = "conda")
+    if "packages.conda" in data:
+        for filename in data["packages.conda"]:
+            pkg = data["packages.conda"][filename]
+            break

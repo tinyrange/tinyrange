@@ -183,7 +183,7 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 
 	Log(options.Logger, fmt.Sprintf("downloading %s", url))
 
-	if resp.ContentLength < 100000 {
+	if resp.ContentLength != -1 && resp.ContentLength < 100000 {
 		// Don't display the progress bar for downloads under 100k
 	} else {
 		pb := progressbar.DefaultBytes(resp.ContentLength, fmt.Sprintf("downloading %s", url))

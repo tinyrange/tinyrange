@@ -1,6 +1,7 @@
 package db
 
 import (
+	"compress/bzip2"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -17,8 +18,9 @@ type File interface {
 }
 
 type StarFile struct {
-	f    File
-	name string
+	source FileSource
+	f      File
+	name   string
 }
 
 // Attr implements starlark.HasAttrs.
@@ -45,21 +47,28 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				ext string
+				ext             string
+				stripComponents int
 			)
 
 			if err := starlark.UnpackArgs("File.read_archive", args, kwargs,
 				"ext", &ext,
+				"strip_components?", &stripComponents,
 			); err != nil {
 				return starlark.None, err
 			}
 
-			reader, err := ReadArchive(f.f, ext)
+			reader, err := ReadArchive(f.f, ext, stripComponents)
 			if err != nil {
 				return starlark.None, fmt.Errorf("failed to read archive: %s", err)
 			}
 
-			return &StarArchive{r: reader}, nil
+			return &StarArchive{source: ExtractArchiveSource{
+				Kind:            "ExtractArchive",
+				Source:          f.source,
+				Extension:       ext,
+				StripComponents: stripComponents,
+			}, r: reader, name: f.name}, nil
 		}), nil
 	} else if name == "read_compressed" {
 		return starlark.NewBuiltin("File.read_compressed", func(
@@ -83,13 +92,28 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 				if err != nil {
 					return nil, fmt.Errorf("failed to read compressed")
 				}
-				return &StarFile{f: r, name: strings.TrimSuffix(f.name, ext)}, nil
+				return &StarFile{source: DecompressSource{
+					Kind:      "Decompress",
+					Source:    f.source,
+					Extension: ".gz",
+				}, f: r, name: strings.TrimSuffix(f.name, ext)}, nil
+			} else if strings.HasSuffix(ext, ".bz2") {
+				r := bzip2.NewReader(f.f)
+				return &StarFile{source: DecompressSource{
+					Kind:      "Decompress",
+					Source:    f.source,
+					Extension: ".bz2",
+				}, f: r, name: strings.TrimSuffix(f.name, ext)}, nil
 			} else if strings.HasSuffix(ext, ".zst") {
 				r, err := zstd.NewReader(f.f)
 				if err != nil {
 					return nil, fmt.Errorf("failed to read compressed")
 				}
-				return &StarFile{f: r, name: strings.TrimSuffix(f.name, ext)}, nil
+				return &StarFile{source: DecompressSource{
+					Kind:      "Decompress",
+					Source:    f.source,
+					Extension: ".zst",
+				}, f: r, name: strings.TrimSuffix(f.name, ext)}, nil
 			} else {
 				return starlark.None, fmt.Errorf("unsupported extension: %s", ext)
 			}
@@ -159,7 +183,9 @@ var (
 )
 
 type StarArchive struct {
-	r memtar.TarReader
+	source FileSource
+	r      memtar.TarReader
+	name   string
 }
 
 // Get implements starlark.Mapping.
@@ -180,7 +206,7 @@ func (ar *StarArchive) Iterate() starlark.Iterator {
 	return &StarArchiveIterator{ents: ar.r.Entries()}
 }
 
-func (*StarArchive) String() string        { return "StarArchive" }
+func (f *StarArchive) String() string      { return fmt.Sprintf("Archive{%s}", f.name) }
 func (*StarArchive) Type() string          { return "StarArchive" }
 func (*StarArchive) Hash() (uint32, error) { return 0, fmt.Errorf("StarArchive is not hashable") }
 func (*StarArchive) Truth() starlark.Bool  { return starlark.True }

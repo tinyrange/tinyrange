@@ -11,7 +11,40 @@ import (
 	"github.com/xi2/xz"
 )
 
-func ReadArchive(r io.Reader, ext string) (memtar.TarReader, error) {
+type entryList []memtar.Entry
+
+// Entries implements memtar.TarReader.
+func (e entryList) Entries() []memtar.Entry { return e }
+
+var (
+	_ memtar.TarReader = &entryList{}
+)
+
+type modifiedEntry struct {
+	memtar.Entry
+	filename string
+}
+
+func (ent modifiedEntry) Filename() string {
+	return ent.filename
+}
+
+func stripTarComponents(archive memtar.TarReader, count int) (memtar.TarReader, error) {
+	var ret entryList
+
+	for _, ent := range archive.Entries() {
+		name := ent.Filename()
+		components := strings.Split(name, "/")
+		if len(components) <= count {
+			continue
+		}
+		ret = append(ret, &modifiedEntry{Entry: ent, filename: strings.Join(components[count:], "/")})
+	}
+
+	return ret, nil
+}
+
+func ReadArchive(r io.Reader, ext string, stripComponents int) (memtar.TarReader, error) {
 	var (
 		reader io.Reader
 		err    error
@@ -47,7 +80,11 @@ func ReadArchive(r io.Reader, ext string) (memtar.TarReader, error) {
 			return nil, err
 		}
 
-		return t, nil
+		if stripComponents != 0 {
+			return stripTarComponents(t, stripComponents)
+		} else {
+			return t, nil
+		}
 	} else {
 		return nil, fmt.Errorf("unknown extension: %s", ext)
 	}

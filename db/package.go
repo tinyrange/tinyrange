@@ -193,6 +193,7 @@ type Package struct {
 	Depends         [][]PackageName
 	Aliases         []PackageName
 	BuildScripts    []BuildScript
+	Builders        []*Builder
 }
 
 func (pkg *Package) Encode(w io.Writer) error {
@@ -466,6 +467,27 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
+	} else if name == "add_builder" {
+		return starlark.NewBuiltin("Package.add_builder", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				builder *Builder
+			)
+
+			if err := starlark.UnpackArgs("Package.add_builder", args, kwargs,
+				"builder", &builder,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			pkg.Builders = append(pkg.Builders, builder)
+
+			return starlark.None, nil
+		}), nil
 	} else if name == "name" {
 		return starlark.String(pkg.Name.Name), nil
 	} else if name == "version" {
@@ -488,6 +510,8 @@ func (*Package) AttrNames() []string {
 		"add_metadata",
 		"add_dependency",
 		"add_alias",
+		"add_build_script",
+		"add_builder",
 		"name",
 		"version",
 		"arch",
