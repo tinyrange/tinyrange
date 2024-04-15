@@ -1,17 +1,21 @@
 package core
 
-import "go.starlark.net/starlark"
+import (
+	"go.starlark.net/starlark"
+)
 
 type Logger interface {
 	Log(message string)
+	Count(message string)
 }
 
 type nilLogger struct{}
 
-// Log implements Logger.
-func (n *nilLogger) Log(message string) {
+// Count implements Logger.
+func (n *nilLogger) Count(message string) {}
 
-}
+// Log implements Logger.
+func (n *nilLogger) Log(message string) {}
 
 var (
 	_ Logger = &nilLogger{}

@@ -18,6 +18,22 @@ func versionLessThan(a, b string) bool {
 	return true
 }
 
+type CPUArchitecture string
+
+const (
+	ArchInvalid CPUArchitecture = ""
+	ArchAArch64 CPUArchitecture = "aarch64"
+	ArchArmHF   CPUArchitecture = "armhf"
+	ArchArmV7   CPUArchitecture = "armv7"
+	ArchMips64  CPUArchitecture = "mips64"
+	ArchPPC64LE CPUArchitecture = "ppc64le"
+	ArchRiscV64 CPUArchitecture = "riscv64"
+	ArchS390X   CPUArchitecture = "s390x"
+	ArchX86     CPUArchitecture = "x86"
+	ArchX86_64  CPUArchitecture = "x86_64"
+	ArchAny     CPUArchitecture = "any"
+)
+
 type PackageName struct {
 	Distribution string
 	Name         string

@@ -24,10 +24,14 @@ def fetch_rpm_repostiory(ctx, url):
     ).read_compressed(primary_url).read_rpm_xml()
 
     for ent in primary:
+        arch = ent["Arch"]
+        if arch == "noarch":
+            arch = "any"
+
         pkg = ctx.add_package(ctx.name(
             name = ent["Name"],
             version = ent["Version"]["Ver"],
-            architecture = ent["Arch"],
+            architecture = arch,
         ))
 
         if "Description" in ent:

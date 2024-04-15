@@ -55,19 +55,26 @@ func (m logMessage) String() string {
 }
 
 type RepositoryFetcher struct {
-	db              *PackageDatabase
-	Packages        []*Package
-	addPackageMutex sync.Mutex
-	Distributions   map[string]bool
-	Architectures   map[string]bool
-	Distro          string
-	Func            *starlark.Function
-	Args            starlark.Tuple
-	Status          RepositoryFetcherStatus
-	updateMutex     sync.Mutex
-	LastUpdateTime  time.Duration
-	LastUpdated     time.Time
-	Messages        []logMessage
+	db                 *PackageDatabase
+	Packages           []*Package
+	addPackageMutex    sync.Mutex
+	Distributions      map[string]bool
+	Architectures      map[string]bool
+	Distro             string
+	Func               *starlark.Function
+	Args               starlark.Tuple
+	Status             RepositoryFetcherStatus
+	updateMutex        sync.Mutex
+	LastUpdateTime     time.Duration
+	LastUpdated        time.Time
+	Messages           []logMessage
+	Counter            core.Counter
+	validArchitectures map[CPUArchitecture]bool
+}
+
+// Count implements core.Logger.
+func (r *RepositoryFetcher) Count(message string) {
+	r.Counter.Add(message)
 }
 
 // Log implements Logger.
@@ -114,6 +121,26 @@ func (r *RepositoryFetcher) Key() string {
 func (r *RepositoryFetcher) addPackage(name PackageName) starlark.Value {
 	r.addPackageMutex.Lock()
 	defer r.addPackageMutex.Unlock()
+
+	if r.validArchitectures == nil {
+		r.validArchitectures = map[CPUArchitecture]bool{
+			ArchInvalid: true,
+			ArchAArch64: true,
+			ArchArmHF:   true,
+			ArchArmV7:   true,
+			ArchMips64:  true,
+			ArchPPC64LE: true,
+			ArchRiscV64: true,
+			ArchS390X:   true,
+			ArchX86:     true,
+			ArchX86_64:  true,
+			ArchAny:     true,
+		}
+	}
+
+	if _, ok := r.validArchitectures[CPUArchitecture(name.Architecture)]; !ok {
+		r.Count(fmt.Sprintf("invalid architecture: %s", name.Architecture))
+	}
 
 	pkg := NewPackage()
 	pkg.Name = name

@@ -24,6 +24,18 @@ def parse_xbps_name(ctx, name):
     else:
         return error("could not parse: " + name)
 
+xbps_architectures = {
+    "x86_64-musl": "x86_64",
+    "x86_64": "x86_64",
+    "noarch": "any",
+}
+
+def get_xbps_architecture(arch):
+    if arch in xbps_architectures:
+        return xbps_architectures[arch]
+    else:
+        return arch
+
 def fetch_xbps_repository(ctx, url, arch):
     repodata_url = "{}/{}-repodata".format(url, arch)
 
@@ -38,7 +50,7 @@ def fetch_xbps_repository(ctx, url, arch):
         pkg = ctx.add_package(ctx.name(
             name = name,
             version = version,
-            architecture = ent["architecture"],
+            architecture = get_xbps_architecture(ent["architecture"]),
         ))
         pkg.set_license(ent["license"])
         pkg.set_description(ent["short_desc"])

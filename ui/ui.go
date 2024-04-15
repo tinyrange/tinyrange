@@ -251,6 +251,10 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 					html.Pre(html.Code(html.Text(strings.Join(logMessages, "\n")))),
 				),
 				bootstrap.Card(
+					bootstrap.CardTitle("Counts"),
+					html.Pre(html.Code(html.Text(fetcher.Counter.String()))),
+				),
+				bootstrap.Card(
 					bootstrap.CardTitle("Packages (First 100)"),
 					bootstrap.Table(htm.Group{
 						html.Textf("Distribution"),

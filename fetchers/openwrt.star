@@ -46,6 +46,17 @@ def parse_openwrt_name(ctx, name, arch):
 
         return ctx.name(name = name, version = version, architecture = arch)
 
+openwrt_architectures = {
+    "x86_64": "x86_64",
+    "all": "any",
+}
+
+def get_openwrt_architecture(arch):
+    if arch in openwrt_architectures:
+        return openwrt_architectures[arch]
+    else:
+        return arch
+
 def fetch_openwrt_repostiory(ctx, url):
     packages_url = url + "Packages.gz"
     packages_contents = fetch_http(packages_url).read_compressed(packages_url)
@@ -56,7 +67,7 @@ def fetch_openwrt_repostiory(ctx, url):
         pkg = ctx.add_package(ctx.name(
             name = info["package"],
             version = info["version"],
-            architecture = info["architecture"],
+            architecture = get_openwrt_architecture(info["architecture"]),
         ))
         if "description" in info:
             pkg.set_description(info["description"])

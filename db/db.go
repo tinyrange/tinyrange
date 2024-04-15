@@ -41,10 +41,11 @@ type PackageDatabase struct {
 
 func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Function, args starlark.Tuple) error {
 	db.Fetchers = append(db.Fetchers, &RepositoryFetcher{
-		db:     db,
-		Distro: distro,
-		Func:   f,
-		Args:   args,
+		db:      db,
+		Distro:  distro,
+		Func:    f,
+		Args:    args,
+		Counter: core.NewCounter(),
 	})
 
 	return nil

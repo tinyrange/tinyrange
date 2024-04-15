@@ -30,6 +30,17 @@ def parse_debian_index(contents):
 
     return ret
 
+debian_architectures = {
+    "amd64": "x86_64",
+    "all": "any",
+}
+
+def get_debian_architecture(arch):
+    if arch in debian_architectures:
+        return debian_architectures[arch]
+    else:
+        return arch
+
 def parse_debian_name(ctx, name, arch):
     options = name.split(" | ")
     if len(options) > 1:
@@ -44,7 +55,7 @@ def parse_debian_name(ctx, name, arch):
         if ":" in name:
             name, arch = name.split(":", 1)
 
-        return ctx.name(name = name, version = version, architecture = arch)
+        return ctx.name(name = name, version = version, architecture = get_debian_architecture(arch))
 
 def fetch_debian_repository(ctx, base, fallback, url):
     packages_url = "{}/{}/Packages.gz".format(base, url)
@@ -67,7 +78,7 @@ def fetch_debian_repository(ctx, base, fallback, url):
         pkg = ctx.add_package(ctx.name(
             name = ent["package"],
             version = ent["version"],
-            architecture = ent["architecture"],
+            architecture = get_debian_architecture(ent["architecture"]),
         ))
 
         pkg.set_description(opt(ent, "description"))
