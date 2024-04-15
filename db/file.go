@@ -1,6 +1,7 @@
 package db
 
 import (
+	"compress/bzip2"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -95,6 +96,13 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 					Kind:      "Decompress",
 					Source:    f.source,
 					Extension: ".gz",
+				}, f: r, name: strings.TrimSuffix(f.name, ext)}, nil
+			} else if strings.HasSuffix(ext, ".bz2") {
+				r := bzip2.NewReader(f.f)
+				return &StarFile{source: DecompressSource{
+					Kind:      "Decompress",
+					Source:    f.source,
+					Extension: ".bz2",
 				}, f: r, name: strings.TrimSuffix(f.name, ext)}, nil
 			} else if strings.HasSuffix(ext, ".zst") {
 				r, err := zstd.NewReader(f.f)
