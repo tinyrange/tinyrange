@@ -2,26 +2,7 @@
 Conda Package Fetcher
 """
 
-def opt(d, key, default = ""):
-    if key in d:
-        if d[key] != None:
-            return d[key]
-    return default
-
-def split_maybe(s, split, count, default = ""):
-    ret = []
-
-    if s != None:
-        tokens = s.split(split, count - 1)
-        for tk in tokens:
-            ret.append(tk)
-        for _ in range(count - len(tokens)):
-            ret.append(default)
-    else:
-        for _ in range(count):
-            ret.append(default)
-
-    return ret
+load("common/common.star", "opt", "split_maybe")
 
 def parse_conda_name(ctx, name, arch):
     name, version = split_maybe(name, " ", 2)

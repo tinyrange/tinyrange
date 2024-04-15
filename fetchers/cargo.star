@@ -2,9 +2,7 @@
 Support for fetching cargo packages with pkg2.
 """
 
-repo = fetch_git("https://github.com/rust-lang/crates.io-index")
-
-repo_master = repo.branch("master")
+load("common/fetch.star", "fetch_github_archive")
 
 def parse_cargo_version(v):
     major, minor, revision = v.split(".", 2)
@@ -85,6 +83,9 @@ def parse_index_file(ctx, name, file):
 
     lines = [json.decode(line) for line in contents.splitlines()]
 
+    if len(lines) == 0:
+        return None
+
     if name.version == "":
         name = name.set_version(lines[len(lines) - 1]["vers"])
 
@@ -118,18 +119,16 @@ def parse_index_file(ctx, name, file):
 
     return name
 
-def search_provider_cargo(ctx, name):
-    if name.name == "core" or name.name == "alloc" or name.name == "std":
-        ctx.add_package(name)
-        return name
+def fetch_cargo_repository(ctx):
+    repo = fetch_github_archive("rust-lang", "crates.io-index", ref = "master")
 
-    if len(name.name) == 1:
-        return parse_index_file(ctx, name, repo_master["1/" + name.name])
-    elif len(name.name) == 2:
-        return parse_index_file(ctx, name, repo_master["2/" + name.name])
-    elif len(name.name) == 3:
-        return parse_index_file(ctx, name, repo_master["3/" + name.name[0] + "/" + name.name])
-    else:
-        return parse_index_file(ctx, name, repo_master[name.name[:2] + "/" + name.name[2:4] + "/" + name.name])
+    for file in repo:
+        if file.name.startswith(".github") or file.name == "config.json":
+            continue
+        if type(file) != "File":
+            continue
+        filename = file.name.rpartition("/")[2]
+        parse_index_file(ctx, ctx.name(name = filename), file)
 
-register_search_provider("rust", search_provider_cargo, ())
+if __name__ == "__main__":
+    fetch_repo(fetch_cargo_repository, (), distro = "cargo")
