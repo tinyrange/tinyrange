@@ -217,23 +217,16 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 
 			return starlark.None, nil
 		}),
-		"eval_shell": starlark.NewBuiltin("eval_shell", func(
+		"shell_context": starlark.NewBuiltin("shell_context", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
-			var (
-				contents string
-			)
-
-			if err := starlark.UnpackArgs("eval_shell", args, kwargs,
-				"contents", &contents,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			return parseShell(contents)
+			return &ShellContext{
+				out:      starlark.NewDict(32),
+				commands: make(map[string]*shellCommand),
+			}, nil
 		}),
 		"parse_yaml": starlark.NewBuiltin("parse_yaml", func(
 			thread *starlark.Thread,

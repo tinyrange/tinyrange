@@ -42,7 +42,7 @@ def fetch_arch_build_script(ctx, name, version):
     commit = repo.tag(version)
     pkgbuild = commit["PKGBUILD"].read()
 
-    build_script = eval_shell(pkgbuild)
+    build_script = shell_context().eval(pkgbuild)
 
     return build_script
 
