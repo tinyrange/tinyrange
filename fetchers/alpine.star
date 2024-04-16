@@ -74,7 +74,7 @@ def fetch_alpine_build_script(ctx, url, commit, file):
     tree = repo[commit]
     build_script = tree[file].read()
 
-    script_vars = parse_shell(build_script)
+    script_vars = eval_shell(build_script)
 
     sources = script_vars["source"].split("\n")
 

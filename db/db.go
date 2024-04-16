@@ -217,7 +217,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 
 			return starlark.None, nil
 		}),
-		"parse_shell": starlark.NewBuiltin("parse_shell", func(
+		"eval_shell": starlark.NewBuiltin("eval_shell", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
 			args starlark.Tuple,
@@ -227,7 +227,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				contents string
 			)
 
-			if err := starlark.UnpackArgs("parse_shell", args, kwargs,
+			if err := starlark.UnpackArgs("eval_shell", args, kwargs,
 				"contents", &contents,
 			); err != nil {
 				return starlark.None, err

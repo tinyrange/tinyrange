@@ -3,6 +3,7 @@ package db
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"go.starlark.net/starlark"
@@ -36,6 +37,12 @@ func (p *shellParser) evaluatePart(part syntax.WordPart) (string, error) {
 			return "", err
 		}
 		return param, nil
+	case *syntax.SglQuoted:
+		if part.Dollar {
+			return "", fmt.Errorf("single quotes with dollar not implemented")
+		} else {
+			return part.Value, nil
+		}
 	case *syntax.DblQuoted:
 		var ret []string
 
@@ -51,6 +58,19 @@ func (p *shellParser) evaluatePart(part syntax.WordPart) (string, error) {
 		}
 
 		// ret = append(ret, "\"")
+
+		return strings.Join(ret, ""), nil
+	case *syntax.CmdSubst:
+		var ret []string
+
+		for _, stmt := range part.Stmts {
+			out, err := p.visitStmt(stmt, "")
+			if err != nil {
+				return "", err
+			}
+
+			ret = append(ret, out)
+		}
 
 		return strings.Join(ret, ""), nil
 	default:
@@ -73,30 +93,87 @@ func (p *shellParser) evaluateWord(word *syntax.Word) (string, error) {
 	return strings.Join(ret, ""), nil
 }
 
-func (p *shellParser) visitStmt(stmt *syntax.Stmt) error {
+func (p *shellParser) visitStmt(stmt *syntax.Stmt, stdin string) (string, error) {
 	switch cmd := stmt.Cmd.(type) {
 	case *syntax.CallExpr:
-		for _, assign := range cmd.Assigns {
-			k := assign.Name.Value
-
-			if assign.Value != nil {
-				val, err := p.evaluateWord(assign.Value)
+		if len(cmd.Assigns) == 0 {
+			var args []string
+			for _, arg := range cmd.Args {
+				val, err := p.evaluateWord(arg)
 				if err != nil {
-					return err
+					return "", err
 				}
+				args = append(args, val)
+			}
 
-				if err := p.out.SetKey(starlark.String(k), starlark.String(val)); err != nil {
-					return err
+			slog.Info("call", "args", args)
+
+			return "", nil
+		} else {
+			for _, assign := range cmd.Assigns {
+				k := assign.Name.Value
+
+				if assign.Value != nil {
+					val, err := p.evaluateWord(assign.Value)
+					if err != nil {
+						return "", err
+					}
+
+					if err := p.out.SetKey(starlark.String(k), starlark.String(val)); err != nil {
+						return "", err
+					}
 				}
 			}
+
+			return "", nil
 		}
 	case *syntax.FuncDecl:
+		return "", fmt.Errorf("FuncDecl not implemented")
 	case *syntax.IfClause:
-	default:
-		return fmt.Errorf("statement %T not implemented", cmd)
-	}
+		// TODO(joshua): Implement ifclause.
+		return "", nil
+	case *syntax.DeclClause:
+		switch cmd.Variant.Value {
+		case "export":
+			for _, assign := range cmd.Args {
+				k := assign.Name.Value
 
-	return nil
+				if assign.Value != nil {
+					val, err := p.evaluateWord(assign.Value)
+					if err != nil {
+						return "", err
+					}
+
+					if err := p.out.SetKey(starlark.String(k), starlark.String(val)); err != nil {
+						return "", err
+					}
+				}
+			}
+
+			return "", nil
+		default:
+			return "", fmt.Errorf("DeclClause: %s not implemented", cmd.Variant.Value)
+		}
+	case *syntax.BinaryCmd:
+		switch cmd.Op {
+		case syntax.Pipe:
+			lhs, err := p.visitStmt(cmd.X, "")
+			if err != nil {
+				return "", err
+			}
+
+			rhs, err := p.visitStmt(cmd.Y, lhs)
+			if err != nil {
+				return "", err
+			}
+
+			return rhs, nil
+		default:
+			return "", fmt.Errorf("BinaryCmd op %s not implemented", cmd.Op.String())
+		}
+	default:
+		return "", fmt.Errorf("statement %T not implemented", cmd)
+	}
 }
 
 func parseShell(content string) (starlark.Value, error) {
@@ -112,7 +189,7 @@ func parseShell(content string) (starlark.Value, error) {
 	parser := &shellParser{out: dict}
 
 	for _, stmt := range f.Stmts {
-		if err := parser.visitStmt(stmt); err != nil {
+		if _, err := parser.visitStmt(stmt, ""); err != nil {
 			return nil, err
 		}
 	}

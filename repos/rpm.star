@@ -165,5 +165,15 @@ def add_rockylinux_fetchers(only_latest = True):
                     distro = "rockylinux@{}".format(version),
                 )
 
+cbl_mariner_mirror = "https://packages.microsoft.com/cbl-mariner/"
+
+def add_cbl_mariner(only_latest = True):
+    for group in ["Microsoft", "base", "cloud-native", "extended", "extras", "nvidia"]:
+        fetch_repo(
+            fetch_rpm_repostiory,
+            ("{}/2.0/prod/{}/x86_64/".format(cbl_mariner_mirror, group),),
+            distro = "cblmariner@2",
+        )
+
 if __name__ == "__main__":
-    add_rockylinux_fetchers(only_latest = False)
+    add_cbl_mariner(only_latest = False)
