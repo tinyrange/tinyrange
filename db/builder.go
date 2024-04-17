@@ -9,6 +9,7 @@ import (
 )
 
 func init() {
+	gob.Register(BaseImageDirective{})
 	gob.Register(ArchiveDirective{})
 	gob.Register(DependencyDirective{})
 	gob.Register(ScriptDirective{})
@@ -16,6 +17,11 @@ func init() {
 }
 
 type BuilderDirective interface {
+}
+
+type BaseImageDirective struct {
+	Kind      string // "BaseImage"
+	ImageName string
 }
 
 type ArchiveDirective struct {
@@ -163,6 +169,30 @@ func (f *Builder) Attr(name string) (starlark.Value, error) {
 				Kind:             "Output",
 				Filename:         filename,
 				WorkingDirectory: cwd,
+			})
+
+			return starlark.None, nil
+		}), nil
+	} else if name == "set_base_image" {
+		return starlark.NewBuiltin(name, func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				imageName string
+			)
+
+			if err := starlark.UnpackArgs("Builder.set_base_image", args, kwargs,
+				"image_name", &imageName,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			f.Directives = append(f.Directives, BaseImageDirective{
+				Kind:      "BaseImage",
+				ImageName: imageName,
 			})
 
 			return starlark.None, nil

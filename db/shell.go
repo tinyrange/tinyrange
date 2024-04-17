@@ -20,7 +20,9 @@ func (cmd *shellCommand) Run(ctx *ShellContext, argv []string) (string, error) {
 	var args starlark.Tuple
 
 	for _, arg := range argv {
-		args = append(args, starlark.String(arg))
+		if arg != "" {
+			args = append(args, starlark.String(arg))
+		}
 	}
 
 	ret, err := starlark.Call(thread, cmd.f, starlark.Tuple{ctx, args}, []starlark.Tuple{})
@@ -39,6 +41,16 @@ func (cmd *shellCommand) Run(ctx *ShellContext, argv []string) (string, error) {
 type ShellContext struct {
 	out      *starlark.Dict
 	commands map[string]*shellCommand
+}
+
+// Get implements starlark.HasSetKey.
+func (p *ShellContext) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
+	return p.out.Get(k)
+}
+
+// SetKey implements starlark.HasSetKey.
+func (p *ShellContext) SetKey(k starlark.Value, v starlark.Value) error {
+	return p.out.SetKey(k, v)
 }
 
 func (p *ShellContext) runCommand(args []string) (string, error) {
@@ -210,10 +222,10 @@ func (p *ShellContext) visitStmt(stmt *syntax.Stmt, stdin string) (string, error
 	}
 }
 
-func (t *ShellContext) String() string { return "GitTree" }
-func (*ShellContext) Type() string     { return "GitTree" }
+func (t *ShellContext) String() string { return "ShellContext" }
+func (*ShellContext) Type() string     { return "ShellContext" }
 func (*ShellContext) Hash() (uint32, error) {
-	return 0, fmt.Errorf("GitTree is not hashable")
+	return 0, fmt.Errorf("ShellContext is not hashable")
 }
 func (*ShellContext) Truth() starlark.Bool { return starlark.True }
 func (*ShellContext) Freeze()              {}
@@ -311,6 +323,7 @@ func (p *ShellContext) AttrNames() []string {
 }
 
 var (
-	_ starlark.Value    = &ShellContext{}
-	_ starlark.HasAttrs = &ShellContext{}
+	_ starlark.Value     = &ShellContext{}
+	_ starlark.HasAttrs  = &ShellContext{}
+	_ starlark.HasSetKey = &ShellContext{}
 )

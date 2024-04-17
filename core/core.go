@@ -90,7 +90,10 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 		return nil, err
 	}
 
+	exists := false
+
 	if info, err := os.Stat(path); err == nil {
+		exists = true
 		// slog.Info("checking refresh", "url", url, "age", time.Since(info.ModTime()))
 		if options.ExpectedSize != 0 && info.Size() != options.ExpectedSize {
 			// Assume the file is corrupted and fall though.
@@ -150,7 +153,12 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, err
+		if exists {
+			slog.Warn("could not fetch", "url", url, "error", err)
+			return os.Open(path)
+		} else {
+			return nil, err
+		}
 	}
 
 	if options.Accept != "" {
@@ -159,7 +167,12 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 
 	resp, err := eif.client.Do(req)
 	if err != nil {
-		return nil, err
+		if exists {
+			slog.Warn("could not fetch", "url", url, "error", err)
+			return os.Open(path)
+		} else {
+			return nil, err
+		}
 	}
 
 	if resp.StatusCode == http.StatusNotFound {

@@ -1,16 +1,221 @@
 load("common/shell.star", "register_commands")
 
+def parse_neurodocker_package(ret, args, name):
+    if "pkgs" not in ret:
+        ret["pkgs"] = {}
+    ret["pkgs"][name] = {}
+
+    index = 1
+    for arg in args[1:]:
+        if arg.startswith("--"):
+            break
+
+        key, _, value = arg.partition("=")
+        ret["pkgs"][name][key] = value
+        index += 1
+
+    return parse_neurodocker_args(ret, args[index:])
+
+packages = [
+    "convert3d",
+    "minc",
+    "mrtrix3",
+    "mrtrix3tissue",
+    "afni",
+    "fsl",
+    "miniconda",
+    "ants",
+    "ashs",
+    "dcm2niix",
+    "matlabmcr",
+    "cat12",
+    "freesurfer",
+]
+
+def parse_neurodocker_args(ret, args):
+    if len(args) == 0:
+        return ret
+
+    if args[0] == "--base-image":
+        ret["base-image"] = args[1]
+
+        return parse_neurodocker_args(ret, args[2:])
+    elif args[0] == "--pkg-manager":
+        ret["pkg-manager"] = args[1]
+
+        return parse_neurodocker_args(ret, args[2:])
+    elif args[0] == "--entrypoint":
+        ret["entrypoint"] = args[1]
+
+        return parse_neurodocker_args(ret, args[2:])
+    elif args[0] == "--workdir":
+        ret["workdir"] = args[1]
+
+        return parse_neurodocker_args(ret, args[2:])
+    elif args[0] == "--user":
+        ret["user"] = args[1]
+
+        return parse_neurodocker_args(ret, args[2:])
+    elif args[0] == "--env":
+        if "env" not in ret:
+            ret["env"] = []
+
+        index = 1
+        for arg in args[1:]:
+            if arg.startswith("--"):
+                break
+
+            ret["env"].append(arg)
+            index += 1
+
+        return parse_neurodocker_args(ret, args[index:])
+    elif args[0] == "--copy":
+        if "copy" not in ret:
+            ret["copy"] = []
+
+        ret["copy"].append((args[1], args[2]))
+
+        return parse_neurodocker_args(ret, args[3:])
+    elif args[0] == "--add":
+        if "add" not in ret:
+            ret["add"] = []
+
+        ret["add"].append((args[1], args[2]))
+
+        return parse_neurodocker_args(ret, args[3:])
+    elif args[0] == "--copy-from":
+        if "copy" not in ret:
+            ret["copy"] = []
+
+        ret["copy"].append((args[1] + ":" + args[2], args[3]))
+
+        return parse_neurodocker_args(ret, args[4:])
+    elif args[0] == "--install":
+        if "install" not in ret:
+            ret["install"] = []
+
+        index = 1
+        for arg in args[1:]:
+            if arg.startswith("--"):
+                break
+
+            if arg.startswith("opts="):
+                index += 1
+                continue
+
+            ret["install"].append(arg)
+            index += 1
+
+        return parse_neurodocker_args(ret, args[index:])
+    elif args[0] == "--run":
+        if "run" not in ret:
+            ret["run"] = []
+
+        ret["run"].append(args[1])
+
+        return parse_neurodocker_args(ret, args[2:])
+    elif args[0].startswith("--run="):
+        if "run" not in ret:
+            ret["run"] = []
+
+        ret["run"].append(args[0].removeprefix("--run="))
+
+        return parse_neurodocker_args(ret, args[1:])
+    elif args[0].startswith("--run-bash="):
+        if "run" not in ret:
+            ret["run"] = []
+
+        ret["run"].append(args[0].removeprefix("--run-bash="))
+
+        return parse_neurodocker_args(ret, args[1:])
+    elif args[0].startswith("--workdir="):
+        ret["workdir"] = args[0].removeprefix("--workdir=")
+
+        return parse_neurodocker_args(ret, args[1:])
+    elif args[0].startswith("--user="):
+        ret["user"] = args[0].removeprefix("--user=")
+
+        return parse_neurodocker_args(ret, args[1:])
+    elif args[0].startswith("--install="):
+        if "install" not in ret:
+            ret["install"] = []
+
+        s = args[0].removeprefix("--install=")
+
+        for pkg in s.split(" "):
+            ret["install"].append(s)
+
+        return parse_neurodocker_args(ret, args[1:])
+    else:
+        for pkg in packages:
+            if args[0] == "--" + pkg:
+                return parse_neurodocker_package(ret, args, pkg)
+
+        return error("argument not implemented: " + args[0])
+
 def cmd_neurodocker(ctx, args):
-    print("neurodocker", args)
-    return ""
+    cmd = args[1]
+    if cmd != "generate":
+        return error("unknown neurodocker command: " + cmd)
+
+    mode = args[2]
+    if mode != "docker":
+        return error("unknown neurodocker mode: " + mode)
+
+    rest = args[3:]
+
+    obj = parse_neurodocker_args({}, rest)
+
+    ctx["neurodocker"] = obj
+
+    return json.encode(obj)
 
 def cmd_pip(ctx, args):
-    print("pip", args)
+    # print("pip", args)
     return ""
 
 def cmd_tinyrange(ctx, args):
     print("tinyrange", args)
     return ""
+
+def eval_neurocontainer_build(contents):
+    ctx = shell_context()
+
+    ctx.set_environment("neurodocker_buildMode", "docker")
+    ctx.set_environment("neurodocker_buildExt", ".Dockerfile")
+    ctx.set_environment("mountPointList", "")
+    ctx.set_environment("TINYRANGE", "tinyrange")
+
+    register_commands(ctx)
+
+    ctx.add_command("neurodocker", cmd_neurodocker)
+    ctx.add_command("pip", cmd_pip)
+    ctx.add_command("tinyrange", cmd_tinyrange)
+
+    ret = ctx.eval(contents)
+
+    return ret
+
+def make_builder_from_neurodocker_recipe(pkg_name, recipe):
+    build = builder(pkg_name)
+
+    build.set_base_image(recipe["base-image"])
+
+    if "install" in recipe:
+        if "pkg-manager" not in recipe:
+            return error("no pkg-system specified for install")
+        for install in recipe["install"]:
+            build.add_dependency(name(name = install))
+
+    if "run" in recipe:
+        for script in recipe["run"]:
+            build.add_script(script)
+
+    if "pkgs" in recipe:
+        for pkg in recipe["pkgs"]:
+            build.add_dependency(name(distribution = "neurodocker", name = pkg))
+
+    return build
 
 def fetch_neurocontainers_repository(ctx, url, ref):
     repo = fetch_git(url)
@@ -20,28 +225,24 @@ def fetch_neurocontainers_repository(ctx, url, ref):
         if type(folder) != "GitTree":
             continue
 
-        if "build.sh" in folder:
-            file = folder["build.sh"]
-            contents = file.read()
+        if "build.sh" not in folder:
+            continue
 
-            ctx = shell_context()
+        file = folder["build.sh"]
+        contents = file.read()
 
-            ctx.set_environment("neurodocker_buildMode", "docker")
-            ctx.set_environment("neurodocker_buildExt", ".Dockerfile")
-            ctx.set_environment("mountPointList", "")
-            ctx.set_environment("TINYRANGE", "tinyrange")
+        ret = eval_neurocontainer_build(contents)
 
-            register_commands(ctx)
+        name = ctx.name(
+            name = ret["toolName"],
+            version = ret["toolVersion"],
+        )
 
-            ctx.add_command("neurodocker", cmd_neurodocker)
-            ctx.add_command("pip", cmd_pip)
-            ctx.add_command("tinyrange", cmd_tinyrange)
+        pkg = ctx.add_package(name)
 
-            ret = ctx.eval(contents)
-
-            print(ret)
-
-    return error("not implemented")
+        if "neurodocker" in ret:
+            recipe = ret["neurodocker"]
+            pkg.add_builder(make_builder_from_neurodocker_recipe(name, recipe))
 
 if __name__ == "__main__":
     fetch_repo(fetch_neurocontainers_repository, ("https://github.com/NeuroDesk/neurocontainers", "master"), distro = "neurocontainers")

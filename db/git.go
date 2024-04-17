@@ -308,7 +308,9 @@ func (db *PackageDatabase) fetchGit(url string) (*GitRepository, error) {
 		if err == git.NoErrAlreadyUpToDate {
 			// fallthrough
 		} else if err != nil {
-			return nil, fmt.Errorf("failed to fetch: %s", err)
+			slog.Warn("could not update git repo", "url", url, "error", err)
+			// Return anyway since the repository already exists.
+			return &GitRepository{repo: repo}, nil
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to clone: %s", err)
