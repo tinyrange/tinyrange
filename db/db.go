@@ -16,6 +16,7 @@ import (
 	"github.com/icza/dyno"
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/pkg2/core"
+	"github.com/tinyrange/pkg2/jinja2"
 	"github.com/tinyrange/pkg2/third_party/regexp"
 	bolt "go.etcd.io/bbolt"
 	starlarkjson "go.starlark.net/lib/json"
@@ -367,6 +368,31 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			}
 
 			return evalPython(contents, kwargs)
+		}),
+		"eval_jinja2": starlark.NewBuiltin("eval_jinja2", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				contents string
+			)
+
+			if err := starlark.UnpackArgs("eval_jinja2", args, []starlark.Tuple{},
+				"contents", &contents,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			evaluator := &jinja2.Jinja2Evaluator{}
+
+			out, err := evaluator.Eval(contents, kwargs)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.String(out), nil
 		}),
 		"open": starlark.NewBuiltin("open", func(
 			thread *starlark.Thread,

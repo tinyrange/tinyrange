@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-git/go-billy/v5/osfs"
@@ -15,6 +17,8 @@ import (
 	"github.com/go-git/go-git/v5/storage/filesystem"
 	"go.starlark.net/starlark"
 )
+
+var gitMutex sync.Mutex
 
 type gitTreeIterator struct {
 	tree  *object.Tree
@@ -199,14 +203,39 @@ func (g *GitRepository) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
+			var ref *plumbing.Reference
+
 			obj, err := g.repo.Branch(branch)
 			if err != nil {
-				return starlark.None, err
-			}
+				if err.Error() == "branch not found" {
+					// Check to see if the branch exists on the origin and fetch it.
 
-			ref, err := g.repo.Reference(obj.Merge, true)
-			if err != nil {
-				return starlark.None, err
+					refs, err := g.repo.Storer.IterReferences()
+					if err != nil {
+						return nil, err
+					}
+
+					err = refs.ForEach(func(r *plumbing.Reference) error {
+						if strings.HasSuffix(r.Name().String(), branch) {
+							ref = r
+						}
+
+						return nil
+					})
+					if err != nil {
+						return nil, err
+					}
+				} else {
+					return starlark.None, err
+				}
+			} else {
+				ref, err = g.repo.Reference(obj.Merge, true)
+				if err != nil {
+					return starlark.None, err
+				}
+			}
+			if ref == nil {
+				return starlark.None, fmt.Errorf("failed to find reference for: %s", branch)
 			}
 
 			commit, err := g.repo.CommitObject(ref.Hash())
@@ -288,6 +317,9 @@ func (db *PackageDatabase) fetchGit(url string) (*GitRepository, error) {
 		}
 	}
 
+	gitMutex.Lock()
+	defer gitMutex.Unlock()
+
 	slog.Info("downloading with git", "url", url)
 
 	repo, err := git.PlainClone(cachePath, true, &git.CloneOptions{
@@ -304,7 +336,11 @@ func (db *PackageDatabase) fetchGit(url string) (*GitRepository, error) {
 			return nil, fmt.Errorf("failed to open: %s", err)
 		}
 
-		err = repo.Fetch(&git.FetchOptions{RemoteURL: url, Progress: os.Stdout})
+		err = repo.Fetch(&git.FetchOptions{
+			RemoteURL: url,
+			Progress:  os.Stdout,
+			Tags:      git.AllTags,
+		})
 		if err == git.NoErrAlreadyUpToDate {
 			// fallthrough
 		} else if err != nil {

@@ -1,4 +1,5 @@
 load("common/shell.star", "register_commands")
+load("fetchers/neurodocker.star", "get_neurodocker_package")
 
 def parse_neurodocker_package(ret, args, name):
     if "pkgs" not in ret:
@@ -171,7 +172,22 @@ def cmd_neurodocker(ctx, args):
     return json.encode(obj)
 
 def cmd_pip(ctx, args):
-    # print("pip", args)
+    args = args[1:]
+
+    if args[0] == "uninstall":
+        return ""
+
+    if args[0] != "install":
+        return error("unknown pip command: " + json.encode(args))
+
+    args = args[1:]
+
+    args = [k for k in args if not k.startswith("--")]
+
+    url = args[0]
+
+    ctx.set_environment("neurodocker_url", url)
+
     return ""
 
 def cmd_tinyrange(ctx, args):
@@ -185,6 +201,7 @@ def eval_neurocontainer_build(contents):
     ctx.set_environment("neurodocker_buildExt", ".Dockerfile")
     ctx.set_environment("mountPointList", "")
     ctx.set_environment("TINYRANGE", "tinyrange")
+    ctx.set_environment("neurodocker_url", "https://github.com/NeuroDesk/neurodocker@master")
 
     register_commands(ctx)
 
@@ -196,10 +213,12 @@ def eval_neurocontainer_build(contents):
 
     return ret
 
-def make_builder_from_neurodocker_recipe(pkg_name, recipe):
+def make_builder_from_neurodocker_recipe(pkg_name, recipe, neurodocker_url):
     build = builder(pkg_name)
 
     build.set_base_image(recipe["base-image"])
+
+    pkg_manager = recipe["pkg-manager"]
 
     if "install" in recipe:
         if "pkg-manager" not in recipe:
@@ -213,7 +232,27 @@ def make_builder_from_neurodocker_recipe(pkg_name, recipe):
 
     if "pkgs" in recipe:
         for pkg in recipe["pkgs"]:
-            build.add_dependency(name(distribution = "neurodocker", name = pkg))
+            url = neurodocker_url
+            print("neurodocker_url", neurodocker_url)
+            if url == "https://github.com/NeuroDesk/neurodocker/tarball/update_cat" or \
+               url == "https://github.com/NeuroDesk/neurodocker/tarball/update_mcr" or \
+               url == "https://github.com/NeuroDesk/neurodocker/tarball/minc_install_from_deb_and_rpm":
+                url = "https://github.com/NeuroDesk/neurodocker@master"
+            branch = ""
+            if "/tarball/" in url:
+                url, branch = url.split("/tarball/")
+            else:
+                url, branch = url.split("@")
+                if url.startswith("git+https"):
+                    url = url.removeprefix("git+")
+            ret = get_neurodocker_package(
+                url,
+                branch,
+                pkg,
+                pkg_manager,
+                recipe["pkgs"][pkg],
+            )
+            print(ret)
 
     return build
 
@@ -242,7 +281,11 @@ def fetch_neurocontainers_repository(ctx, url, ref):
 
         if "neurodocker" in ret:
             recipe = ret["neurodocker"]
-            pkg.add_builder(make_builder_from_neurodocker_recipe(name, recipe))
+            pkg.add_builder(make_builder_from_neurodocker_recipe(
+                name,
+                recipe,
+                ret["neurodocker_url"],
+            ))
 
 if __name__ == "__main__":
     fetch_repo(fetch_neurocontainers_repository, ("https://github.com/NeuroDesk/neurocontainers", "master"), distro = "neurocontainers")

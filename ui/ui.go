@@ -189,6 +189,9 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 				html.H5(html.Textf("License: %s", pkg.License)),
 				html.H5(html.Text("Description")),
 				html.Pre(html.Text(pkg.Description)),
+				html.Div(
+					bootstrap.LinkButton("/plan?key="+key, bootstrap.ButtonColorPrimary, html.Text("Installation Plan")),
+				),
 			),
 			bootstrap.Card(
 				bootstrap.CardTitle("Download URLs"),
@@ -219,6 +222,56 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 
 		if err := htm.Render(r.Context(), w, page); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	mux.HandleFunc("/plan", func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		r.ParseForm()
+
+		key := r.FormValue("key")
+
+		pkg, ok := pkgDb.Get(key)
+		if !ok {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+
+		plan, err := pkgDb.MakeInstallationPlan([]db.PackageName{pkg.Name})
+		if err == nil {
+			var rows []htm.Group
+
+			for _, pkg := range plan.Packages {
+				rows = append(rows, htm.Group{
+					html.Textf("%s", pkg.Name.Distribution),
+					html.Link("/info?key="+url.QueryEscape(pkg.Id()), html.Textf(pkg.Name.Name)),
+					html.Textf("%s", pkg.Name.Version),
+					html.Textf("%s", pkg.Name.Architecture),
+				})
+			}
+
+			page := pageTemplate(pkgDb, pkg.Name, start, bootstrap.Table(htm.Group{
+				html.Textf("Distribution"),
+				html.Textf("Name"),
+				html.Textf("Version"),
+				html.Textf("Architecture"),
+			}, rows))
+
+			if err := htm.Render(r.Context(), w, page); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+
+			page := pageTemplate(pkgDb, pkg.Name, start, bootstrap.Card(
+				bootstrap.CardTitle("Failed to make installation plan"),
+				html.Div(html.Textf("%s", err)),
+			))
+
+			if err := htm.Render(r.Context(), w, page); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 		}
 	})
 
