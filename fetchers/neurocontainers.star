@@ -201,7 +201,7 @@ def eval_neurocontainer_build(contents):
     ctx.set_environment("neurodocker_buildExt", ".Dockerfile")
     ctx.set_environment("mountPointList", "")
     ctx.set_environment("TINYRANGE", "tinyrange")
-    ctx.set_environment("neurodocker_url", "https://github.com/NeuroDesk/neurodocker@master")
+    ctx.set_environment("neurodocker_url", "https://github.com/ReproNim/neurodocker@master")
 
     register_commands(ctx)
 
@@ -230,21 +230,24 @@ def make_builder_from_neurodocker_recipe(pkg_name, recipe, neurodocker_url):
         for script in recipe["run"]:
             build.add_script(script)
 
+    url = neurodocker_url
+
+    # All these URLs point to old branches which are now broken.
+    if url == "https://github.com/NeuroDesk/neurodocker/tarball/update_cat" or \
+       url == "https://github.com/NeuroDesk/neurodocker/tarball/update_mcr" or \
+       url == "https://github.com/NeuroDesk/neurodocker/tarball/minc_install_from_deb_and_rpm":
+        url = "https://github.com/ReproNim/neurodocker@master"
+
+    branch = ""
+    if "/tarball/" in url:
+        url, branch = url.split("/tarball/")
+    else:
+        url, branch = url.split("@")
+        if url.startswith("git+https"):
+            url = url.removeprefix("git+")
+
     if "pkgs" in recipe:
         for pkg in recipe["pkgs"]:
-            url = neurodocker_url
-            print("neurodocker_url", neurodocker_url)
-            if url == "https://github.com/NeuroDesk/neurodocker/tarball/update_cat" or \
-               url == "https://github.com/NeuroDesk/neurodocker/tarball/update_mcr" or \
-               url == "https://github.com/NeuroDesk/neurodocker/tarball/minc_install_from_deb_and_rpm":
-                url = "https://github.com/NeuroDesk/neurodocker@master"
-            branch = ""
-            if "/tarball/" in url:
-                url, branch = url.split("/tarball/")
-            else:
-                url, branch = url.split("@")
-                if url.startswith("git+https"):
-                    url = url.removeprefix("git+")
             ret = get_neurodocker_package(
                 url,
                 branch,
@@ -252,7 +255,16 @@ def make_builder_from_neurodocker_recipe(pkg_name, recipe, neurodocker_url):
                 pkg_manager,
                 recipe["pkgs"][pkg],
             )
-            print(ret)
+
+            for install in ret["packages"]:
+                build.add_dependency(name(name = install))
+
+            for env in ret["environment"]:
+                # TODO(joshua): Add support for adding environment variables.
+                pass
+
+            build.add_script(ret["script"])
+            # print("install", pkg, ret)
 
     return build
 
@@ -268,6 +280,11 @@ def fetch_neurocontainers_repository(ctx, url, ref):
             continue
 
         file = folder["build.sh"]
+        if file.name == "recipes/mrtrix3tissue/build.sh" or \
+           file.name == "recipes/samri/build.sh":
+            continue
+
+        # print("file", file)
         contents = file.read()
 
         ret = eval_neurocontainer_build(contents)

@@ -15,6 +15,9 @@ def install_dependencies(ret, template, pkg_manager):
                 ret["packages"].append(pkg)
     elif pkg_manager == "yum":
         ret["packages"] = append_all(ret["packages"], template["dependencies"]["yum"])
+        if "rpms" in template["dependencies"]:
+            for pkg in template["dependencies"]["rpms"]:
+                ret["packages"].append(pkg)
     return ""
 
 def install(ctx, pkgs):
@@ -28,14 +31,23 @@ def create_neurodocker_package(name, template, pkg_manager, params):
         "environment": {},
     }
     context = {
+        # Old versions of NeuroDocker used the top level with the package name.
+        # New versions just use self.
         "__top_level": name,
+
+        # Functions.
         "install_dependencies": lambda: install_dependencies(ret, template, pkg_manager),
         "install": lambda pkgs: install(ret, pkgs),
+
+        # Installation path.
         "install_path": "/install",
+
+        # Not sure why these are needed but they break stuff if their missing.
         "curl_opts": "",
         "binaries_url": "",
         "pkg_manager": pkg_manager,
     }
+
     if "urls" in template:
         context["urls"] = template["urls"]
 
@@ -54,12 +66,6 @@ def create_neurodocker_package(name, template, pkg_manager, params):
                 if optName in context:
                     continue
                 context[optName] = eval_jinja2(optional[optName], **context)
-
-    if name == "fsl":
-        if type(context["exclude_paths"]) == "string":
-            context["exclude_paths"] = [context["exclude_paths"]]
-
-    print(context)
 
     ret["script"] = eval_jinja2(template["instructions"], **context)
 

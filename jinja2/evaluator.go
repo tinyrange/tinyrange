@@ -135,6 +135,8 @@ func (f *starlarkEmitter) emitStatement(s string) error {
 			}
 		}
 
+		expr = strings.ReplaceAll(expr, " is not ", " != ")
+
 		f.emit(fmt.Sprintf("if %s:", expr))
 		f.indent += 1
 
@@ -192,7 +194,7 @@ func (j *Jinja2Evaluator) Attr(name string) (starlark.Value, error) {
 	if val, ok := j.environment[name]; ok {
 		return val, nil
 	} else {
-		return nil, nil
+		return starlark.None, nil
 	}
 }
 
@@ -284,7 +286,7 @@ func (j *Jinja2Evaluator) Eval(contents string, environment []starlark.Tuple) (s
 		return "", err
 	}
 
-	fmt.Printf("%s\n", script)
+	// fmt.Printf("%s\n", script)
 
 	topLevel := ""
 
@@ -403,6 +405,7 @@ func (j *Jinja2Evaluator) Eval(contents string, environment []starlark.Tuple) (s
 			}
 		}),
 		"emit":   starlark.NewBuiltin("emit", j.emitString),
+		"none":   starlark.None,
 		"self":   j,
 		topLevel: j,
 	}
