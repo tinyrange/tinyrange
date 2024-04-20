@@ -118,7 +118,7 @@ func (r *RepositoryFetcher) Key() string {
 	return getSha256([]byte(strings.Join(tokens, "_")))
 }
 
-func (r *RepositoryFetcher) addPackage(name PackageName) starlark.Value {
+func (r *RepositoryFetcher) addPackage(name PackageName) (starlark.Value, error) {
 	r.addPackageMutex.Lock()
 	defer r.addPackageMutex.Unlock()
 
@@ -132,20 +132,23 @@ func (r *RepositoryFetcher) addPackage(name PackageName) starlark.Value {
 			ArchPPC64LE: true,
 			ArchRiscV64: true,
 			ArchS390X:   true,
-			ArchX86:     true,
+			ArchI386:    true,
+			ArchI586:    true,
+			ArchI686:    true,
 			ArchX86_64:  true,
 			ArchAny:     true,
+			ArchSource:  true,
 		}
 	}
 
 	if _, ok := r.validArchitectures[CPUArchitecture(name.Architecture)]; !ok {
-		r.Count(fmt.Sprintf("invalid architecture: %s", name.Architecture))
+		return starlark.None, fmt.Errorf("invalid architecture: %s", name.Architecture)
 	}
 
 	pkg := NewPackage()
 	pkg.Name = name
 	r.Packages = append(r.Packages, pkg)
-	return pkg
+	return pkg, nil
 }
 
 // Attr implements starlark.HasAttrs.
@@ -167,7 +170,7 @@ func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return r.addPackage(name), nil
+			return r.addPackage(name)
 		}), nil
 	} else if name == "name" {
 		return starlark.NewBuiltin("Repo.name", func(
