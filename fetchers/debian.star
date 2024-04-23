@@ -39,6 +39,10 @@ debian_architectures = {
     "ppc64el": "ppc64le",
     "armel": "armv7",
     "mips": "mips",
+    "mipsn32": "mipsn32",
+    "mipsn32el": "mipsn32el",
+    "mipsn32r6": "mipsn32r6",
+    "mipsn32r6el": "mipsn32r6el",
     "mipsr6": "mipsr6",
     "mipsr6el": "mipsr6el",
     "mipsel": "mipsel",
@@ -49,6 +53,9 @@ debian_architectures = {
 }
 
 def get_debian_architecture(arch):
+    if arch.endswith("-cross"):
+        arch = arch.split("-")[0]
+
     if arch in debian_architectures:
         return debian_architectures[arch]
     else:

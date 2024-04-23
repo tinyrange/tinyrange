@@ -21,30 +21,47 @@ func versionLessThan(a, b string) bool {
 type CPUArchitecture string
 
 const (
-	ArchInvalid    CPUArchitecture = ""
-	ArchAArch64    CPUArchitecture = "aarch64"
-	ArchArmV7      CPUArchitecture = "armv7"
-	ArchArmHF      CPUArchitecture = "armhf"
-	ArchMips       CPUArchitecture = "mips"
-	ArchMipsR6     CPUArchitecture = "mipsr6"
-	ArchMipsR6EL   CPUArchitecture = "mipsr6el"
-	ArchMipsEL     CPUArchitecture = "mipsel"
-	ArchMips64     CPUArchitecture = "mips64"
-	ArchMips64EL   CPUArchitecture = "mips64el"
-	ArchMips64R6   CPUArchitecture = "mips64r6"
-	ArchMips64R6EL CPUArchitecture = "mips64r6el"
-	ArchPowerPC    CPUArchitecture = "powerpc"
-	ArchPPC64LE    CPUArchitecture = "ppc64le" // PPC64 Little Endian
-	ArchPPC64EL    CPUArchitecture = "ppc64el" // PPC64 Big Endian
-	ArchRiscV64    CPUArchitecture = "riscv64"
-	ArchS390X      CPUArchitecture = "s390x"
-	ArchI386       CPUArchitecture = "i386"
-	ArchI586       CPUArchitecture = "i586"
-	ArchI686       CPUArchitecture = "i686"
-	ArchX32        CPUArchitecture = "x32" // x32 is an ABI for amd64/x86_64 CPUs using 32-bit integers, longs and pointers.
-	ArchX86_64     CPUArchitecture = "x86_64"
-	ArchAny        CPUArchitecture = "any"
-	ArchSource     CPUArchitecture = "src"
+	ArchInvalid CPUArchitecture = ""
+
+	// ARM
+	ArchArmV7   CPUArchitecture = "armv7"
+	ArchArmHF   CPUArchitecture = "armhf"
+	ArchAArch64 CPUArchitecture = "aarch64"
+
+	// MIPS
+	ArchMips        CPUArchitecture = "mips"
+	ArchMipsN32     CPUArchitecture = "mipsn32"
+	ArchMipsN32EL   CPUArchitecture = "mipsn32el"
+	ArchMipsN32R6   CPUArchitecture = "mipsn32r6"
+	ArchMipsN32R6EL CPUArchitecture = "mipsn32r6el"
+	ArchMipsR6      CPUArchitecture = "mipsr6"
+	ArchMipsR6EL    CPUArchitecture = "mipsr6el"
+	ArchMipsEL      CPUArchitecture = "mipsel"
+	ArchMips64      CPUArchitecture = "mips64"
+	ArchMips64EL    CPUArchitecture = "mips64el"
+	ArchMips64R6    CPUArchitecture = "mips64r6"
+	ArchMips64R6EL  CPUArchitecture = "mips64r6el"
+
+	// PowerPC
+	ArchPowerPC CPUArchitecture = "powerpc"
+	ArchPPC64LE CPUArchitecture = "ppc64le" // PPC64 Little Endian
+	ArchPPC64EL CPUArchitecture = "ppc64el" // PPC64 Big Endian
+
+	// Risc-V
+	ArchRiscV64 CPUArchitecture = "riscv64"
+
+	// s390x
+	ArchS390X CPUArchitecture = "s390x"
+
+	// X86
+	ArchI386   CPUArchitecture = "i386"
+	ArchI586   CPUArchitecture = "i586"
+	ArchI686   CPUArchitecture = "i686"
+	ArchX32    CPUArchitecture = "x32" // x32 is an ABI for amd64/x86_64 CPUs using 32-bit integers, longs and pointers.
+	ArchX86_64 CPUArchitecture = "x86_64"
+
+	ArchAny    CPUArchitecture = "any"
+	ArchSource CPUArchitecture = "src"
 )
 
 type PackageName struct {

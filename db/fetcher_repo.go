@@ -124,30 +124,41 @@ func (r *RepositoryFetcher) validateName(name PackageName) (PackageName, error) 
 
 	if r.validArchitectures == nil {
 		r.validArchitectures = map[CPUArchitecture]bool{
-			ArchInvalid:    true,
-			ArchAArch64:    true,
-			ArchArmHF:      true,
-			ArchArmV7:      true,
-			ArchMips:       true,
-			ArchMipsR6:     true,
-			ArchMipsR6EL:   true,
-			ArchMipsEL:     true,
-			ArchMips64:     true,
-			ArchMips64EL:   true,
-			ArchMips64R6:   true,
-			ArchMips64R6EL: true,
-			ArchPowerPC:    true,
-			ArchPPC64LE:    true,
-			ArchPPC64EL:    true,
-			ArchRiscV64:    true,
-			ArchS390X:      true,
-			ArchI386:       true,
-			ArchI586:       true,
-			ArchI686:       true,
-			ArchX32:        true,
-			ArchX86_64:     true,
-			ArchAny:        true,
-			ArchSource:     true,
+			ArchInvalid: true,
+
+			ArchAArch64: true,
+			ArchArmHF:   true,
+			ArchArmV7:   true,
+
+			ArchMips:        true,
+			ArchMipsN32:     true,
+			ArchMipsN32EL:   true,
+			ArchMipsN32R6:   true,
+			ArchMipsN32R6EL: true,
+			ArchMipsR6:      true,
+			ArchMipsR6EL:    true,
+			ArchMipsEL:      true,
+			ArchMips64:      true,
+			ArchMips64EL:    true,
+			ArchMips64R6:    true,
+			ArchMips64R6EL:  true,
+
+			ArchPowerPC: true,
+			ArchPPC64LE: true,
+			ArchPPC64EL: true,
+
+			ArchRiscV64: true,
+
+			ArchS390X: true,
+
+			ArchI386:   true,
+			ArchI586:   true,
+			ArchI686:   true,
+			ArchX32:    true,
+			ArchX86_64: true,
+
+			ArchAny:    true,
+			ArchSource: true,
 		}
 	}
 
