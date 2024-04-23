@@ -20,6 +20,11 @@ def parse_apk_index(contents):
 
     return ret
 
+def parse_apk_version(v):
+    if "-r" in v:
+        v = v.split("-r")[0]
+    return v
+
 def parse_apk_name(ctx, s):
     pkg = ""
     version = ""
@@ -31,7 +36,7 @@ def parse_apk_name(ctx, s):
         version = "~" + version
     else:
         pkg, version = split_maybe(s, "=", 2)
-    return ctx.name(name = pkg, version = version)
+    return ctx.name(name = pkg, version = parse_apk_version(version))
 
 def fetch_alpine_repository(ctx, url, repo):
     ctx.pledge(semver = True)
@@ -48,7 +53,7 @@ def fetch_alpine_repository(ctx, url, repo):
     for ent in contents:
         pkg = ctx.add_package(ctx.name(
             name = ent["P"],
-            version = ent["V"],
+            version = parse_apk_version(ent["V"]),
             architecture = ent["A"],
         ))
 
