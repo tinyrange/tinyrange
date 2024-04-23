@@ -26,6 +26,9 @@ def parse_apk_name(ctx, s):
     if ">=" in s:
         pkg, version = s.split(">=", 1)
         version = ">" + version
+    elif "~" in s:
+        pkg, version = s.split("~", 1)
+        version = "~" + version
     else:
         pkg, version = split_maybe(s, "=", 2)
     return ctx.name(name = pkg, version = version)

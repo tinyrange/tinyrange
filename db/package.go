@@ -29,9 +29,12 @@ const (
 	ArchPPC64LE CPUArchitecture = "ppc64le"
 	ArchRiscV64 CPUArchitecture = "riscv64"
 	ArchS390X   CPUArchitecture = "s390x"
-	ArchX86     CPUArchitecture = "x86"
+	ArchI386    CPUArchitecture = "i386"
+	ArchI586    CPUArchitecture = "i586"
+	ArchI686    CPUArchitecture = "i686"
 	ArchX86_64  CPUArchitecture = "x86_64"
 	ArchAny     CPUArchitecture = "any"
+	ArchSource  CPUArchitecture = "src"
 )
 
 type PackageName struct {
