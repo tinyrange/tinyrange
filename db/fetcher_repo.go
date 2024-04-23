@@ -55,21 +55,22 @@ func (m logMessage) String() string {
 }
 
 type RepositoryFetcher struct {
-	db                 *PackageDatabase
-	Packages           []*Package
-	addPackageMutex    sync.Mutex
-	Distributions      map[string]bool
-	Architectures      map[string]bool
-	Distro             string
-	Func               *starlark.Function
-	Args               starlark.Tuple
-	Status             RepositoryFetcherStatus
-	updateMutex        sync.Mutex
-	LastUpdateTime     time.Duration
-	LastUpdated        time.Time
-	Messages           []logMessage
-	Counter            core.Counter
-	validArchitectures map[CPUArchitecture]bool
+	db                    *PackageDatabase
+	Packages              []*Package
+	addPackageMutex       sync.Mutex
+	Distributions         map[string]bool
+	Architectures         map[string]bool
+	Distro                string
+	Func                  *starlark.Function
+	Args                  starlark.Tuple
+	Status                RepositoryFetcherStatus
+	updateMutex           sync.Mutex
+	LastUpdateTime        time.Duration
+	LastUpdated           time.Time
+	Messages              []logMessage
+	Counter               core.Counter
+	validArchitectures    map[CPUArchitecture]bool
+	enforceSemverVersions bool
 }
 
 // Count implements core.Logger.
@@ -300,6 +301,29 @@ func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
+	} else if name == "pledge" {
+		return starlark.NewBuiltin("Repo.pledge", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				semverVersion bool
+			)
+
+			if err := starlark.UnpackArgs("Repo.pledge", args, kwargs,
+				"semver", &semverVersion,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if semverVersion {
+				r.enforceSemverVersions = true
+			}
+
+			return starlark.None, nil
+		}), nil
 	} else {
 		return nil, nil
 	}
@@ -307,7 +331,7 @@ func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (*RepositoryFetcher) AttrNames() []string {
-	return []string{"add_package", "name", "parallel_for", "log"}
+	return []string{"add_package", "name", "parallel_for", "log", "pledge"}
 }
 
 func (fetcher *RepositoryFetcher) String() string {
