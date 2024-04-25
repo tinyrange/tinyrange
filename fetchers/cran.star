@@ -51,6 +51,8 @@ def fetch_cran_repostiory(ctx, url):
             version = ent["version"],
         ))
 
+        pkg.set_raw(json.encode(ent))
+
         if "license" in ent:
             pkg.set_license(ent["license"])
 

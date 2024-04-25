@@ -66,6 +66,8 @@ def fetch_alpine_repository(ctx, url, repo):
             architecture = ent["A"],
         ))
 
+        pkg.set_raw(json.encode(ent))
+
         pkg.set_description(ent["T"])
         if "L" in ent:
             pkg.set_license(ent["L"])

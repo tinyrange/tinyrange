@@ -55,6 +55,8 @@ def add_pypi_package(ctx, download_url, metadata):
         version = metadata["Version"][0],
     ))
 
+    pkg.set_raw(json.encode(metadata))
+
     if "Summary" in metadata:
         pkg.set_description(metadata["Summary"][0])
 

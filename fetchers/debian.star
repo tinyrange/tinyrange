@@ -94,6 +94,8 @@ def fetch_debian_repository(ctx, base, fallback, url):
             architecture = get_debian_architecture(ent["architecture"]),
         ))
 
+        pkg.set_raw(json.encode(ent))
+
         pkg.set_description(opt(ent, "description"))
         pkg.set_installed_size(int(opt(ent, "installed-size", default = -1)))
         pkg.set_size(int(ent["size"]))

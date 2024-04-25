@@ -214,6 +214,7 @@ type Package struct {
 	License         string
 	Size            int
 	InstalledSize   int
+	RawContents     string
 	Downloaders     []Downloader
 	Metadata        map[string]string
 	Depends         [][]PackageName
@@ -566,6 +567,27 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
+	} else if name == "set_raw" {
+		return starlark.NewBuiltin("Package.set_raw", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				raw string
+			)
+
+			if err := starlark.UnpackArgs("Package.set_raw", args, kwargs,
+				"raw", &raw,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			pkg.RawContents = raw
+
+			return starlark.None, nil
+		}), nil
 	} else if name == "name" {
 		return starlark.String(pkg.Name.Name), nil
 	} else if name == "version" {
@@ -591,6 +613,7 @@ func (*Package) AttrNames() []string {
 		"add_alias",
 		"add_build_script",
 		"add_builder",
+		"set_raw",
 		"name",
 		"version",
 		"arch",

@@ -62,6 +62,8 @@ def fetch_arch_repository(ctx, url, pool, include_scripts):
             architecture = ent["arch"],
         ))
 
+        pkg.set_raw(json.encode(ent))
+
         pkg.set_description(opt(ent, "desc"))
         pkg.set_license(opt(ent, "license"))
         pkg.set_size(int(ent["csize"]))

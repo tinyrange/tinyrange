@@ -181,7 +181,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 			var downloadUrls []htm.Group
 			for _, downloader := range pkg.Downloaders {
 				downloadUrls = append(downloadUrls, htm.Group{
-					html.Link(downloader.Url, html.Textf("%s", downloader)),
+					html.Link(downloader.Url, html.Textf("%s", downloader.Url)),
 				})
 			}
 
@@ -199,7 +199,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 				values.Set("index", fmt.Sprintf("%d", i))
 
 				downloadUrls = append(downloadUrls, htm.Group{
-					html.Link(downloader.Url, html.Textf("%s", downloader)),
+					html.Link(downloader.Url, html.Textf("%s", downloader.Url)),
 					bootstrap.LinkButton("/contents?"+values.Encode(), bootstrap.ButtonColorPrimary, html.Text("Contents")),
 				})
 			}
@@ -227,6 +227,20 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 			))
 		}
 
+		var rawContents any
+		if err := json.Unmarshal([]byte(pkg.RawContents), &rawContents); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+
+			return
+		}
+
+		rawContentsFormatted, err := json.MarshalIndent(rawContents, "", "  ")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+
+			return
+		}
+
 		page := pageTemplate(pkgDb, pkg.Name, start,
 			bootstrap.Card(
 				html.H4(html.Textf("%s @ %s", pkg.Name.Name, pkg.Name.Version)),
@@ -236,6 +250,10 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 				html.Div(
 					bootstrap.LinkButton("/plan?key="+key, bootstrap.ButtonColorPrimary, html.Text("Installation Plan")),
 				),
+			),
+			bootstrap.Card(
+				bootstrap.CardTitle("Raw"),
+				html.Pre(html.Code(htm.Text(rawContentsFormatted))),
 			),
 			downloadsFragment,
 			bootstrap.Card(

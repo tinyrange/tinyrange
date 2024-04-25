@@ -34,6 +34,8 @@ def fetch_rpm_repostiory(ctx, url):
             architecture = arch,
         ))
 
+        pkg.set_raw(json.encode(ent))
+
         if "Description" in ent:
             pkg.set_description(ent["Description"])
         pkg.set_license(ent["Format"]["License"])
