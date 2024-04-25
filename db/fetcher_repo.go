@@ -55,21 +55,22 @@ func (m logMessage) String() string {
 }
 
 type RepositoryFetcher struct {
-	db                 *PackageDatabase
-	Packages           []*Package
-	addPackageMutex    sync.Mutex
-	Distributions      map[string]bool
-	Architectures      map[string]bool
-	Distro             string
-	Func               *starlark.Function
-	Args               starlark.Tuple
-	Status             RepositoryFetcherStatus
-	updateMutex        sync.Mutex
-	LastUpdateTime     time.Duration
-	LastUpdated        time.Time
-	Messages           []logMessage
-	Counter            core.Counter
-	validArchitectures map[CPUArchitecture]bool
+	db                    *PackageDatabase
+	Packages              []*Package
+	addPackageMutex       sync.Mutex
+	Distributions         map[string]bool
+	Architectures         map[string]bool
+	Distro                string
+	Func                  *starlark.Function
+	Args                  starlark.Tuple
+	Status                RepositoryFetcherStatus
+	updateMutex           sync.Mutex
+	LastUpdateTime        time.Duration
+	LastUpdated           time.Time
+	Messages              []logMessage
+	Counter               core.Counter
+	validArchitectures    map[CPUArchitecture]bool
+	enforceSemverVersions bool
 }
 
 // Count implements core.Logger.
@@ -118,31 +119,63 @@ func (r *RepositoryFetcher) Key() string {
 	return getSha256([]byte(strings.Join(tokens, "_")))
 }
 
-func (r *RepositoryFetcher) addPackage(name PackageName) (starlark.Value, error) {
-	r.addPackageMutex.Lock()
-	defer r.addPackageMutex.Unlock()
+func (r *RepositoryFetcher) validateName(name PackageName) (PackageName, error) {
+	var err error
 
 	if r.validArchitectures == nil {
 		r.validArchitectures = map[CPUArchitecture]bool{
-			ArchInvalid: true,
-			ArchAArch64: true,
-			ArchArmHF:   true,
-			ArchArmV7:   true,
-			ArchMips64:  true,
-			ArchPPC64LE: true,
-			ArchRiscV64: true,
-			ArchS390X:   true,
-			ArchI386:    true,
-			ArchI586:    true,
-			ArchI686:    true,
-			ArchX86_64:  true,
-			ArchAny:     true,
-			ArchSource:  true,
+			ArchInvalid:    true,
+			ArchAArch64:    true,
+			ArchArmHF:      true,
+			ArchArmV7:      true,
+			ArchMips:       true,
+			ArchMipsR6:     true,
+			ArchMipsR6EL:   true,
+			ArchMipsEL:     true,
+			ArchMips64:     true,
+			ArchMips64EL:   true,
+			ArchMips64R6:   true,
+			ArchMips64R6EL: true,
+			ArchPowerPC:    true,
+			ArchPPC64LE:    true,
+			ArchPPC64EL:    true,
+			ArchRiscV64:    true,
+			ArchS390X:      true,
+			ArchI386:       true,
+			ArchI586:       true,
+			ArchI686:       true,
+			ArchX32:        true,
+			ArchX86_64:     true,
+			ArchAny:        true,
+			ArchSource:     true,
 		}
 	}
 
 	if _, ok := r.validArchitectures[CPUArchitecture(name.Architecture)]; !ok {
-		return starlark.None, fmt.Errorf("invalid architecture: %s", name.Architecture)
+		return PackageName{}, fmt.Errorf("invalid architecture: %s", name.Architecture)
+	}
+
+	if r.enforceSemverVersions && name.Version != "" {
+		oldName := name.Version
+		name.Version, err = semverCanonical(name.Version)
+		if err != nil {
+			r.Counter.Add(fmt.Sprintf("invalid semver: %s", err))
+			name.Version = oldName
+		}
+	}
+
+	return name, nil
+}
+
+func (r *RepositoryFetcher) addPackage(name PackageName) (starlark.Value, error) {
+	var err error
+
+	r.addPackageMutex.Lock()
+	defer r.addPackageMutex.Unlock()
+
+	name, err = r.validateName(name)
+	if err != nil {
+		return starlark.None, err
 	}
 
 	pkg := NewPackage()
@@ -199,7 +232,17 @@ func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
 				distribution = r.Distro
 			}
 
-			return NewPackageName(distribution, name, version, architecture)
+			pkgName, err := NewPackageName(distribution, name, version, architecture)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			pkgName, err = r.validateName(pkgName)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return pkgName, nil
 		}), nil
 	} else if name == "parallel_for" {
 		return starlark.NewBuiltin("Repo.parallel_for", func(
@@ -303,6 +346,29 @@ func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
+	} else if name == "pledge" {
+		return starlark.NewBuiltin("Repo.pledge", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				semverVersion bool
+			)
+
+			if err := starlark.UnpackArgs("Repo.pledge", args, kwargs,
+				"semver", &semverVersion,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if semverVersion {
+				r.enforceSemverVersions = true
+			}
+
+			return starlark.None, nil
+		}), nil
 	} else {
 		return nil, nil
 	}
@@ -310,7 +376,7 @@ func (r *RepositoryFetcher) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (*RepositoryFetcher) AttrNames() []string {
-	return []string{"add_package", "name", "parallel_for", "log"}
+	return []string{"add_package", "name", "parallel_for", "log", "pledge"}
 }
 
 func (fetcher *RepositoryFetcher) String() string {

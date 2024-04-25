@@ -32,7 +32,20 @@ def parse_debian_index(contents):
 
 debian_architectures = {
     "amd64": "x86_64",
+    "x32": "x32",
     "all": "any",
+    "arm64": "aarch64",
+    "powerpc": "powerpc",
+    "ppc64el": "ppc64le",
+    "armel": "armv7",
+    "mips": "mips",
+    "mipsr6": "mipsr6",
+    "mipsr6el": "mipsr6el",
+    "mipsel": "mipsel",
+    "mips64": "mips64",
+    "mips64el": "mips64el",
+    "mips64r6": "mips64r6",
+    "mips64r6el": "mips64r6el",
 }
 
 def get_debian_architecture(arch):
