@@ -152,6 +152,18 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 			}
 		}
 
+		var conflictList []htm.Group
+		for _, optionList := range pkg.Conflicts {
+			for _, option := range optionList {
+				conflictList = append(conflictList, htm.Group{
+					html.Textf("%s", option.Distribution),
+					html.Link("/search?"+option.UrlParams(), html.Textf("%s", option.Name)),
+					html.Textf("%s", option.Version),
+					html.Textf("%s", option.Architecture),
+				})
+			}
+		}
+
 		var aliasList []htm.Group
 		for _, alias := range pkg.Aliases {
 			aliasList = append(aliasList, htm.Group{
@@ -207,6 +219,15 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 					html.Textf("Version"),
 					html.Textf("Architecture"),
 				}, dependList),
+			),
+			bootstrap.Card(
+				bootstrap.CardTitle("Conflicts"),
+				bootstrap.Table(htm.Group{
+					html.Textf("Distribution"),
+					html.Textf("Name"),
+					html.Textf("Version"),
+					html.Textf("Architecture"),
+				}, conflictList),
 			),
 			bootstrap.Card(
 				bootstrap.CardTitle("Aliases"),

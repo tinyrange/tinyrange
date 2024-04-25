@@ -18,6 +18,10 @@ func versionLessThan(a, b string) bool {
 	return true
 }
 
+func versionApproximately(a, b string) bool {
+	return true
+}
+
 type CPUArchitecture string
 
 const (
@@ -70,6 +74,10 @@ func (name PackageName) Matches(query PackageName) bool {
 			}
 		} else if strings.HasPrefix(query.Version, ">") {
 			if !versionGreaterThan(name.Version, query.Version) {
+				return false
+			}
+		} else if strings.HasPrefix(query.Version, "~") {
+			if !versionApproximately(name.Version, query.Version) {
 				return false
 			}
 		} else if query.Version != name.Version {
@@ -194,6 +202,7 @@ type Package struct {
 	DownloadUrls    []string
 	Metadata        map[string]string
 	Depends         [][]PackageName
+	Conflicts       [][]PackageName
 	Aliases         []PackageName
 	BuildScripts    []BuildScript
 	Builders        []*Builder
@@ -411,6 +420,55 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 				return starlark.None, fmt.Errorf("unhandled argument type: %T", name)
 			}
 		}), nil
+	} else if name == "add_conflict" {
+		return starlark.NewBuiltin("Package.add_conflict", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				name starlark.Value
+				kind string
+			)
+
+			if err := starlark.UnpackArgs("Package.add_conflict", args, kwargs,
+				"name", &name,
+				"kind?", &kind,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if pkgName, ok := name.(PackageName); ok {
+				pkg.Conflicts = append(pkg.Conflicts, []PackageName{pkgName})
+
+				return starlark.None, nil
+			} else if names, ok := name.(*starlark.List); ok {
+				var options []PackageName
+
+				var err error
+
+				names.Elements(func(v starlark.Value) bool {
+					pkgName, ok := v.(PackageName)
+					if ok {
+						options = append(options, pkgName)
+						return true
+					} else {
+						err = fmt.Errorf("expected PackageName got %s", name.Type())
+						return false
+					}
+				})
+				if err != nil {
+					return starlark.None, err
+				}
+
+				pkg.Conflicts = append(pkg.Conflicts, options)
+
+				return starlark.None, nil
+			} else {
+				return starlark.None, fmt.Errorf("unhandled argument type: %T", name)
+			}
+		}), nil
 	} else if name == "add_alias" {
 		return starlark.NewBuiltin("Package.add_alias", func(
 			thread *starlark.Thread,
@@ -512,6 +570,7 @@ func (*Package) AttrNames() []string {
 		"add_source",
 		"add_metadata",
 		"add_dependency",
+		"add_conflict",
 		"add_alias",
 		"add_build_script",
 		"add_builder",

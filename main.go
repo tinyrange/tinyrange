@@ -29,6 +29,7 @@ var (
 	test              = flag.Bool("test", false, "just fetch all repos")
 	printPaths        = flag.Bool("paths", false, "print all package paths")
 	database          = flag.String("database", "", "create a BoltDB database")
+	testAll           = flag.Bool("testAll", false, "calculate a installation plan for every package in the index and print any packages that fails for")
 )
 
 func main() {
@@ -154,6 +155,10 @@ func main() {
 		if *printPaths {
 			for _, name := range pkgDb.AllNames() {
 				fmt.Printf("%s\n", filepath.Join(append([]string{"local", "packages"}, name.Path()...)...))
+			}
+		} else if *testAll {
+			if err := pkgDb.TestAllPackages(); err != nil {
+				log.Fatal("failed to test all packages: ", err)
 			}
 		}
 	} else {

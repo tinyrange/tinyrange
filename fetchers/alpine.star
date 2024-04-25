@@ -26,6 +26,15 @@ def parse_apk_name(ctx, s):
     if ">=" in s:
         pkg, version = s.split(">=", 1)
         version = ">" + version
+    elif ">" in s:
+        pkg, version = s.split(">", 1)
+        version = ">" + version
+    elif "<=" in s:
+        pkg, version = s.split("<=", 1)
+        version = "<" + version
+    elif "<" in s:
+        pkg, version = s.split("<", 1)
+        version = "<" + version
     elif "~" in s:
         pkg, version = s.split("~", 1)
         version = "~" + version
@@ -67,7 +76,10 @@ def fetch_alpine_repository(ctx, url, repo):
         pkg.add_metadata("maintainer", opt(ent, "m"))
 
         for depend in split_dict_maybe(ent, "D", " "):
-            pkg.add_dependency(parse_apk_name(ctx, depend))
+            if depend.startswith("!"):
+                pkg.add_conflict(parse_apk_name(ctx, depend.removeprefix("!")))
+            else:
+                pkg.add_dependency(parse_apk_name(ctx, depend))
 
         for alias in split_dict_maybe(ent, "p", " "):
             pkg.add_alias(parse_apk_name(ctx, alias))

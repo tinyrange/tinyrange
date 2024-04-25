@@ -714,7 +714,7 @@ func (db *PackageDatabase) searchWithProviders(query PackageName, maxResults int
 func (db *PackageDatabase) Search(query PackageName, maxResults int) ([]*Package, error) {
 	var ret []*Package
 
-	slog.Info("search", "query", query)
+	// slog.Info("search", "query", query)
 
 outer:
 	for _, fetcher := range db.Fetchers {
@@ -834,6 +834,15 @@ func (plan *InstallationPlan) addPackage(query PackageName) error {
 	for _, alias := range pkg.Aliases {
 		if err := plan.addName(alias); err != nil {
 			return err
+		}
+	}
+
+	// Check for conflicts.
+	for _, conflict := range pkg.Conflicts {
+		for _, option := range conflict {
+			if plan.checkName(option) {
+				return fmt.Errorf("found conflict between %s and %s", query, option)
+			}
 		}
 	}
 
@@ -1001,4 +1010,32 @@ func (db *PackageDatabase) OpenDatabase(filename string) (io.Closer, error) {
 	}
 
 	return db.db, nil
+}
+
+func (db *PackageDatabase) TestAllPackages() error {
+	pb := progressbar.Default(db.Count())
+
+	var broken int64 = 0
+	var working int64 = 0
+
+	for _, fetcher := range db.Fetchers {
+		for _, pkg := range fetcher.Packages {
+			planSearch := []PackageName{pkg.Name}
+
+			_, err := db.MakeInstallationPlan(planSearch)
+			if err != nil {
+				broken += 1
+				slog.Warn("failed to make installation plan", "package", pkg.Name, "error", err)
+			} else {
+				working += 1
+				// slog.Info("made installation plan for", "package", pkg.Name)
+			}
+
+			pb.Add(1)
+		}
+	}
+
+	slog.Info("finished testing installation plans for all packages", "working", working, "broken", broken, "total", db.Count())
+
+	return nil
 }
