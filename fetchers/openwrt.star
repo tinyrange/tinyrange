@@ -71,7 +71,7 @@ def fetch_openwrt_repostiory(ctx, url):
         ))
         if "description" in info:
             pkg.set_description(info["description"])
-        pkg.add_source(url = url + info["filename"])
+        pkg.add_source(kind = "openwrt", url = url + info["filename"])
 
         for depend in split_dict_maybe(info, "depends", ", "):
             pkg.add_dependency(parse_openwrt_name(ctx, depend, info["architecture"]))

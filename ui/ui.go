@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -174,11 +175,42 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 			})
 		}
 
-		var downloadUrls []htm.Group
-		for _, downloadUrl := range pkg.DownloadUrls {
-			downloadUrls = append(downloadUrls, htm.Group{
-				html.Link(downloadUrl, html.Textf("%s", downloadUrl)),
-			})
+		var downloadsFragment htm.Fragment
+
+		if !pkgDb.EnableDownloads {
+			var downloadUrls []htm.Group
+			for _, downloader := range pkg.Downloaders {
+				downloadUrls = append(downloadUrls, htm.Group{
+					html.Link(downloader.Url, html.Textf("%s", downloader)),
+				})
+			}
+
+			downloadsFragment = bootstrap.Card(
+				bootstrap.CardTitle("Download URLs"),
+				bootstrap.Table(htm.Group{
+					html.Textf("URL"),
+				}, downloadUrls),
+			)
+		} else {
+			var downloadUrls []htm.Group
+			for i, downloader := range pkg.Downloaders {
+				values := url.Values{}
+				values.Set("key", key)
+				values.Set("index", fmt.Sprintf("%d", i))
+
+				downloadUrls = append(downloadUrls, htm.Group{
+					html.Link(downloader.Url, html.Textf("%s", downloader)),
+					bootstrap.LinkButton("/contents?"+values.Encode(), bootstrap.ButtonColorPrimary, html.Text("Contents")),
+				})
+			}
+
+			downloadsFragment = bootstrap.Card(
+				bootstrap.CardTitle("Download URLs"),
+				bootstrap.Table(htm.Group{
+					html.Textf("URL"),
+					html.Textf("Actions"),
+				}, downloadUrls),
+			)
 		}
 
 		var builders htm.Group
@@ -205,12 +237,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 					bootstrap.LinkButton("/plan?key="+key, bootstrap.ButtonColorPrimary, html.Text("Installation Plan")),
 				),
 			),
-			bootstrap.Card(
-				bootstrap.CardTitle("Download URLs"),
-				bootstrap.Table(htm.Group{
-					html.Textf("URL"),
-				}, downloadUrls),
-			),
+			downloadsFragment,
 			bootstrap.Card(
 				bootstrap.CardTitle("Depends"),
 				bootstrap.Table(htm.Group{
@@ -293,6 +320,67 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 			if err := htm.Render(r.Context(), w, page); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
+		}
+	})
+
+	mux.HandleFunc("/contents", func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		r.ParseForm()
+
+		key := r.FormValue("key")
+		indexStr := r.FormValue("index")
+		index, err := strconv.ParseInt(indexStr, 0, 64)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		pkg, ok := pkgDb.Get(key)
+		if !ok {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+
+		downloader := pkg.Downloaders[index]
+
+		contents, err := pkgDb.GetPackageContents(downloader)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+
+			page := pageTemplate(pkgDb, pkg.Name, start, bootstrap.Card(
+				bootstrap.CardTitle("Failed to fetch package contents"),
+				html.Div(html.Textf("%s", err)),
+			))
+
+			if err := htm.Render(r.Context(), w, page); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+
+			return
+		}
+
+		var entries []htm.Group
+
+		for _, ent := range contents.Entries() {
+			entries = append(entries, htm.Group{
+				html.Textf("%s", ent.FileMode()),
+				html.Textf("%d", ent.Size()),
+				html.Textf("%s", ent.Name()),
+			})
+		}
+
+		page := pageTemplate(pkgDb, pkg.Name, start, bootstrap.Card(
+			bootstrap.CardTitle("Package Contents"),
+			bootstrap.Table(htm.Group{
+				htm.Text("Mode"),
+				htm.Text("Size"),
+				htm.Text("Filename"),
+			}, entries),
+		))
+
+		if err := htm.Render(r.Context(), w, page); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
 

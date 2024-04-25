@@ -199,8 +199,13 @@ type BuildScript struct {
 type PackageMetadataVersion int
 
 const (
-	PackageMetadataVersionCurrent PackageMetadataVersion = 1
+	PackageMetadataVersionCurrent PackageMetadataVersion = 2
 )
+
+type Downloader struct {
+	Name string
+	Url  string
+}
 
 type Package struct {
 	MetadataVersion PackageMetadataVersion
@@ -209,7 +214,7 @@ type Package struct {
 	License         string
 	Size            int
 	InstalledSize   int
-	DownloadUrls    []string
+	Downloaders     []Downloader
 	Metadata        map[string]string
 	Depends         [][]PackageName
 	Conflicts       [][]PackageName
@@ -343,16 +348,18 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				url string
+				url  string
+				kind string
 			)
 
 			if err := starlark.UnpackArgs("Package.add_source", args, kwargs,
 				"url", &url,
+				"kind", &kind,
 			); err != nil {
 				return starlark.None, err
 			}
 
-			pkg.DownloadUrls = append(pkg.DownloadUrls, url)
+			pkg.Downloaders = append(pkg.Downloaders, Downloader{Name: kind, Url: url})
 
 			return starlark.None, nil
 		}), nil

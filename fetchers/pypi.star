@@ -61,7 +61,7 @@ def add_pypi_package(ctx, download_url, metadata):
     if "License" in metadata:
         pkg.set_license(metadata["License"][0])
 
-    pkg.add_source(url = download_url)
+    pkg.add_source(kind = "python", url = download_url)
 
     if "Requires-Dist" in metadata:
         for depend in metadata["Requires-Dist"]:

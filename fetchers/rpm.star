@@ -37,7 +37,7 @@ def fetch_rpm_repostiory(ctx, url):
         if "Description" in ent:
             pkg.set_description(ent["Description"])
         pkg.set_license(ent["Format"]["License"])
-        pkg.add_source(url = url + ent["Location"]["Href"])
+        pkg.add_source(kind = "rpm", url = url + ent["Location"]["Href"])
 
         if ent["Format"]["Requires"]["Entry"] != None:
             for require in ent["Format"]["Requires"]["Entry"]:

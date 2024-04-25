@@ -59,7 +59,7 @@ def fetch_xbps_repository(ctx, url, arch):
         pkg.set_installed_size(ent["installed_size"])
 
         download_url = "{}/{}.{}.xbps".format(url, ent["pkgver"], arch)
-        pkg.add_source(url = download_url)
+        pkg.add_source(kind = "xbps", url = download_url)
 
         if "run_depends" in ent:
             for depend in ent["run_depends"]:

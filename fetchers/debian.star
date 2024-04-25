@@ -98,7 +98,7 @@ def fetch_debian_repository(ctx, base, fallback, url):
         pkg.set_installed_size(int(opt(ent, "installed-size", default = -1)))
         pkg.set_size(int(ent["size"]))
 
-        pkg.add_source(url = base + "/" + ent["filename"])
+        pkg.add_source(kind = "deb", url = base + "/" + ent["filename"])
 
         # pkg.add_metadata("raw", json.encode(ent))
 
