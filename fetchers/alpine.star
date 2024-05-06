@@ -31,6 +31,15 @@ def parse_apk_name(ctx, s):
     if ">=" in s:
         pkg, version = s.split(">=", 1)
         version = ">" + version
+    elif ">" in s:
+        pkg, version = s.split(">", 1)
+        version = ">" + version
+    elif "<=" in s:
+        pkg, version = s.split("<=", 1)
+        version = "<" + version
+    elif "<" in s:
+        pkg, version = s.split("<", 1)
+        version = "<" + version
     elif "~" in s:
         pkg, version = s.split("~", 1)
         version = "~" + version
@@ -57,6 +66,8 @@ def fetch_alpine_repository(ctx, url, repo):
             architecture = ent["A"],
         ))
 
+        pkg.set_raw(json.encode(ent))
+
         pkg.set_description(ent["T"])
         if "L" in ent:
             pkg.set_license(ent["L"])
@@ -64,7 +75,7 @@ def fetch_alpine_repository(ctx, url, repo):
         if "I" in ent:
             pkg.set_installed_size(int(ent["I"]))
 
-        pkg.add_source(url = "{}/{}-{}.apk".format(url, pkg.name, pkg.version))
+        pkg.add_source(kind = "apk", url = "{}/{}-{}.apk".format(url, pkg.name, ent["V"]))
         if opt(ent, "c") != "":
             pkg.add_build_script("alpine", (ent["c"], "{}/{}/APKBUILD".format(repo, ent["o"])))
 
@@ -74,7 +85,10 @@ def fetch_alpine_repository(ctx, url, repo):
         pkg.add_metadata("maintainer", opt(ent, "m"))
 
         for depend in split_dict_maybe(ent, "D", " "):
-            pkg.add_dependency(parse_apk_name(ctx, depend))
+            if depend.startswith("!"):
+                pkg.add_conflict(parse_apk_name(ctx, depend.removeprefix("!")))
+            else:
+                pkg.add_dependency(parse_apk_name(ctx, depend))
 
         for alias in split_dict_maybe(ent, "p", " "):
             pkg.add_alias(parse_apk_name(ctx, alias))
@@ -94,4 +108,14 @@ register_script_fetcher(
     "alpine",
     fetch_alpine_build_script,
     ("git://git.alpinelinux.org/aports",),
+)
+
+def get_apk_contents(ctx, url):
+    print(url)
+    return fetch_http(url).read_archive(".tar.gz")
+
+register_content_fetcher(
+    "apk",
+    get_apk_contents,
+    (),
 )

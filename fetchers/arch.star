@@ -62,12 +62,14 @@ def fetch_arch_repository(ctx, url, pool, include_scripts):
             architecture = ent["arch"],
         ))
 
+        pkg.set_raw(json.encode(ent))
+
         pkg.set_description(opt(ent, "desc"))
         pkg.set_license(opt(ent, "license"))
         pkg.set_size(int(ent["csize"]))
         pkg.set_installed_size(int(ent["isize"]))
 
-        pkg.add_source(url = url + "/" + ent["filename"])
+        pkg.add_source(kind = "arch", url = url + "/" + ent["filename"])
         if include_scripts:
             pkg.add_build_script("arch", (ent["base"], ent["version"]))
 
@@ -92,7 +94,8 @@ def fetch_aur_repository(ctx):
             pkg.set_description(opt(ent, "Description"))
         pkg.set_license(",".join(opt(ent, "License", default = [])))
 
-        pkg.add_source(url = "https://aur.archlinux.org" + ent["URLPath"])
+        # TODO(joshua): This is technically a build script not a download source.
+        pkg.add_source(kind = "arch", url = "https://aur.archlinux.org" + ent["URLPath"])
 
         for depend in opt(ent, "Depends", default = []):
             pkg.add_dependency(parse_arch_name(ctx, depend))

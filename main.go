@@ -29,6 +29,9 @@ var (
 	test              = flag.Bool("test", false, "just fetch all repos")
 	printPaths        = flag.Bool("paths", false, "print all package paths")
 	database          = flag.String("database", "", "create a BoltDB database")
+	testAll           = flag.Bool("testAll", false, "calculate a installation plan for every package in the index and print any packages that fails for")
+	runRepl           = flag.Bool("repl", false, "start a REPL")
+	enableDownloads   = flag.Bool("enableDownloads", false, "enable support for downloading packages. not recommended for public instances")
 )
 
 func main() {
@@ -43,11 +46,14 @@ func main() {
 	}
 
 	pkgDb := &db.PackageDatabase{
-		Eif:          eif,
-		AllowLocal:   *allowLocal,
-		ForceRefresh: *forceRefresh,
-		NoParallel:   *noParallel,
-		PackageBase:  *packageBase,
+		Eif:             eif,
+		AllowLocal:      *allowLocal,
+		ForceRefresh:    *forceRefresh,
+		NoParallel:      *noParallel,
+		PackageBase:     *packageBase,
+		EnableDownloads: *enableDownloads,
+
+		ContentFetchers: make(map[string]*db.ContentFetcher),
 	}
 
 	if *database != "" {
@@ -66,7 +72,19 @@ func main() {
 
 	slog.Info("loaded scripts")
 
-	if *makePlan != "" {
+	if *runRepl {
+		start := time.Now()
+
+		if err := pkgDb.FetchAll(); err != nil {
+			log.Fatal("failed to fetch: ", err)
+		}
+
+		slog.Info("finished loading all repositories", "took", time.Since(start), "packages", pkgDb.Count())
+
+		if err := pkgDb.RunRepl(); err != nil {
+			log.Fatal("failed to run REPL: ", err)
+		}
+	} else if *makePlan != "" {
 		start := time.Now()
 
 		if err := pkgDb.FetchAll(); err != nil {
@@ -103,11 +121,11 @@ func main() {
 			}
 
 			for _, pkg := range plan.Packages {
-				if len(pkg.DownloadUrls) == 0 {
+				if len(pkg.Downloaders) == 0 {
 					log.Fatal("no download URLs", pkg)
 				}
 
-				if _, err := fmt.Fprintf(out, "  pkg distro:%s\n", pkg.DownloadUrls[0]); err != nil {
+				if _, err := fmt.Fprintf(out, "  pkg distro:%s\n", pkg.Downloaders[0].Url); err != nil {
 					log.Fatal(err)
 				}
 			}
@@ -154,6 +172,10 @@ func main() {
 		if *printPaths {
 			for _, name := range pkgDb.AllNames() {
 				fmt.Printf("%s\n", filepath.Join(append([]string{"local", "packages"}, name.Path()...)...))
+			}
+		} else if *testAll {
+			if err := pkgDb.TestAllPackages(); err != nil {
+				log.Fatal("failed to test all packages: ", err)
 			}
 		}
 	} else {

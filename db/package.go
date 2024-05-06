@@ -18,6 +18,10 @@ func versionLessThan(a, b string) bool {
 	return true
 }
 
+func versionApproximately(a, b string) bool {
+	return true
+}
+
 type CPUArchitecture string
 
 const (
@@ -97,6 +101,10 @@ func (name PackageName) Matches(query PackageName) bool {
 			}
 		} else if strings.HasPrefix(query.Version, ">") {
 			if !versionGreaterThan(name.Version, query.Version) {
+				return false
+			}
+		} else if strings.HasPrefix(query.Version, "~") {
+			if !versionApproximately(name.Version, query.Version) {
 				return false
 			}
 		} else if query.Version != name.Version {
@@ -208,8 +216,13 @@ type BuildScript struct {
 type PackageMetadataVersion int
 
 const (
-	PackageMetadataVersionCurrent PackageMetadataVersion = 1
+	PackageMetadataVersionCurrent PackageMetadataVersion = 2
 )
+
+type Downloader struct {
+	Name string
+	Url  string
+}
 
 type Package struct {
 	MetadataVersion PackageMetadataVersion
@@ -218,9 +231,11 @@ type Package struct {
 	License         string
 	Size            int
 	InstalledSize   int
-	DownloadUrls    []string
+	RawContents     string
+	Downloaders     []Downloader
 	Metadata        map[string]string
 	Depends         [][]PackageName
+	Conflicts       [][]PackageName
 	Aliases         []PackageName
 	BuildScripts    []BuildScript
 	Builders        []*Builder
@@ -351,16 +366,18 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				url string
+				url  string
+				kind string
 			)
 
 			if err := starlark.UnpackArgs("Package.add_source", args, kwargs,
 				"url", &url,
+				"kind", &kind,
 			); err != nil {
 				return starlark.None, err
 			}
 
-			pkg.DownloadUrls = append(pkg.DownloadUrls, url)
+			pkg.Downloaders = append(pkg.Downloaders, Downloader{Name: kind, Url: url})
 
 			return starlark.None, nil
 		}), nil
@@ -432,6 +449,55 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 				}
 
 				pkg.Depends = append(pkg.Depends, options)
+
+				return starlark.None, nil
+			} else {
+				return starlark.None, fmt.Errorf("unhandled argument type: %T", name)
+			}
+		}), nil
+	} else if name == "add_conflict" {
+		return starlark.NewBuiltin("Package.add_conflict", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				name starlark.Value
+				kind string
+			)
+
+			if err := starlark.UnpackArgs("Package.add_conflict", args, kwargs,
+				"name", &name,
+				"kind?", &kind,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if pkgName, ok := name.(PackageName); ok {
+				pkg.Conflicts = append(pkg.Conflicts, []PackageName{pkgName})
+
+				return starlark.None, nil
+			} else if names, ok := name.(*starlark.List); ok {
+				var options []PackageName
+
+				var err error
+
+				names.Elements(func(v starlark.Value) bool {
+					pkgName, ok := v.(PackageName)
+					if ok {
+						options = append(options, pkgName)
+						return true
+					} else {
+						err = fmt.Errorf("expected PackageName got %s", name.Type())
+						return false
+					}
+				})
+				if err != nil {
+					return starlark.None, err
+				}
+
+				pkg.Conflicts = append(pkg.Conflicts, options)
 
 				return starlark.None, nil
 			} else {
@@ -518,6 +584,27 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
+	} else if name == "set_raw" {
+		return starlark.NewBuiltin("Package.set_raw", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				raw string
+			)
+
+			if err := starlark.UnpackArgs("Package.set_raw", args, kwargs,
+				"raw", &raw,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			pkg.RawContents = raw
+
+			return starlark.None, nil
+		}), nil
 	} else if name == "name" {
 		return starlark.String(pkg.Name.Name), nil
 	} else if name == "version" {
@@ -539,9 +626,11 @@ func (*Package) AttrNames() []string {
 		"add_source",
 		"add_metadata",
 		"add_dependency",
+		"add_conflict",
 		"add_alias",
 		"add_build_script",
 		"add_builder",
+		"set_raw",
 		"name",
 		"version",
 		"arch",

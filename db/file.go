@@ -188,6 +188,11 @@ type StarArchive struct {
 	name   string
 }
 
+// Entries implements memtar.TarReader.
+func (ar *StarArchive) Entries() []memtar.Entry {
+	return ar.r.Entries()
+}
+
 // Get implements starlark.Mapping.
 func (ar *StarArchive) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
 	filename, _ := starlark.AsString(k)
@@ -216,4 +221,5 @@ var (
 	_ starlark.Value    = &StarArchive{}
 	_ starlark.Iterable = &StarArchive{}
 	_ starlark.Mapping  = &StarArchive{}
+	_ memtar.TarReader  = &StarArchive{}
 )

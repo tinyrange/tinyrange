@@ -51,13 +51,15 @@ def fetch_cran_repostiory(ctx, url):
             version = ent["version"],
         ))
 
+        pkg.set_raw(json.encode(ent))
+
         if "license" in ent:
             pkg.set_license(ent["license"])
 
         if "path" in ent:
-            pkg.add_source(url = "{}/{}/{}_{}.tar.gz".format(url, ent["path"], pkg.name, pkg.version))
+            pkg.add_source(kind = "cran", url = "{}/{}/{}_{}.tar.gz".format(url, ent["path"], pkg.name, pkg.version))
         else:
-            pkg.add_source(url = "{}/{}_{}.tar.gz".format(url, pkg.name, pkg.version))
+            pkg.add_source(kind = "cran", url = "{}/{}_{}.tar.gz".format(url, pkg.name, pkg.version))
 
         if "depends" in ent:
             for depend in ent["depends"].replace("\n", "").split(","):

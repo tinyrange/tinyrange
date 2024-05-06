@@ -17,9 +17,11 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/pkg2/core"
 	"github.com/tinyrange/pkg2/jinja2"
+	"github.com/tinyrange/pkg2/memtar"
 	"github.com/tinyrange/pkg2/third_party/regexp"
 	bolt "go.etcd.io/bbolt"
 	starlarkjson "go.starlark.net/lib/json"
+	"go.starlark.net/repl"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 	"gopkg.in/yaml.v3"
@@ -31,12 +33,14 @@ type PackageDatabase struct {
 	Fetchers        []*RepositoryFetcher
 	ScriptFetchers  []*ScriptFetcher
 	SearchProviders []*SearchProvider
+	ContentFetchers map[string]*ContentFetcher
 	packageMap      map[string]*Package
 	packageMapMutex sync.Mutex
 	AllowLocal      bool
 	ForceRefresh    bool
 	NoParallel      bool
 	PackageBase     string
+	EnableDownloads bool
 	db              *bolt.DB
 }
 
@@ -48,6 +52,15 @@ func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Funct
 		Args:    args,
 		Counter: core.NewCounter(),
 	})
+
+	return nil
+}
+
+func (db *PackageDatabase) addContentFetcher(name string, f *starlark.Function, args starlark.Tuple) error {
+	db.ContentFetchers[name] = &ContentFetcher{
+		Func: f,
+		Args: args,
+	}
 
 	return nil
 }
@@ -139,6 +152,32 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			}
 
 			return db.fetchGit(url)
+		}),
+		"register_content_fetcher": starlark.NewBuiltin("register_content_fetcher", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				name  string
+				f     *starlark.Function
+				fArgs starlark.Tuple
+			)
+
+			if err := starlark.UnpackArgs("register_content_fetcher", args, kwargs,
+				"name", &name,
+				"f", &f,
+				"fArgs", &fArgs,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if err := db.addContentFetcher(name, f, fArgs); err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.None, nil
 		}),
 		"register_script_fetcher": starlark.NewBuiltin("register_script_fetcher", func(
 			thread *starlark.Thread,
@@ -714,7 +753,7 @@ func (db *PackageDatabase) searchWithProviders(query PackageName, maxResults int
 func (db *PackageDatabase) Search(query PackageName, maxResults int) ([]*Package, error) {
 	var ret []*Package
 
-	slog.Info("search", "query", query)
+	// slog.Info("search", "query", query)
 
 outer:
 	for _, fetcher := range db.Fetchers {
@@ -834,6 +873,15 @@ func (plan *InstallationPlan) addPackage(query PackageName) error {
 	for _, alias := range pkg.Aliases {
 		if err := plan.addName(alias); err != nil {
 			return err
+		}
+	}
+
+	// Check for conflicts.
+	for _, conflict := range pkg.Conflicts {
+		for _, option := range conflict {
+			if plan.checkName(option) {
+				return fmt.Errorf("found conflict between %s and %s", query, option)
+			}
 		}
 	}
 
@@ -1001,4 +1049,78 @@ func (db *PackageDatabase) OpenDatabase(filename string) (io.Closer, error) {
 	}
 
 	return db.db, nil
+}
+
+func (db *PackageDatabase) TestAllPackages() error {
+	pb := progressbar.Default(db.Count())
+
+	var broken int64 = 0
+	var working int64 = 0
+
+	for _, fetcher := range db.Fetchers {
+		for _, pkg := range fetcher.Packages {
+			planSearch := []PackageName{pkg.Name}
+
+			_, err := db.MakeInstallationPlan(planSearch)
+			if err != nil {
+				broken += 1
+				slog.Warn("failed to make installation plan", "package", pkg.Name, "error", err)
+			} else {
+				working += 1
+				// slog.Info("made installation plan for", "package", pkg.Name)
+			}
+
+			pb.Add(1)
+		}
+	}
+
+	slog.Info("finished testing installation plans for all packages", "working", working, "broken", broken, "total", db.Count())
+
+	return nil
+}
+
+func (db *PackageDatabase) RunRepl() error {
+	thread := &starlark.Thread{
+		Load: func(thread *starlark.Thread, module string) (starlark.StringDict, error) {
+			globals, err := db.getGlobals(module)
+			if err != nil {
+				return nil, err
+			}
+
+			filename := filepath.Join(db.PackageBase, module)
+
+			ret, err := starlark.ExecFileOptions(&syntax.FileOptions{
+				TopLevelControl: true,
+				Recursion:       true,
+				Set:             true,
+				GlobalReassign:  true,
+			}, thread, filename, nil, globals)
+			if err != nil {
+				if sErr, ok := err.(*starlark.EvalError); ok {
+					slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+				}
+				return nil, err
+			}
+
+			return ret, nil
+		},
+	}
+
+	globals, err := db.getGlobals("__repl__")
+	if err != nil {
+		return err
+	}
+
+	repl.REPLOptions(&syntax.FileOptions{Set: true, While: true, TopLevelControl: true, GlobalReassign: true}, thread, globals)
+
+	return nil
+}
+
+func (db *PackageDatabase) GetPackageContents(downloader Downloader) (memtar.TarReader, error) {
+	fetcher, ok := db.ContentFetchers[downloader.Name]
+	if !ok {
+		return nil, fmt.Errorf("could not find fetcher: %s", downloader.Name)
+	}
+
+	return fetcher.FetchContents(downloader.Url)
 }
