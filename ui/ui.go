@@ -99,7 +99,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 			return
 		}
 
-		results, err := pkgDb.Search(search, 50)
+		results, err := pkgDb.Search(search, db.QueryOptions{MaxResults: 50})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -304,7 +304,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 			return
 		}
 
-		plan, err := pkgDb.MakeInstallationPlan([]db.PackageName{pkg.Name})
+		plan, err := pkgDb.MakeInstallationPlan([]db.PackageName{pkg.Name}, db.QueryOptions{})
 		if err == nil {
 			var rows []htm.Group
 

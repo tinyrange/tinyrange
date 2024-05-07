@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"strings"
 
@@ -20,6 +21,12 @@ func versionLessThan(a, b string) bool {
 
 func versionApproximately(a, b string) bool {
 	return true
+}
+
+func versionMatches(a, b string) bool {
+	slog.Info("versionMatches", "a", a, "b", b)
+
+	return false
 }
 
 type CPUArchitecture string
@@ -73,6 +80,7 @@ type PackageName struct {
 	Name         string
 	Version      string
 	Architecture string
+	Recommended  bool
 }
 
 func (name PackageName) Matches(query PackageName) bool {
@@ -414,18 +422,22 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				name starlark.Value
-				kind string
+				name       starlark.Value
+				kind       string
+				recommends bool
 			)
 
 			if err := starlark.UnpackArgs("Package.add_alias", args, kwargs,
 				"name", &name,
 				"kind?", &kind,
+				"recommends?", &recommends,
 			); err != nil {
 				return starlark.None, err
 			}
 
 			if pkgName, ok := name.(PackageName); ok {
+				pkgName.Recommended = recommends
+
 				pkg.Depends = append(pkg.Depends, []PackageName{pkgName})
 
 				return starlark.None, nil
@@ -437,6 +449,8 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 				names.Elements(func(v starlark.Value) bool {
 					pkgName, ok := v.(PackageName)
 					if ok {
+						pkgName.Recommended = recommends
+
 						options = append(options, pkgName)
 						return true
 					} else {
@@ -611,6 +625,31 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 		return starlark.String(pkg.Name.Version), nil
 	} else if name == "arch" {
 		return starlark.String(pkg.Name.Architecture), nil
+	} else if name == "depends" {
+		var ret []starlark.Value
+
+		for _, depend := range pkg.Depends {
+			var tup starlark.Tuple
+
+			for _, option := range depend {
+				tup = append(tup, option)
+			}
+
+			ret = append(ret, tup)
+		}
+
+		return starlark.NewList(ret), nil
+	} else if name == "downloaders" {
+		var ret []starlark.Value
+
+		for _, downloader := range pkg.Downloaders {
+			ret = append(ret, starlark.Tuple{
+				starlark.String(downloader.Name),
+				starlark.String(downloader.Url),
+			})
+		}
+
+		return starlark.NewList(ret), nil
 	} else {
 		return nil, nil
 	}
@@ -637,7 +676,7 @@ func (*Package) AttrNames() []string {
 	}
 }
 
-func (*Package) String() string        { return "Package" }
+func (pkg *Package) String() string    { return pkg.Name.String() }
 func (*Package) Type() string          { return "Package" }
 func (*Package) Hash() (uint32, error) { return 0, fmt.Errorf("Package is not hashable") }
 func (*Package) Truth() starlark.Bool  { return starlark.True }

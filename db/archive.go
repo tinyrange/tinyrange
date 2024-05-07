@@ -1,11 +1,14 @@
 package db
 
 import (
+	"archive/tar"
+	"compress/bzip2"
 	"compress/gzip"
 	"fmt"
 	"io"
 	"strings"
 
+	"github.com/blakesmith/ar"
 	"github.com/klauspost/compress/zstd"
 	"github.com/tinyrange/pkg2/memtar"
 	"github.com/xi2/xz"
@@ -71,6 +74,12 @@ func ReadArchive(r io.Reader, ext string, stripComponents int) (memtar.TarReader
 		if err != nil {
 			return nil, err
 		}
+	} else if strings.HasSuffix(ext, ".bz2") {
+		ext = strings.TrimSuffix(ext, ".bz2")
+
+		reader = bzip2.NewReader(r)
+	} else {
+		reader = r
 	}
 
 	if strings.HasSuffix(ext, ".tar") {
@@ -85,6 +94,43 @@ func ReadArchive(r io.Reader, ext string, stripComponents int) (memtar.TarReader
 		} else {
 			return t, nil
 		}
+	} else if strings.HasSuffix(ext, ".ar") {
+		reader := ar.NewReader(reader)
+
+		var ret memtar.ArrayReader
+
+		for {
+			hdr, err := reader.Next()
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				return nil, err
+			}
+
+			memHdr := memtar.HeaderFromTarHeader(&tar.Header{
+				Name:    hdr.Name,
+				ModTime: hdr.ModTime,
+				Size:    hdr.Size,
+				Mode:    hdr.Mode,
+				Uid:     hdr.Uid,
+				Gid:     hdr.Gid,
+			})
+
+			body, err := io.ReadAll(reader)
+			if err != nil {
+				return nil, err
+			}
+
+			ent := &memtar.MemoryEntry{
+				Header:      memHdr,
+				EntFilename: hdr.Name,
+				Body:        body,
+			}
+
+			ret = append(ret, ent)
+		}
+
+		return ret, nil
 	} else {
 		return nil, fmt.Errorf("unknown extension: %s", ext)
 	}

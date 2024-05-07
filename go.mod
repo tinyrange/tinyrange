@@ -4,17 +4,19 @@ go 1.22.2
 
 require (
 	github.com/basgys/goxml2json v1.1.0
+	github.com/blakesmith/ar v0.0.0-20190502131153-809d4375e1fb
 	github.com/go-git/go-billy/v5 v5.5.0
 	github.com/go-git/go-git/v5 v5.11.0
 	github.com/go-python/gpython v0.2.0
 	github.com/icza/dyno v0.0.0-20230330125955-09f820a8d9c0
 	github.com/klauspost/compress v1.17.7
-	github.com/minio/sha256-simd v1.0.0
 	github.com/nix-community/go-nix v0.0.0-20231219074122-93cb24a86856
 	github.com/schollz/progressbar/v3 v3.14.2
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
+	go.etcd.io/bbolt v1.3.9
 	go.starlark.net v0.0.0-20240314022150-ee8ed142361c
 	golang.org/x/exp v0.0.0-20240318143956-a85f2c67cd81
+	golang.org/x/mod v0.16.0
 	golang.org/x/net v0.22.0
 	gopkg.in/yaml.v3 v3.0.1
 	howett.net/plist v1.0.1
@@ -35,6 +37,7 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
+	github.com/minio/sha256-simd v1.0.0 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-multihash v0.2.1 // indirect
@@ -45,9 +48,7 @@ require (
 	github.com/skeema/knownhosts v1.2.1 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
-	go.etcd.io/bbolt v1.3.9 // indirect
 	golang.org/x/crypto v0.21.0 // indirect
-	golang.org/x/mod v0.16.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/term v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
