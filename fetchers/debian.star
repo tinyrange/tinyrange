@@ -28,6 +28,9 @@ def parse_debian_index(contents):
         else:
             error("line not implemented: " + line)
 
+    if len(ent) > 0:
+        ret.append(ent)
+
     return ret
 
 debian_architectures = {
@@ -153,6 +156,31 @@ def fetch_debian_repository(ctx, base, fallback, url):
 
     return None
 
+def fetch_debian_repository_v2(ctx, base, fallback, url, architectures):
+    release_url = "{}/{}/Release".format(base, url)
+    resp = fetch_http(release_url)
+
+    if resp == None:
+        if fallback == None:
+            return None  # Nothing we can do.
+
+        release_url = "{}/{}/Release".format(fallback, url)
+        resp = fetch_http(release_url)
+        if resp == None:
+            return None  # Assume the package doesn't exist.
+
+        base = fallback
+
+    contents = parse_debian_index(resp.read())
+
+    contents = contents[0]
+
+    for component in contents["components"].split(" "):
+        for architecture in architectures:
+            fetch_debian_repository(ctx, base, None, "{}/{}/binary-{}".format(url, component, architecture))
+
+    return None
+
 def parse_deb(f):
     archive = f.read_archive(".ar")
 
@@ -179,3 +207,11 @@ register_content_fetcher(
     get_deb_contents,
     (),
 )
+
+if __name__ == "__main__":
+    fetch_repo(fetch_debian_repository_v2, (
+        "http://au.archive.ubuntu.com/ubuntu",
+        None,
+        "dists/xenial",
+        ["amd64"],
+    ), distro = "ubuntu@16.04")

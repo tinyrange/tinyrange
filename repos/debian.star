@@ -1,4 +1,4 @@
-load("fetchers/debian.star", "fetch_debian_repository")
+load("fetchers/debian.star", "fetch_debian_repository", "fetch_debian_repository_v2")
 
 ubuntu_mirror = "http://au.archive.ubuntu.com/ubuntu"
 old_ubuntu_fallback = "http://old-releases.ubuntu.com/ubuntu"
@@ -56,20 +56,19 @@ latest_ubuntu_version = "jammy"  # Latest LTS Version
 
 def add_ubuntu_fetchers(only_latest = True):
     for version in ubuntu_versions:
-        for component in ["main", "restricted", "universe", "multiverse"]:
-            for arch in ["amd64"]:
-                if only_latest and version != latest_ubuntu_version:
-                    continue
+        if only_latest and version != latest_ubuntu_version:
+            continue
 
-                fetch_repo(
-                    fetch_debian_repository,
-                    (
-                        ubuntu_mirror,
-                        old_ubuntu_fallback,
-                        "dists/{}/{}/binary-{}".format(version, component, arch),
-                    ),
-                    distro = "ubuntu@{}".format(version),
-                )
+        fetch_repo(
+            fetch_debian_repository_v2,
+            (
+                ubuntu_mirror,
+                old_ubuntu_fallback,
+                "dists/{}".format(version),
+                ["amd64"],
+            ),
+            distro = "ubuntu@{}".format(version),
+        )
 
 debian_versions = [
     "testing",
@@ -97,51 +96,51 @@ latest_debian_version = "bookworm"
 
 def add_debian_fetchers(only_latest = True):
     for version in debian_versions:
-        for component in ["main", "contrib", "non-free", "non-free-firmware"]:
-            for arch in ["amd64"]:
-                if only_latest and version != latest_debian_version:
-                    continue
+        if only_latest and version != latest_debian_version:
+            continue
 
-                fetch_repo(
-                    fetch_debian_repository,
-                    (
-                        debian_mirror,
-                        old_debian_fallback,
-                        "dists/{}/{}/binary-{}".format(version, component, arch),
-                    ),
-                    distro = "debian@{}".format(version),
-                )
+        fetch_repo(
+            fetch_debian_repository_v2,
+            (
+                debian_mirror,
+                old_debian_fallback,
+                "dists/{}".format(version),
+                ["amd64"],
+            ),
+            distro = "debian@{}".format(version),
+        )
 
 def add_kali_fetchers():
     for version in ["kali-rolling"]:
-        for component in ["main", "contrib", "non-free", "non-free-firmware"]:
-            for arch in ["amd64"]:
-                fetch_repo(
-                    fetch_debian_repository,
-                    (
-                        kali_mirror,
-                        None,
-                        "dists/{}/{}/binary-{}".format(version, component, arch),
-                    ),
-                    distro = "kali@{}".format(version),
-                )
+        fetch_repo(
+            fetch_debian_repository_v2,
+            (
+                kali_mirror,
+                None,
+                "dists/{}".format(version),
+                ["amd64"],
+            ),
+            distro = "kali@{}".format(version),
+        )
 
 def add_neurodebian_fetchers(only_latest = True):
     for version in ["jammy", "trusty", "noble", "mantic", "lunar", "focal", "devel", "bionic"]:
-        for component in ["main", "contrib", "non-free"]:
-            for arch in ["amd64"]:
-                if only_latest and version != latest_ubuntu_version:
-                    continue
+        if only_latest and version != latest_ubuntu_version:
+            continue
 
-                fetch_repo(
-                    fetch_debian_repository,
-                    (
-                        neurodebian_mirror,
-                        None,
-                        "dists/{}/{}/binary-{}".format(version, component, arch),
-                    ),
-                    distro = "ubuntu@{}".format(version),
-                )
+        fetch_repo(
+            fetch_debian_repository_v2,
+            (
+                neurodebian_mirror,
+                None,
+                "dists/{}".format(version),
+                ["amd64"],
+            ),
+            distro = "ubuntu@{}".format(version),
+        )
 
 if __name__ == "__main__":
-    add_ubuntu_fetchers()
+    # add_ubuntu_fetchers(only_latest = False)
+    # add_debian_fetchers(only_latest = False)
+    # add_kali_fetchers()
+    add_neurodebian_fetchers(only_latest = False)
