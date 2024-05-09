@@ -28,6 +28,11 @@ import (
 	"howett.net/plist"
 )
 
+type QueryOptions struct {
+	ExcludeRecommends bool
+	MaxResults        int
+}
+
 type PackageDatabase struct {
 	Eif             *core.EnvironmentInterface
 	Fetchers        []*RepositoryFetcher
@@ -41,7 +46,10 @@ type PackageDatabase struct {
 	NoParallel      bool
 	PackageBase     string
 	EnableDownloads bool
-	db              *bolt.DB
+	ScriptMode      bool
+
+	scriptFunction starlark.Value
+	db             *bolt.DB
 }
 
 func (db *PackageDatabase) addRepositoryFetcher(distro string, f *starlark.Function, args starlark.Tuple) error {
@@ -500,7 +508,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 					milliseconds*int64(time.Millisecond),
 			), nil
 		}),
-		"builder": starlark.NewBuiltin("duration", func(
+		"builder": starlark.NewBuiltin("builder", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
 			args starlark.Tuple,
@@ -510,7 +518,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				name PackageName
 			)
 
-			if err := starlark.UnpackArgs("duration", args, kwargs,
+			if err := starlark.UnpackArgs("builder", args, kwargs,
 				"name", &name,
 			); err != nil {
 				return starlark.None, err
@@ -565,7 +573,39 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 		"__name__": starlark.String(name),
 	}
 
+	globals["run_script"] = starlark.NewBuiltin("run_script", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			f *starlark.Function
+		)
+
+		if err := starlark.UnpackArgs("run_script", args, kwargs,
+			"f", &f,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		db.scriptFunction = f
+
+		return starlark.None, nil
+	})
+
 	return globals, nil
+}
+
+func (db *PackageDatabase) RunScript() error {
+	thread := &starlark.Thread{}
+
+	_, err := starlark.Call(thread, db.scriptFunction, starlark.Tuple{db}, []starlark.Tuple{})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (db *PackageDatabase) LoadScript(filename string) error {
@@ -733,13 +773,13 @@ func (db *PackageDatabase) StartAutoRefresh(maxParallelFetchers int, refreshTime
 	}
 }
 
-func (db *PackageDatabase) searchWithProviders(query PackageName, maxResults int) ([]*Package, error) {
+func (db *PackageDatabase) searchWithProviders(query PackageName, opts QueryOptions) ([]*Package, error) {
 	for _, searchProvider := range db.SearchProviders {
 		if query.Distribution != searchProvider.Distribution {
 			continue
 		}
 
-		results, err := searchProvider.Search(query, maxResults)
+		results, err := searchProvider.Search(query, opts.MaxResults)
 		if err != nil {
 			return nil, err
 		}
@@ -750,7 +790,7 @@ func (db *PackageDatabase) searchWithProviders(query PackageName, maxResults int
 	return []*Package{}, nil
 }
 
-func (db *PackageDatabase) Search(query PackageName, maxResults int) ([]*Package, error) {
+func (db *PackageDatabase) Search(query PackageName, opts QueryOptions) ([]*Package, error) {
 	var ret []*Package
 
 	// slog.Info("search", "query", query)
@@ -766,7 +806,7 @@ outer:
 		for _, pkg := range fetcher.Packages {
 			if pkg.Matches(query) {
 				ret = append(ret, pkg)
-				if maxResults != 0 && len(ret) >= maxResults {
+				if opts.MaxResults != 0 && len(ret) >= opts.MaxResults {
 					break outer
 				}
 			}
@@ -774,7 +814,7 @@ outer:
 	}
 
 	if len(ret) == 0 {
-		return db.searchWithProviders(query, maxResults)
+		return db.searchWithProviders(query, opts)
 	} else {
 		return ret, nil
 	}
@@ -816,15 +856,16 @@ func (db *PackageDatabase) GetBuildScript(script BuildScript) (starlark.Value, e
 }
 
 type InstallationPlan struct {
-	db        *PackageDatabase
-	installed map[string]bool
-	Packages  []*Package
+	db           *PackageDatabase
+	installed    map[string]string
+	Packages     []*Package
+	queryOptions QueryOptions
 }
 
-func (plan *InstallationPlan) checkName(name PackageName) bool {
-	_, ok := plan.installed[name.ShortName()]
+func (plan *InstallationPlan) checkName(name PackageName) (string, bool) {
+	ver, ok := plan.installed[name.ShortName()]
 
-	return ok
+	return ver, ok
 }
 
 func (plan *InstallationPlan) addName(name PackageName) error {
@@ -832,7 +873,7 @@ func (plan *InstallationPlan) addName(name PackageName) error {
 	// 	return fmt.Errorf("%s is already installed", name.ShortName())
 	// }
 
-	plan.installed[name.ShortName()] = true
+	plan.installed[name.ShortName()] = name.Version
 
 	return nil
 }
@@ -849,13 +890,15 @@ var (
 )
 
 func (plan *InstallationPlan) addPackage(query PackageName) error {
-	if plan.checkName(query) {
+	if _, ok := plan.checkName(query); ok {
 		// Already installed.
 		return nil
 	}
 
 	// Only look for 1 package.
-	results, err := plan.db.Search(query, 1)
+	opts := plan.queryOptions
+	opts.MaxResults = 1
+	results, err := plan.db.Search(query, opts)
 	if err != nil {
 		return err
 	}
@@ -870,18 +913,22 @@ func (plan *InstallationPlan) addPackage(query PackageName) error {
 		return err
 	}
 
-	for _, alias := range pkg.Aliases {
-		if err := plan.addName(alias); err != nil {
-			return err
-		}
-	}
-
 	// Check for conflicts.
 	for _, conflict := range pkg.Conflicts {
 		for _, option := range conflict {
-			if plan.checkName(option) {
+			ver, ok := plan.checkName(option)
+			if ok && versionMatches(ver, option.Version) {
+				slog.Error("conflict", "pkg", pkg, "conflicts", pkg.Conflicts)
 				return fmt.Errorf("found conflict between %s and %s", query, option)
 			}
+		}
+	}
+
+	// Add aliases afterwards.
+	// This makes sure the package is not conflicting with itself.
+	for _, alias := range pkg.Aliases {
+		if err := plan.addName(alias); err != nil {
+			return err
 		}
 	}
 
@@ -889,11 +936,15 @@ func (plan *InstallationPlan) addPackage(query PackageName) error {
 outer:
 	for _, depend := range pkg.Depends {
 		for _, option := range depend {
+			if option.Recommended && plan.queryOptions.ExcludeRecommends {
+				continue
+			}
+
 			err := plan.addPackage(option)
 			if _, ok := err.(ErrPackageNotFound); ok {
 				continue
 			} else if err != nil {
-				return err
+				return fmt.Errorf("failed to add package for %s: %s", pkg.String(), err)
 			}
 
 			continue outer
@@ -908,8 +959,8 @@ outer:
 	return nil
 }
 
-func (db *PackageDatabase) MakeInstallationPlan(packages []PackageName) (*InstallationPlan, error) {
-	plan := &InstallationPlan{db: db, installed: make(map[string]bool)}
+func (db *PackageDatabase) MakeInstallationPlan(packages []PackageName, opts QueryOptions) (*InstallationPlan, error) {
+	plan := &InstallationPlan{db: db, installed: make(map[string]string), queryOptions: opts}
 
 	for _, pkg := range packages {
 		if err := plan.addPackage(pkg); err != nil {
@@ -1061,7 +1112,7 @@ func (db *PackageDatabase) TestAllPackages() error {
 		for _, pkg := range fetcher.Packages {
 			planSearch := []PackageName{pkg.Name}
 
-			_, err := db.MakeInstallationPlan(planSearch)
+			_, err := db.MakeInstallationPlan(planSearch, QueryOptions{})
 			if err != nil {
 				broken += 1
 				slog.Warn("failed to make installation plan", "package", pkg.Name, "error", err)
@@ -1124,3 +1175,179 @@ func (db *PackageDatabase) GetPackageContents(downloader Downloader) (memtar.Tar
 
 	return fetcher.FetchContents(downloader.Url)
 }
+
+func (db *PackageDatabase) FetchParallel(packages []*Package) (memtar.TarReader, error) {
+	var wg sync.WaitGroup
+
+	var ret memtar.ArrayReader
+
+	done := make(chan bool)
+	archives := make(chan memtar.TarReader)
+	errors := make(chan error)
+
+	for _, pkg := range packages {
+		wg.Add(1)
+
+		go func(pkg *Package) {
+			defer wg.Done()
+
+			if len(pkg.Downloaders) == 0 {
+				errors <- fmt.Errorf("package %s has no downloader", pkg)
+				return
+			}
+
+			dl := pkg.Downloaders[0]
+
+			contents, err := db.GetPackageContents(dl)
+			if err != nil {
+				errors <- err
+				return
+			}
+
+			archives <- contents
+		}(pkg)
+	}
+
+	go func() {
+		wg.Wait()
+
+		done <- true
+	}()
+
+	for {
+		select {
+		case err := <-errors:
+			return nil, err
+		case archive := <-archives:
+			ret = append(ret, archive.Entries()...)
+		case <-done:
+			return ret, nil
+		}
+	}
+}
+
+// Attr implements starlark.HasAttrs.
+func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
+	if name == "query" {
+		return starlark.NewBuiltin("Database.query", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				name       PackageName
+				maxResults int
+			)
+
+			includeRecommends := true
+
+			if err := starlark.UnpackArgs("Database.query", args, kwargs,
+				"name", &name,
+				"recommended?", &includeRecommends,
+				"max_results?", &maxResults,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			results, err := db.Search(name, QueryOptions{
+				MaxResults:        maxResults,
+				ExcludeRecommends: !includeRecommends,
+			})
+			if err != nil {
+				return starlark.None, err
+			}
+
+			var ret []starlark.Value
+
+			for _, result := range results {
+				ret = append(ret, result)
+			}
+
+			return starlark.NewList(ret), nil
+		}), nil
+	} else if name == "plan" {
+		return starlark.NewBuiltin("Database.plan", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var names []PackageName
+			for _, arg := range args {
+				if name, ok := arg.(PackageName); ok {
+					names = append(names, name)
+				} else if pkg, ok := arg.(*Package); ok {
+					names = append(names, pkg.Name)
+				} else {
+					return starlark.None, fmt.Errorf("expected Name|Package got %s", arg.Type())
+				}
+			}
+
+			var (
+				excludeRecommends bool
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), starlark.Tuple{}, kwargs,
+				"recommends", &excludeRecommends,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			plan, err := db.MakeInstallationPlan(names, QueryOptions{
+				ExcludeRecommends: excludeRecommends,
+			})
+			if err != nil {
+				return starlark.None, err
+			}
+
+			var ret []starlark.Value
+			for _, pkg := range plan.Packages {
+				ret = append(ret, pkg)
+			}
+
+			return starlark.NewList(ret), nil
+		}), nil
+	} else if name == "download_all" {
+		return starlark.NewBuiltin("Database.download_all", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var packages []*Package
+			for _, arg := range args {
+				if pkg, ok := arg.(*Package); ok {
+					packages = append(packages, pkg)
+				} else {
+					return starlark.None, fmt.Errorf("expected Package got %s", pkg.Type())
+				}
+			}
+
+			ents, err := db.FetchParallel(packages)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return &StarArchive{r: ents, name: "<download_archive>"}, nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (db *PackageDatabase) AttrNames() []string {
+	return []string{"query"}
+}
+
+func (*PackageDatabase) String() string        { return "Database" }
+func (*PackageDatabase) Type() string          { return "Database" }
+func (*PackageDatabase) Hash() (uint32, error) { return 0, fmt.Errorf("Database is not hashable") }
+func (*PackageDatabase) Truth() starlark.Bool  { return starlark.True }
+func (*PackageDatabase) Freeze()               {}
+
+var (
+	_ starlark.Value    = &PackageDatabase{}
+	_ starlark.HasAttrs = &PackageDatabase{}
+)

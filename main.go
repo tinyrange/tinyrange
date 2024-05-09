@@ -32,6 +32,7 @@ var (
 	testAll           = flag.Bool("testAll", false, "calculate a installation plan for every package in the index and print any packages that fails for")
 	runRepl           = flag.Bool("repl", false, "start a REPL")
 	enableDownloads   = flag.Bool("enableDownloads", false, "enable support for downloading packages. not recommended for public instances")
+	scriptFilename    = flag.String("script", "", "run a script instead starting the web interface")
 )
 
 func main() {
@@ -54,6 +55,24 @@ func main() {
 		EnableDownloads: *enableDownloads,
 
 		ContentFetchers: make(map[string]*db.ContentFetcher),
+	}
+
+	if *scriptFilename != "" {
+		pkgDb.ScriptMode = true
+
+		if err := pkgDb.LoadScript(*scriptFilename); err != nil {
+			log.Fatal("failed to load script: ", err)
+		}
+
+		if err := pkgDb.FetchAll(); err != nil {
+			log.Fatal("failed to fetch: ", err)
+		}
+
+		if err := pkgDb.RunScript(); err != nil {
+			log.Fatal("failed to run script: ", err)
+		}
+
+		return
 	}
 
 	if *database != "" {
@@ -104,7 +123,7 @@ func main() {
 			names = append(names, name)
 		}
 
-		plan, err := pkgDb.MakeInstallationPlan(names)
+		plan, err := pkgDb.MakeInstallationPlan(names, db.QueryOptions{})
 		if err != nil {
 			log.Fatal(err)
 		}

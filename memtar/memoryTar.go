@@ -15,7 +15,7 @@ import (
 )
 
 type Header interface {
-	Header() *tar.Header
+	TarHeader() *tar.Header
 
 	Typeflag() byte
 	Name() string
@@ -42,7 +42,7 @@ func (e *tarHeader) Uid() int              { return e.hdr.Uid }
 func (e *tarHeader) Gid() int              { return e.hdr.Gid }
 func (e *tarHeader) ModTime() time.Time    { return e.hdr.ModTime }
 
-func (e *tarHeader) Header() *tar.Header {
+func (e *tarHeader) TarHeader() *tar.Header {
 	return &tar.Header{
 		Typeflag:   e.Typeflag(),
 		Name:       e.hdr.Name,
@@ -106,12 +106,12 @@ func (e *CacheEntry) Name() string          { return e.HName }
 func (e *CacheEntry) Linkname() string      { return e.HLinkname }
 func (e *CacheEntry) Size() int64           { return e.HSize }
 func (e *CacheEntry) Mode() int64           { return e.HMode }
-func (e *CacheEntry) FileMode() fs.FileMode { return e.Header().FileInfo().Mode() }
+func (e *CacheEntry) FileMode() fs.FileMode { return e.TarHeader().FileInfo().Mode() }
 func (e *CacheEntry) Uid() int              { return e.HUid }
 func (e *CacheEntry) Gid() int              { return e.HGid }
 func (e *CacheEntry) ModTime() time.Time    { return e.HModTime }
 
-func (e *CacheEntry) Header() *tar.Header {
+func (e *CacheEntry) TarHeader() *tar.Header {
 	return &tar.Header{
 		Typeflag: e.Typeflag(),
 		Name:     e.HName,
@@ -147,23 +147,23 @@ func (e *optimizedEntry) Open() io.Reader {
 	return io.NewSectionReader(e.underlyingFile, e.offset, e.hdr.Size)
 }
 
-type memoryEntry struct {
-	tarHeader
-	filename string
-	body     []byte
+type MemoryEntry struct {
+	Header
+	EntFilename string
+	Body        []byte
 }
 
-func (e *memoryEntry) Filename() string {
-	return e.filename
+func (e *MemoryEntry) Filename() string {
+	return e.EntFilename
 }
 
-func (e *memoryEntry) Open() io.Reader {
-	return bytes.NewReader(e.body)
+func (e *MemoryEntry) Open() io.Reader {
+	return bytes.NewReader(e.Body)
 }
 
 var (
 	_ Entry = &optimizedEntry{}
-	_ Entry = &memoryEntry{}
+	_ Entry = &MemoryEntry{}
 )
 
 type TarReader interface {
@@ -257,10 +257,10 @@ func (m *MemoryTarReader) ReadTar(r io.Reader) error {
 			return err
 		}
 
-		m.entryMap[hdr.Name] = &memoryEntry{
-			tarHeader: tarHeader{hdr: hdr},
-			filename:  hdr.Name,
-			body:      body,
+		m.entryMap[hdr.Name] = &MemoryEntry{
+			Header:      &tarHeader{hdr: hdr},
+			EntFilename: hdr.Name,
+			Body:        body,
 		}
 	}
 
@@ -352,8 +352,16 @@ func (i *IndexedReader) Entries() []Entry {
 	return ret
 }
 
+type ArrayReader []Entry
+
+// Entries implements TarReader.
+func (a ArrayReader) Entries() []Entry {
+	return a
+}
+
 var (
 	_ TarReader = &IndexedReader{}
+	_ TarReader = ArrayReader{}
 )
 
 func LoadTarIndex(underlying SeekableReader, cache io.Reader) (TarReader, error) {
