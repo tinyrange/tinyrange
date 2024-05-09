@@ -181,8 +181,10 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 		return nil, fmt.Errorf("http error: %s", resp.Status)
 	}
 
-	if options.ExpectedSize != 0 && resp.ContentLength != options.ExpectedSize {
-		return nil, fmt.Errorf("size mismatch: %d != %d", resp.ContentLength, options.ExpectedSize)
+	if resp.ContentLength != -1 {
+		if options.ExpectedSize != 0 && resp.ContentLength != options.ExpectedSize {
+			return nil, fmt.Errorf("size mismatch: %d != %d", resp.ContentLength, options.ExpectedSize)
+		}
 	}
 
 	tmpFilename := path + ".tmp"

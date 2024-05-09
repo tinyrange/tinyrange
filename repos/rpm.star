@@ -175,5 +175,15 @@ def add_cbl_mariner(only_latest = True):
             distro = "cblmariner@2",
         )
 
+def add_rpm_misc():
+    for url in [
+        "https://yum.repos.intel.com/oneapi/",
+    ]:
+        fetch_repo(
+            fetch_rpm_repostiory,
+            (url,),
+            distro = "rpm",
+        )
+
 if __name__ == "__main__":
-    add_cbl_mariner(only_latest = False)
+    add_rpm_misc()
