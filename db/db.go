@@ -598,7 +598,11 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 }
 
 func (db *PackageDatabase) RunScript() error {
-	thread := &starlark.Thread{}
+	thread := &starlark.Thread{
+		Print: func(thread *starlark.Thread, msg string) {
+			fmt.Fprintf(os.Stdout, "%s\n", msg)
+		},
+	}
 
 	_, err := starlark.Call(thread, db.scriptFunction, starlark.Tuple{db}, []starlark.Tuple{})
 	if err != nil {
