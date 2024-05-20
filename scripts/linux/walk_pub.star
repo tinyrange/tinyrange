@@ -2,10 +2,10 @@ directory_regex = re.compile('<a href="(.*)">(.*)<\\/a>\\s+([0-9]{2}-[a-zA-Z]{3}
 
 version_regex = re.compile("v[0-9]+.[0-9x]/")
 
-linux_archive = re.compile("linux-[0-9]+\\.[0-9]+\\.[0-9]+\\.tar\\.xz")
+linux_archive = re.compile("linux-([0-9]+)\\.([0-9]+)\\.([0-9]+)\\.tar\\.xz")
 
-def get_directory_items(url):
-    resp = fetch_http(url)
+def get_directory_items(url, **kwargs):
+    resp = fetch_http(url, **kwargs)
     if resp == None:
         return error("not found")
 
@@ -19,13 +19,30 @@ def get_directory_items(url):
     return ret
 
 def main(ctx):
-    for name, modified, size in get_directory_items("https://cdn.kernel.org/pub/linux/kernel/"):
+    versions = {}
+
+    # Get the latest patch of every avalible Linux version.
+    for name, _, _ in get_directory_items("https://cdn.kernel.org/pub/linux/kernel/"):
         if not version_regex.matches(name):
             continue
-        for name, modified, size in get_directory_items(name):
+        for name, _, _ in get_directory_items(name):
             if not linux_archive.matches(name):
                 continue
-            print(name, modified, size)
+            filename = name.split("/")[-1]
+            _, major, minor, patch = linux_archive.find_submatch(filename)
+            key = (int(major), int(minor))
+            patch = int(patch)
+            if key in versions:
+                _, _, _, existing_patch = linux_archive.find_submatch(versions[key])
+                existing_patch = int(existing_patch)
+                if existing_patch > patch:
+                    continue
+
+            versions[key] = name
+
+    for k in sorted(versions):
+        major, minor = k
+        print(major, minor, versions[k])
 
 if __name__ == "__main__":
     run_script(main)
