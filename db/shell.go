@@ -3,10 +3,57 @@ package db
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
+	"log/slog"
+	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/tinyrange/pkg2/third_party/kati"
 	"go.starlark.net/starlark"
 	"mvdan.cc/sh/v3/syntax"
+)
+
+type fileStat struct {
+	name string
+	val  starlark.Value
+}
+
+// IsDir implements fs.FileInfo.
+func (f *fileStat) IsDir() bool {
+	return false
+}
+
+// ModTime implements fs.FileInfo.
+func (f *fileStat) ModTime() time.Time {
+	return time.Now()
+}
+
+// Mode implements fs.FileInfo.
+func (f *fileStat) Mode() fs.FileMode {
+	return fs.ModePerm
+}
+
+// Name implements fs.FileInfo.
+func (f *fileStat) Name() string {
+	return f.name
+}
+
+// Size implements fs.FileInfo.
+func (f *fileStat) Size() int64 {
+	if str, ok := f.val.(starlark.String); ok {
+		return int64(len(str))
+	}
+	return 0
+}
+
+// Sys implements fs.FileInfo.
+func (f *fileStat) Sys() any {
+	return nil
+}
+
+var (
+	_ fs.FileInfo = &fileStat{}
 )
 
 type shellCommand struct {
@@ -39,8 +86,114 @@ func (cmd *shellCommand) Run(ctx *ShellContext, argv []string) (string, error) {
 }
 
 type ShellContext struct {
-	out      *starlark.Dict
-	commands map[string]*shellCommand
+	out             *starlark.Dict
+	commands        map[string]*shellCommand
+	fileNotFound    *starlark.Function
+	commandNotFound *starlark.Function
+}
+
+// Abspath implements kati.EnvironmentInterface.
+func (*ShellContext) Abspath(p string) (string, error) {
+	return filepath.Clean(p), nil
+}
+
+// EvalSymlinks implements kati.EnvironmentInterface.
+func (*ShellContext) EvalSymlinks(p string) (string, error) {
+	return p, nil
+}
+
+// Create implements kati.EnvironmentInterface.
+func (p *ShellContext) Create(filename string) (kati.File, error) {
+	panic("unimplemented")
+}
+
+// NumCPU implements kati.EnvironmentInterface.
+func (p *ShellContext) NumCPU() int {
+	panic("unimplemented")
+}
+
+// Setenv implements kati.EnvironmentInterface.
+func (p *ShellContext) Setenv(key string, value string) {
+	p.out.SetKey(starlark.String(key), starlark.String(value))
+}
+
+// Unsetenv implements kati.EnvironmentInterface.
+func (p *ShellContext) Unsetenv(key string) {
+	p.out.Delete(starlark.String(key))
+}
+
+// Exec implements kati.EnvironmentInterface.
+func (p *ShellContext) Exec(args []string) ([]byte, error) {
+	ret, err := p.runCommand(args)
+	if err != nil {
+		slog.Warn("running a command failed", "err", err)
+		return nil, err
+	}
+
+	return []byte(ret), nil
+}
+
+// ReadFile implements kati.EnvironmentInterface.
+func (p *ShellContext) ReadFile(filename string) ([]byte, error) {
+	val, ok, err := p.out.Get(starlark.String(filename))
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		if p.fileNotFound != nil {
+			thread := &starlark.Thread{}
+
+			ret, err := starlark.Call(thread, p.fileNotFound, starlark.Tuple{p, starlark.String(filename)}, []starlark.Tuple{})
+			if err != nil {
+				return nil, err
+			}
+
+			if ret == starlark.None {
+				return nil, fs.ErrNotExist
+			}
+
+			_ = ret
+
+			return nil, fmt.Errorf("file_not_found result not implemented")
+		}
+
+		return nil, fs.ErrNotExist
+	}
+
+	contents, ok := starlark.AsString(val)
+	if !ok {
+		return nil, fmt.Errorf("can not get file contents as string")
+	}
+
+	return []byte(contents), nil
+}
+
+// Stat implements kati.EnvironmentInterface.
+func (p *ShellContext) Stat(filename string) (fs.FileInfo, error) {
+	val, ok, err := p.out.Get(starlark.String(filename))
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		if p.fileNotFound != nil {
+			thread := &starlark.Thread{}
+
+			ret, err := starlark.Call(thread, p.fileNotFound, starlark.Tuple{p, starlark.String(filename)}, []starlark.Tuple{})
+			if err != nil {
+				return nil, err
+			}
+
+			if ret == starlark.None {
+				return nil, fs.ErrNotExist
+			}
+
+			return nil, fmt.Errorf("file_not_found result not implemented")
+		}
+
+		return nil, fs.ErrNotExist
+	}
+
+	return &fileStat{name: filename, val: val}, nil
 }
 
 // Get implements starlark.HasSetKey.
@@ -56,6 +209,24 @@ func (p *ShellContext) SetKey(k starlark.Value, v starlark.Value) error {
 func (p *ShellContext) runCommand(args []string) (string, error) {
 	cmd, ok := p.commands[args[0]]
 	if !ok {
+		if p.commandNotFound != nil {
+			thread := &starlark.Thread{}
+
+			var argsTuple starlark.Tuple
+			for _, arg := range args {
+				argsTuple = append(argsTuple, starlark.String(arg))
+			}
+
+			ret, err := starlark.Call(thread, p.commandNotFound, starlark.Tuple{p, argsTuple}, []starlark.Tuple{})
+			if err != nil {
+				return "", err
+			}
+
+			if ret != starlark.None {
+				return "", fmt.Errorf("command_not_found result not implemented")
+			}
+		}
+
 		return "", fmt.Errorf("command not found: %s", args[0])
 	}
 
@@ -264,8 +435,66 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 
 			return p.out, nil
 		}), nil
+	} else if name == "eval_makefile" {
+		return starlark.NewBuiltin("Shell.eval_makefile", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				argsV        *starlark.List
+				returnErrors bool
+			)
+
+			if err := starlark.UnpackArgs("Shell.eval_makefile", args, kwargs,
+				"args", &argsV,
+				"return_errors?", &returnErrors,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			var argsS []string
+			argsV.Elements(func(v starlark.Value) bool {
+				str, ok := starlark.AsString(v)
+				if !ok {
+					return false
+				}
+
+				argsS = append(argsS, str)
+
+				return true
+			})
+
+			loadReq := kati.FromCommandLine(p, argsS)
+
+			depGraph, err := kati.Load(p, loadReq)
+			if err != nil {
+				if returnErrors {
+					return starlark.String(err.Error()), nil
+				} else {
+					return starlark.None, err
+				}
+			}
+
+			exec, err := kati.NewExecutor(p, &kati.ExecutorOpt{})
+			if err != nil {
+				return starlark.None, err
+			}
+			if err := exec.Exec(depGraph, argsS); err != nil {
+				if returnErrors {
+					return starlark.String(err.Error()), nil
+				} else {
+					return starlark.None, err
+				}
+			}
+
+			_ = depGraph
+
+			return starlark.None, nil
+		}), nil
 	} else if name == "add_command" {
-		return starlark.NewBuiltin("Shell.eval", func(
+		return starlark.NewBuiltin("Shell.add_command", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
 			args starlark.Tuple,
@@ -312,6 +541,35 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
+	} else if name == "set_handlers" {
+		return starlark.NewBuiltin("Shell.set_handlers", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				fileNotFound    *starlark.Function
+				commandNotFound *starlark.Function
+			)
+
+			if err := starlark.UnpackArgs("Shell.set_handlers", args, kwargs,
+				"file_not_found", &fileNotFound,
+				"command_not_found", &commandNotFound,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if fileNotFound != nil {
+				p.fileNotFound = fileNotFound
+			}
+
+			if commandNotFound != nil {
+				p.commandNotFound = commandNotFound
+			}
+
+			return starlark.None, nil
+		}), nil
 	} else {
 		return nil, nil
 	}
@@ -319,11 +577,12 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (p *ShellContext) AttrNames() []string {
-	return []string{"eval", "add_command", "set_environment"}
+	return []string{"eval", "eval_makefile", "add_command", "set_environment", "set_handlers"}
 }
 
 var (
-	_ starlark.Value     = &ShellContext{}
-	_ starlark.HasAttrs  = &ShellContext{}
-	_ starlark.HasSetKey = &ShellContext{}
+	_ starlark.Value            = &ShellContext{}
+	_ starlark.HasAttrs         = &ShellContext{}
+	_ starlark.HasSetKey        = &ShellContext{}
+	_ kati.EnvironmentInterface = &ShellContext{}
 )

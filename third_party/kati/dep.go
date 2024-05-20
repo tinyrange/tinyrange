@@ -144,7 +144,7 @@ func (db *depBuilder) exists(target string) bool {
 	if db.phony[target] {
 		return true
 	}
-	_, ok := db.vpaths.exists(target)
+	_, ok := db.vpaths.exists(db.ev.eif, target)
 	return ok
 }
 
@@ -534,14 +534,14 @@ func (db *depBuilder) reportStats() {
 	}
 }
 
-func newDepBuilder(er *evalResult, vars Vars) (*depBuilder, error) {
+func newDepBuilder(eif EnvironmentInterface, er *evalResult, vars Vars) (*depBuilder, error) {
 	db := &depBuilder{
 		rules:         make(map[string]*rule),
 		ruleVars:      er.ruleVars,
 		implicitRules: newRuleTrie(),
 		suffixRules:   make(map[string][]*rule),
 		vars:          vars,
-		ev:            NewEvaluator(vars),
+		ev:            NewEvaluator(eif, vars),
 		vpaths:        er.vpaths,
 		done:          make(map[string]*DepNode),
 		phony:         make(map[string]bool),

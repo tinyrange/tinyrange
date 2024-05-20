@@ -15,13 +15,14 @@
 package kati
 
 import (
-	"os"
+	"errors"
+	"io/fs"
 	"path/filepath"
 )
 
-func exists(filename string) bool {
-	_, err := os.Stat(filename)
-	if os.IsNotExist(err) {
+func exists(eif EnvironmentInterface, filename string) bool {
+	_, err := eif.Stat(filename)
+	if errors.Is(err, fs.ErrNotExist) {
 		return false
 	}
 	return true
@@ -37,8 +38,8 @@ type searchPaths struct {
 	dirs   []string // VPATH variable
 }
 
-func (s searchPaths) exists(target string) (string, bool) {
-	if exists(target) {
+func (s searchPaths) exists(eif EnvironmentInterface, target string) (string, bool) {
+	if exists(eif, target) {
 		return target, true
 	}
 	for _, vpath := range s.vpaths {
@@ -47,14 +48,14 @@ func (s searchPaths) exists(target string) (string, bool) {
 		}
 		for _, dir := range vpath.dirs {
 			vtarget := filepath.Join(dir, target)
-			if exists(vtarget) {
+			if exists(eif, vtarget) {
 				return vtarget, true
 			}
 		}
 	}
 	for _, dir := range s.dirs {
 		vtarget := filepath.Join(dir, target)
-		if exists(vtarget) {
+		if exists(eif, vtarget) {
 			return vtarget, true
 		}
 	}

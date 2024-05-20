@@ -17,7 +17,6 @@ package kati
 import (
 	"crypto/sha1"
 	"fmt"
-	"io/ioutil"
 	"strings"
 	"time"
 
@@ -39,7 +38,7 @@ func (g *DepGraph) Nodes() []*DepNode { return g.nodes }
 // Vars returns all variables.
 func (g *DepGraph) Vars() Vars { return g.vars }
 
-func (g *DepGraph) resolveVPATH() {
+func (g *DepGraph) resolveVPATH(eif EnvironmentInterface) {
 	seen := make(map[*DepNode]bool)
 	var fix func(n *DepNode)
 	fix = func(n *DepNode) {
@@ -48,7 +47,7 @@ func (g *DepGraph) resolveVPATH() {
 		}
 		seen[n] = true
 		glog.V(3).Infof("vpath check %s [%#v]", n.Output, g.vpaths)
-		if output, ok := g.vpaths.exists(n.Output); ok {
+		if output, ok := g.vpaths.exists(eif, n.Output); ok {
 			glog.V(2).Infof("vpath fix %s=>%s", n.Output, output)
 			n.Output = output
 		}
@@ -79,7 +78,7 @@ type LoadReq struct {
 }
 
 // FromCommandLine creates LoadReq from given command line.
-func FromCommandLine(cmdline []string) LoadReq {
+func FromCommandLine(eif EnvironmentInterface, cmdline []string) LoadReq {
 	var vars []string
 	var targets []string
 	for _, arg := range cmdline {
@@ -89,7 +88,7 @@ func FromCommandLine(cmdline []string) LoadReq {
 		}
 		targets = append(targets, arg)
 	}
-	mk, err := defaultMakefile()
+	mk, err := defaultMakefile(eif)
 	if err != nil {
 		glog.Warningf("default makefile: %v", err)
 	}
@@ -116,29 +115,29 @@ func initVars(vars Vars, kvlist []string, origin string) error {
 }
 
 // Load loads makefile.
-func Load(req LoadReq) (*DepGraph, error) {
+func Load(eif EnvironmentInterface, req LoadReq) (*DepGraph, error) {
 	startTime := time.Now()
 	var err error
 	if req.Makefile == "" {
-		req.Makefile, err = defaultMakefile()
+		req.Makefile, err = defaultMakefile(eif)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	if req.UseCache {
-		g, err := loadCache(req.Makefile, req.Targets)
+		g, err := loadCache(eif, req.Makefile, req.Targets)
 		if err == nil {
 			return g, nil
 		}
 	}
 
-	bmk, err := bootstrapMakefile(req.Targets)
+	bmk, err := bootstrapMakefile(eif, req.Targets)
 	if err != nil {
 		return nil, err
 	}
 
-	content, err := ioutil.ReadFile(req.Makefile)
+	content, err := eif.ReadFile(req.Makefile)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +161,7 @@ func Load(req LoadReq) (*DepGraph, error) {
 	if err != nil {
 		return nil, err
 	}
-	er, err := eval(mk, vars, req.UseCache)
+	er, err := eval(eif, mk, vars, req.UseCache)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +171,7 @@ func Load(req LoadReq) (*DepGraph, error) {
 	logStats("shell func time: %q %d", shellStats.Duration(), shellStats.Count())
 
 	startTime = time.Now()
-	db, err := newDepBuilder(er, vars)
+	db, err := newDepBuilder(eif, er, vars)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +200,7 @@ func Load(req LoadReq) (*DepGraph, error) {
 	}
 	if req.EagerEvalCommand {
 		startTime := time.Now()
-		err = evalCommands(nodes, vars)
+		err = evalCommands(eif, nodes, vars)
 		if err != nil {
 			return nil, err
 		}
@@ -209,7 +208,7 @@ func Load(req LoadReq) (*DepGraph, error) {
 	}
 	if req.UseCache {
 		startTime := time.Now()
-		saveCache(gd, req.Targets)
+		saveCache(eif, gd, req.Targets)
 		logStats("serialize time: %q", time.Since(startTime))
 	}
 	return gd, nil

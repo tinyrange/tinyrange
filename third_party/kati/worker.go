@@ -18,7 +18,6 @@ import (
 	"container/heap"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"syscall"
 	"time"
@@ -93,12 +92,12 @@ func newWorker(wm *workerManager) *worker {
 	return w
 }
 
-func (w *worker) Run() {
+func (w *worker) Run(eif EnvironmentInterface) {
 	done := false
 	for !done {
 		select {
 		case j := <-w.jobChan:
-			err := j.build()
+			err := j.build(eif)
 			w.wm.ReportResult(w, j, err)
 		case done = <-w.waitChan:
 		}
@@ -121,19 +120,19 @@ func (j *job) createRunners() ([]runner, error) {
 }
 
 // TODO(ukai): use time.Time?
-func getTimestamp(filename string) int64 {
-	st, err := os.Stat(filename)
+func getTimestamp(eif EnvironmentInterface, filename string) int64 {
+	st, err := eif.Stat(filename)
 	if err != nil {
 		return -2
 	}
 	return st.ModTime().Unix()
 }
 
-func (j *job) build() error {
+func (j *job) build(eif EnvironmentInterface) error {
 	if j.n.IsPhony {
 		j.outputTs = -2 // trigger cmd even if all inputs don't exist.
 	} else {
-		j.outputTs = getTimestamp(j.n.Output)
+		j.outputTs = getTimestamp(eif, j.n.Output)
 	}
 
 	if !j.n.HasRule {
@@ -159,7 +158,7 @@ func (j *job) build() error {
 		return errNothingDone
 	}
 	for _, r := range rr {
-		err := r.run(j.n.Output)
+		err := r.run(eif, j.n.Output)
 		glog.Warningf("cmd result for %q: %v", j.n.Output, err)
 		if err != nil {
 			exit := exitStatus(err)
@@ -170,7 +169,7 @@ func (j *job) build() error {
 	if j.n.IsPhony {
 		j.outputTs = time.Now().Unix()
 	} else {
-		j.outputTs = getTimestamp(j.n.Output)
+		j.outputTs = getTimestamp(eif, j.n.Output)
 		if j.outputTs < 0 {
 			j.outputTs = time.Now().Unix()
 		}
@@ -227,7 +226,7 @@ type workerManager struct {
 	skipCnt   int
 }
 
-func newWorkerManager(numJobs int) (*workerManager, error) {
+func newWorkerManager(eif EnvironmentInterface, numJobs int) (*workerManager, error) {
 	wm := &workerManager{
 		maxJobs:     numJobs,
 		jobChan:     make(chan *job),
@@ -243,7 +242,7 @@ func newWorkerManager(numJobs int) (*workerManager, error) {
 	for i := 0; i < numJobs; i++ {
 		w := newWorker(wm)
 		wm.freeWorkers = append(wm.freeWorkers, w)
-		go w.Run()
+		go w.Run(eif)
 	}
 	heap.Init(&wm.readyQueue)
 	go wm.Run()

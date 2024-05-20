@@ -16,7 +16,6 @@ package kati
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/tinyrange/pkg2/third_party/kati/glog"
@@ -24,6 +23,7 @@ import (
 
 // Executor manages execution of makefile rules.
 type Executor struct {
+	eif           EnvironmentInterface
 	rules         map[string]*rule
 	implicitRules []*rule
 	suffixRules   map[string][]*rule
@@ -44,7 +44,7 @@ type Executor struct {
 }
 
 func (ex *Executor) makeJobs(n *DepNode, neededBy *job) error {
-	output, _ := ex.ctx.vpaths.exists(n.Output)
+	output, _ := ex.ctx.vpaths.exists(ex.eif, n.Output)
 	if neededBy != nil {
 		glog.V(1).Infof("MakeJob: %s for %s", output, neededBy.n.Output)
 	}
@@ -92,7 +92,7 @@ func (ex *Executor) makeJobs(n *DepNode, neededBy *job) error {
 		deps = append(deps, d)
 	}
 	for _, d := range n.OrderOnlys {
-		if _, ok := ex.ctx.vpaths.exists(d.Output); ok {
+		if _, ok := ex.ctx.vpaths.exists(ex.eif, d.Output); ok {
 			j.numDeps--
 			continue
 		}
@@ -131,18 +131,19 @@ type ExecutorOpt struct {
 }
 
 // NewExecutor creates new Executor.
-func NewExecutor(opt *ExecutorOpt) (*Executor, error) {
+func NewExecutor(eif EnvironmentInterface, opt *ExecutorOpt) (*Executor, error) {
 	if opt == nil {
 		opt = &ExecutorOpt{NumJobs: 1}
 	}
 	if opt.NumJobs < 1 {
 		opt.NumJobs = 1
 	}
-	wm, err := newWorkerManager(opt.NumJobs)
+	wm, err := newWorkerManager(eif, opt.NumJobs)
 	if err != nil {
 		return nil, err
 	}
 	ex := &Executor{
+		eif:         eif,
 		rules:       make(map[string]*rule),
 		suffixRules: make(map[string][]*rule),
 		done:        make(map[string]*job),
@@ -153,7 +154,7 @@ func NewExecutor(opt *ExecutorOpt) (*Executor, error) {
 
 // Exec executes to build targets, or first target in DepGraph.
 func (ex *Executor) Exec(g *DepGraph, targets []string) error {
-	ex.ctx = newExecContext(g.vars, g.vpaths, false)
+	ex.ctx = newExecContext(ex.eif, g.vars, g.vpaths, false)
 
 	// TODO: Handle target specific variables.
 	for name, export := range g.exports {
@@ -162,9 +163,9 @@ func (ex *Executor) Exec(g *DepGraph, targets []string) error {
 			if err != nil {
 				return err
 			}
-			os.Setenv(name, v)
+			ex.eif.Setenv(name, v)
 		} else {
-			os.Unsetenv(name)
+			ex.eif.Unsetenv(name)
 		}
 	}
 

@@ -17,10 +17,9 @@ package kati
 import (
 	"bytes"
 	"fmt"
-	"os"
+	"io"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -69,7 +68,7 @@ type NinjaGenerator struct {
 	// DetectAndroidEcho detects echo as description.
 	DetectAndroidEcho bool
 
-	f       *os.File
+	f       io.Writer
 	nodes   []*DepNode
 	exports map[string]bool
 
@@ -79,11 +78,11 @@ type NinjaGenerator struct {
 	done   map[string]nodeState
 }
 
-func (n *NinjaGenerator) init(g *DepGraph) {
-	g.resolveVPATH()
+func (n *NinjaGenerator) init(eif EnvironmentInterface, g *DepGraph) {
+	g.resolveVPATH(eif)
 	n.nodes = g.nodes
 	n.exports = g.exports
-	n.ctx = newExecContext(g.vars, g.vpaths, true)
+	n.ctx = newExecContext(eif, g.vars, g.vpaths, true)
 	n.done = make(map[string]nodeState)
 }
 
@@ -476,7 +475,7 @@ func (n *NinjaGenerator) ninjaVars(s string, nv [][]string, esc func(string) str
 	return s
 }
 
-func (n *NinjaGenerator) emitNode(node *DepNode) error {
+func (n *NinjaGenerator) emitNode(eif EnvironmentInterface, node *DepNode) error {
 	output := node.Output
 	if _, found := n.done[output]; found {
 		return nil
@@ -484,7 +483,7 @@ func (n *NinjaGenerator) emitNode(node *DepNode) error {
 	n.done[output] = nodeVisit
 
 	if len(node.Cmds) == 0 && len(node.Deps) == 0 && len(node.OrderOnlys) == 0 && !node.IsPhony {
-		if _, ok := n.ctx.vpaths.exists(output); ok {
+		if _, ok := n.ctx.vpaths.exists(eif, output); ok {
 			n.done[output] = nodeFile
 			return nil
 		}
@@ -554,14 +553,14 @@ func (n *NinjaGenerator) emitNode(node *DepNode) error {
 	n.done[output] = nodeBuild
 
 	for _, d := range node.Deps {
-		err := n.emitNode(d)
+		err := n.emitNode(eif, d)
 		if err != nil {
 			return err
 		}
 		glog.V(1).Infof("node %s dep node %q %s", node.Output, d.Output, n.done[d.Output])
 	}
 	for _, d := range node.OrderOnlys {
-		err := n.emitNode(d)
+		err := n.emitNode(eif, d)
 		if err != nil {
 			return err
 		}
@@ -606,8 +605,8 @@ func (n *NinjaGenerator) envlistName() string {
 	return fmt.Sprintf(".kati_env%s", n.Suffix)
 }
 
-func (n *NinjaGenerator) generateEnvlist() (err error) {
-	f, err := os.Create(n.envlistName())
+func (n *NinjaGenerator) generateEnvlist(eif EnvironmentInterface) (err error) {
+	f, err := eif.Create(n.envlistName())
 	if err != nil {
 		return err
 	}
@@ -627,8 +626,8 @@ func (n *NinjaGenerator) generateEnvlist() (err error) {
 	return nil
 }
 
-func (n *NinjaGenerator) generateShell() (err error) {
-	f, err := os.Create(n.shName())
+func (n *NinjaGenerator) generateShell(eif EnvironmentInterface) (err error) {
+	f, err := eif.Create(n.shName())
 	if err != nil {
 		return err
 	}
@@ -672,8 +671,8 @@ func (n *NinjaGenerator) generateShell() (err error) {
 	return f.Chmod(0755)
 }
 
-func (n *NinjaGenerator) generateNinja(defaultTarget string) (err error) {
-	f, err := os.Create(n.ninjaName())
+func (n *NinjaGenerator) generateNinja(eif EnvironmentInterface, defaultTarget string) (err error) {
+	f, err := eif.Create(n.ninjaName())
 	if err != nil {
 		return err
 	}
@@ -707,7 +706,7 @@ func (n *NinjaGenerator) generateNinja(defaultTarget string) (err error) {
 
 	if n.GomaDir != "" {
 		fmt.Fprintf(n.f, "pool local_pool\n")
-		fmt.Fprintf(n.f, " depth = %d\n\n", runtime.NumCPU())
+		fmt.Fprintf(n.f, " depth = %d\n\n", eif.NumCPU())
 	}
 
 	err = n.emitRegenRules()
@@ -718,7 +717,7 @@ func (n *NinjaGenerator) generateNinja(defaultTarget string) (err error) {
 	// defining $out for $@ and $in for $^ here doesn't work well,
 	// because these texts will be processed in escapeShell...
 	for _, node := range n.nodes {
-		err := n.emitNode(node)
+		err := n.emitNode(eif, node)
 		if err != nil {
 			return err
 		}
@@ -753,14 +752,14 @@ func (n *NinjaGenerator) generateNinja(defaultTarget string) (err error) {
 }
 
 // Save generates build.ninja from DepGraph.
-func (n *NinjaGenerator) Save(g *DepGraph, name string, targets []string) error {
+func (n *NinjaGenerator) Save(eif EnvironmentInterface, g *DepGraph, name string, targets []string) error {
 	startTime := time.Now()
-	n.init(g)
-	err := n.generateEnvlist()
+	n.init(eif, g)
+	err := n.generateEnvlist(eif)
 	if err != nil {
 		return err
 	}
-	err = n.generateShell()
+	err = n.generateShell(eif)
 	if err != nil {
 		return err
 	}
@@ -768,7 +767,7 @@ func (n *NinjaGenerator) Save(g *DepGraph, name string, targets []string) error 
 	if len(targets) == 0 && len(g.nodes) > 0 {
 		defaultTarget = g.nodes[0].Output
 	}
-	err = n.generateNinja(defaultTarget)
+	err = n.generateNinja(eif, defaultTarget)
 	if err != nil {
 		return err
 	}

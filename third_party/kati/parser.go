@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 	"sync"
 	"time"
@@ -689,7 +688,7 @@ func (p *parser) processDefine(line []byte) {
 		}
 		return
 	}
-	if p.inDef[len(p.inDef)-1] == '\n' {
+	if len(p.inDef) > 0 && p.inDef[len(p.inDef)-1] == '\n' {
 		p.inDef = p.inDef[:len(p.inDef)-1]
 	}
 	glog.V(1).Infof("multilineAssign %q %q", p.defineVar, p.inDef)
@@ -722,10 +721,10 @@ func (p *parser) isEndef(line []byte) bool {
 	return false
 }
 
-func defaultMakefile() (string, error) {
+func defaultMakefile(eif EnvironmentInterface) (string, error) {
 	candidates := []string{"GNUmakefile", "makefile", "Makefile"}
 	for _, filename := range candidates {
-		if exists(filename) {
+		if exists(eif, filename) {
 			return filename, nil
 		}
 	}
@@ -764,7 +763,7 @@ var makefileCache = &makefileCacheT{
 	mk: make(map[string]mkCacheEntry),
 }
 
-func (mc *makefileCacheT) lookup(filename string) (makefile, [sha1.Size]byte, bool, error) {
+func (mc *makefileCacheT) lookup(eif EnvironmentInterface, filename string) (makefile, [sha1.Size]byte, bool, error) {
 	var hash [sha1.Size]byte
 	mc.mu.Lock()
 	c, present := mc.mk[filename]
@@ -772,16 +771,16 @@ func (mc *makefileCacheT) lookup(filename string) (makefile, [sha1.Size]byte, bo
 	if !present {
 		return makefile{}, hash, false, nil
 	}
-	ts := getTimestamp(filename)
+	ts := getTimestamp(eif, filename)
 	if ts < 0 || ts >= c.ts {
 		return makefile{}, hash, false, nil
 	}
 	return c.mk, c.hash, true, c.err
 }
 
-func (mc *makefileCacheT) parse(filename string) (makefile, [sha1.Size]byte, error) {
+func (mc *makefileCacheT) parse(eif EnvironmentInterface, filename string) (makefile, [sha1.Size]byte, error) {
 	glog.Infof("parse Makefile %q", filename)
-	mk, hash, ok, err := makefileCache.lookup(filename)
+	mk, hash, ok, err := makefileCache.lookup(eif, filename)
 	if ok {
 		if glog.V(1) {
 			glog.Infof("makefile cache hit for %q", filename)
@@ -791,7 +790,7 @@ func (mc *makefileCacheT) parse(filename string) (makefile, [sha1.Size]byte, err
 	if glog.V(1) {
 		glog.Infof("reading makefile %q", filename)
 	}
-	c, err := ioutil.ReadFile(filename)
+	c, err := eif.ReadFile(filename)
 	if err != nil {
 		return makefile{}, hash, err
 	}

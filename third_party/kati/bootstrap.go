@@ -16,13 +16,12 @@ package kati
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
 const bootstrapMakefileName = "*bootstrap*"
 
-func bootstrapMakefile(targets []string) (makefile, error) {
+func bootstrapMakefile(eif EnvironmentInterface, targets []string) (makefile, error) {
 	bootstrap := `
 CC?=cc
 CXX?=g++
@@ -44,7 +43,7 @@ SHELL=/bin/sh
 # TODO: Add more builtin rules.
 `
 	bootstrap += fmt.Sprintf("MAKECMDGOALS:=%s\n", strings.Join(targets, " "))
-	cwd, err := filepath.Abs(".")
+	cwd, err := eif.Abspath(".")
 	if err != nil {
 		return makefile{}, err
 	}

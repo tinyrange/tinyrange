@@ -17,8 +17,9 @@ package kati
 import (
 	"bytes"
 	"crypto/sha1"
+	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -150,6 +151,7 @@ func (p srcpos) error(err error) error {
 
 // Evaluator manages makefile evaluation.
 type Evaluator struct {
+	eif          EnvironmentInterface
 	paramVars    []tmpval // $1 => paramVars[1]
 	outVars      Vars
 	outRules     []*rule
@@ -171,8 +173,9 @@ type Evaluator struct {
 }
 
 // NewEvaluator creates new Evaluator.
-func NewEvaluator(vars map[string]Var) *Evaluator {
+func NewEvaluator(eif EnvironmentInterface, vars map[string]Var) *Evaluator {
 	return &Evaluator{
+		eif:         eif,
 		outVars:     make(Vars),
 		vars:        vars,
 		outRuleVars: make(map[string]Vars),
@@ -518,8 +521,8 @@ func (ev *Evaluator) evalInclude(ast *includeAST) error {
 		if IgnoreOptionalInclude != "" && ast.op == "-include" && matchPattern(fn, IgnoreOptionalInclude) {
 			continue
 		}
-		mk, hash, err := makefileCache.parse(fn)
-		if os.IsNotExist(err) {
+		mk, hash, err := makefileCache.parse(ev.eif, fn)
+		if errors.Is(err, fs.ErrNotExist) {
 			if ast.op == "include" {
 				return ev.errorf("%v\nNOTE: kati does not support generating missing makefiles", err)
 			}
@@ -673,8 +676,8 @@ func (ev *Evaluator) eval(stmt ast) error {
 	return stmt.eval(ev)
 }
 
-func eval(mk makefile, vars Vars, useCache bool) (er *evalResult, err error) {
-	ev := NewEvaluator(vars)
+func eval(eif EnvironmentInterface, mk makefile, vars Vars, useCache bool) (er *evalResult, err error) {
+	ev := NewEvaluator(eif, vars)
 	if useCache {
 		ev.cache = newAccessCache()
 	}

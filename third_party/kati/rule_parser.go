@@ -143,6 +143,9 @@ func (r *rule) parseInputs(s []byte) {
 func (r *rule) parseVar(s []byte, rhs expr) (*assignAST, error) {
 	var lhsBytes []byte
 	var op string
+	if len(s) < 2 {
+		return nil, nil
+	}
 	// TODO(ukai): support override, export.
 	if s[len(s)-1] != '=' {
 		panic(fmt.Sprintf("unexpected lhs %q", s))

@@ -16,7 +16,6 @@ package kati
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 	"sync"
 
@@ -33,8 +32,8 @@ type execContext struct {
 	inputs []string
 }
 
-func newExecContext(vars Vars, vpaths searchPaths, avoidIO bool) *execContext {
-	ev := NewEvaluator(vars)
+func newExecContext(eif EnvironmentInterface, vars Vars, vpaths searchPaths, avoidIO bool) *execContext {
+	ev := NewEvaluator(eif, vars)
 	ev.avoidIO = avoidIO
 
 	ctx := &execContext{
@@ -263,7 +262,7 @@ func (r runner) eval(ev *Evaluator, s string) ([]runner, error) {
 	return runners, nil
 }
 
-func (r runner) run(output string) error {
+func (r runner) run(eif EnvironmentInterface, output string) error {
 	if r.echo || DryRunFlag {
 		fmt.Printf("%s\n", r.cmd)
 	}
@@ -273,11 +272,7 @@ func (r runner) run(output string) error {
 		return nil
 	}
 	args := []string{r.shell, "-c", s}
-	cmd := exec.Cmd{
-		Path: args[0],
-		Args: args,
-	}
-	out, err := cmd.CombinedOutput()
+	out, err := eif.Exec(args)
 	fmt.Printf("%s", out)
 	exit := exitStatus(err)
 	if r.ignoreError && exit != 0 {
@@ -342,9 +337,9 @@ func createRunners(ctx *execContext, n *DepNode) ([]runner, bool, error) {
 	return runners, ctx.ev.hasIO, nil
 }
 
-func evalCommands(nodes []*DepNode, vars Vars) error {
+func evalCommands(eif EnvironmentInterface, nodes []*DepNode, vars Vars) error {
 	ioCnt := 0
-	ectx := newExecContext(vars, searchPaths{}, true)
+	ectx := newExecContext(eif, vars, searchPaths{}, true)
 	for i, n := range nodes {
 		runners, hasIO, err := createRunners(ectx, n)
 		if err != nil {

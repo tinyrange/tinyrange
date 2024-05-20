@@ -18,8 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -781,12 +779,12 @@ func (f *funcRealpath) Eval(w evalWriter, ev *Evaluator) error {
 	t := time.Now()
 	for _, word := range wb.words {
 		name := string(word)
-		name, err := filepath.Abs(name)
+		name, err := ev.eif.Abspath(name)
 		if err != nil {
 			glog.Warningf("abs %q: %v", name, err)
 			continue
 		}
-		name, err = filepath.EvalSymlinks(name)
+		name, err = ev.eif.EvalSymlinks(name)
 		if err != nil {
 			glog.Warningf("realpath %q: %v", name, err)
 			continue
@@ -814,7 +812,7 @@ func (f *funcAbspath) Eval(w evalWriter, ev *Evaluator) error {
 	t := time.Now()
 	for _, word := range wb.words {
 		name := string(word)
-		name, err := filepath.Abs(name)
+		name, err := ev.eif.Abspath(name)
 		if err != nil {
 			glog.Warningf("abs %q: %v", name, err)
 			continue
@@ -967,13 +965,8 @@ func (f *funcShell) Eval(w evalWriter, ev *Evaluator) error {
 	if glog.V(1) {
 		glog.Infof("shell %q", cmdline)
 	}
-	cmd := exec.Cmd{
-		Path:   cmdline[0],
-		Args:   cmdline,
-		Stderr: os.Stderr,
-	}
 	te := traceEvent.begin("shell", literal(arg), traceEventMain)
-	out, err := cmd.Output()
+	out, err := ev.eif.Exec(cmdline)
 	shellStats.add(time.Since(te.t))
 	if err != nil {
 		glog.Warningf("$(shell %q) failed: %q", arg, err)

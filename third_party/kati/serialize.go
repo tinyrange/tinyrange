@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"sort"
@@ -354,7 +353,7 @@ func cacheFilename(mk string, roots []string) string {
 	return url.QueryEscape(filename)
 }
 
-func saveCache(g *DepGraph, roots []string) error {
+func saveCache(eif EnvironmentInterface, g *DepGraph, roots []string) error {
 	if len(g.accessedMks) == 0 {
 		return fmt.Errorf("no Makefile is read")
 	}
@@ -362,7 +361,7 @@ func saveCache(g *DepGraph, roots []string) error {
 	for _, mk := range g.accessedMks {
 		// Inconsistent, do not dump this result.
 		if mk.State == fileInconsistent {
-			if exists(cacheFile) {
+			if exists(eif, cacheFile) {
 				os.Remove(cacheFile)
 			}
 			return nil
@@ -752,14 +751,14 @@ func (gobLoadSaver) Load(filename string) (*DepGraph, error) {
 	return dg, nil
 }
 
-func loadCache(makefile string, roots []string) (*DepGraph, error) {
+func loadCache(eif EnvironmentInterface, makefile string, roots []string) (*DepGraph, error) {
 	startTime := time.Now()
 	defer func() {
 		logStats("Cache lookup time: %q", time.Since(startTime))
 	}()
 
 	filename := cacheFilename(makefile, roots)
-	if !exists(filename) {
+	if !exists(eif, filename) {
 		glog.Warningf("Cache not found %q", filename)
 		return nil, fmt.Errorf("cache not found: %s", filename)
 	}
@@ -774,12 +773,12 @@ func loadCache(makefile string, roots []string) (*DepGraph, error) {
 			return nil, fmt.Errorf("internal error: broken state: %d", mk.State)
 		}
 		if mk.State == fileNotExists {
-			if exists(mk.Filename) {
+			if exists(eif, mk.Filename) {
 				glog.Infof("Cache expired: %s", mk.Filename)
 				return nil, fmt.Errorf("cache expired: %s", mk.Filename)
 			}
 		} else {
-			c, err := ioutil.ReadFile(mk.Filename)
+			c, err := eif.ReadFile(mk.Filename)
 			if err != nil {
 				glog.Infof("Cache expired: %s", mk.Filename)
 				return nil, fmt.Errorf("cache expired: %s", mk.Filename)
