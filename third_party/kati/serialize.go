@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -286,7 +285,7 @@ func makeSerializableGraph(g *DepGraph, roots []string) (serializableGraph, erro
 	}, ns.err
 }
 
-func (jsonLoadSaver) Save(g *DepGraph, filename string, roots []string) error {
+func (jsonLoadSaver) Save(eif EnvironmentInterface, g *DepGraph, filename string, roots []string) error {
 	startTime := time.Now()
 	sg, err := makeSerializableGraph(g, roots)
 	if err != nil {
@@ -296,7 +295,7 @@ func (jsonLoadSaver) Save(g *DepGraph, filename string, roots []string) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.Create(filename)
+	f, err := eif.Create(filename)
 	if err != nil {
 		return err
 	}
@@ -313,9 +312,9 @@ func (jsonLoadSaver) Save(g *DepGraph, filename string, roots []string) error {
 	return nil
 }
 
-func (gobLoadSaver) Save(g *DepGraph, filename string, roots []string) error {
+func (gobLoadSaver) Save(eif EnvironmentInterface, g *DepGraph, filename string, roots []string) error {
 	startTime := time.Now()
-	f, err := os.Create(filename)
+	f, err := eif.Create(filename)
 	if err != nil {
 		return err
 	}
@@ -362,12 +361,12 @@ func saveCache(eif EnvironmentInterface, g *DepGraph, roots []string) error {
 		// Inconsistent, do not dump this result.
 		if mk.State == fileInconsistent {
 			if exists(eif, cacheFile) {
-				os.Remove(cacheFile)
+				eif.Remove(cacheFile)
 			}
 			return nil
 		}
 	}
-	return GOB.Save(g, cacheFile, roots)
+	return GOB.Save(eif, g, cacheFile, roots)
 }
 
 func deserializeSingleChild(sv serializableVar) (Value, error) {
@@ -707,9 +706,9 @@ func deserializeGraph(g serializableGraph) (*DepGraph, error) {
 	}, nil
 }
 
-func (jsonLoadSaver) Load(filename string) (*DepGraph, error) {
+func (jsonLoadSaver) Load(eif EnvironmentInterface, filename string) (*DepGraph, error) {
 	startTime := time.Now()
-	f, err := os.Open(filename)
+	f, err := eif.Open(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -729,9 +728,9 @@ func (jsonLoadSaver) Load(filename string) (*DepGraph, error) {
 	return dg, nil
 }
 
-func (gobLoadSaver) Load(filename string) (*DepGraph, error) {
+func (gobLoadSaver) Load(eif EnvironmentInterface, filename string) (*DepGraph, error) {
 	startTime := time.Now()
-	f, err := os.Open(filename)
+	f, err := eif.Open(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -763,7 +762,7 @@ func loadCache(eif EnvironmentInterface, makefile string, roots []string) (*DepG
 		return nil, fmt.Errorf("cache not found: %s", filename)
 	}
 
-	g, err := GOB.Load(filename)
+	g, err := GOB.Load(eif, filename)
 	if err != nil {
 		glog.Warning("Cache load error %q: %v", filename, err)
 		return nil, err

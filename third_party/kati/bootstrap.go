@@ -26,7 +26,7 @@ func bootstrapMakefile(eif EnvironmentInterface, targets []string) (makefile, er
 CC?=cc
 CXX?=g++
 AR?=ar
-MAKE?=kati
+MAKE?=make
 # Pretend to be GNU make 3.81, for compatibility.
 MAKE_VERSION?=3.81
 KATI?=kati

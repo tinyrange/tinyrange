@@ -110,7 +110,7 @@ func unescapeTarget(s []byte) []byte {
 	return s
 }
 
-func (r *rule) parseInputs(s []byte) {
+func (r *rule) parseInputs(eif EnvironmentInterface, s []byte) {
 	ws := newWordScanner(s)
 	ws.esc = true
 	add := func(t string) {
@@ -129,7 +129,7 @@ func (r *rule) parseInputs(s []byte) {
 			add(internBytes(input))
 			continue
 		}
-		m, _ := fsCache.Glob(string(input))
+		m, _ := fsCache.Glob(eif, string(input))
 		if len(m) == 0 {
 			add(internBytes(input))
 			continue
@@ -179,7 +179,7 @@ func (r *rule) parseVar(s []byte, rhs expr) (*assignAST, error) {
 // finding literal char. i.e. $ is parsed as literal '$'.
 // assign is not nil, if line was known as target specific var '<xxx>: <v>=<val>'
 // rhs is not nil, if line ended with '=' (target specific var after evaluated)
-func (r *rule) parse(line []byte, assign *assignAST, rhs expr) (*assignAST, error) {
+func (r *rule) parse(eif EnvironmentInterface, line []byte, assign *assignAST, rhs expr) (*assignAST, error) {
 	line = trimLeftSpaceBytes(line)
 	// See semicolon.mk.
 	if rhs == nil && (len(line) == 0 || line[0] == ';') {
@@ -239,7 +239,7 @@ func (r *rule) parse(line []byte, assign *assignAST, rhs expr) (*assignAST, erro
 	}
 	index = findLiteralChar(rest, ':', 0, noSkipVar)
 	if index < 0 {
-		r.parseInputs(rest)
+		r.parseInputs(eif, rest)
 		return nil, nil
 	}
 
@@ -264,7 +264,7 @@ func (r *rule) parse(line []byte, assign *assignAST, rhs expr) (*assignAST, erro
 	if ws.Scan() {
 		return nil, errors.New("*** multiple target patterns.")
 	}
-	r.parseInputs(third)
+	r.parseInputs(eif, third)
 
 	return nil, nil
 }

@@ -17,6 +17,7 @@ package kati
 import (
 	"crypto/sha1"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -78,25 +79,48 @@ type LoadReq struct {
 }
 
 // FromCommandLine creates LoadReq from given command line.
-func FromCommandLine(eif EnvironmentInterface, cmdline []string) LoadReq {
-	var vars []string
-	var targets []string
-	for _, arg := range cmdline {
+func FromCommandLine(eif EnvironmentInterface, cmdline []string) (LoadReq, error) {
+	var (
+		err     error
+		vars    []string
+		targets []string
+		mk      string
+	)
+
+	slog.Info("kati.FromCommandLine", "cmdline", cmdline)
+
+	for i := 0; i < len(cmdline); i++ {
+		arg := cmdline[i]
+		if arg == "-f" {
+			mk = cmdline[i+1]
+			i++
+			continue
+		} else if arg == "-C" {
+			context := cmdline[i+1]
+			i++
+			_ = context
+			continue
+		}
+
 		if strings.IndexByte(arg, '=') >= 0 {
 			vars = append(vars, arg)
 			continue
 		}
 		targets = append(targets, arg)
 	}
-	mk, err := defaultMakefile(eif)
-	if err != nil {
-		glog.Warningf("default makefile: %v", err)
+
+	if mk == "" {
+		mk, err = defaultMakefile(eif)
+		if err != nil {
+			return LoadReq{}, nil
+		}
 	}
+
 	return LoadReq{
 		Makefile:        mk,
 		Targets:         targets,
 		CommandLineVars: vars,
-	}
+	}, nil
 }
 
 func initVars(vars Vars, kvlist []string, origin string) error {
@@ -104,7 +128,7 @@ func initVars(vars Vars, kvlist []string, origin string) error {
 		kv := strings.SplitN(v, "=", 2)
 		glog.V(1).Infof("%s var %q", origin, v)
 		if len(kv) < 2 {
-			return fmt.Errorf("A weird %s variable %q", origin, kv)
+			return fmt.Errorf("a weird %s variable %q", origin, kv)
 		}
 		vars.Assign(kv[0], &recursiveVar{
 			expr:   literal(kv[1]),
@@ -216,12 +240,12 @@ func Load(eif EnvironmentInterface, req LoadReq) (*DepGraph, error) {
 
 // Loader is the interface that loads DepGraph.
 type Loader interface {
-	Load(string) (*DepGraph, error)
+	Load(EnvironmentInterface, string) (*DepGraph, error)
 }
 
 // Saver is the interface that saves DepGraph.
 type Saver interface {
-	Save(*DepGraph, string, []string) error
+	Save(EnvironmentInterface, *DepGraph, string, []string) error
 }
 
 // LoadSaver is the interface that groups Load and Save methods.

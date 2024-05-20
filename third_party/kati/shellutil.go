@@ -138,19 +138,19 @@ func (f *funcShellDate) Eval(w evalWriter, ev *Evaluator) error {
 }
 
 type buildinCommand interface {
-	run(w evalWriter)
+	run(eif EnvironmentInterface, w evalWriter)
 }
 
 var errFindEmulatorDisabled = errors.New("builtin: find emulator disabled")
 
-func parseBuiltinCommand(cmd string) (buildinCommand, error) {
+func parseBuiltinCommand(eif EnvironmentInterface, cmd string) (buildinCommand, error) {
 	if !UseFindEmulator {
 		return nil, errFindEmulatorDisabled
 	}
 	if strings.HasPrefix(trimLeftSpace(cmd), "build/tools/findleaves") {
 		return parseFindleavesCommand(cmd)
 	}
-	return parseFindCommand(cmd)
+	return parseFindCommand(eif, cmd)
 }
 
 type shellParser struct {

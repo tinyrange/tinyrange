@@ -19,12 +19,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 
 	"github.com/tinyrange/pkg2/third_party/kati/glog"
 )
@@ -41,8 +40,8 @@ var (
 type dirent struct {
 	id    fileid
 	name  string
-	lmode os.FileMode
-	mode  os.FileMode
+	lmode fs.FileMode
+	mode  fs.FileMode
 	// add other fields to support more find commands?
 }
 
@@ -57,10 +56,6 @@ var fsCache = &fsCacheT{
 	dirents: map[fileid][]dirent{
 		invalidFileid: nil,
 	},
-}
-
-func init() {
-	fsCache.readdir(".", unknownFileid)
 }
 
 func (c *fsCacheT) dirs() int {
@@ -113,7 +108,7 @@ func filepathJoin(names ...string) string {
 	return dir
 }
 
-func filepathClean(path string) string {
+func filepathClean(eif EnvironmentInterface, path string) string {
 	var names []string
 	if filepath.IsAbs(path) {
 		names = append(names, "")
@@ -130,12 +125,12 @@ Loop:
 			if parent == "" {
 				parent = "."
 			}
-			_, ents := fsCache.readdir(parent, unknownFileid)
+			_, ents := fsCache.readdir(eif, parent, unknownFileid)
 			for _, e := range ents {
 				if e.name != last {
 					continue
 				}
-				if e.lmode&os.ModeSymlink == os.ModeSymlink && e.mode&os.ModeDir == os.ModeDir {
+				if e.lmode&fs.ModeSymlink == fs.ModeSymlink && e.mode&fs.ModeDir == fs.ModeDir {
 					// preserve .. if last is symlink dir.
 					names = append(names, "..")
 					continue Loop
@@ -163,7 +158,7 @@ func (c *fsCacheT) fileid(dir string) fileid {
 	return id
 }
 
-func (c *fsCacheT) readdir(dir string, id fileid) (fileid, []dirent) {
+func (c *fsCacheT) readdir(eif EnvironmentInterface, dir string, id fileid) (fileid, []dirent) {
 	glog.V(3).Infof("readdir: %s [%v]", dir, id)
 	c.mu.Lock()
 	if id == unknownFileid {
@@ -175,7 +170,7 @@ func (c *fsCacheT) readdir(dir string, id fileid) (fileid, []dirent) {
 		return id, ents
 	}
 	glog.V(3).Infof("opendir: %s", dir)
-	d, err := os.Open(dir)
+	d, err := eif.Open(dir)
 	if err != nil {
 		c.mu.Lock()
 		c.ids[dir] = invalidFileid
@@ -183,23 +178,23 @@ func (c *fsCacheT) readdir(dir string, id fileid) (fileid, []dirent) {
 		return invalidFileid, nil
 	}
 	defer d.Close()
-	fi, err := d.Stat()
-	if err != nil {
-		c.mu.Lock()
-		c.ids[dir] = invalidFileid
-		c.mu.Unlock()
-		return invalidFileid, nil
-	}
-	if stat, ok := fi.Sys().(*syscall.Stat_t); ok {
-		id = fileid{dev: uint64(stat.Dev), ino: stat.Ino}
-	}
+	// fi, err := d.Stat()
+	// if err != nil {
+	// 	c.mu.Lock()
+	// 	c.ids[dir] = invalidFileid
+	// 	c.mu.Unlock()
+	// 	return invalidFileid, nil
+	// }
+	// if stat, ok := fi.Sys().(*syscall.Stat_t); ok {
+	// 	id = fileid{dev: uint64(stat.Dev), ino: stat.Ino}
+	// }
 	names, _ := d.Readdirnames(-1)
 	// need sort?
 	ents = nil
 	var path string
 	for _, name := range names {
 		path = filepath.Join(dir, name)
-		fi, err := os.Lstat(path)
+		fi, err := eif.Lstat(path)
 		if err != nil {
 			glog.Warningf("readdir %s: %v", name, err)
 			ents = append(ents, dirent{name: name})
@@ -208,18 +203,18 @@ func (c *fsCacheT) readdir(dir string, id fileid) (fileid, []dirent) {
 		lmode := fi.Mode()
 		mode := lmode
 		var id fileid
-		if stat, ok := fi.Sys().(*syscall.Stat_t); ok {
-			id = fileid{dev: uint64(stat.Dev), ino: stat.Ino}
-		}
-		if lmode&os.ModeSymlink == os.ModeSymlink {
-			fi, err = os.Stat(path)
+		// if stat, ok := fi.Sys().(*syscall.Stat_t); ok {
+		// 	id = fileid{dev: uint64(stat.Dev), ino: stat.Ino}
+		// }
+		if lmode&fs.ModeSymlink == fs.ModeSymlink {
+			fi, err = eif.Stat(path)
 			if err != nil {
 				glog.Warningf("readdir %s: %v", name, err)
 			} else {
 				mode = fi.Mode()
-				if stat, ok := fi.Sys().(*syscall.Stat_t); ok {
-					id = fileid{dev: uint64(stat.Dev), ino: stat.Ino}
-				}
+				// if stat, ok := fi.Sys().(*syscall.Stat_t); ok {
+				// 	id = fileid{dev: uint64(stat.Dev), ino: stat.Ino}
+				// }
 			}
 		}
 		ents = append(ents, dirent{id: id, name: name, lmode: lmode, mode: mode})
@@ -234,8 +229,8 @@ func (c *fsCacheT) readdir(dir string, id fileid) (fileid, []dirent) {
 
 // glob searches for files matching pattern in the directory dir
 // and appends them to matches. ignore I/O errors.
-func (c *fsCacheT) glob(dir, pattern string, matches []string) ([]string, error) {
-	_, ents := c.readdir(filepathClean(dir), unknownFileid)
+func (c *fsCacheT) glob(eif EnvironmentInterface, dir, pattern string, matches []string) ([]string, error) {
+	_, ents := c.readdir(eif, filepathClean(eif, dir), unknownFileid)
 	switch dir {
 	case "", string(filepath.Separator):
 		// nothing
@@ -254,7 +249,7 @@ func (c *fsCacheT) glob(dir, pattern string, matches []string) ([]string, error)
 	return matches, nil
 }
 
-func (c *fsCacheT) Glob(pat string) ([]string, error) {
+func (c *fsCacheT) Glob(eif EnvironmentInterface, pat string) ([]string, error) {
 	// TODO(ukai): expand ~ to user's home directory.
 	// TODO(ukai): use find cache for glob if exists
 	// or use wildcardCache for find cache.
@@ -267,16 +262,16 @@ func (c *fsCacheT) Glob(pat string) ([]string, error) {
 		dir = dir[:len(dir)-1] // chop off trailing separator
 	}
 	if !hasWildcardMeta(dir) {
-		return c.glob(dir, file, nil)
+		return c.glob(eif, dir, file, nil)
 	}
 
-	m, err := c.Glob(dir)
+	m, err := c.Glob(eif, dir)
 	if err != nil {
 		return nil, err
 	}
 	var matches []string
 	for _, d := range m {
-		matches, err = c.glob(d, file, matches)
+		matches, err = c.glob(eif, d, file, matches)
 		if err != nil {
 			return nil, err
 		}
@@ -284,8 +279,8 @@ func (c *fsCacheT) Glob(pat string) ([]string, error) {
 	return matches, nil
 }
 
-func wildcard(w evalWriter, pat string) error {
-	files, err := fsCache.Glob(pat)
+func wildcard(eif EnvironmentInterface, w evalWriter, pat string) error {
+	files, err := fsCache.Glob(eif, pat)
 	if err != nil {
 		return err
 	}
@@ -311,7 +306,7 @@ func (op findOpName) apply(w evalWriter, path string, ent dirent) (bool, bool) {
 }
 
 type findOpType struct {
-	mode           os.FileMode
+	mode           fs.FileMode
 	followSymlinks bool
 }
 
@@ -394,9 +389,9 @@ func (op findOpPrint) apply(w evalWriter, path string, ent dirent) (bool, bool) 
 	return true, false
 }
 
-func (c *fsCacheT) find(w evalWriter, fc findCommand, path string, id fileid, depth int, seen map[fileid]string) {
+func (c *fsCacheT) find(eif EnvironmentInterface, w evalWriter, fc findCommand, path string, id fileid, depth int, seen map[fileid]string) {
 	glog.V(2).Infof("find: path:%s id:%v depth:%d", path, id, depth)
-	id, ents := c.readdir(filepathClean(filepathJoin(fc.chdir, path)), id)
+	id, ents := c.readdir(eif, filepathClean(eif, filepathJoin(fc.chdir, path)), id)
 	if ents == nil {
 		glog.V(1).Infof("find: %s %s not found", fc.chdir, path)
 		return
@@ -406,7 +401,7 @@ func (c *fsCacheT) find(w evalWriter, fc findCommand, path string, id fileid, de
 		_, prune := fc.apply(w, path, ent)
 		mode := ent.lmode
 		if fc.followSymlinks {
-			if mode&os.ModeSymlink == os.ModeSymlink {
+			if mode&fs.ModeSymlink == fs.ModeSymlink {
 				lpath := filepathJoin(path, ent.name)
 				if p, ok := seen[ent.id]; ok {
 					// stderr?
@@ -429,7 +424,7 @@ func (c *fsCacheT) find(w evalWriter, fc findCommand, path string, id fileid, de
 			glog.V(3).Infof("find: depth: %d >= %d", depth, fc.depth)
 			continue
 		}
-		c.find(w, fc, filepathJoin(path, ent.name), ent.id, depth+1, seen)
+		c.find(eif, w, fc, filepathJoin(path, ent.name), ent.id, depth+1, seen)
 	}
 }
 
@@ -442,7 +437,7 @@ type findCommand struct {
 	depth          int
 }
 
-func parseFindCommand(cmd string) (findCommand, error) {
+func parseFindCommand(eif EnvironmentInterface, cmd string) (findCommand, error) {
 	if !strings.Contains(cmd, "find") {
 		return findCommand{}, errNotFind
 	}
@@ -459,7 +454,7 @@ func parseFindCommand(cmd string) (findCommand, error) {
 		fcp.fc.finddirs = append(fcp.fc.finddirs, ".")
 	}
 	if fcp.fc.chdir != "" {
-		fcp.fc.chdir = filepathClean(fcp.fc.chdir)
+		fcp.fc.chdir = filepathClean(eif, fcp.fc.chdir)
 	}
 	if filepath.IsAbs(fcp.fc.chdir) {
 		return fcp.fc, errFindAbspath
@@ -472,12 +467,12 @@ func parseFindCommand(cmd string) (findCommand, error) {
 	glog.V(3).Infof("find command: %#v", fcp.fc)
 
 	// TODO(ukai): handle this in run() instead of fallback shell.
-	_, ents := fsCache.readdir(filepathClean(fcp.fc.testdir), unknownFileid)
+	_, ents := fsCache.readdir(eif, filepathClean(eif, fcp.fc.testdir), unknownFileid)
 	if ents == nil {
 		glog.V(1).Infof("find: testdir %s - not dir", fcp.fc.testdir)
 		return fcp.fc, errFindNoSuchDir
 	}
-	_, ents = fsCache.readdir(filepathClean(fcp.fc.chdir), unknownFileid)
+	_, ents = fsCache.readdir(eif, filepathClean(eif, fcp.fc.chdir), unknownFileid)
 	if ents == nil {
 		glog.V(1).Infof("find: cd %s: No such file or directory", fcp.fc.chdir)
 		return fcp.fc, errFindNoSuchDir
@@ -486,12 +481,12 @@ func parseFindCommand(cmd string) (findCommand, error) {
 	return fcp.fc, nil
 }
 
-func (fc findCommand) run(w evalWriter) {
+func (fc findCommand) run(eif EnvironmentInterface, w evalWriter) {
 	glog.V(3).Infof("find: %#v", fc)
 	for _, dir := range fc.finddirs {
 		seen := make(map[fileid]string)
-		id, _ := fsCache.readdir(filepathClean(filepathJoin(fc.chdir, dir)), unknownFileid)
-		_, prune := fc.apply(w, dir, dirent{id: id, name: ".", mode: os.ModeDir, lmode: os.ModeDir})
+		id, _ := fsCache.readdir(eif, filepathClean(eif, filepathJoin(fc.chdir, dir)), unknownFileid)
+		_, prune := fc.apply(w, dir, dirent{id: id, name: ".", mode: fs.ModeDir, lmode: fs.ModeDir})
 		if prune {
 			glog.V(3).Infof("find: prune: %s", dir)
 			continue
@@ -500,7 +495,7 @@ func (fc findCommand) run(w evalWriter) {
 			glog.V(3).Infof("find: depth: 0 >= %d", fc.depth)
 			continue
 		}
-		fsCache.find(w, fc, dir, id, 1, seen)
+		fsCache.find(eif, w, fc, dir, id, 1, seen)
 	}
 }
 
@@ -778,22 +773,22 @@ func (p *findCommandParser) parseFact() (findOp, error) {
 		if err != nil {
 			return nil, err
 		}
-		var m os.FileMode
+		var m fs.FileMode
 		switch tok {
 		case "b":
-			m = os.ModeDevice
+			m = fs.ModeDevice
 		case "c":
-			m = os.ModeDevice | os.ModeCharDevice
+			m = fs.ModeDevice | fs.ModeCharDevice
 		case "d":
-			m = os.ModeDir
+			m = fs.ModeDir
 		case "p":
-			m = os.ModeNamedPipe
+			m = fs.ModeNamedPipe
 		case "l":
-			m = os.ModeSymlink
+			m = fs.ModeSymlink
 		case "f":
 			return findOpRegular{p.fc.followSymlinks}, nil
 		case "s":
-			m = os.ModeSocket
+			m = fs.ModeSocket
 		default:
 			return nil, fmt.Errorf("find command: unsupported -type %s", tok)
 		}
@@ -834,18 +829,18 @@ func parseFindleavesCommand(cmd string) (findleavesCommand, error) {
 	return fcp.fc, nil
 }
 
-func (fc findleavesCommand) run(w evalWriter) {
+func (fc findleavesCommand) run(eif EnvironmentInterface, w evalWriter) {
 	glog.V(3).Infof("findleaves: %#v", fc)
 	for _, dir := range fc.dirs {
 		seen := make(map[fileid]string)
-		id, _ := fsCache.readdir(filepathClean(dir), unknownFileid)
-		fc.walk(w, dir, id, 1, seen)
+		id, _ := fsCache.readdir(eif, filepathClean(eif, dir), unknownFileid)
+		fc.walk(eif, w, dir, id, 1, seen)
 	}
 }
 
-func (fc findleavesCommand) walk(w evalWriter, dir string, id fileid, depth int, seen map[fileid]string) {
+func (fc findleavesCommand) walk(eif EnvironmentInterface, w evalWriter, dir string, id fileid, depth int, seen map[fileid]string) {
 	glog.V(3).Infof("findleaves walk: dir:%d id:%v depth:%d", dir, id, depth)
-	id, ents := fsCache.readdir(filepathClean(dir), id)
+	id, ents := fsCache.readdir(eif, filepathClean(eif, dir), id)
 	var subdirs []dirent
 	for _, ent := range ents {
 		if ent.mode.IsDir() {
@@ -868,7 +863,7 @@ func (fc findleavesCommand) walk(w evalWriter, dir string, id fileid, depth int,
 		}
 	}
 	for _, subdir := range subdirs {
-		if subdir.lmode&os.ModeSymlink == os.ModeSymlink {
+		if subdir.lmode&fs.ModeSymlink == fs.ModeSymlink {
 			lpath := filepathJoin(dir, subdir.name)
 			if p, ok := seen[subdir.id]; ok {
 				// symlink loop detected.
@@ -877,7 +872,7 @@ func (fc findleavesCommand) walk(w evalWriter, dir string, id fileid, depth int,
 			}
 			seen[subdir.id] = lpath
 		}
-		fc.walk(w, filepathJoin(dir, subdir.name), subdir.id, depth+1, seen)
+		fc.walk(eif, w, filepathJoin(dir, subdir.name), subdir.id, depth+1, seen)
 	}
 }
 

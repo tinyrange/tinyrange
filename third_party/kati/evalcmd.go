@@ -196,6 +196,10 @@ type runner struct {
 	shell       string
 }
 
+func (r runner) Command() string {
+	return r.cmd
+}
+
 func (r runner) String() string {
 	cmd := r.cmd
 	if !r.echo {
@@ -361,4 +365,21 @@ func evalCommands(eif EnvironmentInterface, nodes []*DepNode, vars Vars) error {
 	}
 	logStats("%d/%d rules have IO", ioCnt, len(nodes))
 	return nil
+}
+
+func EvalCommands(eif EnvironmentInterface, node *DepNode, vars Vars) ([]string, error) {
+	ectx := newExecContext(eif, vars, searchPaths{}, true)
+
+	runners, _, err := createRunners(ectx, node)
+	if err != nil {
+		return nil, err
+	}
+
+	var ret []string
+
+	for _, r := range runners {
+		ret = append(ret, r.Command())
+	}
+
+	return ret, nil
 }

@@ -577,7 +577,7 @@ func (f *funcWildcard) Eval(w evalWriter, ev *Evaluator) error {
 	t := time.Now()
 	for _, word := range wb.words {
 		pat := string(word)
-		err = wildcard(w, pat)
+		err = wildcard(ev.eif, w, pat)
 		if err != nil {
 			return err
 		}
@@ -946,13 +946,13 @@ func (f *funcShell) Eval(w evalWriter, ev *Evaluator) error {
 	}
 	arg := abuf.String()
 	abuf.release()
-	if bc, err := parseBuiltinCommand(arg); err != nil {
+	if bc, err := parseBuiltinCommand(ev.eif, arg); err != nil {
 		glog.V(1).Infof("sh builtin: %v", err)
 	} else {
 		glog.Info("use sh builtin:", arg)
 		glog.V(2).Infof("builtin command: %#v", bc)
 		te := traceEvent.begin("sh-builtin", literal(arg), traceEventMain)
-		bc.run(w)
+		bc.run(ev.eif, w)
 		traceEvent.end(te)
 		return nil
 	}

@@ -17,7 +17,6 @@ package kati
 import (
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"sync"
 	"time"
@@ -91,7 +90,7 @@ func (t *traceEventT) emit(ph string, e event, ts time.Duration) {
 	defer t.mu.Unlock()
 
 	if t.pid == 0 {
-		t.pid = os.Getpid()
+		t.pid = 100
 	} else {
 		fmt.Fprintf(t.f, ",\n")
 	}

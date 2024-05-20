@@ -328,7 +328,7 @@ func (ev *Evaluator) evalMaybeRule(ast *maybeRuleAST) error {
 	if glog.V(1) {
 		glog.Infof("rule? %s: %q assign:%v rhs:%s", r.srcpos, line, ast.assign, rhs)
 	}
-	assign, err := r.parse(line, ast.assign, rhs)
+	assign, err := r.parse(ev.eif, line, ast.assign, rhs)
 	if err != nil {
 		ws := newWordScanner(line)
 		if ws.Scan() {
