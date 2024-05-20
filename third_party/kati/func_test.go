@@ -14,63 +14,63 @@
 
 package kati
 
-import "testing"
+// import "testing"
 
-func BenchmarkFuncStrip(b *testing.B) {
-	strip := &funcStrip{
-		fclosure: fclosure{
-			args: []Value{
-				literal("(strip"),
-				literal("a b  c "),
-			},
-		},
-	}
-	ev := NewEvaluator(make(map[string]Var))
-	var buf evalBuffer
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		buf.Reset()
-		strip.Eval(&buf, ev)
-	}
-}
+// func BenchmarkFuncStrip(b *testing.B) {
+// 	strip := &funcStrip{
+// 		fclosure: fclosure{
+// 			args: []Value{
+// 				literal("(strip"),
+// 				literal("a b  c "),
+// 			},
+// 		},
+// 	}
+// 	ev := NewEvaluator(make(map[string]Var))
+// 	var buf evalBuffer
+// 	b.ReportAllocs()
+// 	b.ResetTimer()
+// 	for i := 0; i < b.N; i++ {
+// 		buf.Reset()
+// 		strip.Eval(&buf, ev)
+// 	}
+// }
 
-func BenchmarkFuncSort(b *testing.B) {
-	sort := &funcSort{
-		fclosure: fclosure{
-			args: []Value{
-				literal("(sort"),
-				literal("foo bar lose"),
-			},
-		},
-	}
-	ev := NewEvaluator(make(map[string]Var))
-	var buf evalBuffer
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		buf.Reset()
-		sort.Eval(&buf, ev)
-	}
-}
+// func BenchmarkFuncSort(b *testing.B) {
+// 	sort := &funcSort{
+// 		fclosure: fclosure{
+// 			args: []Value{
+// 				literal("(sort"),
+// 				literal("foo bar lose"),
+// 			},
+// 		},
+// 	}
+// 	ev := NewEvaluator(make(map[string]Var))
+// 	var buf evalBuffer
+// 	b.ReportAllocs()
+// 	b.ResetTimer()
+// 	for i := 0; i < b.N; i++ {
+// 		buf.Reset()
+// 		sort.Eval(&buf, ev)
+// 	}
+// }
 
-func BenchmarkFuncPatsubst(b *testing.B) {
-	patsubst := &funcPatsubst{
-		fclosure: fclosure{
-			args: []Value{
-				literal("(patsubst"),
-				literal("%.java"),
-				literal("%.class"),
-				literal("foo.jar bar.java baz.h"),
-			},
-		},
-	}
-	ev := NewEvaluator(make(map[string]Var))
-	var buf evalBuffer
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		buf.Reset()
-		patsubst.Eval(&buf, ev)
-	}
-}
+// func BenchmarkFuncPatsubst(b *testing.B) {
+// 	patsubst := &funcPatsubst{
+// 		fclosure: fclosure{
+// 			args: []Value{
+// 				literal("(patsubst"),
+// 				literal("%.java"),
+// 				literal("%.class"),
+// 				literal("foo.jar bar.java baz.h"),
+// 			},
+// 		},
+// 	}
+// 	ev := NewEvaluator(make(map[string]Var))
+// 	var buf evalBuffer
+// 	b.ReportAllocs()
+// 	b.ResetTimer()
+// 	for i := 0; i < b.N; i++ {
+// 		buf.Reset()
+// 		patsubst.Eval(&buf, ev)
+// 	}
+// }
