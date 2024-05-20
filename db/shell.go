@@ -70,8 +70,8 @@ func (t *starDepGraph) Attr(name string) (starlark.Value, error) {
 		}
 
 		return starlark.NewList(rules), nil
-	} else if name == "execute" {
-		return starlark.NewBuiltin("DepGraph.execute", func(
+	} else if name == "exec" {
+		return starlark.NewBuiltin("DepGraph.exec", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
 			args starlark.Tuple,
@@ -82,7 +82,7 @@ func (t *starDepGraph) Attr(name string) (starlark.Value, error) {
 				returnErrors bool
 			)
 
-			if err := starlark.UnpackArgs("DepGraph.execute", args, kwargs,
+			if err := starlark.UnpackArgs("DepGraph.exec", args, kwargs,
 				"ctx", &ctx,
 				"return_errors?", &returnErrors,
 			); err != nil {

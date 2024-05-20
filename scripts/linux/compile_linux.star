@@ -103,10 +103,7 @@ def main(ctx):
 
     ctx["./Makefile"] = ctx["Makefile"]
 
-    graph = ctx.eval_makefile(["kernel"])
-
-    for rule in graph.rules:
-        walk(ctx, graph, rule)
+    ctx.eval_makefile(["silentoldconfig"]).exec(ctx)
 
 if __name__ == "__main__":
     run_script(main)
