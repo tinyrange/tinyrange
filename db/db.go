@@ -272,7 +272,8 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			return &ShellContext{
-				out:      starlark.NewDict(32),
+				environ:  starlark.NewDict(32),
+				files:    starlark.NewDict(32),
 				commands: make(map[string]*shellCommand),
 			}, nil
 		}),
@@ -600,7 +601,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 func (db *PackageDatabase) RunScript() error {
 	thread := &starlark.Thread{
 		Print: func(thread *starlark.Thread, msg string) {
-			fmt.Fprintf(os.Stdout, "%s\n", msg)
+			fmt.Fprintf(os.Stdout, "s%s\n", msg)
 		},
 	}
 
