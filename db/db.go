@@ -601,7 +601,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 func (db *PackageDatabase) RunScript() error {
 	thread := &starlark.Thread{
 		Print: func(thread *starlark.Thread, msg string) {
-			fmt.Fprintf(os.Stdout, "s%s\n", msg)
+			fmt.Fprintf(os.Stdout, "%s\n", msg)
 		},
 	}
 

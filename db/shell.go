@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -258,12 +259,25 @@ func (cmd *shellCommand) Run(ctx *ShellContext, argv []string) (CommandResult, e
 		return emptyResult(), err
 	}
 
+	exitCode := 0
+
+	if tup, ok := ret.(starlark.Tuple); ok {
+		exitCode, err = starlark.AsInt32(tup[1])
+		if err != nil {
+			return emptyResult(), err
+		}
+
+		ret = tup[0]
+	}
+
 	str, ok := starlark.AsString(ret)
 	if !ok {
 		return emptyResult(), fmt.Errorf("value %T could not be converted to a string", ret)
 	}
 
-	return newResult(str), nil
+	result := newResult(str)
+
+	return result.SetExitCode(exitCode), nil
 }
 
 type CommandResult struct {
@@ -490,6 +504,51 @@ func (p *ShellContext) getParam(name string) (string, error) {
 	return str, nil
 }
 
+func (p *ShellContext) evaluateArithmetic(e syntax.ArithmExpr) (string, error) {
+	switch expr := e.(type) {
+	case *syntax.BinaryArithm:
+		switch {
+		case expr.Op == syntax.Sub || expr.Op == syntax.Shl:
+			lhs, err := p.evaluateArithmetic(expr.X)
+			if err != nil {
+				return "", err
+			}
+
+			rhs, err := p.evaluateArithmetic(expr.Y)
+			if err != nil {
+				return "", err
+			}
+
+			lhsInt, err := strconv.ParseInt(lhs, 0, 64)
+			if err != nil {
+				return "", err
+			}
+
+			rhsInt, err := strconv.ParseInt(rhs, 0, 64)
+			if err != nil {
+				return "", err
+			}
+
+			switch expr.Op {
+			case syntax.Sub:
+				return strconv.FormatInt(lhsInt-rhsInt, 10), nil
+			case syntax.Shl:
+				return strconv.FormatInt(lhsInt<<rhsInt, 10), nil
+			default:
+				panic("unimplemented")
+			}
+		default:
+			return "", fmt.Errorf("binary op %s not implemented", expr.Op)
+		}
+	case *syntax.ParenArithm:
+		return p.evaluateArithmetic(expr.X)
+	case *syntax.Word:
+		return p.evaluateWord(expr)
+	default:
+		return "", fmt.Errorf("word part %T not implemented", expr)
+	}
+}
+
 func (p *ShellContext) evaluatePart(part syntax.WordPart) (string, error) {
 	switch part := part.(type) {
 	case *syntax.Lit:
@@ -536,6 +595,8 @@ func (p *ShellContext) evaluatePart(part syntax.WordPart) (string, error) {
 		}
 
 		return strings.Join(ret, ""), nil
+	case *syntax.ArithmExp:
+		return p.evaluateArithmetic(part.X)
 	default:
 		return "", fmt.Errorf("word part %T not implemented", part)
 	}
@@ -559,7 +620,6 @@ func (p *ShellContext) evaluateWord(word *syntax.Word) (string, error) {
 func (p *ShellContext) visitCmd(cmd syntax.Command, stdin string) (CommandResult, error) {
 	switch cmd := cmd.(type) {
 	case *syntax.CallExpr:
-		slog.Info("ShellContext Call", "cmd", cmd)
 		if len(cmd.Assigns) == 0 {
 			var args []string
 			for _, arg := range cmd.Args {
@@ -629,6 +689,22 @@ func (p *ShellContext) visitCmd(cmd syntax.Command, stdin string) (CommandResult
 			}
 
 			return rhs, nil
+		case syntax.AndStmt:
+			lhs, err := p.visitStmt(cmd.X, "")
+			if err != nil {
+				return emptyResult(), err
+			}
+
+			if lhs.ExitCode == 0 {
+				rhs, err := p.visitStmt(cmd.Y, "")
+				if err != nil {
+					return emptyResult(), err
+				}
+
+				return rhs, nil
+			}
+
+			return lhs, nil
 		default:
 			return emptyResult(), fmt.Errorf("BinaryCmd op %s not implemented", cmd.Op.String())
 		}
@@ -640,7 +716,7 @@ func (p *ShellContext) visitCmd(cmd syntax.Command, stdin string) (CommandResult
 func (p *ShellContext) visitStmt(stmt *syntax.Stmt, stdin string) (CommandResult, error) {
 	res, err := p.visitCmd(stmt.Cmd, stdin)
 	if err != nil {
-		return emptyResult(), nil
+		return emptyResult(), err
 	}
 
 	return res, nil
@@ -861,6 +937,8 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
+	} else if name == "env" {
+		return p.environ, nil
 	} else {
 		return nil, nil
 	}
@@ -868,7 +946,7 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (p *ShellContext) AttrNames() []string {
-	return []string{"eval", "eval_makefile", "add_command", "set_environment", "set_handlers", "move"}
+	return []string{"eval", "eval_makefile", "add_command", "set_environment", "set_handlers", "move", "env"}
 }
 
 var (
