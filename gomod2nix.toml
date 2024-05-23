@@ -16,6 +16,12 @@ schema = 3
   [mod."github.com/bitly/go-simplejson"]
     version = "v0.5.1"
     hash = "sha256-ypd4SyAww1+1IlxXlAeGYbTKwl/mahlj9k0MjXJkAJ0="
+  [mod."github.com/blakesmith/ar"]
+    version = "v0.0.0-20190502131153-809d4375e1fb"
+    hash = "sha256-AV5UX5EvE14WFdaDOYtNG1N+MW6v8N/7KIulRQCb3QE="
+  [mod."github.com/chzyer/readline"]
+    version = "v0.0.0-20180603132655-2972be24d48e"
+    hash = "sha256-2Uj5LGpHEbLQG3d/7z9AL8DknUBZyoTAMs4j+VVDmIA="
   [mod."github.com/cloudflare/circl"]
     version = "v1.3.3"
     hash = "sha256-ItdVkU53Ep01553/tJ4MdAwoTpPljRxiBW9sAd7p0xI="
@@ -34,6 +40,9 @@ schema = 3
   [mod."github.com/go-git/go-git/v5"]
     version = "v5.11.0"
     hash = "sha256-2yUM/FlV+nYxacVynJCnDZeMub4Iu8JL2WBHmlnwOkE="
+  [mod."github.com/go-python/gpython"]
+    version = "v0.2.0"
+    hash = "sha256-m4WP/PI/B7xDOohMo5s9sLMGXSq3HOWX2fjLTVFdBGw="
   [mod."github.com/golang/groupcache"]
     version = "v0.0.0-20210331224755-41bb18bfe9da"
     hash = "sha256-7Gs7CS9gEYZkbu5P4hqPGBpeGZWC64VDwraSKFF+VR0="
@@ -94,6 +103,9 @@ schema = 3
   [mod."github.com/xi2/xz"]
     version = "v0.0.0-20171230120015-48954b6210f8"
     hash = "sha256-2J4cb9KUnGHn1WZ2+g/S+yiHGLDt6KU0cP3fJpQDGZ0="
+  [mod."go.etcd.io/bbolt"]
+    version = "v1.3.9"
+    hash = "sha256-98cKiMZcxl11laO3IiRHnhSgh7mEjl0iKlPxsSPdbww="
   [mod."go.starlark.net"]
     version = "v0.0.0-20240314022150-ee8ed142361c"
     hash = "sha256-dXCzSYXMOMEavQIJEzi5OsJWGnuU751ONBwCUjLPvGw="

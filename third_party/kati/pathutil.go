@@ -839,7 +839,7 @@ func (fc findleavesCommand) run(eif EnvironmentInterface, w evalWriter) {
 }
 
 func (fc findleavesCommand) walk(eif EnvironmentInterface, w evalWriter, dir string, id fileid, depth int, seen map[fileid]string) {
-	glog.V(3).Infof("findleaves walk: dir:%d id:%v depth:%d", dir, id, depth)
+	glog.V(3).Infof("findleaves walk: dir:%s id:%v depth:%d", dir, id, depth)
 	id, ents := fsCache.readdir(eif, filepathClean(eif, dir), id)
 	var subdirs []dirent
 	for _, ent := range ents {

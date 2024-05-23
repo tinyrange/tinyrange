@@ -286,7 +286,8 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			return &ShellContext{
-				out:      starlark.NewDict(32),
+				environ:  starlark.NewDict(32),
+				files:    starlark.NewDict(32),
 				commands: make(map[string]*shellCommand),
 			}, nil
 		}),

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -242,7 +243,7 @@ type shellCommand struct {
 	f    *starlark.Function
 }
 
-func (cmd *shellCommand) Run(ctx *ShellContext, argv []string) (string, error) {
+func (cmd *shellCommand) Run(ctx *ShellContext, argv []string) (CommandResult, error) {
 	thread := &starlark.Thread{}
 
 	var args starlark.Tuple
@@ -255,26 +256,58 @@ func (cmd *shellCommand) Run(ctx *ShellContext, argv []string) (string, error) {
 
 	ret, err := starlark.Call(thread, cmd.f, starlark.Tuple{ctx, args}, []starlark.Tuple{})
 	if err != nil {
-		return "", err
+		return emptyResult(), err
+	}
+
+	exitCode := 0
+
+	if tup, ok := ret.(starlark.Tuple); ok {
+		exitCode, err = starlark.AsInt32(tup[1])
+		if err != nil {
+			return emptyResult(), err
+		}
+
+		ret = tup[0]
 	}
 
 	str, ok := starlark.AsString(ret)
 	if !ok {
-		return "", fmt.Errorf("value %T could not be converted to a string", ret)
+		return emptyResult(), fmt.Errorf("value %T could not be converted to a string", ret)
 	}
 
-	return str, nil
+	result := newResult(str)
+
+	return result.SetExitCode(exitCode), nil
+}
+
+type CommandResult struct {
+	ExitCode int
+	Stdout   string
+}
+
+func (res *CommandResult) SetExitCode(code int) CommandResult {
+	res.ExitCode = code
+	return *res
+}
+
+func newResult(stdout string) CommandResult {
+	return CommandResult{Stdout: stdout}
+}
+
+func emptyResult() CommandResult {
+	return newResult("")
 }
 
 type ShellContext struct {
-	out             *starlark.Dict
+	files           *starlark.Dict
+	environ         *starlark.Dict
 	commands        map[string]*shellCommand
 	fileNotFound    *starlark.Function
 	commandNotFound *starlark.Function
 }
 
 func (p *ShellContext) getFile(filename string) (starlark.Value, error) {
-	val, ok, err := p.out.Get(starlark.String(filename))
+	val, ok, err := p.files.Get(starlark.String(filename))
 	if err != nil {
 		return nil, err
 	}
@@ -327,12 +360,36 @@ func (p *ShellContext) Remove(filename string) error {
 
 // Abspath implements kati.EnvironmentInterface.
 func (*ShellContext) Abspath(p string) (string, error) {
+	slog.Info("ShellContext.Abspath", "p", p)
 	return filepath.Clean(p), nil
 }
 
 // EvalSymlinks implements kati.EnvironmentInterface.
 func (*ShellContext) EvalSymlinks(p string) (string, error) {
+	slog.Info("ShellContext.EvalSymlinks", "p", p)
 	return p, nil
+}
+
+func (p *ShellContext) Environ() []string {
+	var ret []string
+
+	p.environ.Entries(func(k, v starlark.Value) bool {
+		kStr, ok := starlark.AsString(k)
+		if !ok {
+			return false
+		}
+
+		vStr, ok := starlark.AsString(v)
+		if !ok {
+			return false
+		}
+
+		ret = append(ret, fmt.Sprintf("%s=%s", kStr, vStr))
+
+		return true
+	})
+
+	return ret
 }
 
 // Create implements kati.EnvironmentInterface.
@@ -347,12 +404,12 @@ func (p *ShellContext) NumCPU() int {
 
 // Setenv implements kati.EnvironmentInterface.
 func (p *ShellContext) Setenv(key string, value string) {
-	p.out.SetKey(starlark.String(key), starlark.String(value))
+	p.environ.SetKey(starlark.String(key), starlark.String(value))
 }
 
 // Unsetenv implements kati.EnvironmentInterface.
 func (p *ShellContext) Unsetenv(key string) {
-	p.out.Delete(starlark.String(key))
+	p.environ.Delete(starlark.String(key))
 }
 
 // Exec implements kati.EnvironmentInterface.
@@ -365,7 +422,7 @@ func (p *ShellContext) Exec(args []string) ([]byte, error) {
 		return nil, err
 	}
 
-	return []byte(ret), nil
+	return []byte(ret.Stdout), nil
 }
 
 // ReadFile implements kati.EnvironmentInterface.
@@ -399,15 +456,15 @@ func (p *ShellContext) Stat(filename string) (fs.FileInfo, error) {
 
 // Get implements starlark.HasSetKey.
 func (p *ShellContext) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
-	return p.out.Get(k)
+	return p.files.Get(k)
 }
 
 // SetKey implements starlark.HasSetKey.
 func (p *ShellContext) SetKey(k starlark.Value, v starlark.Value) error {
-	return p.out.SetKey(k, v)
+	return p.files.SetKey(k, v)
 }
 
-func (p *ShellContext) runCommand(args []string) (string, error) {
+func (p *ShellContext) runCommand(args []string) (CommandResult, error) {
 	cmd, ok := p.commands[args[0]]
 	if !ok {
 		if p.commandNotFound != nil {
@@ -420,22 +477,22 @@ func (p *ShellContext) runCommand(args []string) (string, error) {
 
 			ret, err := starlark.Call(thread, p.commandNotFound, starlark.Tuple{p, argsTuple}, []starlark.Tuple{})
 			if err != nil {
-				return "", err
+				return emptyResult(), err
 			}
 
 			if ret != starlark.None {
-				return "", fmt.Errorf("command_not_found result not implemented")
+				return emptyResult(), fmt.Errorf("command_not_found result not implemented")
 			}
 		}
 
-		return "", fmt.Errorf("command not found: %s", args[0])
+		return emptyResult(), fmt.Errorf("command not found: %s", args[0])
 	}
 
 	return cmd.Run(p, args)
 }
 
 func (p *ShellContext) getParam(name string) (string, error) {
-	val, ok, err := p.out.Get(starlark.String(name))
+	val, ok, err := p.environ.Get(starlark.String(name))
 	if err != nil {
 		return "", err
 	} else if !ok {
@@ -445,6 +502,51 @@ func (p *ShellContext) getParam(name string) (string, error) {
 	str, _ := starlark.AsString(val)
 
 	return str, nil
+}
+
+func (p *ShellContext) evaluateArithmetic(e syntax.ArithmExpr) (string, error) {
+	switch expr := e.(type) {
+	case *syntax.BinaryArithm:
+		switch {
+		case expr.Op == syntax.Sub || expr.Op == syntax.Shl:
+			lhs, err := p.evaluateArithmetic(expr.X)
+			if err != nil {
+				return "", err
+			}
+
+			rhs, err := p.evaluateArithmetic(expr.Y)
+			if err != nil {
+				return "", err
+			}
+
+			lhsInt, err := strconv.ParseInt(lhs, 0, 64)
+			if err != nil {
+				return "", err
+			}
+
+			rhsInt, err := strconv.ParseInt(rhs, 0, 64)
+			if err != nil {
+				return "", err
+			}
+
+			switch expr.Op {
+			case syntax.Sub:
+				return strconv.FormatInt(lhsInt-rhsInt, 10), nil
+			case syntax.Shl:
+				return strconv.FormatInt(lhsInt<<rhsInt, 10), nil
+			default:
+				panic("unimplemented")
+			}
+		default:
+			return "", fmt.Errorf("binary op %s not implemented", expr.Op)
+		}
+	case *syntax.ParenArithm:
+		return p.evaluateArithmetic(expr.X)
+	case *syntax.Word:
+		return p.evaluateWord(expr)
+	default:
+		return "", fmt.Errorf("word part %T not implemented", expr)
+	}
 }
 
 func (p *ShellContext) evaluatePart(part syntax.WordPart) (string, error) {
@@ -489,10 +591,12 @@ func (p *ShellContext) evaluatePart(part syntax.WordPart) (string, error) {
 				return "", err
 			}
 
-			ret = append(ret, out)
+			ret = append(ret, out.Stdout)
 		}
 
 		return strings.Join(ret, ""), nil
+	case *syntax.ArithmExp:
+		return p.evaluateArithmetic(part.X)
 	default:
 		return "", fmt.Errorf("word part %T not implemented", part)
 	}
@@ -513,15 +617,15 @@ func (p *ShellContext) evaluateWord(word *syntax.Word) (string, error) {
 	return strings.Join(ret, ""), nil
 }
 
-func (p *ShellContext) visitStmt(stmt *syntax.Stmt, stdin string) (string, error) {
-	switch cmd := stmt.Cmd.(type) {
+func (p *ShellContext) visitCmd(cmd syntax.Command, stdin string) (CommandResult, error) {
+	switch cmd := cmd.(type) {
 	case *syntax.CallExpr:
 		if len(cmd.Assigns) == 0 {
 			var args []string
 			for _, arg := range cmd.Args {
 				val, err := p.evaluateWord(arg)
 				if err != nil {
-					return "", err
+					return emptyResult(), err
 				}
 				args = append(args, val)
 			}
@@ -534,22 +638,21 @@ func (p *ShellContext) visitStmt(stmt *syntax.Stmt, stdin string) (string, error
 				if assign.Value != nil {
 					val, err := p.evaluateWord(assign.Value)
 					if err != nil {
-						return "", err
+						return emptyResult(), err
 					}
 
-					if err := p.out.SetKey(starlark.String(k), starlark.String(val)); err != nil {
-						return "", err
+					if err := p.environ.SetKey(starlark.String(k), starlark.String(val)); err != nil {
+						return emptyResult(), err
 					}
 				}
 			}
 
-			return "", nil
+			return emptyResult(), nil
 		}
 	case *syntax.FuncDecl:
-		return "", fmt.Errorf("FuncDecl not implemented")
+		return emptyResult(), fmt.Errorf("FuncDecl not implemented")
 	case *syntax.IfClause:
-		// TODO(joshua): Implement ifclause.
-		return "", nil
+		return emptyResult(), fmt.Errorf("IfClause not implemented")
 	case *syntax.DeclClause:
 		switch cmd.Variant.Value {
 		case "export":
@@ -559,39 +662,64 @@ func (p *ShellContext) visitStmt(stmt *syntax.Stmt, stdin string) (string, error
 				if assign.Value != nil {
 					val, err := p.evaluateWord(assign.Value)
 					if err != nil {
-						return "", err
+						return emptyResult(), err
 					}
 
-					if err := p.out.SetKey(starlark.String(k), starlark.String(val)); err != nil {
-						return "", err
+					if err := p.environ.SetKey(starlark.String(k), starlark.String(val)); err != nil {
+						return emptyResult(), err
 					}
 				}
 			}
 
-			return "", nil
+			return emptyResult(), nil
 		default:
-			return "", fmt.Errorf("DeclClause: %s not implemented", cmd.Variant.Value)
+			return emptyResult(), fmt.Errorf("DeclClause: %s not implemented", cmd.Variant.Value)
 		}
 	case *syntax.BinaryCmd:
 		switch cmd.Op {
 		case syntax.Pipe:
 			lhs, err := p.visitStmt(cmd.X, "")
 			if err != nil {
-				return "", err
+				return emptyResult(), err
 			}
 
-			rhs, err := p.visitStmt(cmd.Y, lhs)
+			rhs, err := p.visitStmt(cmd.Y, lhs.Stdout)
 			if err != nil {
-				return "", err
+				return emptyResult(), err
 			}
 
 			return rhs, nil
+		case syntax.AndStmt:
+			lhs, err := p.visitStmt(cmd.X, "")
+			if err != nil {
+				return emptyResult(), err
+			}
+
+			if lhs.ExitCode == 0 {
+				rhs, err := p.visitStmt(cmd.Y, "")
+				if err != nil {
+					return emptyResult(), err
+				}
+
+				return rhs, nil
+			}
+
+			return lhs, nil
 		default:
-			return "", fmt.Errorf("BinaryCmd op %s not implemented", cmd.Op.String())
+			return emptyResult(), fmt.Errorf("BinaryCmd op %s not implemented", cmd.Op.String())
 		}
 	default:
-		return "", fmt.Errorf("statement %T not implemented", cmd)
+		return emptyResult(), fmt.Errorf("command %T not implemented", cmd)
 	}
+}
+
+func (p *ShellContext) visitStmt(stmt *syntax.Stmt, stdin string) (CommandResult, error) {
+	res, err := p.visitCmd(stmt.Cmd, stdin)
+	if err != nil {
+		return emptyResult(), err
+	}
+
+	return res, nil
 }
 
 func (t *ShellContext) String() string { return "ShellContext" }
@@ -633,18 +761,18 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 			stdout := ""
 
 			for _, stmt := range f.Stmts {
-				stmtStdout, err := p.visitStmt(stmt, "")
+				stmtResult, err := p.visitStmt(stmt, "")
 				if err != nil {
 					return nil, err
 				}
 
-				stdout += stmtStdout
+				stdout += stmtResult.Stdout
 			}
 
 			if returnStdout {
 				return starlark.String(stdout), nil
 			} else {
-				return p.out, nil
+				return p.environ, nil
 			}
 		}), nil
 	} else if name == "eval_makefile" {
@@ -685,7 +813,7 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			slog.Info("makefile loading")
+			loadReq.EnvironmentVars = p.Environ()
 
 			depGraph, err := kati.Load(p, loadReq)
 			if err != nil {
@@ -740,7 +868,7 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			if err := p.out.SetKey(starlark.String(key), starlark.String(value)); err != nil {
+			if err := p.environ.SetKey(starlark.String(key), starlark.String(value)); err != nil {
 				return starlark.None, err
 			}
 
@@ -775,6 +903,42 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
+	} else if name == "move" {
+		return starlark.NewBuiltin("Shell.move", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				src string
+				dst string
+			)
+
+			if err := starlark.UnpackArgs("Shell.move", args, kwargs,
+				"src", &src,
+				"dst", &dst,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			srcFile, exists, err := p.files.Delete(starlark.String(src))
+			if err != nil {
+				return starlark.None, err
+			}
+
+			if !exists {
+				return starlark.None, fmt.Errorf("file not found: %s", src)
+			}
+
+			if err := p.files.SetKey(starlark.String(dst), srcFile); err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.None, nil
+		}), nil
+	} else if name == "env" {
+		return p.environ, nil
 	} else {
 		return nil, nil
 	}
@@ -782,7 +946,7 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (p *ShellContext) AttrNames() []string {
-	return []string{"eval", "eval_makefile", "add_command", "set_environment", "set_handlers"}
+	return []string{"eval", "eval_makefile", "add_command", "set_environment", "set_handlers", "move", "env"}
 }
 
 var (
