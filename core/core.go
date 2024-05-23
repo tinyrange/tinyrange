@@ -238,11 +238,11 @@ func (eif *EnvironmentInterface) Cache(
 	version int,
 	expire time.Duration,
 	miss func(w io.Writer) error,
-) (io.Reader, error) {
+) (*os.File, error) {
 	filename := filepath.Join(eif.cachePath, fmt.Sprintf("managedCache/%s_%d.bin", key, version))
 
 	if info, err := os.Stat(filename); err == nil {
-		if time.Since(info.ModTime()) < expire {
+		if expire < 0 || time.Since(info.ModTime()) < expire {
 			return os.Open(filename)
 		}
 	}

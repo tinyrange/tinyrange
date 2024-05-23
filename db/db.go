@@ -28,6 +28,20 @@ import (
 	"howett.net/plist"
 )
 
+type ScriptFile struct {
+	filename string
+}
+
+func (*ScriptFile) String() string        { return "ScriptFile" }
+func (*ScriptFile) Type() string          { return "ScriptFile" }
+func (*ScriptFile) Hash() (uint32, error) { return 0, fmt.Errorf("ScriptFile is not hashable") }
+func (*ScriptFile) Truth() starlark.Bool  { return starlark.True }
+func (*ScriptFile) Freeze()               {}
+
+var (
+	_ starlark.Value = &ScriptFile{}
+)
+
 type QueryOptions struct {
 	ExcludeRecommends bool
 	MaxResults        int
@@ -471,6 +485,32 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				Filename: filename,
 			}, f: f, name: filename}, nil
 		}),
+		"get_cache_filename": starlark.NewBuiltin("get_cache_filename", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				file *StarFile
+			)
+
+			if err := starlark.UnpackArgs("get_cache_filename", args, kwargs,
+				"file", &file,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if !db.AllowLocal {
+				return starlark.None, fmt.Errorf("get_cache_filename is only allowed if -allowLocal is passed")
+			}
+
+			if file, ok := file.f.(*os.File); ok {
+				return starlark.String(file.Name()), nil
+			} else {
+				return starlark.None, fmt.Errorf("could not get filename for %T", file)
+			}
+		}),
 		"mutex": starlark.NewBuiltin("mutex", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -525,6 +565,32 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			}
 
 			return NewBuilder(name), nil
+		}),
+		"filesystem": starlark.NewBuiltin("filesystem", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			return newFilesystem(), nil
+		}),
+		"file": starlark.NewBuiltin("file", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				contents string
+			)
+
+			if err := starlark.UnpackArgs("file", args, kwargs,
+				"contents", &contents,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return asStarFileIf("", starlark.String(contents))
 		}),
 		"name": starlark.NewBuiltin("name", func(
 			thread *starlark.Thread,
@@ -645,6 +711,8 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 	}
 
 	filename = filepath.Join(db.PackageBase, filename)
+
+	globals["__file__"] = &ScriptFile{filename: filename}
 
 	_, err = starlark.ExecFileOptions(&syntax.FileOptions{
 		TopLevelControl: true,
@@ -1334,6 +1402,29 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 			}
 
 			return &StarArchive{r: ents, name: "<download_archive>"}, nil
+		}), nil
+	} else if name == "build" {
+		return starlark.NewBuiltin("Database.build", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				tag         starlark.Tuple
+				builder     *starlark.Function
+				builderArgs starlark.Tuple
+			)
+
+			if err := starlark.UnpackArgs("Database.build", args, kwargs,
+				"tag", &tag,
+				"builder?", &builder,
+				"builderArgs?", &builderArgs,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return build(db.Eif, tag, builder, builderArgs)
 		}), nil
 	} else {
 		return nil, nil
