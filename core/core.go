@@ -82,7 +82,7 @@ type HttpOptions struct {
 	Logger       Logger
 }
 
-func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) (io.ReadCloser, error) {
+func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) (*os.File, error) {
 	Log(options.Logger, fmt.Sprintf("got request for %s", url))
 
 	path, err := eif.GetCachePath(url)
@@ -113,7 +113,8 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 				slog.Info("checking server for updates", "url", url)
 				resp, err := eif.client.Head(url)
 				if err != nil {
-					return nil, err
+					slog.Warn("could not fetch", "url", url, "error", err)
+					return os.Open(path)
 				}
 
 				lastModified := resp.Header.Get("Last-Modified")

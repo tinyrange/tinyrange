@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path"
@@ -48,13 +49,9 @@ func (g *gitTreeIterator) Next(p *starlark.Value) bool {
 			return false
 		}
 
-		r, err := file.Reader()
-		if err != nil {
-			*p = starlark.None
-			return false
-		}
-
-		*p = &StarFile{f: r, name: path.Join(g.name, node.Name)}
+		*p = NewFile(nil, path.Join(g.name, node.Name), func() (io.ReadCloser, error) {
+			return file.Reader()
+		}, nil)
 	} else {
 		// assume a directory.
 		tree, err := g.tree.Tree(node.Name)
@@ -118,12 +115,9 @@ func (g *GitTree) Get(k starlark.Value) (v starlark.Value, found bool, err error
 		return starlark.None, false, err
 	}
 
-	r, err := f.Reader()
-	if err != nil {
-		return starlark.None, false, err
-	}
-
-	return &StarFile{f: r, name: path.Join(g.name, name)}, true, nil
+	return NewFile(nil, path.Join(g.name, name), func() (io.ReadCloser, error) {
+		return f.Reader()
+	}, nil), true, nil
 }
 
 func (t *GitTree) String() string { return fmt.Sprintf("GitTree{%s}", t.name) }

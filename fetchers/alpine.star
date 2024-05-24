@@ -111,7 +111,6 @@ register_script_fetcher(
 )
 
 def get_apk_contents(ctx, url):
-    print(url)
     return fetch_http(url).read_archive(".tar.gz")
 
 register_content_fetcher(

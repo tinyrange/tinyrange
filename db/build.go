@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
+	"time"
 
-	"github.com/tinyrange/pkg2/core"
 	"go.starlark.net/starlark"
 )
 
@@ -71,6 +72,11 @@ func getTagFragment(val starlark.Value) (string, string, error) {
 		return string(val), string(val), nil
 	case *ScriptFile:
 		return "<script_file>", val.filename, nil
+	case *Package:
+		return getTagFragment(val.Name)
+	case PackageName:
+		str := val.String()
+		return str, str, nil
 	default:
 		return "", "", fmt.Errorf("%s could not be converted into a tag fragment", val.Type())
 	}
@@ -96,6 +102,7 @@ func getTag(tag starlark.Tuple) (string, string, error) {
 }
 
 type buildContext struct {
+	db *PackageDatabase
 }
 
 // Attr implements starlark.HasAttrs.
@@ -126,6 +133,8 @@ func (b *buildContext) Attr(name string) (starlark.Value, error) {
 				format: format,
 			}, nil
 		}), nil
+	} else if name == "db" {
+		return b.db, nil
 	} else {
 		return nil, nil
 	}
@@ -133,7 +142,7 @@ func (b *buildContext) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (b *buildContext) AttrNames() []string {
-	return []string{"archive"}
+	return []string{"archive", "db"}
 }
 
 func (*buildContext) String() string        { return "BuildContext" }
@@ -147,18 +156,24 @@ var (
 	_ starlark.HasAttrs = &buildContext{}
 )
 
-func build(eif *core.EnvironmentInterface, tag starlark.Tuple, builder *starlark.Function, args starlark.Tuple) (starlark.Value, error) {
+func (db *PackageDatabase) build(tag starlark.Tuple, builder *starlark.Function, args starlark.Tuple) (starlark.Value, error) {
 	public, private, err := getTag(tag)
 	if err != nil {
 		return starlark.None, err
 	}
 
-	f, err := eif.Cache(getSha256([]byte(private)), 1, -1, func(w io.Writer) error {
+	var expireTime time.Duration
+
+	if !db.Rebuild {
+		expireTime = -1
+	}
+
+	f, err := db.Eif.Cache(getSha256([]byte(private)), 1, expireTime, func(w io.Writer) error {
 		slog.Info("building", "tag", private)
 
 		thread := &starlark.Thread{Name: public}
 
-		ctx := &buildContext{}
+		ctx := &buildContext{db: db}
 
 		res, err := starlark.Call(thread, builder, append(starlark.Tuple{ctx}, args...), []starlark.Tuple{})
 		if err != nil {
@@ -174,6 +189,11 @@ func build(eif *core.EnvironmentInterface, tag starlark.Tuple, builder *starlark
 	if err != nil {
 		return starlark.None, err
 	}
+	defer f.Close()
 
-	return &StarFile{name: public, f: f, source: nil}, nil
+	filename := f.Name()
+
+	return NewFile(nil, public, func() (io.ReadCloser, error) {
+		return os.Open(filename)
+	}, nil), nil
 }

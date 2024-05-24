@@ -33,6 +33,7 @@ var (
 	runRepl           = flag.Bool("repl", false, "start a REPL")
 	enableDownloads   = flag.Bool("enableDownloads", false, "enable support for downloading packages. not recommended for public instances")
 	scriptFilename    = flag.String("script", "", "run a script instead starting the web interface")
+	rebuild           = flag.Bool("rebuild", false, "force all referenced builds to be rebuilt")
 )
 
 func main() {
@@ -53,6 +54,7 @@ func main() {
 		NoParallel:      *noParallel,
 		PackageBase:     *packageBase,
 		EnableDownloads: *enableDownloads,
+		Rebuild:         *rebuild,
 
 		ContentFetchers: make(map[string]*db.ContentFetcher),
 	}

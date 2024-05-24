@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
@@ -151,7 +152,7 @@ var (
 	_ starlark.Iterable = &rpmRepoPrimary{}
 )
 
-func rpmReadXml(thread *starlark.Thread, f File) (starlark.Value, error) {
+func rpmReadXml(thread *starlark.Thread, f io.Reader) (starlark.Value, error) {
 	dec := xml.NewDecoder(f)
 
 	var primary rpmRepoPrimary

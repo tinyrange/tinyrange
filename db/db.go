@@ -61,6 +61,7 @@ type PackageDatabase struct {
 	PackageBase     string
 	EnableDownloads bool
 	ScriptMode      bool
+	Rebuild         bool
 
 	scriptFunction starlark.Value
 	db             *bolt.DB
@@ -150,12 +151,22 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			} else if err != nil {
 				return starlark.None, err
 			}
+			defer f.Close()
 
-			return &StarFile{source: DownloadSource{
-				Kind:   "Download",
-				Url:    url,
-				Accept: accept,
-			}, f: f, name: url}, nil
+			filename := f.Name()
+
+			return NewFile(
+				DownloadSource{
+					Kind:   "Download",
+					Url:    url,
+					Accept: accept,
+				},
+				url,
+				func() (io.ReadCloser, error) {
+					return os.Open(filename)
+				},
+				nil,
+			), nil
 		}),
 		"fetch_git": starlark.NewBuiltin("fetch_git", func(
 			thread *starlark.Thread,
@@ -476,15 +487,21 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				return starlark.None, fmt.Errorf("open is only allowed if -allowLocal is passed")
 			}
 
-			f, err := os.Open(filename)
-			if err != nil {
+			if _, err := os.Stat(filename); err != nil {
 				return starlark.None, err
 			}
 
-			return &StarFile{source: LocalFileSource{
-				Kind:     "LocalFile",
-				Filename: filename,
-			}, f: f, name: filename}, nil
+			return NewFile(
+				LocalFileSource{
+					Kind:     "LocalFile",
+					Filename: filename,
+				},
+				filename,
+				func() (io.ReadCloser, error) {
+					return os.Open(filename)
+				},
+				nil,
+			), nil
 		}),
 		"get_cache_filename": starlark.NewBuiltin("get_cache_filename", func(
 			thread *starlark.Thread,
@@ -506,7 +523,13 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				return starlark.None, fmt.Errorf("get_cache_filename is only allowed if -allowLocal is passed")
 			}
 
-			if file, ok := file.f.(*os.File); ok {
+			f, err := file.opener()
+			if err != nil {
+				return starlark.None, err
+			}
+			defer f.Close()
+
+			if file, ok := f.(*os.File); ok {
 				return starlark.String(file.Name()), nil
 			} else {
 				return starlark.None, fmt.Errorf("could not get filename for %T", file)
@@ -1362,7 +1385,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 			)
 
 			if err := starlark.UnpackArgs(fn.Name(), starlark.Tuple{}, kwargs,
-				"recommends", &excludeRecommends,
+				"recommends?", &excludeRecommends,
 			); err != nil {
 				return starlark.None, err
 			}
@@ -1380,6 +1403,34 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 			}
 
 			return starlark.NewList(ret), nil
+		}), nil
+	} else if name == "download" {
+		return starlark.NewBuiltin("Database.download", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var pkg *Package
+
+			if err := starlark.UnpackArgs("Database.download", args, kwargs,
+				"pkg", &pkg,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if len(pkg.Downloaders) == 0 {
+				return starlark.None, fmt.Errorf("package has no downloaders")
+			}
+
+			dl := pkg.Downloaders[0]
+
+			ents, err := db.GetPackageContents(dl)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return &StarArchive{r: ents, name: "<download_archive>"}, nil
 		}), nil
 	} else if name == "download_all" {
 		return starlark.NewBuiltin("Database.download_all", func(
@@ -1425,7 +1476,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return build(db.Eif, tag, builder, builderArgs)
+			return db.build(tag, builder, builderArgs)
 		}), nil
 	} else {
 		return nil, nil

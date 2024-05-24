@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"io/fs"
 	"path"
 	"strings"
 
@@ -13,14 +14,38 @@ import (
 	"go.starlark.net/starlark"
 )
 
-type File interface {
-	io.Reader
-}
-
 type StarFile struct {
 	source FileSource
-	f      File
 	name   string
+	opener func() (io.ReadCloser, error)
+	stat   func() (fs.FileInfo, error)
+}
+
+// Name implements StarFileIf.
+func (f *StarFile) Name() string { return f.name }
+
+// Open implements StarFileIf.
+func (f *StarFile) Open() (io.ReadCloser, error) {
+	return f.opener()
+}
+
+// SetName implements StarFileIf.
+func (f *StarFile) SetName(name string) (StarFileIf, error) {
+	return &StarFile{
+		source: f.source,
+		name:   name,
+		opener: f.opener,
+		stat:   f.stat,
+	}, nil
+}
+
+// Stat implements StarFileIf.
+func (f *StarFile) Stat() (fs.FileInfo, error) {
+	if f.stat != nil {
+		return f.stat()
+	} else {
+		return nil, fmt.Errorf("%s: f.stat == nil", f)
+	}
 }
 
 // Attr implements starlark.HasAttrs.
@@ -32,7 +57,13 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
-			contents, err := io.ReadAll(f.f)
+			f, err := f.opener()
+			if err != nil {
+				return nil, err
+			}
+			defer f.Close()
+
+			contents, err := io.ReadAll(f)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read file: %s", err)
 			}
@@ -58,7 +89,13 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			reader, err := ReadArchive(f.f, ext, stripComponents)
+			fh, err := f.opener()
+			if err != nil {
+				return nil, err
+			}
+			defer fh.Close()
+
+			reader, err := ReadArchive(fh, ext, stripComponents)
 			if err != nil {
 				return starlark.None, fmt.Errorf("failed to read archive: %s", err)
 			}
@@ -88,32 +125,64 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			}
 
 			if strings.HasSuffix(ext, ".gz") {
-				r, err := gzip.NewReader(f.f)
-				if err != nil {
-					return nil, fmt.Errorf("failed to read compressed")
-				}
-				return &StarFile{source: DecompressSource{
-					Kind:      "Decompress",
-					Source:    f.source,
-					Extension: ".gz",
-				}, f: r, name: strings.TrimSuffix(f.name, ext)}, nil
+				return NewFile(
+					DecompressSource{
+						Kind:      "Decompress",
+						Source:    f.source,
+						Extension: ".gz",
+					},
+					strings.TrimSuffix(f.name, ext),
+					func() (io.ReadCloser, error) {
+						fh, err := f.opener()
+						if err != nil {
+							return nil, fmt.Errorf("failed to open file: %s", err)
+						}
+
+						return gzip.NewReader(fh)
+					},
+					nil,
+				), nil
 			} else if strings.HasSuffix(ext, ".bz2") {
-				r := bzip2.NewReader(f.f)
-				return &StarFile{source: DecompressSource{
-					Kind:      "Decompress",
-					Source:    f.source,
-					Extension: ".bz2",
-				}, f: r, name: strings.TrimSuffix(f.name, ext)}, nil
+				return NewFile(
+					DecompressSource{
+						Kind:      "Decompress",
+						Source:    f.source,
+						Extension: ".bz2",
+					},
+					strings.TrimSuffix(f.name, ext),
+					func() (io.ReadCloser, error) {
+						fh, err := f.opener()
+						if err != nil {
+							return nil, fmt.Errorf("failed to open file: %s", err)
+						}
+
+						return io.NopCloser(bzip2.NewReader(fh)), nil
+					},
+					nil,
+				), nil
 			} else if strings.HasSuffix(ext, ".zst") {
-				r, err := zstd.NewReader(f.f)
-				if err != nil {
-					return nil, fmt.Errorf("failed to read compressed")
-				}
-				return &StarFile{source: DecompressSource{
-					Kind:      "Decompress",
-					Source:    f.source,
-					Extension: ".zst",
-				}, f: r, name: strings.TrimSuffix(f.name, ext)}, nil
+				return NewFile(
+					DecompressSource{
+						Kind:      "Decompress",
+						Source:    f.source,
+						Extension: ".zst",
+					},
+					strings.TrimSuffix(f.name, ext),
+					func() (io.ReadCloser, error) {
+						fh, err := f.opener()
+						if err != nil {
+							return nil, fmt.Errorf("failed to open file: %s", err)
+						}
+
+						r, err := zstd.NewReader(fh)
+						if err != nil {
+							return nil, err
+						}
+
+						return r.IOReadCloser(), nil
+					},
+					nil,
+				), nil
 			} else {
 				return starlark.None, fmt.Errorf("unsupported extension: %s", ext)
 			}
@@ -125,7 +194,13 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
-			return rpmReadXml(thread, f.f)
+			fh, err := f.opener()
+			if err != nil {
+				return nil, fmt.Errorf("failed to open file: %s", err)
+			}
+			defer fh.Close()
+
+			return rpmReadXml(thread, fh)
 		}), nil
 	} else if name == "name" {
 		return starlark.String(f.name), nil
@@ -151,7 +226,22 @@ func (*StarFile) Freeze()               {}
 var (
 	_ starlark.Value    = &StarFile{}
 	_ starlark.HasAttrs = &StarFile{}
+	_ StarFileIf        = &StarFile{}
 )
+
+func NewFile(
+	source FileSource,
+	name string,
+	opener func() (io.ReadCloser, error),
+	stat func() (fs.FileInfo, error),
+) *StarFile {
+	return &StarFile{
+		source: source,
+		name:   name,
+		opener: opener,
+		stat:   stat,
+	}
+}
 
 type StarArchiveIterator struct {
 	ents  []memtar.Entry
@@ -171,7 +261,9 @@ func (it *StarArchiveIterator) Next(p *starlark.Value) bool {
 
 	ent := it.ents[it.index]
 
-	*p = &StarFile{f: ent.Open(), name: ent.Filename()}
+	*p = NewFile(nil, ent.Filename(), func() (io.ReadCloser, error) {
+		return io.NopCloser(ent.Open()), nil
+	}, func() (fs.FileInfo, error) { return memtar.FileInfoFromEntry(ent) })
 
 	it.index += 1
 
@@ -199,7 +291,9 @@ func (ar *StarArchive) Get(k starlark.Value) (v starlark.Value, found bool, err 
 
 	for _, ent := range ar.r.Entries() {
 		if ent.Filename() == filename {
-			return &StarFile{f: ent.Open(), name: ent.Filename()}, true, nil
+			return NewFile(nil, ent.Filename(), func() (io.ReadCloser, error) {
+				return io.NopCloser(ent.Open()), nil
+			}, func() (fs.FileInfo, error) { return memtar.FileInfoFromEntry(ent) }), true, nil
 		}
 	}
 

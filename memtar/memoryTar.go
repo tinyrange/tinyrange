@@ -375,3 +375,27 @@ func LoadTarIndex(underlying SeekableReader, cache io.Reader) (TarReader, error)
 
 	return ret, nil
 }
+
+type fileInfoFromEntry struct {
+	Entry
+}
+
+// IsDir implements fs.FileInfo.
+func (f *fileInfoFromEntry) IsDir() bool {
+	return f.Mode().IsDir()
+}
+
+// Mode implements fs.FileInfo.
+// Subtle: this method shadows the method (Entry).Mode of fileInfoFromEntry.Entry.
+func (f *fileInfoFromEntry) Mode() fs.FileMode {
+	return f.FileMode()
+}
+
+// Sys implements fs.FileInfo.
+func (f *fileInfoFromEntry) Sys() any {
+	return nil
+}
+
+func FileInfoFromEntry(ent Entry) (fs.FileInfo, error) {
+	return &fileInfoFromEntry{Entry: ent}, nil
+}

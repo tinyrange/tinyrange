@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"path"
 	"strings"
 	"time"
@@ -221,7 +222,12 @@ func (f *StarDirectory) Iterate() starlark.Iterator {
 func (f *StarDirectory) cleanPath(p string) (string, error) {
 	cleaned := path.Clean(path.Join(f.name, p)) // Get the absolute path.
 
+	if f.name == "." {
+		f.name = ""
+	}
+
 	if !strings.HasPrefix(cleaned, f.name) {
+		slog.Error("upward path traversal", "cleaned", cleaned, "f.name", f.name)
 		return "", ErrUpwardPathTraversal
 	}
 
@@ -259,6 +265,10 @@ func (f *StarDirectory) openPath(p string, mkdir bool) (*StarDirectory, string, 
 	current := f
 
 	for _, token := range tokens[:len(tokens)-1] {
+		if token == "" {
+			continue
+		}
+
 		child, ok, err := current.getChild(token, mkdir)
 		if err != nil {
 			return nil, "", false, err
@@ -395,18 +405,28 @@ func (f *StarDirectory) writeTar(w *tar.Writer, name string) error {
 			if _, err = io.Copy(w, f); err != nil {
 				return err
 			}
+		} else if dir, ok := val.(*StarDirectory); ok {
+			if err := dir.writeTar(w, filename); err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("unexpected entry type: %T", val)
 		}
-	}
-
-	if err := w.Close(); err != nil {
-		return err
 	}
 
 	return nil
 }
 
 func (f *StarDirectory) WriteTar(w *tar.Writer) (int64, error) {
-	return 0, f.writeTar(w, ".")
+	if err := f.writeTar(w, "."); err != nil {
+		return -1, err
+	}
+
+	if err := w.Close(); err != nil {
+		return -1, err
+	}
+
+	return 0, nil
 }
 
 func (f *StarDirectory) String() string      { return fmt.Sprintf("Directory{%s}", f.name) }
@@ -426,7 +446,7 @@ var (
 
 func newFilesystem() *StarDirectory {
 	return &StarDirectory{
-		name:    "/",
+		name:    ".",
 		entries: make(map[string]StarFileIf),
 	}
 }
