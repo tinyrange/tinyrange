@@ -13,11 +13,17 @@ import (
 	"time"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/syntax"
 )
+
+type FileInfo interface {
+	fs.FileInfo
+	OwnerGroup() (int, int)
+}
 
 type FileIf interface {
 	Open() (io.ReadCloser, error)
-	Stat() (fs.FileInfo, error)
+	Stat() (FileInfo, error)
 }
 
 type StarFileIf interface {
@@ -29,6 +35,15 @@ type StarFileIf interface {
 
 type memoryFile struct {
 	contents []byte
+	mode     fs.FileMode
+	modTime  time.Time
+	uid      int
+	gid      int
+}
+
+// OwnerGroup implements FileInfo.
+func (m *memoryFile) OwnerGroup() (int, int) {
+	return m.uid, m.gid
 }
 
 // IsDir implements fs.FileInfo.
@@ -38,12 +53,12 @@ func (m *memoryFile) IsDir() bool {
 
 // ModTime implements fs.FileInfo.
 func (m *memoryFile) ModTime() time.Time {
-	return time.Now()
+	return m.modTime
 }
 
 // Mode implements fs.FileInfo.
 func (m *memoryFile) Mode() fs.FileMode {
-	return fs.ModePerm
+	return m.mode
 }
 
 // Name implements fs.FileInfo.
@@ -62,7 +77,7 @@ func (m *memoryFile) Sys() any {
 }
 
 // Stat implements FileIf.
-func (m *memoryFile) Stat() (fs.FileInfo, error) {
+func (m *memoryFile) Stat() (FileInfo, error) {
 	return m, nil
 }
 
@@ -152,6 +167,26 @@ type StarDirectory struct {
 	entries map[string]StarFileIf
 }
 
+// Binary implements starlark.HasBinary.
+func (f *StarDirectory) Binary(op syntax.Token, y starlark.Value, side starlark.Side) (starlark.Value, error) {
+	switch op {
+	case syntax.PLUS:
+		switch y := y.(type) {
+		case *StarDirectory:
+			return f.MergeWith(y)
+		default:
+			return starlark.None, fmt.Errorf("unknown binary op: Directory %s %s", op, y.Type())
+		}
+	default:
+		return starlark.None, fmt.Errorf("unknown binary op: Directory %s %s", op, y.Type())
+	}
+}
+
+// OwnerGroup implements FileInfo.
+func (f *StarDirectory) OwnerGroup() (int, int) {
+	return 0, 0
+}
+
 // IsDir implements fs.FileInfo.
 func (f *StarDirectory) IsDir() bool {
 	return true
@@ -178,7 +213,7 @@ func (f *StarDirectory) Sys() any {
 }
 
 // Stat implements StarFileIf.
-func (f *StarDirectory) Stat() (fs.FileInfo, error) {
+func (f *StarDirectory) Stat() (FileInfo, error) {
 	return f, nil
 }
 
@@ -389,6 +424,8 @@ func (f *StarDirectory) writeTar(w *tar.Writer, name string) error {
 			return err
 		}
 
+		hdr.Uid, hdr.Gid = info.OwnerGroup()
+
 		hdr.Name = filename
 
 		if err := w.WriteHeader(hdr); err != nil {
@@ -429,6 +466,48 @@ func (f *StarDirectory) WriteTar(w *tar.Writer) (int64, error) {
 	return 0, nil
 }
 
+func (f *StarDirectory) MergeWith(other *StarDirectory) (*StarDirectory, error) {
+	// TODO(joshua): merge properties
+
+	ret := &StarDirectory{
+		name:    f.name,
+		entries: make(map[string]StarFileIf),
+	}
+
+	for name, ent := range f.entries {
+		if otherEnt, ok := other.entries[name]; ok {
+			entDir, entIsDir := ent.(*StarDirectory)
+			otherDir, otherIsDir := otherEnt.(*StarDirectory)
+
+			if entIsDir && otherIsDir {
+				merged, err := entDir.MergeWith(otherDir)
+				if err != nil {
+					return nil, err
+				}
+
+				ret.entries[name] = merged
+			} else {
+				ret.entries[name] = otherEnt
+			}
+		} else {
+			ret.entries[name] = ent
+		}
+	}
+
+	for name, ent := range other.entries {
+		// Check if we already handled in the previous loop.
+		if _, ok := f.entries[name]; ok {
+			continue
+		}
+
+		ret.entries[name] = ent
+	}
+
+	// slog.Info("merged", "f", len(f.entries), "other", len(other.entries), "ret", len(ret.entries))
+
+	return ret, nil
+}
+
 func (f *StarDirectory) String() string      { return fmt.Sprintf("Directory{%s}", f.name) }
 func (*StarDirectory) Type() string          { return "Directory" }
 func (*StarDirectory) Hash() (uint32, error) { return 0, fmt.Errorf("Directory is not hashable") }
@@ -441,6 +520,7 @@ var (
 	_ starlark.Mapping         = &StarDirectory{}
 	_ starlark.IterableMapping = &StarDirectory{}
 	_ starlark.HasSetKey       = &StarDirectory{}
+	_ starlark.HasBinary       = &StarDirectory{}
 	_ StarFileIf               = &StarDirectory{}
 )
 

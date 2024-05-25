@@ -1,5 +1,15 @@
 load("repos/alpine.star", "add_alpine_fetchers")
 
+def make_fs(ark):
+    fs = filesystem()
+
+    for file in ark:
+        if file.name.endswith("/"):
+            continue
+        fs[file.name] = file
+
+    return fs
+
 def parse_pkg_info(contents):
     ret = {}
 
@@ -52,13 +62,22 @@ def build_package_archive(ctx, pkg):
 
     return ctx.archive(fs)
 
-def main(ctx):
-    plan = ctx.plan(name("build-base"), name("alpine-baselayout"), name("busybox"))
+def build_rootfs_from_plan(ctx, plan):
+    fs = filesystem()
 
     for pkg in plan:
         f = ctx.build((__file__, pkg), build_package_archive, (pkg,))
 
-        print(pkg, get_cache_filename(f))
+        fs += make_fs(f.read_archive(".tar"))
+
+    return ctx.archive(fs)
+
+def main(ctx):
+    plan = ctx.plan(name("build-base"), name("alpine-baselayout"), name("busybox"))
+
+    f = ctx.build((__file__, plan), build_rootfs_from_plan, (plan,))
+
+    print(get_cache_filename(f))
 
 if __name__ == "__main__":
     add_alpine_fetchers(only_latest = True)

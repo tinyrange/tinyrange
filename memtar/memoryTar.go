@@ -380,6 +380,11 @@ type fileInfoFromEntry struct {
 	Entry
 }
 
+// OwnerGroup implements FileInfo.
+func (f *fileInfoFromEntry) OwnerGroup() (int, int) {
+	return f.Uid(), f.Gid()
+}
+
 // IsDir implements fs.FileInfo.
 func (f *fileInfoFromEntry) IsDir() bool {
 	return f.Mode().IsDir()
@@ -396,6 +401,11 @@ func (f *fileInfoFromEntry) Sys() any {
 	return nil
 }
 
-func FileInfoFromEntry(ent Entry) (fs.FileInfo, error) {
+type FileInfo interface {
+	fs.FileInfo
+	OwnerGroup() (int, int)
+}
+
+func FileInfoFromEntry(ent Entry) (FileInfo, error) {
 	return &fileInfoFromEntry{Entry: ent}, nil
 }

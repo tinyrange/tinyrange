@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"io/fs"
 	"path"
 	"strings"
 
@@ -18,7 +17,7 @@ type StarFile struct {
 	source FileSource
 	name   string
 	opener func() (io.ReadCloser, error)
-	stat   func() (fs.FileInfo, error)
+	stat   func() (FileInfo, error)
 }
 
 // Name implements StarFileIf.
@@ -40,7 +39,7 @@ func (f *StarFile) SetName(name string) (StarFileIf, error) {
 }
 
 // Stat implements StarFileIf.
-func (f *StarFile) Stat() (fs.FileInfo, error) {
+func (f *StarFile) Stat() (FileInfo, error) {
 	if f.stat != nil {
 		return f.stat()
 	} else {
@@ -93,7 +92,6 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			if err != nil {
 				return nil, err
 			}
-			defer fh.Close()
 
 			reader, err := ReadArchive(fh, ext, stripComponents)
 			if err != nil {
@@ -233,7 +231,7 @@ func NewFile(
 	source FileSource,
 	name string,
 	opener func() (io.ReadCloser, error),
-	stat func() (fs.FileInfo, error),
+	stat func() (FileInfo, error),
 ) *StarFile {
 	return &StarFile{
 		source: source,
@@ -263,7 +261,7 @@ func (it *StarArchiveIterator) Next(p *starlark.Value) bool {
 
 	*p = NewFile(nil, ent.Filename(), func() (io.ReadCloser, error) {
 		return io.NopCloser(ent.Open()), nil
-	}, func() (fs.FileInfo, error) { return memtar.FileInfoFromEntry(ent) })
+	}, func() (FileInfo, error) { return memtar.FileInfoFromEntry(ent) })
 
 	it.index += 1
 
@@ -293,7 +291,7 @@ func (ar *StarArchive) Get(k starlark.Value) (v starlark.Value, found bool, err 
 		if ent.Filename() == filename {
 			return NewFile(nil, ent.Filename(), func() (io.ReadCloser, error) {
 				return io.NopCloser(ent.Open()), nil
-			}, func() (fs.FileInfo, error) { return memtar.FileInfoFromEntry(ent) }), true, nil
+			}, func() (FileInfo, error) { return memtar.FileInfoFromEntry(ent) }), true, nil
 		}
 	}
 
