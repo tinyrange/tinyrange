@@ -3,6 +3,8 @@ package db
 import (
 	"compress/bzip2"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"path"
@@ -200,9 +202,45 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 			return rpmReadXml(thread, fh)
 		}), nil
+	} else if name == "hash" {
+		return starlark.NewBuiltin("File.hash", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				algorithm string
+			)
+
+			if err := starlark.UnpackArgs("File.hash", args, kwargs,
+				"algorithm", &algorithm,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			fh, err := f.opener()
+			if err != nil {
+				return nil, fmt.Errorf("failed to open file: %s", err)
+			}
+			defer fh.Close()
+
+			if algorithm == "sha256" {
+				h := sha256.New()
+
+				if _, err := io.Copy(h, fh); err != nil {
+					return nil, fmt.Errorf("failed to hash file: %s", err)
+				}
+
+				digest := hex.EncodeToString(h.Sum(nil))
+
+				return starlark.String(digest), nil
+			} else {
+				return starlark.None, fmt.Errorf("unknown hash algorithm: %s", algorithm)
+			}
+		}), nil
 	} else if name == "name" {
 		return starlark.String(f.name), nil
-
 	} else if name == "base" {
 		return starlark.String(path.Base(f.name)), nil
 	} else {
@@ -212,7 +250,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (*StarFile) AttrNames() []string {
-	return []string{"read", "read_archive", "read_compressed", "read_rpm_xml", "name", "base"}
+	return []string{"read", "read_archive", "read_compressed", "read_rpm_xml", "hash", "name", "base"}
 }
 
 func (f *StarFile) String() string      { return fmt.Sprintf("File{%s}", f.name) }
