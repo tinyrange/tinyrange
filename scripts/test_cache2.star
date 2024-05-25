@@ -62,22 +62,64 @@ def build_package_archive(ctx, pkg):
 
     return ctx.archive(fs)
 
-def build_rootfs_from_plan(ctx, plan):
+def build_install_layer_from_plan(ctx, plan):
+    build_script = "#!/bin/sh\n"
+
+    triggers = []
+
+    total_fs = filesystem()
+
+    layers = []
+
+    for f in plan:
+        fs = make_fs(f.read_archive(".tar"))
+
+        layers.append(f.hash("sha256"))
+
+        total_fs += fs
+
+        if ".pkg/apk/pre-install" in fs:
+            build_script += "\n".join([f.name for f in fs[".pkg/apk/pre-install"]]) + "\n"
+
+        if ".pkg/apk/post-install" in fs:
+            build_script += "\n".join([f.name for f in fs[".pkg/apk/post-install"]]) + "\n"
+
+        if ".pkg/apk/trigger" in fs:
+            names = [f for f in fs[".pkg/apk/trigger"]]
+            sh = [f for f in names if f.name.endswith(".sh")][0]
+            txt = [f for f in names if f.name.endswith(".txt")][0]
+            triggers.append((json.decode(txt.read()), sh.name))
+
+    for triggers, script in triggers:
+        for trigger in triggers:
+            if trigger in total_fs:
+                build_script += "{} {}\n".format(script, trigger)
+
+    layer_fs = filesystem()
+
+    layer_fs[".pkg/install.sh"] = file(build_script, executable = True)
+    layer_fs[".pkg/layers.json"] = json.encode(layers)
+
+    return ctx.archive(layer_fs)
+
+def concat_layers(ctx, layers):
     fs = filesystem()
 
-    for pkg in plan:
-        f = ctx.db.build((__file__, pkg), build_package_archive, (pkg,))
-
-        fs += make_fs(f.read_archive(".tar"))
+    for layer in layers:
+        fs += make_fs(layer.read_archive(".tar"))
 
     return ctx.archive(fs)
 
 def main(ctx):
     plan = ctx.plan(name("build-base"), name("alpine-baselayout"), name("busybox"))
 
-    f = ctx.build((__file__, plan), build_rootfs_from_plan, (plan,))
+    layers = [build_def((__file__, pkg), build_package_archive, (pkg,)) for pkg in plan]
 
-    print(get_cache_filename(f))
+    final_layer = build_def((__file__, plan), build_install_layer_from_plan, (layers,))
+
+    combined_rootfs = ctx.build((__file__, plan, "rootfs"), concat_layers, (layers + [final_layer],))
+
+    print(get_cache_filename(combined_rootfs))
 
 if __name__ == "__main__":
     add_alpine_fetchers(only_latest = True)

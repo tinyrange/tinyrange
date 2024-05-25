@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -62,6 +63,8 @@ type PackageDatabase struct {
 	EnableDownloads bool
 	ScriptMode      bool
 	Rebuild         bool
+
+	builtDefinitions map[string]bool
 
 	scriptFunction starlark.Value
 	db             *bolt.DB
@@ -598,6 +601,28 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 		) (starlark.Value, error) {
 			return newFilesystem(), nil
 		}),
+		"build_def": starlark.NewBuiltin("build_def", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				tag         starlark.Tuple
+				builder     *starlark.Function
+				builderArgs starlark.Tuple
+			)
+
+			if err := starlark.UnpackArgs("build_def", args, kwargs,
+				"tag", &tag,
+				"builder?", &builder,
+				"builderArgs?", &builderArgs,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return newBuildDef(tag, builder, builderArgs)
+		}),
 		"file": starlark.NewBuiltin("file", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -605,16 +630,24 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				contents string
+				contents   string
+				executable bool
 			)
 
 			if err := starlark.UnpackArgs("file", args, kwargs,
 				"contents", &contents,
+				"executable?", &executable,
 			); err != nil {
 				return starlark.None, err
 			}
 
-			return asStarFileIf("", starlark.String(contents))
+			f := NewMemoryFile([]byte(contents))
+
+			if executable {
+				f.mode |= fs.FileMode(0111)
+			}
+
+			return f.WrapStarlark(""), nil
 		}),
 		"name": starlark.NewBuiltin("name", func(
 			thread *starlark.Thread,

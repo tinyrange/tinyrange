@@ -34,7 +34,7 @@ type StarFileIf interface {
 	SetName(name string) (StarFileIf, error)
 }
 
-type memoryFile struct {
+type MemoryFile struct {
 	contents []byte
 	mode     fs.FileMode
 	modTime  time.Time
@@ -44,58 +44,69 @@ type memoryFile struct {
 }
 
 // Linkname implements FileInfo.
-func (m *memoryFile) Linkname() string {
+func (m *MemoryFile) Linkname() string {
 	return m.linkname
 }
 
 // OwnerGroup implements FileInfo.
-func (m *memoryFile) OwnerGroup() (int, int) {
+func (m *MemoryFile) OwnerGroup() (int, int) {
 	return m.uid, m.gid
 }
 
 // IsDir implements fs.FileInfo.
-func (m *memoryFile) IsDir() bool {
+func (m *MemoryFile) IsDir() bool {
 	return false
 }
 
 // ModTime implements fs.FileInfo.
-func (m *memoryFile) ModTime() time.Time {
+func (m *MemoryFile) ModTime() time.Time {
 	return m.modTime
 }
 
 // Mode implements fs.FileInfo.
-func (m *memoryFile) Mode() fs.FileMode {
+func (m *MemoryFile) Mode() fs.FileMode {
 	return m.mode
 }
 
 // Name implements fs.FileInfo.
-func (m *memoryFile) Name() string {
+func (m *MemoryFile) Name() string {
 	return ""
 }
 
 // Size implements fs.FileInfo.
-func (m *memoryFile) Size() int64 {
+func (m *MemoryFile) Size() int64 {
 	return int64(len(m.contents))
 }
 
 // Sys implements fs.FileInfo.
-func (m *memoryFile) Sys() any {
+func (m *MemoryFile) Sys() any {
 	return nil
 }
 
 // Stat implements FileIf.
-func (m *memoryFile) Stat() (FileInfo, error) {
+func (m *MemoryFile) Stat() (FileInfo, error) {
 	return m, nil
 }
 
 // Open implements FileIf.
-func (m *memoryFile) Open() (io.ReadCloser, error) {
+func (m *MemoryFile) Open() (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(m.contents)), nil
 }
 
+func (m *MemoryFile) WrapStarlark(name string) starlark.Value {
+	return &starFileWrapper{name: name, FileIf: m}
+}
+
 var (
-	_ FileIf = &memoryFile{}
+	_ FileIf = &MemoryFile{}
 )
+
+func NewMemoryFile(contents []byte) *MemoryFile {
+	return &MemoryFile{
+		contents: contents,
+		mode:     fs.FileMode(0644),
+	}
+}
 
 type starFileWrapper struct {
 	FileIf
@@ -124,10 +135,8 @@ func asStarFileIf(name string, v starlark.Value) (StarFileIf, error) {
 	switch val := v.(type) {
 	case starlark.String:
 		return &starFileWrapper{
-			name: name,
-			FileIf: &memoryFile{
-				contents: []byte(val),
-			},
+			name:   name,
+			FileIf: NewMemoryFile([]byte(val)),
 		}, nil
 	case StarFileIf:
 		return val, nil

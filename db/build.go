@@ -18,6 +18,14 @@ import (
 // scripting language and can be used to derive downloaded packages and
 // other information.
 
+type BuildContent interface {
+	Build(def *BuildDef) (starlark.Value, error)
+}
+
+type Resolvable interface {
+	Resolve(ctx BuildContent) (starlark.Value, error)
+}
+
 func hashSha512(s string) string {
 	sum := sha512.Sum512([]byte(s))
 	return hex.EncodeToString(sum[:])
@@ -186,20 +194,83 @@ func (db *PackageDatabase) build(tag starlark.Tuple, builder *starlark.Function,
 		return starlark.None, err
 	}
 
-	var expireTime time.Duration
+	return db.Build(&BuildDef{
+		privateTag: private,
+		Tag:        public,
+		builder:    builder,
+		args:       args,
+	})
+}
 
-	if !db.Rebuild {
-		expireTime = -1
+func (db *PackageDatabase) buildResolveValue(val starlark.Value) (starlark.Value, error) {
+	switch arg := val.(type) {
+	case Resolvable:
+		resolved, err := arg.Resolve(db)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		return resolved, nil
+	case *starlark.List:
+		var ret []starlark.Value
+		var outerErr error
+
+		arg.Elements(func(v starlark.Value) bool {
+			val, err := db.buildResolveValue(v)
+			if err != nil {
+				outerErr = err
+				return false
+			}
+
+			ret = append(ret, val)
+
+			return true
+		})
+		if outerErr != nil {
+			return starlark.None, outerErr
+		}
+
+		return starlark.NewList(ret), nil
+	default:
+		return arg, nil
+	}
+}
+
+// Build implements BuildContent.
+func (db *PackageDatabase) Build(def *BuildDef) (starlark.Value, error) {
+	var expireTime time.Duration = -1
+
+	if db.builtDefinitions == nil {
+		db.builtDefinitions = make(map[string]bool)
 	}
 
-	f, err := db.Eif.Cache(getSha256([]byte(private)), 1, expireTime, func(w io.Writer) error {
-		slog.Info("building", "tag", private)
+	if _, ok := db.builtDefinitions[def.privateTag]; !ok {
+		if db.Rebuild {
+			expireTime = 0
+		}
 
-		thread := &starlark.Thread{Name: public}
+		db.builtDefinitions[def.privateTag] = true
+	}
+
+	f, err := db.Eif.Cache(getSha256([]byte(def.privateTag)), 1, expireTime, func(w io.Writer) error {
+		slog.Info("building", "tag", def.privateTag)
+
+		thread := &starlark.Thread{Name: def.Tag}
 
 		ctx := &buildContext{db: db}
 
-		res, err := starlark.Call(thread, builder, append(starlark.Tuple{ctx}, args...), []starlark.Tuple{})
+		var resoledArgs starlark.Tuple
+
+		for _, arg := range def.args {
+			resolved, err := db.buildResolveValue(arg)
+			if err != nil {
+				return err
+			}
+
+			resoledArgs = append(resoledArgs, resolved)
+		}
+
+		res, err := starlark.Call(thread, def.builder, append(starlark.Tuple{ctx}, resoledArgs...), []starlark.Tuple{})
 		if err != nil {
 			return err
 		}
@@ -217,7 +288,45 @@ func (db *PackageDatabase) build(tag starlark.Tuple, builder *starlark.Function,
 
 	filename := f.Name()
 
-	return NewFile(nil, public, func() (io.ReadCloser, error) {
+	return NewFile(nil, def.Tag, func() (io.ReadCloser, error) {
 		return os.Open(filename)
 	}, nil), nil
+}
+
+type BuildDef struct {
+	Tag        string
+	privateTag string
+
+	builder *starlark.Function
+	args    starlark.Tuple
+}
+
+// Resolve implements Resolvable.
+func (b *BuildDef) Resolve(ctx BuildContent) (starlark.Value, error) {
+	return ctx.Build(b)
+}
+
+func (*BuildDef) String() string        { return "BuildDef" }
+func (*BuildDef) Type() string          { return "BuildDef" }
+func (*BuildDef) Hash() (uint32, error) { return 0, fmt.Errorf("BuildDef is not hashable") }
+func (*BuildDef) Truth() starlark.Bool  { return starlark.True }
+func (*BuildDef) Freeze()               {}
+
+var (
+	_ starlark.Value = &BuildDef{}
+	_ Resolvable     = &BuildDef{}
+)
+
+func newBuildDef(tag starlark.Tuple, builder *starlark.Function, args starlark.Tuple) (starlark.Value, error) {
+	public, private, err := getTag(tag)
+	if err != nil {
+		return starlark.None, err
+	}
+
+	return &BuildDef{
+		Tag:        public,
+		privateTag: private,
+		builder:    builder,
+		args:       args,
+	}, nil
 }
