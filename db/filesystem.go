@@ -19,6 +19,7 @@ import (
 type FileInfo interface {
 	fs.FileInfo
 	OwnerGroup() (int, int)
+	Linkname() string
 }
 
 type FileIf interface {
@@ -39,6 +40,12 @@ type memoryFile struct {
 	modTime  time.Time
 	uid      int
 	gid      int
+	linkname string
+}
+
+// Linkname implements FileInfo.
+func (m *memoryFile) Linkname() string {
+	return m.linkname
 }
 
 // OwnerGroup implements FileInfo.
@@ -165,6 +172,11 @@ type StarDirectory struct {
 	name string
 
 	entries map[string]StarFileIf
+}
+
+// Linkname implements FileInfo.
+func (f *StarDirectory) Linkname() string {
+	return ""
 }
 
 // Binary implements starlark.HasBinary.
@@ -427,12 +439,15 @@ func (f *StarDirectory) writeTar(w *tar.Writer, name string) error {
 		hdr.Uid, hdr.Gid = info.OwnerGroup()
 
 		hdr.Name = filename
+		hdr.Linkname = info.Linkname()
 
 		if err := w.WriteHeader(hdr); err != nil {
 			return err
 		}
 
-		if !info.IsDir() {
+		if info.Mode().Type() == fs.ModeSymlink {
+			// continue
+		} else if info.Mode().IsRegular() {
 			f, err := val.Open()
 			if err != nil {
 				return err

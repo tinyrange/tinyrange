@@ -77,6 +77,30 @@ func getTagFragment(val starlark.Value) (string, string, error) {
 	case PackageName:
 		str := val.String()
 		return str, str, nil
+	case *starlark.List:
+		var (
+			publicFragments  []string
+			privateFragments []string
+			outerErr         error
+		)
+
+		val.Elements(func(v starlark.Value) bool {
+			public, private, err := getTagFragment(v)
+			if err != nil {
+				outerErr = err
+				return false
+			}
+
+			publicFragments = append(publicFragments, public)
+			privateFragments = append(privateFragments, private)
+
+			return true
+		})
+		if outerErr != nil {
+			return "", "", outerErr
+		}
+
+		return strings.Join(publicFragments, "_"), strings.Join(privateFragments, "_"), nil
 	default:
 		return "", "", fmt.Errorf("%s could not be converted into a tag fragment", val.Type())
 	}

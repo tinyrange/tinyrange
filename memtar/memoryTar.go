@@ -404,6 +404,7 @@ func (f *fileInfoFromEntry) Sys() any {
 type FileInfo interface {
 	fs.FileInfo
 	OwnerGroup() (int, int)
+	Linkname() string
 }
 
 func FileInfoFromEntry(ent Entry) (FileInfo, error) {

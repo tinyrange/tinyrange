@@ -43,10 +43,10 @@ def build_package_archive(ctx, pkg):
                 fs[".pkg/apk/post-install/" + pkg.name + ".sh"] = file
                 continue
             elif file.name == ".pre-upgrade":
-                fs[".pkg/apk/post-upgrade/" + pkg.name + ".sh"] = file
+                # Not needed since we are always installing not upgrading.
                 continue
             elif file.name == ".post-upgrade":
-                fs[".pkg/apk/post-upgrade/" + pkg.name + ".sh"] = file
+                # Not needed since we are always installing not upgrading.
                 continue
             elif file.name == ".trigger":
                 fs[".pkg/apk/trigger/" + pkg.name + ".txt"] = json.encode(pkg_info["triggers"].split(" "))
@@ -66,7 +66,7 @@ def build_rootfs_from_plan(ctx, plan):
     fs = filesystem()
 
     for pkg in plan:
-        f = ctx.build((__file__, pkg), build_package_archive, (pkg,))
+        f = ctx.db.build((__file__, pkg), build_package_archive, (pkg,))
 
         fs += make_fs(f.read_archive(".tar"))
 
