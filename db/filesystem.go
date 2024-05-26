@@ -3,6 +3,8 @@ package db
 import (
 	"archive/tar"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -113,6 +115,62 @@ type starFileWrapper struct {
 	name string
 }
 
+// Attr implements starlark.HasAttrs.
+func (f *starFileWrapper) Attr(name string) (starlark.Value, error) {
+	if name == "hash" {
+		return starlark.NewBuiltin("File.hash", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				algorithm string
+			)
+
+			if err := starlark.UnpackArgs("File.hash", args, kwargs,
+				"algorithm", &algorithm,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			fh, err := f.Open()
+			if err != nil {
+				return nil, fmt.Errorf("failed to open file: %s", err)
+			}
+			defer fh.Close()
+
+			if algorithm == "sha256" {
+				h := sha256.New()
+
+				if _, err := io.Copy(h, fh); err != nil {
+					return nil, fmt.Errorf("failed to hash file: %s", err)
+				}
+
+				digest := hex.EncodeToString(h.Sum(nil))
+
+				return starlark.String(digest), nil
+			} else {
+				return starlark.None, fmt.Errorf("unknown hash algorithm: %s", algorithm)
+			}
+		}), nil
+	} else if name == "size" {
+		info, err := f.Stat()
+		if err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.MakeInt64(info.Size()), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (f *starFileWrapper) AttrNames() []string {
+	return []string{"hash", "size"}
+}
+
 // Name implements StarFileIf.
 func (f *starFileWrapper) Name() string { return f.name }
 
@@ -122,13 +180,14 @@ func (f *starFileWrapper) SetName(name string) (StarFileIf, error) {
 }
 
 func (f *starFileWrapper) String() string      { return fmt.Sprintf("File{%s}", f.Name()) }
-func (*starFileWrapper) Type() string          { return "File" }
-func (*starFileWrapper) Hash() (uint32, error) { return 0, fmt.Errorf("Directory is not hashable") }
+func (*starFileWrapper) Type() string          { return "StarFile" }
+func (*starFileWrapper) Hash() (uint32, error) { return 0, fmt.Errorf("File is not hashable") }
 func (*starFileWrapper) Truth() starlark.Bool  { return starlark.True }
 func (*starFileWrapper) Freeze()               {}
 
 var (
-	_ StarFileIf = &starFileWrapper{}
+	_ StarFileIf        = &starFileWrapper{}
+	_ starlark.HasAttrs = &starFileWrapper{}
 )
 
 func asStarFileIf(name string, v starlark.Value) (StarFileIf, error) {

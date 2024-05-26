@@ -6,12 +6,31 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"strings"
 	"time"
 
 	"go.starlark.net/starlark"
+)
+
+type extendedInfo struct {
+	fs.FileInfo
+}
+
+// Linkname implements FileInfo.
+func (e *extendedInfo) Linkname() string {
+	return ""
+}
+
+// OwnerGroup implements FileInfo.
+func (e *extendedInfo) OwnerGroup() (int, int) {
+	return 0, 0
+}
+
+var (
+	_ FileInfo = &extendedInfo{}
 )
 
 // The build system is a addressable managed cache. It is writable by the
@@ -290,7 +309,14 @@ func (db *PackageDatabase) Build(def *BuildDef) (starlark.Value, error) {
 
 	return NewFile(nil, def.Tag, func() (io.ReadCloser, error) {
 		return os.Open(filename)
-	}, nil), nil
+	}, func() (FileInfo, error) {
+		info, err := os.Stat(filename)
+		if err != nil {
+			return nil, err
+		}
+
+		return &extendedInfo{FileInfo: info}, nil
+	}), nil
 }
 
 type BuildDef struct {
