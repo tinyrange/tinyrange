@@ -5,7 +5,9 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"time"
 
+	"github.com/cavaliergopher/rpm"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
@@ -163,4 +165,129 @@ func rpmReadXml(thread *starlark.Thread, f io.Reader) (starlark.Value, error) {
 	}
 
 	return &primary, nil
+}
+
+type starRpm struct {
+	pkg           *rpm.Package
+	payloadReader io.ReadCloser
+	openedPayload bool
+}
+
+// Attr implements starlark.HasAttrs.
+func (s *starRpm) Attr(name string) (starlark.Value, error) {
+	if name == "payload" {
+		return NewFile(nil, "", func() (io.ReadCloser, error) {
+			if s.openedPayload {
+				return nil, fmt.Errorf("payload has already been opened")
+			}
+
+			s.openedPayload = true
+
+			return s.payloadReader, nil
+		}, nil), nil
+	} else if name == "payload_compression" {
+		return starlark.String(s.pkg.PayloadCompression()), nil
+	} else if name == "metadata" {
+		var metadata = struct {
+			Name                string
+			Version             string
+			Release             string
+			Epoch               int
+			Summary             string
+			Description         string
+			BuildTime           time.Time
+			BuildHost           string
+			InstallTime         time.Time
+			Size                uint64
+			ArchiveSize         uint64
+			Distribution        string
+			Vendor              string
+			License             string
+			Packager            string
+			Groups              []string
+			ChangeLog           []string
+			Source              []string
+			Patch               []string
+			URL                 string
+			OperatingSystem     string
+			Architecture        string
+			PreInstallScript    string
+			PostInstallScript   string
+			PreUninstallScript  string
+			PostUninstallScript string
+			OldFilenames        []string
+			SourceRPM           string
+			RPMVersion          string
+			Platform            string
+		}{
+			Name:                s.pkg.Name(),
+			Version:             s.pkg.Version(),
+			Release:             s.pkg.Release(),
+			Epoch:               s.pkg.Epoch(),
+			Summary:             s.pkg.Summary(),
+			Description:         s.pkg.Description(),
+			BuildTime:           s.pkg.BuildTime(),
+			BuildHost:           s.pkg.BuildHost(),
+			InstallTime:         s.pkg.InstallTime(),
+			Size:                s.pkg.Size(),
+			ArchiveSize:         s.pkg.ArchiveSize(),
+			Distribution:        s.pkg.Distribution(),
+			Vendor:              s.pkg.Vendor(),
+			License:             s.pkg.License(),
+			Packager:            s.pkg.Packager(),
+			Groups:              s.pkg.Groups(),
+			ChangeLog:           s.pkg.ChangeLog(),
+			Source:              s.pkg.Source(),
+			Patch:               s.pkg.Patch(),
+			URL:                 s.pkg.URL(),
+			OperatingSystem:     s.pkg.OperatingSystem(),
+			Architecture:        s.pkg.Architecture(),
+			PreInstallScript:    s.pkg.PreInstallScript(),
+			PostInstallScript:   s.pkg.PostInstallScript(),
+			PreUninstallScript:  s.pkg.PreUninstallScript(),
+			PostUninstallScript: s.pkg.PostUninstallScript(),
+			OldFilenames:        s.pkg.OldFilenames(),
+			SourceRPM:           s.pkg.SourceRPM(),
+			RPMVersion:          s.pkg.RPMVersion(),
+			Platform:            s.pkg.Platform(),
+		}
+
+		bytes, err := json.Marshal(&metadata)
+		if err != nil {
+			return nil, err
+		}
+
+		return starlark.String(bytes), nil
+	}
+	return nil, nil
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (s *starRpm) AttrNames() []string {
+	return []string{"payload", "payload_compression", "metadata"}
+}
+
+func (*starRpm) String() string        { return "starRpm" }
+func (*starRpm) Type() string          { return "starRpm" }
+func (*starRpm) Hash() (uint32, error) { return 0, fmt.Errorf("starRpm is not hashable") }
+func (*starRpm) Truth() starlark.Bool  { return starlark.True }
+func (*starRpm) Freeze()               {}
+
+var (
+	_ starlark.Value    = &starRpm{}
+	_ starlark.HasAttrs = &starRpm{}
+)
+
+func parseRpm(fif FileIf) (starlark.Value, error) {
+	f, err := fif.Open()
+	if err != nil {
+		return starlark.None, err
+	}
+
+	pkg, err := rpm.Read(f)
+	if err != nil {
+		return starlark.None, err
+	}
+
+	return &starRpm{pkg: pkg, payloadReader: f}, nil
 }

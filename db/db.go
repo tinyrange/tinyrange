@@ -422,6 +422,28 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				[]starlark.Tuple{},
 			)
 		}),
+		"parse_rpm": starlark.NewBuiltin("parse_rpm", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				file starlark.Value
+			)
+
+			if err := starlark.UnpackArgs("parse_plist", args, kwargs,
+				"file", &file,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if fileIf, ok := file.(FileIf); ok {
+				return parseRpm(fileIf)
+			} else {
+				return starlark.None, fmt.Errorf("expected FileIf got %s", file.Type())
+			}
+		}),
 		"eval_starlark": starlark.NewBuiltin("eval_starlark", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,

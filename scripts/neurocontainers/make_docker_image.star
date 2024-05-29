@@ -16,11 +16,16 @@ def main(ctx):
     for directive in builder["Directives"]:
         # TODO(joshua): Handle other directives.
         if directive["Kind"] == "Dependency":
-            depends.append(name(name = directive["Name"]["Name"], distribution = "fedora@35", architecture = "x86_64"))
+            depends.append(name(
+                name = directive["Name"]["Name"],
+                distribution = "fedora@35",
+                architecture = "x86_64",
+            ))
 
     plan = ctx.plan(prefer_architecture = "x86_64", *depends)
 
-    print(plan)
+    for pkg in plan:
+        ctx.download(pkg)
 
 if __name__ == "__main__":
     fetch_repo(

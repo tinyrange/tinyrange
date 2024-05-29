@@ -87,3 +87,19 @@ def fetch_rpm_repostiory(ctx, url):
                     name = ent["Text"],
                     architecture = arch,
                 ))
+
+def get_rpm_contents(ctx, url):
+    rpm = parse_rpm(fetch_http(url))
+
+    print(rpm.metadata)
+
+    if rpm.payload_compression == "zstd":
+        return rpm.payload.read_archive(".cpio.zst")
+    else:
+        return error("payload compression not implemented: " + rpm.payload_compression)
+
+register_content_fetcher(
+    "rpm",
+    get_rpm_contents,
+    (),
+)
