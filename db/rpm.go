@@ -62,9 +62,10 @@ type rpmPackage struct {
 		} `xml:"provides"`
 		Requires struct {
 			Entry []struct {
-				Name string `xml:"name,attr"`
-				Pre  string `xml:"pre,attr"`
-				Ver  string `xml:"ver,attr"`
+				Name  string `xml:"name,attr"`
+				Flags string `xml:"flags,attr"`
+				Pre   string `xml:"pre,attr"`
+				Ver   string `xml:"ver,attr"`
 			} `xml:"entry"`
 		} `xml:"requires"`
 		Conflicts struct {

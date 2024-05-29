@@ -6,11 +6,14 @@ very_old_fedora_mirror = "https://dl.fedoraproject.org/pub/archive/fedora/linux/
 
 latest_fedora_version = "39"
 
-def add_fedora_fetchers(only_latest = True):
+def add_fedora_fetchers(only_latest = True, only_version = ""):
+    if only_latest and only_version == "":
+        only_version = latest_fedora_version
+
     # Very Old Fedora Core
     for version in ["2", "3", "4", "5", "6"]:
         for arch in ["x86_64"]:
-            if only_latest and version != latest_fedora_version:
+            if only_version != "" and version != only_version:
                 continue
 
             fetch_repo(
@@ -22,8 +25,14 @@ def add_fedora_fetchers(only_latest = True):
     # Old Fedora Versions before Everything/Modular
     for version in [str(x) for x in range(7, 28)]:
         for arch in ["x86_64"]:
-            if only_latest and version != latest_fedora_version:
+            if only_version != "" and version != only_version:
                 continue
+
+            fetch_repo(
+                fetch_rpm_repostiory,
+                ("{}/releases/{}/Everything/{}/os/".format(old_fedora_mirror, version, arch),),
+                distro = "fedora@{}".format(version),
+            )
 
             fetch_repo(
                 fetch_rpm_repostiory,
@@ -34,8 +43,14 @@ def add_fedora_fetchers(only_latest = True):
     # Old Fedora Versions
     for version in [str(x) for x in range(28, 37)]:
         for arch in ["x86_64"]:
-            if only_latest and version != latest_fedora_version:
+            if only_version != "" and version != only_version:
                 continue
+
+            fetch_repo(
+                fetch_rpm_repostiory,
+                ("{}/releases/{}/Everything/{}/os/".format(old_fedora_mirror, version, arch),),
+                distro = "fedora@{}".format(version),
+            )
 
             fetch_repo(
                 fetch_rpm_repostiory,
@@ -46,8 +61,14 @@ def add_fedora_fetchers(only_latest = True):
     # Modern Supported Fedora
     for version in ["37", "38", "39", "40"]:
         for arch in ["x86_64"]:
-            if only_latest and version != latest_fedora_version:
+            if only_version != "" and version != only_version:
                 continue
+
+            fetch_repo(
+                fetch_rpm_repostiory,
+                ("{}/releases/{}/Everything/{}/os/".format(fedora_mirror, version, arch),),
+                distro = "fedora@{}".format(version),
+            )
 
             fetch_repo(
                 fetch_rpm_repostiory,

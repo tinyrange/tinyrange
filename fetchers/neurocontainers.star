@@ -193,7 +193,7 @@ def cmd_pip(ctx, args):
     return ""
 
 def cmd_tinyrange(ctx, args):
-    print("tinyrange", args)
+    # print("tinyrange", args)
     return ""
 
 def eval_neurocontainer_build(contents):
@@ -288,7 +288,7 @@ def fetch_neurocontainers_repository(ctx, url, ref):
            file.name == "recipes/samri/build.sh":
             continue
 
-        print("file", file)
+        # print("file", file)
         contents = file.read()
 
         ret, state = eval_neurocontainer_build(contents)

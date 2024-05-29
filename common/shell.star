@@ -9,7 +9,9 @@ def cmd_set(ctx, args):
         return error("unknown set command: " + ", ".join(args))
 
 def cmd_wget(ctx, args):
-    print("wget", args[1:])
+    if DEBUG:
+        print("wget", args[1:])
+
     if args[1] == "-O-":
         return fetch_http(args[2]).read()
     else:

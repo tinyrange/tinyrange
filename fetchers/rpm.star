@@ -2,6 +2,38 @@
 Package Fetcher for RPM Repositories.
 """
 
+def get_rpm_name(ctx, ent, arch):
+    if ent["Name"] == "filesystem":
+        return None
+    elif " if redhat-rpm-config)" in ent["Name"]:
+        return None
+    elif " if clang)" in ent["Name"]:
+        return None
+    elif " if gcc)" in ent["Name"]:
+        return None
+
+    ver = ent["Ver"]
+    flags = ent["Flags"]
+    if flags != "":
+        if flags == "EQ":
+            pass
+        elif flags == "GE":
+            ver = ">" + ver
+        elif flags == "LE":
+            ver = "<" + ver
+        elif flags == "GT":
+            ver = ">" + ver
+        elif flags == "LT":
+            ver = "<" + ver
+        else:
+            print("flags unhandled", flags, ver)
+
+    return ctx.name(
+        name = ent["Name"],
+        version = ver,
+        architecture = arch,
+    )
+
 def fetch_rpm_repostiory(ctx, url):
     repomd_url = url + "repodata/repomd.xml"
 
@@ -43,20 +75,15 @@ def fetch_rpm_repostiory(ctx, url):
 
         if ent["Format"]["Requires"]["Entry"] != None:
             for require in ent["Format"]["Requires"]["Entry"]:
-                pkg.add_dependency(ctx.name(
-                    name = require["Name"],
-                    version = require["Ver"],
-                ))
+                pkg.add_dependency(get_rpm_name(ctx, require, arch))
 
         if ent["Format"]["Provides"]["Entry"] != None:
             for provide in ent["Format"]["Provides"]["Entry"]:
-                pkg.add_alias(ctx.name(
-                    name = provide["Name"],
-                    version = provide["Ver"],
-                ))
+                pkg.add_alias(get_rpm_name(ctx, provide, arch))
 
         if ent["Format"]["File"] != None:
             for ent in ent["Format"]["File"]:
                 pkg.add_alias(ctx.name(
                     name = ent["Text"],
+                    architecture = arch,
                 ))
