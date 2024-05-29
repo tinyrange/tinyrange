@@ -2,21 +2,13 @@ load("common/docker.star", "build_docker_archive_from_layers", "make_fs")
 load("fetchers/neurocontainers.star", "fetch_neurocontainers_repository")
 load("repos/rpm.star", "add_fedora_fetchers")
 
-def build_install_layer_from_plan(ctx, plan):
+def build_merged_install_layer_from_plan(ctx, plan):
     build_script = "#!/bin/sh\n"
 
-    triggers = []
-
-    total_fs = filesystem()
-
-    layers = []
+    layer_fs = filesystem()
 
     for f in plan:
         fs = make_fs(f.read_archive(".tar"))
-
-        layers.append(f.hash("sha256"))
-
-        total_fs += fs
 
         if ".pkg/rpm/pre-install" in fs:
             build_script += "\n".join([f.name for f in fs[".pkg/rpm/pre-install"]]) + "\n"
@@ -24,15 +16,9 @@ def build_install_layer_from_plan(ctx, plan):
         if ".pkg/rpm/post-install" in fs:
             build_script += "\n".join([f.name for f in fs[".pkg/rpm/post-install"]]) + "\n"
 
-    for triggers, script in triggers:
-        for trigger in triggers:
-            if trigger in total_fs:
-                build_script += "{} {}\n".format(script, trigger)
-
-    layer_fs = filesystem()
+        layer_fs += fs
 
     layer_fs[".pkg/install.sh"] = file(build_script, executable = True)
-    layer_fs[".pkg/layers.json"] = json.encode(layers)
 
     return ctx.archive(layer_fs)
 
@@ -69,9 +55,9 @@ def main(ctx):
 
     layers = [ctx.download_def(pkg) for pkg in plan]
 
-    final_layer = build_def(
+    layer = build_def(
         (__file__, "neurocontainers", container_name),
-        build_install_layer_from_plan,
+        build_merged_install_layer_from_plan,
         (layers,),
     )
 
@@ -80,7 +66,7 @@ def main(ctx):
         build_docker_archive_from_layers,
         (
             "neurocontainers/" + ctx.args[0] + ":latest",
-            layers + [final_layer],
+            [layer],
         ),
     )
 
