@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"path"
 
@@ -197,6 +198,13 @@ func (f *Builder) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
+	} else if name == "json_string" {
+		bytes, err := json.Marshal(f)
+		if err != nil {
+			return nil, err
+		}
+
+		return starlark.String(bytes), nil
 	} else {
 		return nil, nil
 	}

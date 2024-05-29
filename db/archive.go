@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/blakesmith/ar"
+	"github.com/cavaliergopher/cpio"
 	"github.com/klauspost/compress/zstd"
 	"github.com/tinyrange/pkg2/memtar"
 	"github.com/xi2/xz"
@@ -124,6 +125,48 @@ func ReadArchive(r io.Reader, ext string, stripComponents int) (memtar.TarReader
 			ent := &memtar.MemoryEntry{
 				Header:      memHdr,
 				EntFilename: hdr.Name,
+				Body:        body,
+			}
+
+			ret = append(ret, ent)
+		}
+
+		return ret, nil
+	} else if strings.HasSuffix(ext, ".cpio") {
+		reader := cpio.NewReader(reader)
+
+		var ret memtar.ArrayReader
+
+		for {
+			hdr, err := reader.Next()
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				return nil, err
+			}
+
+			fileInfo := hdr.FileInfo()
+
+			tarHdr, err := tar.FileInfoHeader(fileInfo, hdr.Linkname)
+			if err != nil {
+				return nil, err
+			}
+
+			tarHdr.Name = hdr.Name
+			if fileInfo.IsDir() {
+				tarHdr.Name += "/"
+			}
+
+			memHdr := memtar.HeaderFromTarHeader(tarHdr)
+
+			body, err := io.ReadAll(reader)
+			if err != nil {
+				return nil, err
+			}
+
+			ent := &memtar.MemoryEntry{
+				Header:      memHdr,
+				EntFilename: tarHdr.Name,
 				Body:        body,
 			}
 

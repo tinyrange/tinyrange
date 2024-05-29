@@ -2,6 +2,7 @@ package db
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -44,8 +45,9 @@ var (
 )
 
 type QueryOptions struct {
-	ExcludeRecommends bool
-	MaxResults        int
+	ExcludeRecommends  bool
+	MaxResults         int
+	PreferArchitecture string
 }
 
 type PackageDatabase struct {
@@ -336,6 +338,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			return &ShellContext{
 				environ:  starlark.NewDict(32),
 				files:    starlark.NewDict(32),
+				state:    starlark.NewDict(32),
 				commands: make(map[string]*shellCommand),
 			}, nil
 		}),
@@ -452,6 +455,28 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				starlark.Tuple{starlark.String(bytes)},
 				[]starlark.Tuple{},
 			)
+		}),
+		"parse_rpm": starlark.NewBuiltin("parse_rpm", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				file starlark.Value
+			)
+
+			if err := starlark.UnpackArgs("parse_plist", args, kwargs,
+				"file", &file,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if fileIf, ok := file.(FileIf); ok {
+				return parseRpm(fileIf)
+			} else {
+				return starlark.None, fmt.Errorf("expected FileIf got %s", file.Type())
+			}
 		}),
 		"eval_starlark": starlark.NewBuiltin("eval_starlark", func(
 			thread *starlark.Thread,
@@ -1052,6 +1077,36 @@ var (
 	_ error = ErrPackageNotFound{}
 )
 
+func (plan *InstallationPlan) pickPackage(query PackageName, results []*Package, filtered bool) (*Package, error) {
+	if len(results) == 1 {
+		return results[0], nil
+	}
+
+	// Check if we have a preferred architecture.
+	if plan.queryOptions.PreferArchitecture != "" && !filtered {
+		archQuery := query
+		archQuery.Architecture = plan.queryOptions.PreferArchitecture
+
+		var filtered []*Package
+
+		for _, pkg := range results {
+			if pkg.Matches(archQuery) {
+				filtered = append(filtered, pkg)
+			}
+		}
+
+		// slog.Info("preferred", "filtered", filtered)
+
+		if len(filtered) > 0 {
+			return plan.pickPackage(query, filtered, true)
+		}
+	}
+
+	// slog.Info("got multiple installation candidates", "query", query, "results", results)
+
+	return results[0], nil
+}
+
 func (plan *InstallationPlan) addPackage(query PackageName) error {
 	if _, ok := plan.checkName(query); ok {
 		// Already installed.
@@ -1060,16 +1115,19 @@ func (plan *InstallationPlan) addPackage(query PackageName) error {
 
 	// Only look for 1 package.
 	opts := plan.queryOptions
-	opts.MaxResults = 1
 	results, err := plan.db.Search(query, opts)
 	if err != nil {
 		return err
 	}
-	if len(results) != 1 {
+	if len(results) == 0 {
 		return ErrPackageNotFound(query)
 	}
 
-	pkg := results[0]
+	// Pick a package from the list of candidates.
+	pkg, err := plan.pickPackage(query, results, false)
+	if err != nil {
+		return err
+	}
 
 	// Add the names to the installed list.
 	if err := plan.addName(pkg.Name); err != nil {
@@ -1448,17 +1506,20 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 			}
 
 			var (
-				excludeRecommends bool
+				excludeRecommends  bool
+				preferArchitecture string
 			)
 
 			if err := starlark.UnpackArgs(fn.Name(), starlark.Tuple{}, kwargs,
 				"recommends?", &excludeRecommends,
+				"prefer_architecture?", &preferArchitecture,
 			); err != nil {
 				return starlark.None, err
 			}
 
 			plan, err := db.MakeInstallationPlan(names, QueryOptions{
-				ExcludeRecommends: excludeRecommends,
+				ExcludeRecommends:  excludeRecommends,
+				PreferArchitecture: preferArchitecture,
 			})
 			if err != nil {
 				return starlark.None, err
@@ -1545,6 +1606,14 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 
 			return db.build(tag, builder, builderArgs)
 		}), nil
+	} else if name == "args" {
+		var ret starlark.Tuple
+
+		for _, val := range flag.Args() {
+			ret = append(ret, starlark.String(val))
+		}
+
+		return ret, nil
 	} else {
 		return nil, nil
 	}

@@ -90,8 +90,8 @@ func (name PackageName) Matches(query PackageName) bool {
 		}
 	}
 
-	if query.Architecture != "" {
-		if query.Architecture != name.Architecture {
+	if query.Architecture != "" && query.Architecture != "any" {
+		if name.Architecture != "any" && name.Architecture != "" && query.Architecture != name.Architecture {
 			return false
 		}
 	}
@@ -427,7 +427,7 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 				recommends bool
 			)
 
-			if err := starlark.UnpackArgs("Package.add_alias", args, kwargs,
+			if err := starlark.UnpackArgs("Package.add_dependency", args, kwargs,
 				"name", &name,
 				"kind?", &kind,
 				"recommends?", &recommends,
@@ -435,7 +435,9 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			if pkgName, ok := name.(PackageName); ok {
+			if name == starlark.None {
+				return starlark.None, nil
+			} else if pkgName, ok := name.(PackageName); ok {
 				pkgName.Recommended = recommends
 
 				pkg.Depends = append(pkg.Depends, []PackageName{pkgName})
@@ -488,7 +490,9 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			if pkgName, ok := name.(PackageName); ok {
+			if name == starlark.None {
+				return starlark.None, nil
+			} else if pkgName, ok := name.(PackageName); ok {
 				pkg.Conflicts = append(pkg.Conflicts, []PackageName{pkgName})
 
 				return starlark.None, nil
@@ -526,7 +530,7 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				name PackageName
+				name starlark.Value
 				kind string
 			)
 
@@ -537,9 +541,15 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			pkg.Aliases = append(pkg.Aliases, name)
+			if name == starlark.None {
+				return starlark.None, nil
+			} else if pkgName, ok := name.(PackageName); ok {
+				pkg.Aliases = append(pkg.Aliases, pkgName)
 
-			return starlark.None, nil
+				return starlark.None, nil
+			} else {
+				return starlark.None, fmt.Errorf("unhandled argument type: %T", name)
+			}
 		}), nil
 	} else if name == "add_build_script" {
 		return starlark.NewBuiltin("Package.add_build_script", func(
@@ -650,6 +660,14 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 		}
 
 		return starlark.NewList(ret), nil
+	} else if name == "builders" {
+		var ret []starlark.Value
+
+		for _, builder := range pkg.Builders {
+			ret = append(ret, builder)
+		}
+
+		return starlark.NewList(ret), nil
 	} else {
 		return nil, nil
 	}
@@ -673,6 +691,8 @@ func (*Package) AttrNames() []string {
 		"name",
 		"version",
 		"arch",
+		"downloaders",
+		"builders",
 	}
 }
 
