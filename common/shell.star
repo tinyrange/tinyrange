@@ -1,3 +1,5 @@
+DEBUG = False
+
 def cmd_set(ctx, args):
     if args[1] == "-e":
         return ""
@@ -7,55 +9,105 @@ def cmd_set(ctx, args):
         return error("unknown set command: " + ", ".join(args))
 
 def cmd_wget(ctx, args):
+    print("wget", args[1:])
     if args[1] == "-O-":
         return fetch_http(args[2]).read()
     else:
         return error("unknown wget command: " + ", ".join(args))
 
 def cmd_head(ctx, args):
-    # print("head", args)
+    if DEBUG:
+        print("head", args[1:])
     return ""
 
 def cmd_cut(ctx, args):
-    # print("cut", args)
+    if DEBUG:
+        print("cut", args[1:])
     return ""
 
 def cmd_echo(ctx, args):
-    print("echo", args[1:])
+    if DEBUG:
+        print("echo", args[1:])
     return ""
 
 def cmd_source(ctx, args):
-    # print("source", args)
+    if DEBUG:
+        print("source", args[1:])
     return ""
 
 def cmd_yes(ctx, args):
-    # print("yes")
+    if DEBUG:
+        print("yes", args[1:])
     return ""
 
 def cmd_sed(ctx, args):
-    # print("sed", args)
+    if DEBUG:
+        print("sed", args[1:])
     return ""
 
 def cmd_touch(ctx, args):
+    if DEBUG:
+        print("touch", args[1:])
     return ""
 
 def cmd_grep(ctx, args):
+    if DEBUG:
+        print("grep", args[1:])
     return ""
 
 def cmd_mkdir(ctx, args):
+    if DEBUG:
+        print("mkdir", args[1:])
     return ""
 
 def cmd_pwd(ctx, args):
+    if DEBUG:
+        print("pwd", args[1:])
     return "/"
 
 def cmd_true(ctx, args):
+    if DEBUG:
+        print("true", args[1:])
     return ""
 
 def cmd_false(ctx, args):
+    if DEBUG:
+        print("false", args[1:])
     return ""
 
 def cmd_dirname(ctx, args):
+    if DEBUG:
+        print("dirname", args[1:])
     return ""
+
+def cmd_op(ctx, args):
+    if args[1] == "-f":
+        fname = args[2]
+
+        if fname in ctx:
+            return ""
+
+        return "", 1
+    elif args[1] == "-d":
+        fname = args[2]
+
+        if fname in ctx:
+            return ""
+
+        return "", 1
+    elif args[1] == "-z":
+        if len(args[2]) > 0:
+            return "", 1
+        else:
+            return ""
+    elif len(args) == 5 and args[2] == "!=":
+        _, a, _, b, _ = args
+        if a != b:
+            return ""
+        else:
+            return "", 1
+
+    return error("command [ not implemented: " + str(args))
 
 def register_commands(ctx):
     ctx.add_command("set", cmd_set)
@@ -72,5 +124,6 @@ def register_commands(ctx):
     ctx.add_command("true", cmd_true)
     ctx.add_command("false", cmd_false)
     ctx.add_command("dirname", cmd_dirname)
+    ctx.add_command("[", cmd_op)
 
     ctx.add_command("wget", cmd_wget)

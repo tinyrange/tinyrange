@@ -249,9 +249,9 @@ func (cmd *shellCommand) Run(ctx *ShellContext, argv []string) (CommandResult, e
 	var args starlark.Tuple
 
 	for _, arg := range argv {
-		if arg != "" {
-			args = append(args, starlark.String(arg))
-		}
+		// if arg != "" {
+		args = append(args, starlark.String(arg))
+		// }
 	}
 
 	ret, err := starlark.Call(thread, cmd.f, starlark.Tuple{ctx, args}, []starlark.Tuple{})
@@ -301,6 +301,7 @@ func emptyResult() CommandResult {
 type ShellContext struct {
 	files           *starlark.Dict
 	environ         *starlark.Dict
+	state           *starlark.Dict
 	commands        map[string]*shellCommand
 	fileNotFound    *starlark.Function
 	commandNotFound *starlark.Function
@@ -617,6 +618,41 @@ func (p *ShellContext) evaluateWord(word *syntax.Word) (string, error) {
 	return strings.Join(ret, ""), nil
 }
 
+func (p *ShellContext) visitIfClause(cmd *syntax.IfClause, stdin string) (CommandResult, error) {
+	if len(cmd.Cond) == 0 {
+		for _, stmt := range cmd.Then {
+			_, err := p.visitStmt(stmt, "")
+			if err != nil {
+				return emptyResult(), err
+			}
+		}
+
+		return emptyResult(), nil
+	} else if len(cmd.Cond) == 1 {
+		res, err := p.visitStmt(cmd.Cond[0], "")
+		if err != nil {
+			return emptyResult(), err
+		}
+
+		if res.ExitCode == 0 {
+			for _, stmt := range cmd.Then {
+				_, err := p.visitStmt(stmt, "")
+				if err != nil {
+					return emptyResult(), err
+				}
+			}
+
+			return emptyResult(), nil
+		} else if cmd.Else != nil {
+			return p.visitIfClause(cmd.Else, stdin)
+		} else {
+			return emptyResult(), nil
+		}
+	} else {
+		return emptyResult(), fmt.Errorf("IfClauses with more than one condition are not implemented")
+	}
+}
+
 func (p *ShellContext) visitCmd(cmd syntax.Command, stdin string) (CommandResult, error) {
 	switch cmd := cmd.(type) {
 	case *syntax.CallExpr:
@@ -652,7 +688,7 @@ func (p *ShellContext) visitCmd(cmd syntax.Command, stdin string) (CommandResult
 	case *syntax.FuncDecl:
 		return emptyResult(), fmt.Errorf("FuncDecl not implemented")
 	case *syntax.IfClause:
-		return emptyResult(), fmt.Errorf("IfClause not implemented")
+		return p.visitIfClause(cmd, stdin)
 	case *syntax.DeclClause:
 		switch cmd.Variant.Value {
 		case "export":
@@ -939,6 +975,8 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 		}), nil
 	} else if name == "env" {
 		return p.environ, nil
+	} else if name == "state" {
+		return p.state, nil
 	} else {
 		return nil, nil
 	}
@@ -946,7 +984,7 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (p *ShellContext) AttrNames() []string {
-	return []string{"eval", "eval_makefile", "add_command", "set_environment", "set_handlers", "move", "env"}
+	return []string{"eval", "eval_makefile", "add_command", "set_environment", "set_handlers", "move", "env", "state"}
 }
 
 var (

@@ -147,6 +147,8 @@ def parse_neurodocker_args(ret, args):
             ret["install"].append(s)
 
         return parse_neurodocker_args(ret, args[1:])
+    elif args[0] == "":
+        return parse_neurodocker_args(ret, args[1:])
     else:
         for pkg in packages:
             if args[0] == "--" + pkg:
@@ -167,7 +169,7 @@ def cmd_neurodocker(ctx, args):
 
     obj = parse_neurodocker_args({}, rest)
 
-    ctx["neurodocker"] = obj
+    ctx.state["neurodocker"] = obj
 
     return json.encode(obj)
 
@@ -211,7 +213,7 @@ def eval_neurocontainer_build(contents):
 
     ret = ctx.eval(contents)
 
-    return ret
+    return ret, ctx.state["neurodocker"]
 
 def make_builder_from_neurodocker_recipe(pkg_name, recipe, neurodocker_url):
     build = builder(pkg_name)
@@ -266,6 +268,8 @@ def make_builder_from_neurodocker_recipe(pkg_name, recipe, neurodocker_url):
             build.add_script(ret["script"])
             # print("install", pkg, ret)
 
+    # print("build", build)
+
     return build
 
 def fetch_neurocontainers_repository(ctx, url, ref):
@@ -284,10 +288,10 @@ def fetch_neurocontainers_repository(ctx, url, ref):
            file.name == "recipes/samri/build.sh":
             continue
 
-        # print("file", file)
+        print("file", file)
         contents = file.read()
 
-        ret = eval_neurocontainer_build(contents)
+        ret, state = eval_neurocontainer_build(contents)
 
         name = ctx.name(
             name = ret["toolName"],
@@ -296,8 +300,8 @@ def fetch_neurocontainers_repository(ctx, url, ref):
 
         pkg = ctx.add_package(name)
 
-        if "neurodocker" in ret:
-            recipe = ret["neurodocker"]
+        if state != None:
+            recipe = state
             pkg.add_builder(make_builder_from_neurodocker_recipe(
                 name,
                 recipe,

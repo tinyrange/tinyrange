@@ -302,6 +302,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			return &ShellContext{
 				environ:  starlark.NewDict(32),
 				files:    starlark.NewDict(32),
+				state:    starlark.NewDict(32),
 				commands: make(map[string]*shellCommand),
 			}, nil
 		}),
