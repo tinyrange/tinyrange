@@ -1,7 +1,9 @@
 package core
 
 import (
+	"crypto/sha256"
 	"encoding/gob"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +17,11 @@ import (
 
 	"github.com/schollz/progressbar/v3"
 )
+
+func getSha256(val []byte) string {
+	sum := sha256.Sum256(val)
+	return hex.EncodeToString(sum[:])
+}
 
 var REFRESH_TIME = 1 * time.Hour
 
@@ -47,9 +54,11 @@ var (
 )
 
 type EnvironmentInterface struct {
-	cachePath string
-	client    *http.Client
-	httpMutex sync.Mutex
+	cachePath     string
+	client        *http.Client
+	httpMutex     sync.Mutex
+	lastRequest   map[string]time.Time
+	waitTimeMutex sync.Mutex
 }
 
 func (eif *EnvironmentInterface) needsRefresh(url string, age time.Duration) bool {
@@ -68,9 +77,32 @@ func (eif *EnvironmentInterface) GetCachePath(key string) (string, error) {
 		return "", err
 	}
 
-	keyPath := filepath.Clean(u.Hostname() + u.EscapedPath() + ".cache")
+	paramsHash := ""
+
+	if u.RawQuery != "" {
+		paramsHash = "_" + getSha256([]byte(u.RawQuery))
+	}
+
+	keyPath := filepath.Clean(u.Hostname() + u.EscapedPath() + paramsHash + ".cache")
 
 	return filepath.Join(eif.cachePath, keyPath), nil
+}
+
+func getUrl(urlStr string, params map[string]string) (string, string, error) {
+	url, err := url.Parse(urlStr)
+	if err != nil {
+		return "", "", err
+	}
+
+	if params != nil {
+		query := url.Query()
+		for k, v := range params {
+			query.Add(k, v)
+		}
+		url.RawQuery = query.Encode()
+	}
+
+	return url.String(), url.Hostname(), nil
 }
 
 type HttpOptions struct {
@@ -80,15 +112,52 @@ type HttpOptions struct {
 	FastDownload bool
 	ExpireTime   time.Duration
 	Logger       Logger
+	Params       map[string]string
+	WaitTime     time.Duration
+}
+
+func (eif *EnvironmentInterface) checkWaitTime(hostname string, waitTime time.Duration) error {
+	if waitTime == 0 {
+		return nil
+	}
+
+	eif.waitTimeMutex.Lock()
+	defer eif.waitTimeMutex.Unlock()
+
+	if last, ok := eif.lastRequest[hostname]; ok {
+		if time.Since(last) < waitTime {
+			waitTime := -(time.Since(last) - waitTime)
+
+			slog.Info("sending requests to server too quickly", "waiting", waitTime)
+
+			time.Sleep(waitTime)
+		}
+	}
+
+	eif.lastRequest[hostname] = time.Now()
+
+	return nil
 }
 
 func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) (*os.File, error) {
-	Log(options.Logger, fmt.Sprintf("got request for %s", url))
+	var (
+		err      error
+		hostname string
+	)
+
+	originalUrl := url
+
+	url, hostname, err = getUrl(originalUrl, options.Params)
+	if err != nil {
+		return nil, err
+	}
 
 	path, err := eif.GetCachePath(url)
 	if err != nil {
 		return nil, err
 	}
+
+	Log(options.Logger, fmt.Sprintf("got request for %s", url))
 
 	exists := false
 
@@ -109,6 +178,10 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 			if !needsRefresh {
 				return os.Open(path)
 			} else {
+				if err := eif.checkWaitTime(hostname, options.WaitTime); err != nil {
+					return nil, err
+				}
+
 				Log(options.Logger, fmt.Sprintf("checking server for updates: url=%s", url))
 				slog.Info("checking server for updates", "url", url)
 				resp, err := eif.client.Head(url)
@@ -146,6 +219,10 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 		// Lock the mutex to prevent concurrent downloads.
 		eif.httpMutex.Lock()
 		defer eif.httpMutex.Unlock()
+	}
+
+	if err := eif.checkWaitTime(hostname, options.WaitTime); err != nil {
+		return nil, err
 	}
 
 	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
@@ -227,7 +304,7 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 		return nil, err
 	}
 
-	return eif.HttpGetReader(url, options)
+	return eif.HttpGetReader(originalUrl, options)
 }
 
 // A generic interface to caching arbitrary data.
@@ -313,7 +390,8 @@ func (eif *EnvironmentInterface) CacheObjects(
 
 func NewEif(cachePath string) *EnvironmentInterface {
 	return &EnvironmentInterface{
-		cachePath: cachePath,
-		client:    &http.Client{},
+		cachePath:   cachePath,
+		client:      &http.Client{},
+		lastRequest: make(map[string]time.Time),
 	}
 }

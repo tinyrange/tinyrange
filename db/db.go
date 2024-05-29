@@ -128,6 +128,8 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				useETag      bool
 				fast         bool
 				expireTime   int64
+				params       *starlark.Dict
+				waitTime     int64
 			)
 
 			if err := starlark.UnpackArgs("fetch_http", args, kwargs,
@@ -137,8 +139,38 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				"use_etag?", &useETag,
 				"fast?", &fast,
 				"expire_time?", &expireTime,
+				"params?", &params,
+				"wait_time?", &waitTime,
 			); err != nil {
 				return starlark.None, err
+			}
+
+			var paramsMap map[string]string
+
+			if params != nil {
+				paramsMap = make(map[string]string)
+
+				var err error
+				params.Entries(func(k, v starlark.Value) bool {
+					kStr, ok := starlark.AsString(k)
+					if !ok {
+						err = fmt.Errorf("could not convert %s to String", k.Type())
+						return false
+					}
+
+					vStr, ok := starlark.AsString(v)
+					if !ok {
+						err = fmt.Errorf("could not convert %s to String", v.Type())
+						return false
+					}
+
+					paramsMap[kStr] = vStr
+
+					return true
+				})
+				if err != nil {
+					return starlark.None, err
+				}
 			}
 
 			f, err := db.Eif.HttpGetReader(url, core.HttpOptions{
@@ -148,6 +180,8 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				FastDownload: fast,
 				ExpireTime:   time.Duration(expireTime),
 				Logger:       core.GetLogger(thread),
+				Params:       paramsMap,
+				WaitTime:     time.Duration(waitTime),
 			})
 			if err == core.ErrNotFound {
 				return starlark.None, nil
