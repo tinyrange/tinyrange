@@ -38,7 +38,7 @@ var (
 // other information.
 
 type BuildContent interface {
-	Build(def *BuildDef) (starlark.Value, error)
+	Build(def *BuildDef) (string, error)
 }
 
 type Resolvable interface {
@@ -213,12 +213,26 @@ func (db *PackageDatabase) build(tag starlark.Tuple, builder *starlark.Function,
 		return starlark.None, err
 	}
 
-	return db.Build(&BuildDef{
+	filename, err := db.Build(&BuildDef{
 		privateTag: private,
 		Tag:        public,
 		builder:    builder,
 		args:       args,
 	})
+	if err != nil {
+		return starlark.None, err
+	}
+
+	return NewFile(nil, public, func() (io.ReadCloser, error) {
+		return os.Open(filename)
+	}, func() (FileInfo, error) {
+		info, err := os.Stat(filename)
+		if err != nil {
+			return nil, err
+		}
+
+		return &extendedInfo{FileInfo: info}, nil
+	}), nil
 }
 
 func (db *PackageDatabase) buildResolveValue(val starlark.Value) (starlark.Value, error) {
@@ -256,7 +270,7 @@ func (db *PackageDatabase) buildResolveValue(val starlark.Value) (starlark.Value
 }
 
 // Build implements BuildContent.
-func (db *PackageDatabase) Build(def *BuildDef) (starlark.Value, error) {
+func (db *PackageDatabase) Build(def *BuildDef) (string, error) {
 	var expireTime time.Duration = -1
 
 	if db.builtDefinitions == nil {
@@ -301,22 +315,11 @@ func (db *PackageDatabase) Build(def *BuildDef) (starlark.Value, error) {
 		return nil
 	})
 	if err != nil {
-		return starlark.None, err
+		return "", err
 	}
 	defer f.Close()
 
-	filename := f.Name()
-
-	return NewFile(nil, def.Tag, func() (io.ReadCloser, error) {
-		return os.Open(filename)
-	}, func() (FileInfo, error) {
-		info, err := os.Stat(filename)
-		if err != nil {
-			return nil, err
-		}
-
-		return &extendedInfo{FileInfo: info}, nil
-	}), nil
+	return f.Name(), nil
 }
 
 type BuildDef struct {
@@ -329,7 +332,21 @@ type BuildDef struct {
 
 // Resolve implements Resolvable.
 func (b *BuildDef) Resolve(ctx BuildContent) (starlark.Value, error) {
-	return ctx.Build(b)
+	filename, err := ctx.Build(b)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewFile(nil, b.Tag, func() (io.ReadCloser, error) {
+		return os.Open(filename)
+	}, func() (FileInfo, error) {
+		info, err := os.Stat(filename)
+		if err != nil {
+			return nil, err
+		}
+
+		return &extendedInfo{FileInfo: info}, nil
+	}), nil
 }
 
 func (*BuildDef) String() string        { return "BuildDef" }

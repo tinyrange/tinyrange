@@ -243,7 +243,7 @@ type shellCommand struct {
 	f    *starlark.Function
 }
 
-func (cmd *shellCommand) Run(ctx *ShellContext, argv []string) (CommandResult, error) {
+func (cmd *shellCommand) Run(ctx *ShellContext, argv []string, stdin string) (CommandResult, error) {
 	thread := &starlark.Thread{}
 
 	var args starlark.Tuple
@@ -253,6 +253,9 @@ func (cmd *shellCommand) Run(ctx *ShellContext, argv []string) (CommandResult, e
 		args = append(args, starlark.String(arg))
 		// }
 	}
+
+	// TODO(joshua): This is a massive hack. Contexts should be local to each subshell/command execution.
+	ctx.stdin = stdin
 
 	ret, err := starlark.Call(thread, cmd.f, starlark.Tuple{ctx, args}, []starlark.Tuple{})
 	if err != nil {
@@ -302,6 +305,7 @@ type ShellContext struct {
 	files           *starlark.Dict
 	environ         *starlark.Dict
 	state           *starlark.Dict
+	stdin           string
 	commands        map[string]*shellCommand
 	fileNotFound    *starlark.Function
 	commandNotFound *starlark.Function
@@ -417,7 +421,7 @@ func (p *ShellContext) Unsetenv(key string) {
 func (p *ShellContext) Exec(args []string) ([]byte, error) {
 	// slog.Info("ShellContext.Exec", "args", args)
 
-	ret, err := p.runCommand(args)
+	ret, err := p.runCommand(args, "")
 	if err != nil {
 		slog.Warn("running a command failed", "err", err)
 		return nil, err
@@ -465,7 +469,7 @@ func (p *ShellContext) SetKey(k starlark.Value, v starlark.Value) error {
 	return p.files.SetKey(k, v)
 }
 
-func (p *ShellContext) runCommand(args []string) (CommandResult, error) {
+func (p *ShellContext) runCommand(args []string, stdin string) (CommandResult, error) {
 	cmd, ok := p.commands[args[0]]
 	if !ok {
 		if p.commandNotFound != nil {
@@ -489,7 +493,7 @@ func (p *ShellContext) runCommand(args []string) (CommandResult, error) {
 		return emptyResult(), fmt.Errorf("command not found: %s", args[0])
 	}
 
-	return cmd.Run(p, args)
+	return cmd.Run(p, args, stdin)
 }
 
 func (p *ShellContext) getParam(name string) (string, error) {
@@ -666,7 +670,7 @@ func (p *ShellContext) visitCmd(cmd syntax.Command, stdin string) (CommandResult
 				args = append(args, val)
 			}
 
-			return p.runCommand(args)
+			return p.runCommand(args, stdin)
 		} else {
 			for _, assign := range cmd.Assigns {
 				k := assign.Name.Value
@@ -977,6 +981,8 @@ func (p *ShellContext) Attr(name string) (starlark.Value, error) {
 		return p.environ, nil
 	} else if name == "state" {
 		return p.state, nil
+	} else if name == "stdin" {
+		return starlark.String(p.stdin), nil
 	} else {
 		return nil, nil
 	}

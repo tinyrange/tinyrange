@@ -362,7 +362,7 @@ func RegisterHandlers(pkgDb *db.PackageDatabase, mux *http.ServeMux) {
 
 		downloader := pkg.Downloaders[index]
 
-		contents, err := pkgDb.GetPackageContents(downloader)
+		contents, err := pkgDb.GetPackageContents(pkg, downloader)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 

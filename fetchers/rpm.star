@@ -88,13 +88,30 @@ def fetch_rpm_repostiory(ctx, url):
                     architecture = arch,
                 ))
 
-def get_rpm_contents(ctx, url):
+def get_rpm_contents(ctx, pkg, url):
+    fs = filesystem()
+
     rpm = parse_rpm(fetch_http(url))
 
-    print(rpm.metadata)
+    metadata = json.decode(rpm.metadata)
+
+    fs[".pkg/rpm/metadata/" + pkg.name + ".json"] = rpm.metadata
+
+    if metadata["PreInstallScript"] != "":
+        fs[".pkg/rpm/pre-install/" + pkg.name + ".sh"] = file(metadata["PreInstallScript"], executable = True)
+    if metadata["PostInstallScript"] != "":
+        fs[".pkg/rpm/post-install/" + pkg.name + ".sh"] = file(metadata["PostInstallScript"], executable = True)
 
     if rpm.payload_compression == "zstd":
-        return rpm.payload.read_archive(".cpio.zst")
+        ark = rpm.payload.read_archive(".cpio.zst")
+
+        for f in ark:
+            name = f.name.removeprefix("./")
+            if name.endswith("/"):
+                continue  # ignore directoriess
+            fs[name] = f
+
+        return ctx.archive(fs)
     else:
         return error("payload compression not implemented: " + rpm.payload_compression)
 

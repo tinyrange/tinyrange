@@ -1388,13 +1388,32 @@ func (db *PackageDatabase) RunRepl() error {
 	return nil
 }
 
-func (db *PackageDatabase) GetPackageContents(downloader Downloader) (memtar.TarReader, error) {
+func (db *PackageDatabase) getPackageDownloadDefinition(pkg *Package, downloader Downloader) (*BuildDef, error) {
 	fetcher, ok := db.ContentFetchers[downloader.Name]
 	if !ok {
 		return nil, fmt.Errorf("could not find fetcher: %s", downloader.Name)
 	}
 
-	return fetcher.FetchContents(downloader.Url)
+	return fetcher.GetDefinition(db, pkg, downloader.Url), nil
+}
+
+func (db *PackageDatabase) GetPackageContents(pkg *Package, downloader Downloader) (memtar.TarReader, error) {
+	def, err := db.getPackageDownloadDefinition(pkg, downloader)
+	if err != nil {
+		return nil, err
+	}
+
+	filename, err := db.Build(def)
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	return ReadArchive(f, ".tar", 0)
 }
 
 func (db *PackageDatabase) FetchParallel(packages []*Package) (memtar.TarReader, error) {
@@ -1419,7 +1438,7 @@ func (db *PackageDatabase) FetchParallel(packages []*Package) (memtar.TarReader,
 
 			dl := pkg.Downloaders[0]
 
-			contents, err := db.GetPackageContents(dl)
+			contents, err := db.GetPackageContents(pkg, dl)
 			if err != nil {
 				errors <- err
 				return
@@ -1553,7 +1572,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 
 			dl := pkg.Downloaders[0]
 
-			ents, err := db.GetPackageContents(dl)
+			ents, err := db.GetPackageContents(pkg, dl)
 			if err != nil {
 				return starlark.None, err
 			}
@@ -1582,6 +1601,23 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 			}
 
 			return &StarArchive{r: ents, name: "<download_archive>"}, nil
+		}), nil
+	} else if name == "download_def" {
+		return starlark.NewBuiltin("Database.download_def", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var pkg *Package
+
+			if err := starlark.UnpackArgs("Database.download_def", args, kwargs,
+				"pkg", &pkg,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return db.getPackageDownloadDefinition(pkg, pkg.Downloaders[0])
 		}), nil
 	} else if name == "build" {
 		return starlark.NewBuiltin("Database.build", func(

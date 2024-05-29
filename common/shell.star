@@ -30,7 +30,7 @@ def cmd_cut(ctx, args):
 def cmd_echo(ctx, args):
     if DEBUG:
         print("echo", args[1:])
-    return ""
+    return " ".join(args[1:])
 
 def cmd_source(ctx, args):
     if DEBUG:
@@ -111,6 +111,12 @@ def cmd_op(ctx, args):
 
     return error("command [ not implemented: " + str(args))
 
+def cmd_tr(ctx, args):
+    if DEBUG:
+        print("tr", args[1:])
+
+    return ctx.stdin.replace(args[1], args[2])
+
 def register_commands(ctx):
     ctx.add_command("set", cmd_set)
     ctx.add_command("head", cmd_head)
@@ -127,5 +133,6 @@ def register_commands(ctx):
     ctx.add_command("false", cmd_false)
     ctx.add_command("dirname", cmd_dirname)
     ctx.add_command("[", cmd_op)
+    ctx.add_command("tr", cmd_tr)
 
     ctx.add_command("wget", cmd_wget)

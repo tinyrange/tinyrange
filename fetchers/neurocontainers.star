@@ -285,10 +285,11 @@ def fetch_neurocontainers_repository(ctx, url, ref):
 
         file = folder["build.sh"]
         if file.name == "recipes/mrtrix3tissue/build.sh" or \
-           file.name == "recipes/samri/build.sh":
+           file.name == "recipes/samri/build.sh" or \
+           file.name == "recipes/cartool/build.sh":
             continue
 
-        # print("file", file)
+        print("file", file)
         contents = file.read()
 
         ret, state = eval_neurocontainer_build(contents)
