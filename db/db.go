@@ -1127,31 +1127,35 @@ func (plan *InstallationPlan) pickPackage(query PackageName, results []*Package,
 	return results[0], nil
 }
 
-func (plan *InstallationPlan) addPackage(query PackageName) error {
+func (plan *InstallationPlan) addPackage(query PackageName) ([]*Package, error) {
 	if _, ok := plan.checkName(query); ok {
 		// Already installed.
-		return nil
+		return nil, nil
 	}
+
+	var added []*Package
 
 	// Only look for 1 package.
 	opts := plan.queryOptions
 	results, err := plan.db.Search(query, opts)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(results) == 0 {
-		return ErrPackageNotFound(query)
+		return nil, ErrPackageNotFound(query)
 	}
 
 	// Pick a package from the list of candidates.
 	pkg, err := plan.pickPackage(query, results, false)
 	if err != nil {
-		return err
+		return nil, err
 	}
+
+	added = append(added, pkg)
 
 	// Add the names to the installed list.
 	if err := plan.addName(pkg.Name); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Check for conflicts.
@@ -1160,7 +1164,7 @@ func (plan *InstallationPlan) addPackage(query PackageName) error {
 			ver, ok := plan.checkName(option)
 			if ok && versionMatches(ver, option.Version) {
 				slog.Error("conflict", "pkg", pkg, "conflicts", pkg.Conflicts)
-				return fmt.Errorf("found conflict between %s and %s", query, option)
+				return nil, fmt.Errorf("found conflict between %s and %s", query, option)
 			}
 		}
 	}
@@ -1169,7 +1173,7 @@ func (plan *InstallationPlan) addPackage(query PackageName) error {
 	// This makes sure the package is not conflicting with itself.
 	for _, alias := range pkg.Aliases {
 		if err := plan.addName(alias); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -1181,35 +1185,99 @@ outer:
 				continue
 			}
 
-			err := plan.addPackage(option)
+			newAdded, err := plan.addPackage(option)
 			if _, ok := err.(ErrPackageNotFound); ok {
 				continue
 			} else if err != nil {
-				return fmt.Errorf("failed to add package for %s: %s", pkg.String(), err)
+				return nil, fmt.Errorf("failed to add package for %s: %s", pkg.String(), err)
 			}
+
+			added = append(added, newAdded...)
 
 			continue outer
 		}
 
-		return fmt.Errorf("could not find installation candidate among options: %+v", depend)
+		return nil, fmt.Errorf("could not find installation candidate among options: %+v", depend)
 	}
 
 	// Finally add the package.
 	plan.Packages = append(plan.Packages, pkg)
 
-	return nil
+	return added, nil
 }
+
+// Attr implements starlark.HasAttrs.
+func (plan *InstallationPlan) Attr(name string) (starlark.Value, error) {
+	if name == "add" {
+		return starlark.NewBuiltin("Database.plan", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var names []PackageName
+			for _, arg := range args {
+				if name, ok := arg.(PackageName); ok {
+					names = append(names, name)
+				} else if pkg, ok := arg.(*Package); ok {
+					names = append(names, pkg.Name)
+				} else {
+					return starlark.None, fmt.Errorf("expected Name|Package got %s", arg.Type())
+				}
+			}
+
+			var added []starlark.Value
+
+			for _, name := range names {
+				addedNew, err := plan.addPackage(name)
+				if err != nil {
+					return starlark.None, err
+				}
+
+				for _, pkg := range addedNew {
+					added = append(added, pkg)
+				}
+			}
+
+			return starlark.NewList(added), nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (plan *InstallationPlan) AttrNames() []string {
+	return []string{"add"}
+}
+
+func (*InstallationPlan) String() string { return "InstallationPlan" }
+func (*InstallationPlan) Type() string   { return "InstallationPlan" }
+func (*InstallationPlan) Hash() (uint32, error) {
+	return 0, fmt.Errorf("InstallationPlan is not hashable")
+}
+func (*InstallationPlan) Truth() starlark.Bool { return starlark.True }
+func (*InstallationPlan) Freeze()              {}
+
+var (
+	_ starlark.Value    = &InstallationPlan{}
+	_ starlark.HasAttrs = &InstallationPlan{}
+)
 
 func (db *PackageDatabase) MakeInstallationPlan(packages []PackageName, opts QueryOptions) (*InstallationPlan, error) {
 	plan := &InstallationPlan{db: db, installed: make(map[string]string), queryOptions: opts}
 
 	for _, pkg := range packages {
-		if err := plan.addPackage(pkg); err != nil {
+		if _, err := plan.addPackage(pkg); err != nil {
 			return nil, err
 		}
 	}
 
 	return plan, nil
+}
+
+func (db *PackageDatabase) MakeIncrementalPlanner(opts QueryOptions) *InstallationPlan {
+	return &InstallationPlan{db: db, installed: make(map[string]string), queryOptions: opts}
 }
 
 func (db *PackageDatabase) Count() int64 {
@@ -1570,6 +1638,30 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 			}
 
 			return starlark.NewList(ret), nil
+		}), nil
+	} else if name == "incremental_plan" {
+		return starlark.NewBuiltin("Database.incremental_plan", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				excludeRecommends  bool
+				preferArchitecture string
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"recommends?", &excludeRecommends,
+				"prefer_architecture?", &preferArchitecture,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return db.MakeIncrementalPlanner(QueryOptions{
+				ExcludeRecommends:  excludeRecommends,
+				PreferArchitecture: preferArchitecture,
+			}), nil
 		}), nil
 	} else if name == "download" {
 		return starlark.NewBuiltin("Database.download", func(

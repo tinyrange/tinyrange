@@ -668,6 +668,8 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 		}
 
 		return starlark.NewList(ret), nil
+	} else if name == "raw" {
+		return starlark.String(pkg.RawContents), nil
 	} else {
 		return nil, nil
 	}

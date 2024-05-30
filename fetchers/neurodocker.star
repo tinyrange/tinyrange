@@ -9,26 +9,32 @@ def append_all(lst, items):
 
 def install_dependencies(ret, template, pkg_manager):
     if pkg_manager == "apt":
-        ret["packages"] = append_all(ret["packages"], template["dependencies"]["apt"])
+        pkgs = append_all([], template["dependencies"]["apt"])
+        for pkg in pkgs:
+            ret["directives"].append(("install", pkg))
+
         if "debs" in template["dependencies"]:
             for pkg in template["dependencies"]["debs"]:
-                ret["packages"].append(pkg)
+                ret["directives"].append(("install", pkg))
     elif pkg_manager == "yum":
-        ret["packages"] = append_all(ret["packages"], template["dependencies"]["yum"])
+        pkgs = append_all([], template["dependencies"]["yum"])
+        for pkg in pkgs:
+            ret["directives"].append(("install", pkg))
+
         if "rpms" in template["dependencies"]:
             for pkg in template["dependencies"]["rpms"]:
-                ret["packages"].append(pkg)
+                ret["directives"].append(("install", pkg))
+
     return ""
 
 def install(ctx, pkgs):
     for pkg in pkgs:
-        ctx["packages"].append(pkg)
+        ctx["directives"].append(("install", pkg))
     return ""
 
 def create_neurodocker_package(name, template, pkg_manager, params):
     ret = {
-        "packages": [],
-        "environment": {},
+        "directives": [],
     }
     context = {
         # Old versions of NeuroDocker used the top level with the package name.
@@ -67,12 +73,12 @@ def create_neurodocker_package(name, template, pkg_manager, params):
                     continue
                 context[optName] = eval_jinja2(optional[optName], **context)
 
-    ret["script"] = eval_jinja2(template["instructions"], **context)
+    ret["directives"].append(("run", eval_jinja2(template["instructions"], **context)))
 
     for k in template["env"]:
-        ret["environment"][k] = eval_jinja2(template["env"][k], **context)
+        ret["directives"].append(("env", k + "=" + eval_jinja2(template["env"][k], **context)))
 
-    return ret
+    return ret["directives"]
 
 def get_neurodocker_package(url, branch, name, pkg_manager, params):
     repo = fetch_git(url)

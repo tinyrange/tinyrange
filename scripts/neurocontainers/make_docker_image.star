@@ -44,35 +44,58 @@ def build_merged_install_layer_from_plan(ctx, plan):
 def main(ctx):
     if len(ctx.args) == 0:
         print("usage: make_docker_image.star <package_name>")
-        return
+        return None
 
     container_name = ctx.args[0]
 
     result = ctx.query(name(container_name, distribution = "neurocontainers"))
     if len(result) == 0:
         print("package not found")
-        return
+        return None
 
     pkg = result[0]
 
-    builder = json.decode(pkg.builders[0].json_string)
+    directives = json.decode(pkg.raw)
 
-    depends = []
+    arch = "x86_64"
 
-    for directive in builder["Directives"]:
-        # TODO(joshua): Handle other directives.
-        if directive["Kind"] == "Dependency":
-            depends.append(name(
-                name = directive["Name"]["Name"],
-                distribution = "fedora@35",
-                architecture = "x86_64",
+    base_image = ""
+    pkg_manager = ""
+
+    incremental_plan = ctx.incremental_plan(
+        prefer_architecture = arch,
+    )
+
+    layers = []
+
+    for directive in directives:
+        kind = directive[0]
+        if kind == "base-image":
+            if directive[1] == "fedora:35":
+                base_image = "fedora@35"
+            else:
+                return error("base image not implemented: " + directive[1])
+        elif kind == "pkg-manager":
+            pkg_manager = directive[1]
+        elif kind == "run":
+            script = directive[1]
+            print("run not implemented", script)
+        elif kind == "install":
+            pkg_name = directive[1]
+            pkgs = incremental_plan.add(name(
+                name = pkg_name,
+                distribution = base_image,
+                architecture = arch,
             ))
-
-    print("generating plan for", container_name)
-
-    plan = ctx.plan(prefer_architecture = "x86_64", *depends)
-
-    layers = [ctx.download_def(pkg) for pkg in plan]
+            layers += [ctx.download_def(pkg) for pkg in pkgs]
+        elif kind == "env":
+            k, _, v = directive[1].partition("=")
+            print("env not implemented", k, v)
+        elif kind == "copy":
+            _, source, destination = directive
+            print("copy not implemented", source, destination)
+        else:
+            return error("directive not implemented: " + kind)
 
     layer = build_def(
         (__file__, "neurocontainers", container_name),
@@ -90,6 +113,8 @@ def main(ctx):
     )
 
     print(get_cache_filename(combined_rootfs))
+
+    return None
 
 if __name__ == "__main__":
     fetch_repo(

@@ -2,9 +2,7 @@ load("common/shell.star", "register_commands")
 load("fetchers/neurodocker.star", "get_neurodocker_package")
 
 def parse_neurodocker_package(ret, args, name):
-    if "pkgs" not in ret:
-        ret["pkgs"] = {}
-    ret["pkgs"][name] = {}
+    pkg_args = {}
 
     index = 1
     for arg in args[1:]:
@@ -12,8 +10,10 @@ def parse_neurodocker_package(ret, args, name):
             break
 
         key, _, value = arg.partition("=")
-        ret["pkgs"][name][key] = value
+        pkg_args[key] = value
         index += 1
+
+    ret.append(("pkg", name, pkg_args))
 
     return parse_neurodocker_args(ret, args[index:])
 
@@ -38,63 +38,48 @@ def parse_neurodocker_args(ret, args):
         return ret
 
     if args[0] == "--base-image":
-        ret["base-image"] = args[1]
+        ret.append(("base-image", args[1]))
 
         return parse_neurodocker_args(ret, args[2:])
     elif args[0] == "--pkg-manager":
-        ret["pkg-manager"] = args[1]
+        ret.append(("pkg-manager", args[1]))
 
         return parse_neurodocker_args(ret, args[2:])
     elif args[0] == "--entrypoint":
-        ret["entrypoint"] = args[1]
+        ret.append(("entrypoint", args[1]))
 
         return parse_neurodocker_args(ret, args[2:])
     elif args[0] == "--workdir":
-        ret["workdir"] = args[1]
+        ret.append(("workdir", args[1]))
 
         return parse_neurodocker_args(ret, args[2:])
     elif args[0] == "--user":
-        ret["user"] = args[1]
+        ret.append(("user", args[1]))
 
         return parse_neurodocker_args(ret, args[2:])
     elif args[0] == "--env":
-        if "env" not in ret:
-            ret["env"] = []
-
         index = 1
         for arg in args[1:]:
             if arg.startswith("--"):
                 break
 
-            ret["env"].append(arg)
+            ret.append(("env", arg))
             index += 1
 
         return parse_neurodocker_args(ret, args[index:])
     elif args[0] == "--copy":
-        if "copy" not in ret:
-            ret["copy"] = []
-
-        ret["copy"].append((args[1], args[2]))
+        ret.append(("copy", args[1], args[2]))
 
         return parse_neurodocker_args(ret, args[3:])
     elif args[0] == "--add":
-        if "add" not in ret:
-            ret["add"] = []
-
-        ret["add"].append((args[1], args[2]))
+        ret.append(("add", args[1], args[2]))
 
         return parse_neurodocker_args(ret, args[3:])
     elif args[0] == "--copy-from":
-        if "copy" not in ret:
-            ret["copy"] = []
-
-        ret["copy"].append((args[1] + ":" + args[2], args[3]))
+        ret.append(("copy", args[1] + ":" + args[2], args[3]))
 
         return parse_neurodocker_args(ret, args[4:])
     elif args[0] == "--install":
-        if "install" not in ret:
-            ret["install"] = []
-
         index = 1
         for arg in args[1:]:
             if arg.startswith("--"):
@@ -104,47 +89,35 @@ def parse_neurodocker_args(ret, args):
                 index += 1
                 continue
 
-            ret["install"].append(arg)
+            ret.append(("install", arg))
             index += 1
 
         return parse_neurodocker_args(ret, args[index:])
     elif args[0] == "--run":
-        if "run" not in ret:
-            ret["run"] = []
-
-        ret["run"].append(args[1])
+        ret.append(("run", args[1]))
 
         return parse_neurodocker_args(ret, args[2:])
     elif args[0].startswith("--run="):
-        if "run" not in ret:
-            ret["run"] = []
-
-        ret["run"].append(args[0].removeprefix("--run="))
+        ret.append(("run", args[0].removeprefix("--run=")))
 
         return parse_neurodocker_args(ret, args[1:])
     elif args[0].startswith("--run-bash="):
-        if "run" not in ret:
-            ret["run"] = []
-
-        ret["run"].append(args[0].removeprefix("--run-bash="))
+        ret.append(("run", args[0].removeprefix("--run-bash=")))
 
         return parse_neurodocker_args(ret, args[1:])
     elif args[0].startswith("--workdir="):
-        ret["workdir"] = args[0].removeprefix("--workdir=")
+        ret.append(("workdir", args[0].removeprefix("--workdir=")))
 
         return parse_neurodocker_args(ret, args[1:])
     elif args[0].startswith("--user="):
-        ret["user"] = args[0].removeprefix("--user=")
+        ret.append(("user", args[0].removeprefix("--user=")))
 
         return parse_neurodocker_args(ret, args[1:])
     elif args[0].startswith("--install="):
-        if "install" not in ret:
-            ret["install"] = []
-
         s = args[0].removeprefix("--install=")
 
         for pkg in s.split(" "):
-            ret["install"].append(s)
+            ret.append(("install", s))
 
         return parse_neurodocker_args(ret, args[1:])
     elif args[0] == "":
@@ -167,11 +140,11 @@ def cmd_neurodocker(ctx, args):
 
     rest = args[3:]
 
-    obj = parse_neurodocker_args({}, rest)
+    directives = parse_neurodocker_args([], rest)
 
-    ctx.state["neurodocker"] = obj
+    ctx.state["neurodocker"] = directives
 
-    return json.encode(obj)
+    return json.encode(directives)
 
 def cmd_pip(ctx, args):
     args = args[1:]
@@ -215,22 +188,10 @@ def eval_neurocontainer_build(contents):
 
     return ret, ctx.state["neurodocker"]
 
-def make_builder_from_neurodocker_recipe(pkg_name, recipe, neurodocker_url):
+def get_directives_from_neurodocker_recipe(pkg_name, recipe, neurodocker_url):
     build = builder(pkg_name)
 
-    build.set_base_image(recipe["base-image"])
-
-    pkg_manager = recipe["pkg-manager"]
-
-    if "install" in recipe:
-        if "pkg-manager" not in recipe:
-            return error("no pkg-system specified for install")
-        for install in recipe["install"]:
-            build.add_dependency(name(name = install))
-
-    if "run" in recipe:
-        for script in recipe["run"]:
-            build.add_script(script)
+    ret = []
 
     url = neurodocker_url
 
@@ -248,29 +209,20 @@ def make_builder_from_neurodocker_recipe(pkg_name, recipe, neurodocker_url):
         if url.startswith("git+https"):
             url = url.removeprefix("git+")
 
-    if "pkgs" in recipe:
-        for pkg in recipe["pkgs"]:
-            ret = get_neurodocker_package(
-                url,
-                branch,
-                pkg,
-                pkg_manager,
-                recipe["pkgs"][pkg],
-            )
+    pkg_manager = ""
 
-            for install in ret["packages"]:
-                build.add_dependency(name(name = install))
+    for directive in recipe:
+        kind = directive[0]
+        if kind == "pkg-manager":
+            pkg_manager = directive[1]
+            ret.append(directive)
+        elif kind == "pkg":
+            _, pkg, args = directive
+            ret += get_neurodocker_package(url, branch, pkg, pkg_manager, args)
+        else:
+            ret.append(directive)
 
-            for env in ret["environment"]:
-                # TODO(joshua): Add support for adding environment variables.
-                pass
-
-            build.add_script(ret["script"])
-            # print("install", pkg, ret)
-
-    # print("build", build)
-
-    return build
+    return ret
 
 def fetch_neurocontainers_repository(ctx, url, ref):
     repo = fetch_git(url)
@@ -302,12 +254,11 @@ def fetch_neurocontainers_repository(ctx, url, ref):
         pkg = ctx.add_package(name)
 
         if state != None:
-            recipe = state
-            pkg.add_builder(make_builder_from_neurodocker_recipe(
+            pkg.set_raw(json.encode(get_directives_from_neurodocker_recipe(
                 name,
-                recipe,
+                state,
                 ret["neurodocker_url"],
-            ))
+            )))
 
 if __name__ == "__main__":
     fetch_repo(fetch_neurocontainers_repository, ("https://github.com/NeuroDesk/neurocontainers", "master"), distro = "neurocontainers")
