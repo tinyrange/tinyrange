@@ -22,6 +22,11 @@ type StarFile struct {
 	stat   func() (FileInfo, error)
 }
 
+// Source implements StarFileIf.
+func (f *StarFile) Source() FileSource {
+	return f.source
+}
+
 // Name implements StarFileIf.
 func (f *StarFile) Name() string { return f.name }
 
@@ -49,8 +54,7 @@ func (f *StarFile) Stat() (FileInfo, error) {
 	}
 }
 
-// Attr implements starlark.HasAttrs.
-func (f *StarFile) Attr(name string) (starlark.Value, error) {
+func starFileCommonAttrs(f StarFileIf, name string) (starlark.Value, error) {
 	if name == "read" {
 		return starlark.NewBuiltin("File.read", func(
 			thread *starlark.Thread,
@@ -58,7 +62,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
-			f, err := f.opener()
+			f, err := f.Open()
 			if err != nil {
 				return nil, err
 			}
@@ -90,7 +94,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			fh, err := f.opener()
+			fh, err := f.Open()
 			if err != nil {
 				return nil, err
 			}
@@ -102,10 +106,10 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 			return &StarArchive{source: ExtractArchiveSource{
 				Kind:            "ExtractArchive",
-				Source:          f.source,
+				Source:          f.Source(),
 				Extension:       ext,
 				StripComponents: stripComponents,
-			}, r: reader, name: f.name}, nil
+			}, r: reader, name: f.Name()}, nil
 		}), nil
 	} else if name == "read_compressed" {
 		return starlark.NewBuiltin("File.read_compressed", func(
@@ -128,12 +132,12 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 				return NewFile(
 					DecompressSource{
 						Kind:      "Decompress",
-						Source:    f.source,
+						Source:    f.Source(),
 						Extension: ".gz",
 					},
-					strings.TrimSuffix(f.name, ext),
+					strings.TrimSuffix(f.Name(), ext),
 					func() (io.ReadCloser, error) {
-						fh, err := f.opener()
+						fh, err := f.Open()
 						if err != nil {
 							return nil, fmt.Errorf("failed to open file: %s", err)
 						}
@@ -146,12 +150,12 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 				return NewFile(
 					DecompressSource{
 						Kind:      "Decompress",
-						Source:    f.source,
+						Source:    f.Source(),
 						Extension: ".bz2",
 					},
-					strings.TrimSuffix(f.name, ext),
+					strings.TrimSuffix(f.Name(), ext),
 					func() (io.ReadCloser, error) {
-						fh, err := f.opener()
+						fh, err := f.Open()
 						if err != nil {
 							return nil, fmt.Errorf("failed to open file: %s", err)
 						}
@@ -164,12 +168,12 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 				return NewFile(
 					DecompressSource{
 						Kind:      "Decompress",
-						Source:    f.source,
+						Source:    f.Source(),
 						Extension: ".zst",
 					},
-					strings.TrimSuffix(f.name, ext),
+					strings.TrimSuffix(f.Name(), ext),
 					func() (io.ReadCloser, error) {
-						fh, err := f.opener()
+						fh, err := f.Open()
 						if err != nil {
 							return nil, fmt.Errorf("failed to open file: %s", err)
 						}
@@ -194,7 +198,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
-			fh, err := f.opener()
+			fh, err := f.Open()
 			if err != nil {
 				return nil, fmt.Errorf("failed to open file: %s", err)
 			}
@@ -219,7 +223,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			fh, err := f.opener()
+			fh, err := f.Open()
 			if err != nil {
 				return nil, fmt.Errorf("failed to open file: %s", err)
 			}
@@ -240,11 +244,11 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			}
 		}), nil
 	} else if name == "name" {
-		return starlark.String(f.name), nil
+		return starlark.String(f.Name()), nil
 	} else if name == "base" {
-		return starlark.String(path.Base(f.name)), nil
+		return starlark.String(path.Base(f.Name())), nil
 	} else if name == "size" {
-		info, err := f.stat()
+		info, err := f.Stat()
 		if err != nil {
 			return starlark.None, err
 		}
@@ -255,9 +259,18 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 	}
 }
 
-// AttrNames implements starlark.HasAttrs.
-func (*StarFile) AttrNames() []string {
+func starFileCommonAttrNames(f StarFileIf) []string {
 	return []string{"read", "read_archive", "read_compressed", "read_rpm_xml", "hash", "name", "base", "size"}
+}
+
+// Attr implements starlark.HasAttrs.
+func (f *StarFile) Attr(name string) (starlark.Value, error) {
+	return starFileCommonAttrs(f, name)
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (f *StarFile) AttrNames() []string {
+	return starFileCommonAttrNames(f)
 }
 
 func (f *StarFile) String() string      { return fmt.Sprintf("File{%s}", f.name) }

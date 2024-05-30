@@ -1,4 +1,4 @@
-load("common/docker.star", "build_docker_archive_from_layers", "make_fs")
+load("common/docker.star", "build_docker_archive_from_layers")
 load("repos/alpine.star", "add_alpine_fetchers")
 
 def parse_pkg_info(contents):
@@ -22,7 +22,7 @@ def build_install_layer_from_plan(ctx, plan):
     layers = []
 
     for f in plan:
-        fs = make_fs(f.read_archive(".tar"))
+        fs = filesystem(f.read_archive(".tar"))
 
         layers.append(f.hash("sha256"))
 

@@ -3,8 +3,6 @@ package db
 import (
 	"archive/tar"
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tinyrange/pkg2/memtar"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 )
@@ -32,6 +31,7 @@ type FileIf interface {
 type StarFileIf interface {
 	starlark.Value
 	FileIf
+	Source() FileSource
 	Name() string
 	SetName(name string) (StarFileIf, error)
 }
@@ -110,65 +110,63 @@ func NewMemoryFile(contents []byte) *MemoryFile {
 	}
 }
 
+type entryWrapper struct {
+	memtar.Entry
+}
+
+// IsDir implements FileInfo.
+func (e *entryWrapper) IsDir() bool {
+	return e.Mode().IsDir()
+}
+
+// Mode implements FileInfo.
+// Subtle: this method shadows the method (Entry).Mode of entryWrapper.Entry.
+func (e *entryWrapper) Mode() fs.FileMode {
+	return e.FileMode()
+}
+
+// OwnerGroup implements FileInfo.
+func (e *entryWrapper) OwnerGroup() (int, int) {
+	return e.Uid(), e.Gid()
+}
+
+// Sys implements FileInfo.
+func (e *entryWrapper) Sys() any {
+	return nil
+}
+
+// Open implements FileIf.
+func (e *entryWrapper) Open() (io.ReadCloser, error) {
+	return io.NopCloser(e.Entry.Open()), nil
+}
+
+// Stat implements FileIf.
+func (e *entryWrapper) Stat() (FileInfo, error) {
+	return e, nil
+}
+
+var (
+	_ FileIf = &entryWrapper{}
+)
+
 type starFileWrapper struct {
 	FileIf
 	name string
 }
 
+// Source implements StarFileIf.
+func (f *starFileWrapper) Source() FileSource {
+	return nil
+}
+
 // Attr implements starlark.HasAttrs.
 func (f *starFileWrapper) Attr(name string) (starlark.Value, error) {
-	if name == "hash" {
-		return starlark.NewBuiltin("File.hash", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				algorithm string
-			)
-
-			if err := starlark.UnpackArgs("File.hash", args, kwargs,
-				"algorithm", &algorithm,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			fh, err := f.Open()
-			if err != nil {
-				return nil, fmt.Errorf("failed to open file: %s", err)
-			}
-			defer fh.Close()
-
-			if algorithm == "sha256" {
-				h := sha256.New()
-
-				if _, err := io.Copy(h, fh); err != nil {
-					return nil, fmt.Errorf("failed to hash file: %s", err)
-				}
-
-				digest := hex.EncodeToString(h.Sum(nil))
-
-				return starlark.String(digest), nil
-			} else {
-				return starlark.None, fmt.Errorf("unknown hash algorithm: %s", algorithm)
-			}
-		}), nil
-	} else if name == "size" {
-		info, err := f.Stat()
-		if err != nil {
-			return starlark.None, err
-		}
-
-		return starlark.MakeInt64(info.Size()), nil
-	} else {
-		return nil, nil
-	}
+	return starFileCommonAttrs(f, name)
 }
 
 // AttrNames implements starlark.HasAttrs.
 func (f *starFileWrapper) AttrNames() []string {
-	return []string{"hash", "size"}
+	return starFileCommonAttrNames(f)
 }
 
 // Name implements StarFileIf.
@@ -242,6 +240,11 @@ type StarDirectory struct {
 	entries map[string]StarFileIf
 }
 
+// Source implements StarFileIf.
+func (f *StarDirectory) Source() FileSource {
+	return nil
+}
+
 // Linkname implements FileInfo.
 func (f *StarDirectory) Linkname() string {
 	return ""
@@ -279,7 +282,7 @@ func (f *StarDirectory) ModTime() time.Time {
 
 // Mode implements fs.FileInfo.
 func (f *StarDirectory) Mode() fs.FileMode {
-	return fs.ModePerm | fs.ModeDir
+	return fs.FileMode(0644) | fs.ModeDir
 }
 
 // Size implements fs.FileInfo.
@@ -589,6 +592,38 @@ func (f *StarDirectory) MergeWith(other *StarDirectory) (*StarDirectory, error) 
 	// slog.Info("merged", "f", len(f.entries), "other", len(other.entries), "ret", len(ret.entries))
 
 	return ret, nil
+}
+
+func (f *StarDirectory) addArchive(ark *StarArchive) error {
+	for _, ent := range ark.Entries() {
+		cleanPath, err := f.cleanPath(ent.Filename())
+		if err != nil {
+			return err
+		}
+
+		parent, name, ok, err := f.openPath(cleanPath, true)
+		if !ok {
+			return fs.ErrInvalid
+		}
+		if err != nil {
+			return err
+		}
+
+		switch ent.Typeflag() {
+		case tar.TypeReg:
+			parent.entries[name] = &starFileWrapper{name: cleanPath, FileIf: &entryWrapper{ent}}
+		case tar.TypeSymlink:
+			parent.entries[name] = &starFileWrapper{name: cleanPath, FileIf: &entryWrapper{ent}}
+		case tar.TypeDir:
+			if _, err := parent.mkdirInternal(name); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("StarDirectory.addArchive: unexpected Typeflag %d", ent.Typeflag())
+		}
+	}
+
+	return nil
 }
 
 func (f *StarDirectory) String() string      { return fmt.Sprintf("Directory{%s}", f.name) }

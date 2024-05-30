@@ -181,7 +181,7 @@ func (f *fileStat) ModTime() time.Time {
 
 // Mode implements fs.FileInfo.
 func (f *fileStat) Mode() fs.FileMode {
-	return fs.ModePerm
+	return fs.FileMode(0644)
 }
 
 // Name implements fs.FileInfo.

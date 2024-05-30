@@ -3,9 +3,7 @@ Package Fetcher for RPM Repositories.
 """
 
 def get_rpm_name(ctx, ent, arch):
-    if ent["Name"] == "filesystem":
-        return None
-    elif " if redhat-rpm-config)" in ent["Name"]:
+    if " if redhat-rpm-config)" in ent["Name"]:
         return None
     elif " if clang)" in ent["Name"]:
         return None
@@ -105,11 +103,7 @@ def get_rpm_contents(ctx, pkg, url):
     if rpm.payload_compression == "zstd":
         ark = rpm.payload.read_archive(".cpio.zst")
 
-        for f in ark:
-            name = f.name.removeprefix("./")
-            if name.endswith("/"):
-                continue  # ignore directoriess
-            fs[name] = f
+        fs += filesystem(ark)
 
         return ctx.archive(fs)
     else:

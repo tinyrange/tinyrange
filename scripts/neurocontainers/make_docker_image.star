@@ -1,4 +1,4 @@
-load("common/docker.star", "build_docker_archive_from_layers", "make_fs")
+load("common/docker.star", "build_docker_archive_from_layers")
 load("fetchers/neurocontainers.star", "fetch_neurocontainers_repository")
 load("repos/rpm.star", "add_fedora_fetchers")
 
@@ -8,13 +8,32 @@ def build_merged_install_layer_from_plan(ctx, plan):
     layer_fs = filesystem()
 
     for f in plan:
-        fs = make_fs(f.read_archive(".tar"))
+        fs = filesystem(f.read_archive(".tar"))
+
+        metadata = None
+
+        if ".pkg/rpm/metadata" in fs:
+            metadata = json.decode([f for f in fs[".pkg/rpm/metadata"]][0].read())
+        else:
+            return error("layer has no metadata")
 
         if ".pkg/rpm/pre-install" in fs:
-            build_script += "\n".join([f.name for f in fs[".pkg/rpm/pre-install"]]) + "\n"
+            prog = " ".join(metadata["PreInstallScriptProgram"])
+            if prog == "<lua>":
+                build_script += "\n".join(["# run-rpm-lua " + f.name for f in fs[".pkg/rpm/pre-install"]]) + "\n"
+            elif prog == None or prog == "/bin/sh":
+                build_script += "\n".join([f.name for f in fs[".pkg/rpm/pre-install"]]) + "\n"
+            else:
+                return error("prog (" + prog + ") not implemented")
 
         if ".pkg/rpm/post-install" in fs:
-            build_script += "\n".join([f.name for f in fs[".pkg/rpm/post-install"]]) + "\n"
+            prog = " ".join(metadata["PostInstallScriptProgram"])
+            if prog == "<lua>":
+                build_script += "\n".join(["# run-rpm-lua " + f.name for f in fs[".pkg/rpm/post-install"]]) + "\n"
+            elif prog == None or prog == "/bin/sh":
+                build_script += "\n".join([f.name for f in fs[".pkg/rpm/post-install"]]) + "\n"
+            else:
+                return error("prog (" + prog + ") not implemented")
 
         layer_fs += fs
 

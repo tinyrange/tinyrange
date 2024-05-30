@@ -69,6 +69,7 @@ func HeaderFromTarHeader(hdr *tar.Header) Header {
 
 type Entry interface {
 	Header
+	// Full filename including path.
 	Filename() string
 	Open() io.Reader
 }

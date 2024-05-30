@@ -92,13 +92,3 @@ def build_docker_archive_from_layers(ctx, name, layers):
     ])
 
     return ctx.archive(fs)
-
-def make_fs(ark):
-    fs = filesystem()
-
-    for file in ark:
-        if file.name.endswith("/"):
-            continue
-        fs[file.name] = file
-
-    return fs

@@ -289,7 +289,7 @@ def fetch_neurocontainers_repository(ctx, url, ref):
            file.name == "recipes/cartool/build.sh":
             continue
 
-        print("file", file)
+        # print("file", file)
         contents = file.read()
 
         ret, state = eval_neurocontainer_build(contents)

@@ -658,7 +658,24 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
-			return newFilesystem(), nil
+			fs := newFilesystem()
+
+			switch len(args) {
+			case 0:
+				return fs, nil
+			case 1:
+				if ark, ok := args[0].(*StarArchive); ok {
+					if err := fs.addArchive(ark); err == nil {
+						return fs, nil
+					} else {
+						return starlark.None, err
+					}
+				} else {
+					return starlark.None, fmt.Errorf("filesystem: expected StarArchive, got %s", args[0].Type())
+				}
+			default:
+				return starlark.None, fmt.Errorf("filesystem: expected 0 or 1 arguments, got %d arguments", len(args))
+			}
 		}),
 		"build_def": starlark.NewBuiltin("build_def", func(
 			thread *starlark.Thread,
@@ -788,6 +805,9 @@ func (db *PackageDatabase) RunScript() error {
 
 	_, err := starlark.Call(thread, db.scriptFunction, starlark.Tuple{db}, []starlark.Tuple{})
 	if err != nil {
+		if sErr, ok := err.(*starlark.EvalError); ok {
+			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+		}
 		return err
 	}
 
