@@ -60,7 +60,6 @@ def main(ctx):
     arch = "x86_64"
 
     base_image = ""
-    pkg_manager = ""
 
     incremental_plan = ctx.incremental_plan(
         prefer_architecture = arch,
@@ -76,7 +75,7 @@ def main(ctx):
             else:
                 return error("base image not implemented: " + directive[1])
         elif kind == "pkg-manager":
-            pkg_manager = directive[1]
+            pass
         elif kind == "run":
             script = directive[1]
             print("run not implemented", script)
@@ -111,6 +110,8 @@ def main(ctx):
             [layer],
         ),
     )
+
+    # incremental_plan.dump_graph()
 
     print(get_cache_filename(combined_rootfs))
 

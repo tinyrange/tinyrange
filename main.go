@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -34,6 +36,8 @@ var (
 	enableDownloads   = flag.Bool("enableDownloads", false, "enable support for downloading packages. not recommended for public instances")
 	scriptFilename    = flag.String("script", "", "run a script instead starting the web interface")
 	rebuild           = flag.Bool("rebuild", false, "force all referenced builds to be rebuilt")
+	cpuprofile        = flag.String("cpuprofile", "", "write cpu profile to `file`")
+	memprofile        = flag.String("memprofile", "", "write memory profile to `file`")
 )
 
 func main() {
@@ -42,6 +46,18 @@ func main() {
 	names := flag.Args()
 
 	eif := core.NewEif(*cacheDir)
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		defer f.Close() // error handling omitted for example
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
 
 	if *allowLocal {
 		slog.Warn("scripts can read local files with the -allowLocal flag")
@@ -206,5 +222,17 @@ func main() {
 
 		slog.Info("http server listening", "addr", "http://"+*httpAddress)
 		log.Fatal(http.ListenAndServe(*httpAddress, nil))
+	}
+
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			log.Fatal("could not create memory profile: ", err)
+		}
+		defer f.Close() // error handling omitted for example
+		runtime.GC()    // get up-to-date statistics
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			log.Fatal("could not write memory profile: ", err)
+		}
 	}
 }

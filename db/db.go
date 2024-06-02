@@ -1064,10 +1064,12 @@ func (db *PackageDatabase) GetBuildScript(script BuildScript) (starlark.Value, e
 }
 
 type InstallationPlan struct {
-	db           *PackageDatabase
-	installed    map[string]string
-	Packages     []*Package
-	queryOptions QueryOptions
+	db                *PackageDatabase
+	installed         map[string]string
+	installedPackages map[string]*Package
+	Packages          []*Package
+	queryOptions      QueryOptions
+	dependencyGraph   [][2]*Package
 }
 
 func (plan *InstallationPlan) checkName(name PackageName) (string, bool) {
@@ -1076,11 +1078,18 @@ func (plan *InstallationPlan) checkName(name PackageName) (string, bool) {
 	return ver, ok
 }
 
-func (plan *InstallationPlan) addName(name PackageName) error {
+func (plan *InstallationPlan) getInstalled(name PackageName) (*Package, bool) {
+	pkg, ok := plan.installedPackages[name.ShortName()]
+
+	return pkg, ok
+}
+
+func (plan *InstallationPlan) addName(pkg *Package, name PackageName) error {
 	// if plan.checkName(name) {
 	// 	return fmt.Errorf("%s is already installed", name.ShortName())
 	// }
 
+	plan.installedPackages[name.ShortName()] = pkg
 	plan.installed[name.ShortName()] = name.Version
 
 	return nil
@@ -1127,9 +1136,12 @@ func (plan *InstallationPlan) pickPackage(query PackageName, results []*Package,
 	return results[0], nil
 }
 
-func (plan *InstallationPlan) addPackage(query PackageName) ([]*Package, error) {
-	if _, ok := plan.checkName(query); ok {
+func (plan *InstallationPlan) addPackage(parent *Package, query PackageName) ([]*Package, error) {
+	if pkg, ok := plan.getInstalled(query); ok {
 		// Already installed.
+
+		plan.dependencyGraph = append(plan.dependencyGraph, [2]*Package{parent, pkg})
+
 		return nil, nil
 	}
 
@@ -1151,10 +1163,12 @@ func (plan *InstallationPlan) addPackage(query PackageName) ([]*Package, error) 
 		return nil, err
 	}
 
+	plan.dependencyGraph = append(plan.dependencyGraph, [2]*Package{parent, pkg})
+
 	added = append(added, pkg)
 
 	// Add the names to the installed list.
-	if err := plan.addName(pkg.Name); err != nil {
+	if err := plan.addName(pkg, pkg.Name); err != nil {
 		return nil, err
 	}
 
@@ -1172,7 +1186,7 @@ func (plan *InstallationPlan) addPackage(query PackageName) ([]*Package, error) 
 	// Add aliases afterwards.
 	// This makes sure the package is not conflicting with itself.
 	for _, alias := range pkg.Aliases {
-		if err := plan.addName(alias); err != nil {
+		if err := plan.addName(pkg, alias); err != nil {
 			return nil, err
 		}
 	}
@@ -1185,7 +1199,7 @@ outer:
 				continue
 			}
 
-			newAdded, err := plan.addPackage(option)
+			newAdded, err := plan.addPackage(pkg, option)
 			if _, ok := err.(ErrPackageNotFound); ok {
 				continue
 			} else if err != nil {
@@ -1204,6 +1218,20 @@ outer:
 	plan.Packages = append(plan.Packages, pkg)
 
 	return added, nil
+}
+
+func (plan *InstallationPlan) dumpGraph() error {
+	fmt.Printf("digraph G {\n")
+	for _, edge := range plan.dependencyGraph {
+		if edge[0] != nil {
+			fmt.Printf("%s -> %s\n", edge[0].Name.String(), edge[1].Name.String())
+		} else {
+			fmt.Printf("<nil> -> %s\n", edge[1].Name.String())
+		}
+	}
+	fmt.Printf("}\n")
+
+	return nil
 }
 
 // Attr implements starlark.HasAttrs.
@@ -1229,7 +1257,7 @@ func (plan *InstallationPlan) Attr(name string) (starlark.Value, error) {
 			var added []starlark.Value
 
 			for _, name := range names {
-				addedNew, err := plan.addPackage(name)
+				addedNew, err := plan.addPackage(nil, name)
 				if err != nil {
 					return starlark.None, err
 				}
@@ -1241,6 +1269,18 @@ func (plan *InstallationPlan) Attr(name string) (starlark.Value, error) {
 
 			return starlark.NewList(added), nil
 		}), nil
+	} else if name == "dump_graph" {
+		return starlark.NewBuiltin("Database.dump_graph", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			if err := plan.dumpGraph(); err != nil {
+				return starlark.None, err
+			}
+			return starlark.None, nil
+		}), nil
 	} else {
 		return nil, nil
 	}
@@ -1248,7 +1288,7 @@ func (plan *InstallationPlan) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (plan *InstallationPlan) AttrNames() []string {
-	return []string{"add"}
+	return []string{"add", "dump_graph"}
 }
 
 func (*InstallationPlan) String() string { return "InstallationPlan" }
@@ -1265,10 +1305,10 @@ var (
 )
 
 func (db *PackageDatabase) MakeInstallationPlan(packages []PackageName, opts QueryOptions) (*InstallationPlan, error) {
-	plan := &InstallationPlan{db: db, installed: make(map[string]string), queryOptions: opts}
+	plan := db.MakeIncrementalPlanner(opts)
 
 	for _, pkg := range packages {
-		if _, err := plan.addPackage(pkg); err != nil {
+		if _, err := plan.addPackage(nil, pkg); err != nil {
 			return nil, err
 		}
 	}
@@ -1277,7 +1317,12 @@ func (db *PackageDatabase) MakeInstallationPlan(packages []PackageName, opts Que
 }
 
 func (db *PackageDatabase) MakeIncrementalPlanner(opts QueryOptions) *InstallationPlan {
-	return &InstallationPlan{db: db, installed: make(map[string]string), queryOptions: opts}
+	return &InstallationPlan{
+		db:                db,
+		installed:         make(map[string]string),
+		installedPackages: make(map[string]*Package),
+		queryOptions:      opts,
+	}
 }
 
 func (db *PackageDatabase) Count() int64 {
