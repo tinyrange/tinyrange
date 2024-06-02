@@ -618,6 +618,9 @@ func (f *StarDirectory) addArchive(ark *StarArchive) error {
 			if _, err := parent.mkdirInternal(name); err != nil {
 				return err
 			}
+		case tar.TypeXGlobalHeader:
+			// ignored
+			continue
 		default:
 			return fmt.Errorf("StarDirectory.addArchive: unexpected Typeflag %d", ent.Typeflag())
 		}
