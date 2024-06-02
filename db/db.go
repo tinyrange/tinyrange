@@ -478,24 +478,28 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				return starlark.None, fmt.Errorf("expected FileIf got %s", file.Type())
 			}
 		}),
-		"parse_cmake": starlark.NewBuiltin("parse_cmake", func(
+		"eval_cmake": starlark.NewBuiltin("eval_cmake", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				file starlark.Value
+				file     starlark.Value
+				ctx      *starlark.Dict
+				commands *starlark.Dict
 			)
 
-			if err := starlark.UnpackArgs("parse_cmake", args, kwargs,
+			if err := starlark.UnpackArgs("eval_cmake", args, kwargs,
 				"file", &file,
+				"ctx", &ctx,
+				"commands", &commands,
 			); err != nil {
 				return starlark.None, err
 			}
 
-			if fileIf, ok := file.(StarFileIf); ok {
-				return parseCMake(fileIf)
+			if fileIf, ok := file.(*StarDirectory); ok {
+				return evalCMake(fileIf, ctx, commands)
 			} else {
 				return starlark.None, fmt.Errorf("expected StarFileIf got %s", file.Type())
 			}
