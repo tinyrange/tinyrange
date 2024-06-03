@@ -2,10 +2,13 @@ package db
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"path"
+	"regexp"
 	"strings"
 
+	"github.com/alecthomas/participle/lexer"
 	"github.com/kythe/llvmbzlgen/cmakelib/ast"
 	"go.starlark.net/starlark"
 )
@@ -100,6 +103,10 @@ type CommandStatement struct {
 
 // Eval implements CMakeStatement.
 func (c *CommandStatement) Eval(eval *CMakeEvaluatorScope) error {
+	if macro, ok := eval.eval.macros[c.Name]; ok {
+		return macro(eval, c.Arguments.Values)
+	}
+
 	args := c.Arguments.Eval(eval.evaluator)
 
 	return eval.eval.evalCommand(eval, c.Name, args)
@@ -254,7 +261,48 @@ func (i *IfStatement) String() string {
 type MacroStatement struct {
 	ast.CommandInvocation
 
-	Body []ast.CommandInvocation
+	Contents string
+
+	Filename string
+	StartPos lexer.Position
+	EndPos   lexer.Position
+}
+
+var MACRO_MATCHER = regexp.MustCompile(`\$\{([A-Z0-9]+)\}`)
+
+func (m *MacroStatement) rawArgument(arg ast.Argument) string {
+	panic("unimplemented")
+}
+
+func (m *MacroStatement) rawArguments(args []ast.Argument) string {
+	// Return the raw version of args.
+	var ret []string
+
+	for _, arg := range args {
+		ret = append(ret, m.rawArgument(arg))
+	}
+
+	return strings.Join(ret, " ")
+}
+
+func (m *MacroStatement) evalMacro(scope *CMakeEvaluatorScope, args []ast.Argument) error {
+	// perform macro replacement.
+	frag := MACRO_MATCHER.ReplaceAllStringFunc(m.Contents, func(s string) string {
+		name := s[2 : len(s)-1]
+
+		if name == "ARGV" {
+			return m.rawArguments(args)
+		} else {
+			return s
+		}
+	})
+
+	// parse the new code fragment.
+	_ = frag
+
+	// execute the code fragment.
+
+	return fmt.Errorf("not implemented")
 }
 
 // Eval implements CMakeStatement.
@@ -264,17 +312,31 @@ func (m *MacroStatement) Eval(eval *CMakeEvaluatorScope) error {
 	if len(args) == 1 {
 		name := args[0]
 
-		eval.eval.commands[name] = func(scope *CMakeEvaluatorScope, args []string) error {
-			child := scope.childScope("")
+		f, ok, err := eval.eval.open(m.Filename)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("file %s not found", m.Filename)
+		}
 
-			child.Set("ARGV", strings.Join(args, " "))
+		fh, err := f.Open()
+		if err != nil {
+			return err
+		}
+		defer fh.Close()
 
-			stmts, err := eval.eval.parseStatement(m.Body)
-			if err != nil {
-				return err
-			}
+		contents, err := io.ReadAll(fh)
+		if err != nil {
+			return err
+		}
 
-			return child.eval.evalBlock(child, stmts)
+		lines := strings.Split(string(contents), "\n")
+
+		m.Contents = strings.Join(lines[m.StartPos.Line:m.EndPos.Line-1], "\n")
+
+		eval.eval.macros[name] = func(scope *CMakeEvaluatorScope, args []ast.Argument) error {
+			return m.evalMacro(scope, args)
 		}
 
 		return nil
@@ -293,6 +355,7 @@ var (
 )
 
 type CMakeCommand func(scope *CMakeEvaluatorScope, args []string) error
+type CMakeMacro func(scope *CMakeEvaluatorScope, args []ast.Argument) error
 
 type CMakeEvaluatorScope struct {
 	eval *CMakeEvaluator
@@ -348,9 +411,10 @@ type CMakeEvaluator struct {
 	sourceRoot *StarDirectory
 
 	commands map[string]CMakeCommand
+	macros   map[string]CMakeMacro
 }
 
-func (eval *CMakeEvaluator) parseIfStatement(rest []ast.CommandInvocation) (CMakeStatement, []ast.CommandInvocation, error) {
+func (eval *CMakeEvaluator) parseIfStatement(filename string, rest []ast.CommandInvocation) (CMakeStatement, []ast.CommandInvocation, error) {
 	if rest[0].Name != "if" {
 		return nil, nil, fmt.Errorf("parseIfStatement: rest[0].Name != \"if\"")
 	}
@@ -372,7 +436,7 @@ outer:
 			} else if cmd.Name == "else" {
 				inElse = true
 			} else if cmd.Name == "if" {
-				stmt, newRest, err := eval.parseIfStatement(rest[i:])
+				stmt, newRest, err := eval.parseIfStatement(filename, rest[i:])
 				if err != nil {
 					return nil, nil, err
 				}
@@ -387,7 +451,7 @@ outer:
 
 				continue outer
 			} else if cmd.Name == "macro" {
-				stmt, newRest, err := eval.parseMacroStatement(rest[i:])
+				stmt, newRest, err := eval.parseMacroStatement(filename, rest[i:])
 				if err != nil {
 					return nil, nil, err
 				}
@@ -415,51 +479,57 @@ outer:
 	return nil, nil, fmt.Errorf("could not find an endif before the file ended")
 }
 
-func (eval *CMakeEvaluator) parseMacroStatement(rest []ast.CommandInvocation) (CMakeStatement, []ast.CommandInvocation, error) {
+func (eval *CMakeEvaluator) parseMacroStatement(filename string, rest []ast.CommandInvocation) (CMakeStatement, []ast.CommandInvocation, error) {
 	if rest[0].Name != "macro" {
 		return nil, nil, fmt.Errorf("parseMacroStatement: rest[0].Name != \"macro\"")
 	}
 
-	ret := &MacroStatement{CommandInvocation: rest[0]}
+	ret := &MacroStatement{
+		CommandInvocation: rest[0],
+		Filename:          filename,
+	}
+
+	ret.StartPos = rest[0].Pos
 
 	rest = rest[1:]
 
 	for i, cmd := range rest {
 		if cmd.Name == "endmacro" {
+			ret.EndPos = cmd.Pos
 			return ret, rest[i+1:], nil
 		} else {
-			ret.Body = append(ret.Body, cmd)
+			continue
 		}
 	}
 
 	return nil, nil, fmt.Errorf("could not find an endmacro before the file ended")
 }
 
-func (eval *CMakeEvaluator) parseStatement(cmds []ast.CommandInvocation) ([]CMakeStatement, error) {
+func (eval *CMakeEvaluator) parseStatement(filename string, cmds []ast.CommandInvocation) ([]CMakeStatement, error) {
 	var ret []CMakeStatement
 
 	for i, cmd := range cmds {
 		if cmd.Name == "if" {
-			stmt, newRest, err := eval.parseIfStatement(cmds[i:])
+			stmt, newRest, err := eval.parseIfStatement(filename, cmds[i:])
 			if err != nil {
 				return nil, err
 			}
 			ret = append(ret, stmt)
 
-			rest, err := eval.parseStatement(newRest)
+			rest, err := eval.parseStatement(filename, newRest)
 			if err != nil {
 				return nil, err
 			}
 
 			return append(ret, rest...), nil
 		} else if cmd.Name == "macro" {
-			stmt, newRest, err := eval.parseMacroStatement(cmds[i:])
+			stmt, newRest, err := eval.parseMacroStatement(filename, cmds[i:])
 			if err != nil {
 				return nil, err
 			}
 			ret = append(ret, stmt)
 
-			rest, err := eval.parseStatement(newRest)
+			rest, err := eval.parseStatement(filename, newRest)
 			if err != nil {
 				return nil, err
 			}
@@ -488,7 +558,7 @@ func (eval *CMakeEvaluator) evalBlock(scope *CMakeEvaluatorScope, stmts []CMakeS
 func (eval *CMakeEvaluator) evalFile(scope *CMakeEvaluatorScope, filename string, ast *ast.CMakeFile) error {
 	child := scope.childScope(path.Dir(filename))
 
-	stmts, err := eval.parseStatement(ast.Commands)
+	stmts, err := eval.parseStatement(filename, ast.Commands)
 	if err != nil {
 		return err
 	}
@@ -618,6 +688,7 @@ func evalCMake(f *StarDirectory, ctx *starlark.Dict, cmds *starlark.Dict) (starl
 		base:       f.Name() + "/",
 		sourceRoot: f,
 		commands:   make(map[string]CMakeCommand),
+		macros:     make(map[string]CMakeMacro),
 	}
 
 	eval.commands["include"] = func(scope *CMakeEvaluatorScope, args []string) error {
