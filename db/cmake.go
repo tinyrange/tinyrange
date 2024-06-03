@@ -3,93 +3,15 @@ package db
 import (
 	"fmt"
 	"log/slog"
+	"path"
+	"strings"
 
 	"github.com/kythe/llvmbzlgen/cmakelib/ast"
 	"go.starlark.net/starlark"
 )
 
-type CMakeStatement interface {
-	cmakeStatement()
-
-	Eval(eval *CMakeEvaluator) error
-}
-
-type CommandStatement struct {
-	ast.CommandInvocation
-}
-
-// Eval implements CMakeStatement.
-func (c *CommandStatement) Eval(eval *CMakeEvaluator) error {
-	args := c.Arguments.Eval(eval.evaluator)
-
-	return eval.evalCommand(c.Name, args)
-}
-
-// cmakeStatement implements CMakeStatement.
-func (c *CommandStatement) cmakeStatement() { panic("unimplemented") }
-
-func (c *CommandStatement) String() string {
-	return fmt.Sprintf("Command{%s}", c.Name)
-}
-
-type IfStatement struct {
-	ast.CommandInvocation
-
-	Body []CMakeStatement
-	Else []CMakeStatement
-}
-
-// Eval implements CMakeStatement.
-func (i *IfStatement) Eval(eval *CMakeEvaluator) error {
-	args := i.Arguments.Eval(eval.evaluator)
-
-	not := false
-
-	if args[0] == "NOT" {
-		not = true
-		args = args[1:]
-	}
-
-	slog.Info("if", "not", not, "args", args)
-
-	compare := false
-
-	if args[1] == "STREQUAL" {
-		compare = args[0] == args[2]
-	} else {
-		slog.Info("if not implemented", "args", args)
-
-		return fmt.Errorf("if not implemented")
-	}
-
-	if not {
-		compare = !compare
-	}
-
-	if compare {
-		slog.Info("eval then", "block", i.Body)
-		return eval.evalBlock(i.Body)
-	} else {
-		slog.Info("eval else", "block", i.Else)
-		return eval.evalBlock(i.Else)
-	}
-}
-
-// cmakeStatement implements CMakeStatement.
-func (i *IfStatement) cmakeStatement() { panic("unimplemented") }
-
-func (i *IfStatement) String() string {
-	return fmt.Sprintf("If then %+v else %+v", i.Body, i.Else)
-}
-
-var (
-	_ CMakeStatement = &CommandStatement{}
-	_ CMakeStatement = &IfStatement{}
-)
-
-type CMakeCommand func(args []string) error
-
 type evaluator struct {
+	parent *evaluator
 	values *starlark.Dict
 }
 
@@ -101,7 +23,11 @@ func (eval *evaluator) Get(k string) string {
 	}
 
 	if !ok {
-		return ""
+		if eval.parent != nil {
+			return eval.parent.Get(k)
+		} else {
+			return ""
+		}
 	}
 
 	str, ok := starlark.AsString(v)
@@ -120,7 +46,11 @@ func (eval *evaluator) GetCache(k string) string {
 	}
 
 	if !ok {
-		return ""
+		if eval.parent != nil {
+			return eval.parent.GetCache(k)
+		} else {
+			return ""
+		}
 	}
 
 	str, ok := starlark.AsString(v)
@@ -139,7 +69,11 @@ func (eval *evaluator) GetEnv(k string) string {
 	}
 
 	if !ok {
-		return ""
+		if eval.parent != nil {
+			return eval.parent.GetEnv(k)
+		} else {
+			return ""
+		}
 	}
 
 	str, ok := starlark.AsString(v)
@@ -154,20 +88,266 @@ var (
 	_ ast.Bindings = &evaluator{}
 )
 
-type CMakeEvaluator struct {
-	commands map[string]CMakeCommand
+type CMakeStatement interface {
+	cmakeStatement()
+
+	Eval(eval *CMakeEvaluatorScope) error
+}
+
+type CommandStatement struct {
+	ast.CommandInvocation
+}
+
+// Eval implements CMakeStatement.
+func (c *CommandStatement) Eval(eval *CMakeEvaluatorScope) error {
+	args := c.Arguments.Eval(eval.evaluator)
+
+	return eval.eval.evalCommand(eval, c.Name, args)
+}
+
+// cmakeStatement implements CMakeStatement.
+func (c *CommandStatement) cmakeStatement() { panic("unimplemented") }
+
+func (c *CommandStatement) String() string {
+	return fmt.Sprintf("Command{%s}", c.Name)
+}
+
+type IfStatement struct {
+	ast.CommandInvocation
+
+	Body []CMakeStatement
+	Else []CMakeStatement
+}
+
+func (i *IfStatement) evalArg(eval *CMakeEvaluatorScope, arg ast.Argument) (string, error) {
+	switch {
+	case arg.QuotedArgument != nil:
+		return strings.Join(arg.QuotedArgument.Eval(eval.evaluator), " "), nil
+	case arg.UnquotedArgument != nil:
+		val := strings.Join(arg.UnquotedArgument.Eval(eval.evaluator), " ")
+
+		return eval.evaluator.Get(val), nil
+	case arg.BracketArgument != nil:
+		return strings.Join(arg.BracketArgument.Eval(eval.evaluator), " "), nil
+	case arg.ArgumentList != nil:
+		// Include the parens, but only for nested argument lists.
+		values := []string{"("}
+		values = append(values, arg.ArgumentList.Eval(eval.evaluator)...)
+		return strings.Join(append(values, ")"), " "), nil
+	}
+	panic("Missing concrete argument!")
+}
+
+func (i *IfStatement) evalCondition(eval *CMakeEvaluatorScope) (bool, error) {
+	args := i.Arguments.Values
+	// slog.Info("if", "args", args)
+
+	not := false
+
+	if args[0].Eval(eval.evaluator)[0] == "NOT" {
+		not = true
+		args = args[1:]
+	}
+
+	if len(args) == 3 {
+
+		op := args[1].Eval(eval.evaluator)[0]
+
+		_ = not
+
+		switch op {
+		case "STREQUAL":
+			lhs, err := i.evalArg(eval, args[0])
+			if err != nil {
+				return false, err
+			}
+
+			rhs, err := i.evalArg(eval, args[2])
+			if err != nil {
+				return false, err
+			}
+
+			slog.Info("if", "op", op, "lhs", lhs, "rhs", rhs)
+
+			result := lhs == rhs
+
+			if not {
+				result = !result
+			}
+
+			return result, nil
+		case "VERSION_EQUAL":
+			lhs, err := i.evalArg(eval, args[0])
+			if err != nil {
+				return false, err
+			}
+
+			rhs, err := i.evalArg(eval, args[2])
+			if err != nil {
+				return false, err
+			}
+
+			slog.Info("if", "op", op, "lhs", lhs, "rhs", rhs)
+
+			result := lhs == rhs
+
+			if not {
+				result = !result
+			}
+
+			return result, nil
+		default:
+			return false, fmt.Errorf("if op not implemented: %s", op)
+		}
+	} else if len(args) == 2 {
+		op := args[0].Eval(eval.evaluator)[0]
+
+		switch op {
+		case "COMMAND":
+			command := args[1].Eval(eval.evaluator)[0]
+
+			_, result := eval.eval.commands[command]
+
+			if not {
+				result = !result
+			}
+
+			return result, nil
+		case "POLICY":
+			policyName := args[1].Eval(eval.evaluator)[0]
+
+			switch policyName {
+			case "CMP0116":
+				return false, nil
+			default:
+				return false, fmt.Errorf("policy %s not implemented", policyName)
+			}
+		default:
+			return false, fmt.Errorf("if op not implemented: %s", op)
+		}
+	} else {
+		return false, fmt.Errorf("unhandled if statement: len(args) == %d", len(args))
+	}
+}
+
+// Eval implements CMakeStatement.
+func (i *IfStatement) Eval(eval *CMakeEvaluatorScope) error {
+	cond, err := i.evalCondition(eval)
+	if err != nil {
+		return err
+	}
+
+	if cond {
+		return eval.eval.evalBlock(eval, i.Body)
+	} else {
+		return eval.eval.evalBlock(eval, i.Else)
+	}
+}
+
+// cmakeStatement implements CMakeStatement.
+func (i *IfStatement) cmakeStatement() { panic("unimplemented") }
+
+func (i *IfStatement) String() string {
+	return fmt.Sprintf("If then %+v else %+v", i.Body, i.Else)
+}
+
+type MacroStatement struct {
+	ast.CommandInvocation
+
+	Body []ast.CommandInvocation
+}
+
+// Eval implements CMakeStatement.
+func (m *MacroStatement) Eval(eval *CMakeEvaluatorScope) error {
+	args := m.Arguments.Eval(eval.evaluator)
+
+	if len(args) == 1 {
+		name := args[0]
+
+		eval.eval.commands[name] = func(scope *CMakeEvaluatorScope, args []string) error {
+			child := scope.childScope("")
+
+			child.Set("ARGV", strings.Join(args, " "))
+
+			stmts, err := eval.eval.parseStatement(m.Body)
+			if err != nil {
+				return err
+			}
+
+			return child.eval.evalBlock(child, stmts)
+		}
+
+		return nil
+	} else {
+		return fmt.Errorf("macro not implemented: len(args) = %d", len(args))
+	}
+}
+
+// cmakeStatement implements CMakeStatement.
+func (m *MacroStatement) cmakeStatement() { panic("unimplemented") }
+
+var (
+	_ CMakeStatement = &CommandStatement{}
+	_ CMakeStatement = &IfStatement{}
+	_ CMakeStatement = &MacroStatement{}
+)
+
+type CMakeCommand func(scope *CMakeEvaluatorScope, args []string) error
+
+type CMakeEvaluatorScope struct {
+	eval *CMakeEvaluator
 
 	evaluator *evaluator
 }
 
 // Get implements starlark.HasSetKey.
-func (eval *CMakeEvaluator) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
+func (eval *CMakeEvaluatorScope) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
 	return eval.evaluator.values.Get(k)
 }
 
 // SetKey implements starlark.HasSetKey.
-func (eval *CMakeEvaluator) SetKey(k starlark.Value, v starlark.Value) error {
+func (eval *CMakeEvaluatorScope) SetKey(k starlark.Value, v starlark.Value) error {
 	return eval.evaluator.values.SetKey(k, v)
+}
+
+func (eval *CMakeEvaluatorScope) childScope(dirname string) *CMakeEvaluatorScope {
+	child := &CMakeEvaluatorScope{
+		eval: eval.eval,
+		evaluator: &evaluator{
+			parent: eval.evaluator,
+			values: starlark.NewDict(32),
+		},
+	}
+
+	if dirname != "" {
+		child.Set("CMAKE_CURRENT_LIST_DIR", dirname)
+	}
+
+	return child
+}
+
+func (eval *CMakeEvaluatorScope) Set(k string, v string) {
+	eval.evaluator.values.SetKey(starlark.String(k), starlark.String(v))
+}
+
+func (*CMakeEvaluatorScope) String() string { return "CMakeEvaluatorScope" }
+func (*CMakeEvaluatorScope) Type() string   { return "CMakeEvaluatorScope" }
+func (*CMakeEvaluatorScope) Hash() (uint32, error) {
+	return 0, fmt.Errorf("CMakeEvaluatorScope is not hashable")
+}
+func (*CMakeEvaluatorScope) Truth() starlark.Bool { return starlark.True }
+func (*CMakeEvaluatorScope) Freeze()              {}
+
+var (
+	_ starlark.Value     = &CMakeEvaluatorScope{}
+	_ starlark.HasSetKey = &CMakeEvaluatorScope{}
+)
+
+type CMakeEvaluator struct {
+	base       string
+	sourceRoot *StarDirectory
+
+	commands map[string]CMakeCommand
 }
 
 func (eval *CMakeEvaluator) parseIfStatement(rest []ast.CommandInvocation) (CMakeStatement, []ast.CommandInvocation, error) {
@@ -206,6 +386,21 @@ outer:
 				rest = newRest
 
 				continue outer
+			} else if cmd.Name == "macro" {
+				stmt, newRest, err := eval.parseMacroStatement(rest[i:])
+				if err != nil {
+					return nil, nil, err
+				}
+
+				if inElse {
+					ret.Else = append(ret.Else, stmt)
+				} else {
+					ret.Body = append(ret.Body, stmt)
+				}
+
+				rest = newRest
+
+				continue outer
 			} else {
 				if inElse {
 					ret.Else = append(ret.Else, &CommandStatement{CommandInvocation: cmd})
@@ -217,7 +412,27 @@ outer:
 		break outer
 	}
 
-	return nil, nil, fmt.Errorf("could not find a endif before the file ended")
+	return nil, nil, fmt.Errorf("could not find an endif before the file ended")
+}
+
+func (eval *CMakeEvaluator) parseMacroStatement(rest []ast.CommandInvocation) (CMakeStatement, []ast.CommandInvocation, error) {
+	if rest[0].Name != "macro" {
+		return nil, nil, fmt.Errorf("parseMacroStatement: rest[0].Name != \"macro\"")
+	}
+
+	ret := &MacroStatement{CommandInvocation: rest[0]}
+
+	rest = rest[1:]
+
+	for i, cmd := range rest {
+		if cmd.Name == "endmacro" {
+			return ret, rest[i+1:], nil
+		} else {
+			ret.Body = append(ret.Body, cmd)
+		}
+	}
+
+	return nil, nil, fmt.Errorf("could not find an endmacro before the file ended")
 }
 
 func (eval *CMakeEvaluator) parseStatement(cmds []ast.CommandInvocation) ([]CMakeStatement, error) {
@@ -236,7 +451,20 @@ func (eval *CMakeEvaluator) parseStatement(cmds []ast.CommandInvocation) ([]CMak
 				return nil, err
 			}
 
-			return append(append(ret, stmt), rest...), nil
+			return append(ret, rest...), nil
+		} else if cmd.Name == "macro" {
+			stmt, newRest, err := eval.parseMacroStatement(cmds[i:])
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, stmt)
+
+			rest, err := eval.parseStatement(newRest)
+			if err != nil {
+				return nil, err
+			}
+
+			return append(ret, rest...), nil
 		} else {
 			ret = append(ret, &CommandStatement{CommandInvocation: cmd})
 		}
@@ -245,9 +473,11 @@ func (eval *CMakeEvaluator) parseStatement(cmds []ast.CommandInvocation) ([]CMak
 	return ret, nil
 }
 
-func (eval *CMakeEvaluator) evalBlock(stmts []CMakeStatement) error {
+func (eval *CMakeEvaluator) evalBlock(scope *CMakeEvaluatorScope, stmts []CMakeStatement) error {
+	// slog.Info("evalBlock", "stmts", stmts)
+
 	for _, stmt := range stmts {
-		if err := stmt.Eval(eval); err != nil {
+		if err := stmt.Eval(scope); err != nil {
 			return err
 		}
 	}
@@ -255,38 +485,112 @@ func (eval *CMakeEvaluator) evalBlock(stmts []CMakeStatement) error {
 	return nil
 }
 
-func (eval *CMakeEvaluator) evalFile(ast *ast.CMakeFile) error {
+func (eval *CMakeEvaluator) evalFile(scope *CMakeEvaluatorScope, filename string, ast *ast.CMakeFile) error {
+	child := scope.childScope(path.Dir(filename))
+
 	stmts, err := eval.parseStatement(ast.Commands)
 	if err != nil {
 		return err
 	}
 
-	if err := eval.evalBlock(stmts); err != nil {
+	if err := eval.evalBlock(child, stmts); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (eval *CMakeEvaluator) evalCommand(name string, args []string) error {
+func (eval *CMakeEvaluator) evalCommand(scope *CMakeEvaluatorScope, name string, args []string) error {
 	cmd, ok := eval.commands[name]
 	if !ok {
 		return fmt.Errorf("command %s not found", name)
 	}
 
-	return cmd(args)
+	return cmd(scope, args)
 }
 
-func (*CMakeEvaluator) String() string        { return "CMakeEvaluator" }
-func (*CMakeEvaluator) Type() string          { return "CMakeEvaluator" }
-func (*CMakeEvaluator) Hash() (uint32, error) { return 0, fmt.Errorf("CMakeEvaluator is not hashable") }
-func (*CMakeEvaluator) Truth() starlark.Bool  { return starlark.True }
-func (*CMakeEvaluator) Freeze()               {}
+func (eval *CMakeEvaluator) open(path string) (StarFileIf, bool, error) {
+	path = strings.TrimPrefix(path, eval.base)
 
-var (
-	_ starlark.Value     = &CMakeEvaluator{}
-	_ starlark.HasSetKey = &CMakeEvaluator{}
-)
+	slog.Info("open", "path", path)
+
+	return eval.sourceRoot.openChild(path, false)
+}
+
+func (eval *CMakeEvaluator) searchForFile(name string, paths []string) (StarFileIf, error) {
+	slog.Info("searchForFile", "name", name, "paths", paths)
+	child, ok, err := eval.open(name)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return child, nil
+	}
+
+	for _, path := range paths {
+		dir, ok, err := eval.open(path)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+
+		if dir, ok := dir.(*StarDirectory); ok {
+			for childName, child := range dir.entries {
+				if childName == name {
+					return child, nil
+				}
+			}
+		} else {
+			return nil, fmt.Errorf("item in search path is not a directory: %s", path)
+		}
+	}
+
+	return nil, fmt.Errorf("file not found in paths: %s", name)
+}
+
+func (eval *CMakeEvaluator) evalInclude(scope *CMakeEvaluatorScope, name string, opts []string) error {
+	slog.Info("include", "name", name, "opts", opts)
+
+	searchPath := strings.Split(scope.evaluator.Get("CMAKE_MODULE_PATH"), " ")
+
+	if !strings.HasSuffix(name, ".cmake") {
+		name = name + ".cmake"
+	}
+
+	file, err := eval.searchForFile(name, searchPath)
+	if err != nil {
+		return err
+	}
+
+	if err := eval.evalFileIf(scope, file); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (eval *CMakeEvaluator) evalFileIf(scope *CMakeEvaluatorScope, f StarFileIf) error {
+	fh, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer fh.Close()
+
+	parser := ast.NewParser()
+
+	ast, err := parser.Parse(fh)
+	if err != nil {
+		return err
+	}
+
+	if err := eval.evalFile(scope, f.Name(), ast); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 func evalCMake(f *StarDirectory, ctx *starlark.Dict, cmds *starlark.Dict) (starlark.Value, error) {
 	top, ok, err := f.openChild("CMakeLists.txt", false)
@@ -311,10 +615,13 @@ func evalCMake(f *StarDirectory, ctx *starlark.Dict, cmds *starlark.Dict) (starl
 	}
 
 	eval := &CMakeEvaluator{
-		commands: make(map[string]CMakeCommand),
-		evaluator: &evaluator{
-			values: ctx,
-		},
+		base:       f.Name() + "/",
+		sourceRoot: f,
+		commands:   make(map[string]CMakeCommand),
+	}
+
+	eval.commands["include"] = func(scope *CMakeEvaluatorScope, args []string) error {
+		return eval.evalInclude(scope, args[0], args[1:])
 	}
 
 	cmds.Entries(func(k, v starlark.Value) bool {
@@ -323,7 +630,7 @@ func evalCMake(f *StarDirectory, ctx *starlark.Dict, cmds *starlark.Dict) (starl
 			slog.Warn("could not convert to string", "type", k.Type())
 		}
 
-		eval.commands[kStr] = func(args []string) error {
+		eval.commands[kStr] = func(scope *CMakeEvaluatorScope, args []string) error {
 			var argValues starlark.Tuple
 
 			for _, arg := range args {
@@ -332,7 +639,7 @@ func evalCMake(f *StarDirectory, ctx *starlark.Dict, cmds *starlark.Dict) (starl
 
 			thread := &starlark.Thread{}
 
-			_, err := starlark.Call(thread, v, starlark.Tuple{eval, argValues}, []starlark.Tuple{})
+			_, err := starlark.Call(thread, v, starlark.Tuple{scope, argValues}, []starlark.Tuple{})
 			if err != nil {
 				return err
 			}
@@ -343,7 +650,14 @@ func evalCMake(f *StarDirectory, ctx *starlark.Dict, cmds *starlark.Dict) (starl
 		return true
 	})
 
-	if err := eval.evalFile(ast); err != nil {
+	scope := &CMakeEvaluatorScope{
+		eval: eval,
+		evaluator: &evaluator{
+			values: ctx,
+		},
+	}
+
+	if err := eval.evalFile(scope, top.Name(), ast); err != nil {
 		return starlark.None, err
 	}
 

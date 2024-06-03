@@ -27,22 +27,29 @@ def cmd_project(ctx, args):
 
 def cmd_message(ctx, args):
     if args[0] == "FATAL_ERROR":
-        return error(args[1])
+        return error("".join(args[1:]))
     else:
         print("message", args)
         return error("message not implemented")
+
+def cmd_set(ctx, args):
+    print("set", args)
+    ctx[args[0]] = args[1]
+    return None
 
 COMMANDS = {
     "cmake_minimum_required": cmd_cmake_minimum_required,
     "list": cmd_list,
     "project": cmd_project,
     "message": cmd_message,
+    "set": cmd_set,
 }
 
 def main(ctx):
     result = eval_cmake(fetch_github_archive(OWNER, REPO, COMMIT), {
-        "CMAKE_CURRENT_LIST_DIR": ".",
         "CMAKE_SYSTEM_NAME": "SerenityOS",
+        "CMAKE_CXX_COMPILER_ID": "GNU",
+        "CMAKE_CXX_COMPILER_VERSION": "13.2.0",
     }, COMMANDS)
 
     print(result)
