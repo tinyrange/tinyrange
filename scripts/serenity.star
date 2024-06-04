@@ -37,6 +37,14 @@ def cmd_set(ctx, args):
     ctx[args[0]] = args[1]
     return None
 
+def cmd_option(ctx, args):
+    print("option", args)
+    return None
+
+def cmd_define_property(ctx, args):
+    print("define_property", args)
+    return None
+
 def cmd_find_program(ctx, args):
     print("find_program", args)
     return None
@@ -57,17 +65,54 @@ def cmd_add_compile_options(ctx, args):
     print("add_compile_options", args)
     return None
 
+def cmd_add_link_options(ctx, args):
+    print("add_link_options", args)
+    return None
+
+def cmd_add_compile_definitions(ctx, args):
+    print("add_compile_definitions", args)
+    return None
+
+def cmd_include_directories(ctx, args):
+    print("include_directories", args)
+    return None
+
+def cmd_add_dependencies(ctx, args):
+    print("add_dependencies", args)
+    return None
+
+def cmd_find_package(ctx, args):
+    print("find_package", args)
+    return None
+
+def cmd_add_library(ctx, args):
+    print("add_library", args)
+    return None
+
+def cmd_add_subdirectory(ctx, args):
+    print("add_subdirectory", args)
+    return None
+
 COMMANDS = {
     "cmake_minimum_required": cmd_cmake_minimum_required,
     "list": cmd_list,
     "project": cmd_project,
     "message": cmd_message,
     "set": cmd_set,
+    "option": cmd_option,
+    "define_property": cmd_define_property,
     "find_program": cmd_find_program,
     "add_custom_target": cmd_add_custom_target,
     "configure_file": cmd_configure_file,
     "install": cmd_install,
     "add_compile_options": cmd_add_compile_options,
+    "add_compile_definitions": cmd_add_compile_definitions,
+    "add_link_options": cmd_add_link_options,
+    "include_directories": cmd_include_directories,
+    "add_dependencies": cmd_add_dependencies,
+    "find_package": cmd_find_package,
+    "add_library": cmd_add_library,
+    "add_subdirectory": cmd_add_subdirectory,
 }
 
 def main(ctx):

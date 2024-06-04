@@ -9,8 +9,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/alecthomas/participle"
 	"github.com/alecthomas/participle/lexer"
-	"github.com/kythe/llvmbzlgen/cmakelib/ast"
+	cmakeLexer "github.com/kythe/llvmbzlgen/cmakelib/lexer"
+	ast "github.com/tinyrange/pkg2/third_party/llvmbzlgen"
 	"go.starlark.net/starlark"
 )
 
@@ -120,14 +122,37 @@ func (c *CommandStatement) String() string {
 	return fmt.Sprintf("Command{%s}", c.Name)
 }
 
-type IfStatement struct {
-	ast.CommandInvocation
+type ifStatementNodeType int
 
-	Body []CMakeStatement
-	Else []CMakeStatement
+const (
+	OP_UNARY ifStatementNodeType = iota
+	OP_BINARY
+	OP_VALUE
+)
+
+type ifStatementNode struct {
+	Type        ifStatementNodeType
+	StringValue string
+	Value       ast.Argument
+	Left        *ifStatementNode
+	Right       *ifStatementNode
 }
 
-func (i *IfStatement) evalArg(eval *CMakeEvaluatorScope, arg ast.Argument) (string, error) {
+func (n *ifStatementNode) String() string {
+	switch n.Type {
+	case OP_UNARY:
+		return fmt.Sprintf("(%s %s)", n.StringValue, n.Left)
+	case OP_BINARY:
+		return fmt.Sprintf("(%s %s %s)", n.Left, n.StringValue, n.Right)
+	case OP_VALUE:
+		return strings.Join(n.Value.Eval(nil), "")
+	default:
+		return "<unknown>"
+	}
+}
+
+func (n *ifStatementNode) evalArg(eval *CMakeEvaluatorScope) (string, error) {
+	arg := n.Value
 	switch {
 	case arg.QuotedArgument != nil:
 		return strings.Join(arg.QuotedArgument.Eval(eval.evaluator), " "), nil
@@ -146,102 +171,372 @@ func (i *IfStatement) evalArg(eval *CMakeEvaluatorScope, arg ast.Argument) (stri
 	panic("Missing concrete argument!")
 }
 
-func (i *IfStatement) evalCondition(eval *CMakeEvaluatorScope) (bool, error) {
-	args := i.Arguments.Values
-	// slog.Info("if", "args", args)
-
-	not := false
-
-	if args[0].Eval(eval.evaluator)[0] == "NOT" {
-		not = true
-		args = args[1:]
+func (n *ifStatementNode) evalString(eval *CMakeEvaluatorScope) (string, error) {
+	if n.Type != OP_VALUE {
+		return "", fmt.Errorf("n.Type != OP_VALUE")
 	}
 
-	if len(args) == 3 {
-		op := args[1].Eval(eval.evaluator)[0]
+	return n.evalArg(eval)
+}
 
-		_ = not
-
-		switch op {
-		case "STREQUAL":
-			lhs, err := i.evalArg(eval, args[0])
+func (n *ifStatementNode) Eval(eval *CMakeEvaluatorScope) (bool, error) {
+	switch n.Type {
+	case OP_UNARY:
+		switch n.StringValue {
+		case "NOT":
+			val, err := n.Left.Eval(eval)
 			if err != nil {
 				return false, err
 			}
 
-			rhs, err := i.evalArg(eval, args[2])
-			if err != nil {
-				return false, err
-			}
-
-			slog.Info("if", "op", op, "lhs", lhs, "rhs", rhs)
-
-			result := lhs == rhs
-
-			if not {
-				result = !result
-			}
-
-			return result, nil
-		case "VERSION_EQUAL":
-			lhs, err := i.evalArg(eval, args[0])
-			if err != nil {
-				return false, err
-			}
-
-			rhs, err := i.evalArg(eval, args[2])
-			if err != nil {
-				return false, err
-			}
-
-			slog.Info("if", "op", op, "lhs", lhs, "rhs", rhs)
-
-			result := lhs == rhs
-
-			if not {
-				result = !result
-			}
-
-			return result, nil
-		default:
-			return false, fmt.Errorf("if op not implemented: %s", op)
-		}
-	} else if len(args) == 2 {
-		op := args[0].Eval(eval.evaluator)[0]
-
-		switch op {
+			return !val, nil
 		case "COMMAND":
-			command := args[1].Eval(eval.evaluator)[0]
-
-			_, result := eval.eval.commands[command]
-
-			if not {
-				result = !result
+			val, err := n.Left.evalString(eval)
+			if err != nil {
+				return false, err
 			}
 
-			return result, nil
-		case "POLICY":
-			policyName := args[1].Eval(eval.evaluator)[0]
+			_, ok := eval.eval.commands[val]
+			return ok, nil
+		case "EXISTS":
+			val, err := n.Left.evalString(eval)
+			if err != nil {
+				return false, err
+			}
 
-			switch policyName {
+			_, ok, err := eval.eval.sourceRoot.openChild(val, false)
+			if err != nil {
+				return false, err
+			}
+			return ok, nil
+		case "POLICY":
+			val := n.Left.String()
+
+			switch val {
 			case "CMP0116":
 				return false, nil
 			default:
-				return false, fmt.Errorf("policy %s not implemented", policyName)
+				return false, fmt.Errorf("unknown policy: %s", val)
 			}
 		default:
-			return false, fmt.Errorf("if op not implemented: %s", op)
+			return false, fmt.Errorf("unimplemented unary op: %s", n.StringValue)
 		}
-	} else if len(args) == 1 {
-		val, err := i.evalArg(eval, args[0])
+	case OP_BINARY:
+		switch n.StringValue {
+		case "MATCHES":
+			lhs, err := n.Left.evalString(eval)
+			if err != nil {
+				return false, err
+			}
+
+			rhs, err := n.Right.evalString(eval)
+			if err != nil {
+				return false, err
+			}
+
+			slog.Info("MATCHES", "lhs", lhs, "rhs", rhs)
+
+			return lhs == rhs, nil
+		case "STREQUAL":
+			lhs, err := n.Left.evalString(eval)
+			if err != nil {
+				return false, err
+			}
+
+			rhs, err := n.Right.evalString(eval)
+			if err != nil {
+				return false, err
+			}
+
+			slog.Info("STREQUAL", "lhs", lhs, "rhs", rhs)
+
+			return lhs == rhs, nil
+		case "VERSION_EQUAL":
+			lhs, err := n.Left.evalString(eval)
+			if err != nil {
+				return false, err
+			}
+
+			rhs, err := n.Right.evalString(eval)
+			if err != nil {
+				return false, err
+			}
+
+			slog.Info("VERSION_EQUAL", "lhs", lhs, "rhs", rhs)
+
+			return lhs == rhs, nil
+		case "VERSION_GREATER_EQUAL":
+			lhs, err := n.Left.evalString(eval)
+			if err != nil {
+				return false, err
+			}
+
+			rhs, err := n.Right.evalString(eval)
+			if err != nil {
+				return false, err
+			}
+
+			slog.Info("VERSION_GREATER_EQUAL", "lhs", lhs, "rhs", rhs)
+
+			return lhs == rhs, nil
+		case "AND":
+			lhs, err := n.Left.Eval(eval)
+			if err != nil {
+				return false, err
+			}
+
+			rhs, err := n.Right.Eval(eval)
+			if err != nil {
+				return false, err
+			}
+
+			return lhs && rhs, nil
+		case "OR":
+			lhs, err := n.Left.Eval(eval)
+			if err != nil {
+				return false, err
+			}
+
+			rhs, err := n.Right.Eval(eval)
+			if err != nil {
+				return false, err
+			}
+
+			return lhs || rhs, nil
+		default:
+			return false, fmt.Errorf("unimplemented binary op: %s", n.StringValue)
+		}
+	case OP_VALUE:
+		val, err := n.evalString(eval)
 		if err != nil {
 			return false, err
 		}
 
 		return val != "", nil
-	} else {
-		return false, fmt.Errorf("unhandled if statement: len(args) == %d", len(args))
 	}
+	panic("unimplemented")
+}
+
+type ifStatementToken struct {
+	Value ast.Argument
+}
+
+func (tk ifStatementToken) Type() string {
+	return tk.Value.Eval(nil)[0]
+}
+
+func (tk ifStatementToken) IsBinary() bool {
+	switch tk.Type() {
+	case "EQUAL":
+		return true
+	case "LESS":
+		return true
+	case "LESS_EQUAL":
+		return true
+	case "GREATER":
+		return true
+	case "GREATER_EQUAL":
+		return true
+	case "STREQUAL":
+		return true
+	case "STRLESS":
+		return true
+	case "STRLESS_EQUAL":
+		return true
+	case "STRGREATER":
+		return true
+	case "STRGREATER_EQUAL":
+		return true
+	case "VERSION_EQUAL":
+		return true
+	case "VERSION_LESS":
+		return true
+	case "VERSION_LESS_EQUAL":
+		return true
+	case "VERSION_GREATER":
+		return true
+	case "VERSION_GREATER_EQUAL":
+		return true
+	case "PATH_EQUAL":
+		return true
+	case "MATCHES":
+		return true
+	case "AND":
+		return true
+	case "OR":
+		return true
+	default:
+		return false
+	}
+}
+
+func (tk ifStatementToken) IsUnary() bool {
+	switch tk.Type() {
+	case "EXISTS":
+		return true
+	case "COMMAND":
+		return true
+	case "DEFINED":
+		return true
+	case "POLICY":
+		return true
+	case "NOT":
+		return true
+	default:
+		return false
+	}
+}
+
+// precedenceParser structure
+type precedenceParser struct {
+	tokens     []ifStatementToken
+	position   int
+	stack      []*ifStatementNode
+	operators  []ifStatementToken
+	precedence map[string]int
+}
+
+// newIfStatementParser creates a new parser instance
+func newIfStatementParser(args []ast.Argument) *precedenceParser {
+	var tokens []ifStatementToken
+	for _, arg := range args {
+		tokens = append(tokens, ifStatementToken{Value: arg})
+	}
+
+	return &precedenceParser{
+		tokens:   tokens,
+		position: 0,
+		stack:    []*ifStatementNode{},
+		precedence: map[string]int{
+			"EXISTS":                4,
+			"COMMAND":               4,
+			"DEFINED":               4,
+			"POLICY":                4,
+			"EQUAL":                 3,
+			"LESS":                  3,
+			"LESS_EQUAL":            3,
+			"GREATER":               3,
+			"GREATER_EQUAL":         3,
+			"STREQUAL":              3,
+			"STRLESS":               3,
+			"STRLESS_EQUAL":         3,
+			"STRGREATER":            3,
+			"STRGREATER_EQUAL":      3,
+			"VERSION_EQUAL":         3,
+			"VERSION_LESS":          3,
+			"VERSION_LESS_EQUAL":    3,
+			"VERSION_GREATER":       3,
+			"VERSION_GREATER_EQUAL": 3,
+			"PATH_EQUAL":            3,
+			"MATCHES":               3,
+			"NOT":                   2,
+			"AND":                   1,
+			"OR":                    1,
+		},
+	}
+}
+
+// Parse parses the tokens into an AST
+func (p *precedenceParser) Parse() *ifStatementNode {
+	expectUnary := true
+
+	for p.position < len(p.tokens) {
+		token := p.tokens[p.position]
+		p.position++
+
+		switch {
+		case token.IsUnary():
+			if expectUnary {
+				p.operators = append(p.operators, token)
+			} else {
+				for len(p.operators) > 0 && p.precedence[p.operators[len(p.operators)-1].Type()] >= p.precedence[token.Type()] {
+					p.stack = append(p.stack, p.popOperator())
+				}
+				p.operators = append(p.operators, token)
+			}
+			expectUnary = true
+		case token.IsBinary():
+			for len(p.operators) > 0 && p.precedence[p.operators[len(p.operators)-1].Type()] >= p.precedence[token.Type()] {
+				p.stack = append(p.stack, p.popOperator())
+			}
+			p.operators = append(p.operators, token)
+			expectUnary = true
+		default:
+			p.stack = append(p.stack, &ifStatementNode{Type: OP_VALUE, Value: token.Value})
+			expectUnary = false
+		}
+	}
+
+	for len(p.operators) > 0 {
+		p.stack = append(p.stack, p.popOperator())
+	}
+
+	// slog.Info("", "stack", p.stack)
+
+	if len(p.stack) != 1 {
+		panic("Invalid expression")
+	}
+
+	return p.stack[0]
+}
+
+// popOperator pops an operator and creates a binary or unary node
+func (p *precedenceParser) popOperator() *ifStatementNode {
+	op := p.operators[len(p.operators)-1]
+	p.operators = p.operators[:len(p.operators)-1]
+
+	if op.IsUnary() {
+		// Handle unary operator
+		right := p.stackPop()
+		return &ifStatementNode{
+			Type:        OP_UNARY,
+			Value:       op.Value,
+			StringValue: op.Type(),
+			Left:        right,
+		}
+	}
+
+	if len(p.stack) < 2 {
+		panic("Invalid expression")
+	}
+
+	right := p.stackPop()
+	left := p.stackPop()
+
+	return &ifStatementNode{
+		Type:        OP_BINARY,
+		Value:       op.Value,
+		StringValue: op.Type(),
+		Left:        left,
+		Right:       right,
+	}
+}
+
+// stackPop pops a node from the stack
+func (p *precedenceParser) stackPop() *ifStatementNode {
+	if len(p.stack) == 0 {
+		panic("Invalid expression")
+	}
+	var n *ifStatementNode
+	n, p.stack = p.stack[len(p.stack)-1], p.stack[:len(p.stack)-1]
+	return n
+}
+
+type IfStatement struct {
+	ast.CommandInvocation
+
+	Body []CMakeStatement
+	Else []CMakeStatement
+}
+
+func (i *IfStatement) evalCondition(eval *CMakeEvaluatorScope) (bool, error) {
+	args := i.Arguments.Values
+
+	parser := newIfStatementParser(args)
+
+	node := parser.Parse()
+
+	return node.Eval(eval)
 }
 
 // Eval implements CMakeStatement.
@@ -385,10 +680,34 @@ func (m *MacroStatement) Eval(eval *CMakeEvaluatorScope) error {
 // cmakeStatement implements CMakeStatement.
 func (m *MacroStatement) cmakeStatement() { panic("unimplemented") }
 
+type FunctionStatement struct {
+	ast.CommandInvocation
+
+	body []ast.CommandInvocation
+}
+
+// Eval implements CMakeStatement.
+func (f *FunctionStatement) Eval(eval *CMakeEvaluatorScope) error {
+	args := f.Arguments.Eval(eval.evaluator)
+
+	name := args[0]
+
+	eval.eval.commands[name] = func(scope *CMakeEvaluatorScope, args []string) error {
+		slog.Info("call to user defined function", "name", name, "args", args)
+		return nil
+	}
+
+	return nil
+}
+
+// cmakeStatement implements CMakeStatement.
+func (f *FunctionStatement) cmakeStatement() { panic("unimplemented") }
+
 var (
 	_ CMakeStatement = &CommandStatement{}
 	_ CMakeStatement = &IfStatement{}
 	_ CMakeStatement = &MacroStatement{}
+	_ CMakeStatement = &FunctionStatement{}
 )
 
 type CMakeCommand func(scope *CMakeEvaluatorScope, args []string) error
@@ -460,6 +779,8 @@ func (eval *CMakeEvaluator) parseIfStatement(filename string, rest []ast.Command
 		CommandInvocation: rest[0],
 	}
 
+	target := ret
+
 	inElse := false
 
 	rest = rest[1:]
@@ -472,6 +793,18 @@ outer:
 				return ret, rest[i+1:], nil
 			} else if cmd.Name == "else" {
 				inElse = true
+			} else if cmd.Name == "elseif" {
+				if inElse {
+					return nil, nil, fmt.Errorf("else must be the last clause")
+				}
+
+				newTarget := &IfStatement{
+					CommandInvocation: cmd,
+				}
+
+				target.Else = []CMakeStatement{newTarget}
+
+				target = newTarget
 			} else if cmd.Name == "if" {
 				stmt, newRest, err := eval.parseIfStatement(filename, rest[i:])
 				if err != nil {
@@ -479,9 +812,9 @@ outer:
 				}
 
 				if inElse {
-					ret.Else = append(ret.Else, stmt)
+					target.Else = append(target.Else, stmt)
 				} else {
-					ret.Body = append(ret.Body, stmt)
+					target.Body = append(target.Body, stmt)
 				}
 
 				rest = newRest
@@ -494,9 +827,24 @@ outer:
 				}
 
 				if inElse {
-					ret.Else = append(ret.Else, stmt)
+					target.Else = append(target.Else, stmt)
 				} else {
-					ret.Body = append(ret.Body, stmt)
+					target.Body = append(target.Body, stmt)
+				}
+
+				rest = newRest
+
+				continue outer
+			} else if cmd.Name == "function" {
+				stmt, newRest, err := eval.parseFunctionStatement(filename, rest[i:])
+				if err != nil {
+					return nil, nil, err
+				}
+
+				if inElse {
+					target.Else = append(target.Else, stmt)
+				} else {
+					target.Body = append(target.Body, stmt)
 				}
 
 				rest = newRest
@@ -504,9 +852,9 @@ outer:
 				continue outer
 			} else {
 				if inElse {
-					ret.Else = append(ret.Else, &CommandStatement{CommandInvocation: cmd})
+					target.Else = append(target.Else, &CommandStatement{CommandInvocation: cmd})
 				} else {
-					ret.Body = append(ret.Body, &CommandStatement{CommandInvocation: cmd})
+					target.Body = append(target.Body, &CommandStatement{CommandInvocation: cmd})
 				}
 			}
 		}
@@ -542,6 +890,28 @@ func (eval *CMakeEvaluator) parseMacroStatement(filename string, rest []ast.Comm
 	return nil, nil, fmt.Errorf("could not find an endmacro before the file ended")
 }
 
+func (eval *CMakeEvaluator) parseFunctionStatement(filename string, rest []ast.CommandInvocation) (CMakeStatement, []ast.CommandInvocation, error) {
+	if rest[0].Name != "function" {
+		return nil, nil, fmt.Errorf("parseMacroStatement: rest[0].Name != \"macro\"")
+	}
+
+	ret := &FunctionStatement{
+		CommandInvocation: rest[0],
+	}
+
+	rest = rest[1:]
+
+	for i, cmd := range rest {
+		if cmd.Name == "endfunction" {
+			return ret, rest[i+1:], nil
+		} else {
+			ret.body = append(ret.body, cmd)
+		}
+	}
+
+	return nil, nil, fmt.Errorf("could not find an endfunction before the file ended")
+}
+
 func (eval *CMakeEvaluator) parseStatement(filename string, cmds []ast.CommandInvocation) ([]CMakeStatement, error) {
 	var ret []CMakeStatement
 
@@ -561,6 +931,19 @@ func (eval *CMakeEvaluator) parseStatement(filename string, cmds []ast.CommandIn
 			return append(ret, rest...), nil
 		} else if cmd.Name == "macro" {
 			stmt, newRest, err := eval.parseMacroStatement(filename, cmds[i:])
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, stmt)
+
+			rest, err := eval.parseStatement(filename, newRest)
+			if err != nil {
+				return nil, err
+			}
+
+			return append(ret, rest...), nil
+		} else if cmd.Name == "function" {
+			stmt, newRest, err := eval.parseFunctionStatement(filename, cmds[i:])
 			if err != nil {
 				return nil, err
 			}
@@ -685,15 +1068,46 @@ func (eval *CMakeEvaluator) evalFileIf(scope *CMakeEvaluatorScope, f StarFileIf)
 	}
 	defer fh.Close()
 
-	parser := ast.NewParser()
+	lexerDef := cmakeLexer.New()
 
-	ast, err := parser.Parse(fh)
+	parser := participle.MustBuild(&ast.CMakeFile{}, participle.Lexer(lexerDef))
+
+	ast := &ast.CMakeFile{}
+
+	lex, err := lexerDef.Lex(fh)
 	if err != nil {
 		return err
 	}
 
-	if err := eval.evalFile(scope, f.Name(), ast); err != nil {
+	peeker, err := lexer.Upgrade(lex)
+	if err != nil {
 		return err
+	}
+
+	// Do a quick scan of the lexed tokens to see if the file has anything in it.
+	// If we reach the end before finding anything besides newlines then don't bother parsing and evaluating the file.
+	i := 0
+	for {
+		tk, err := peeker.Peek(i)
+		if err != nil {
+			return err
+		}
+		if tk.String() == "\n" {
+			i += 1
+			continue
+		}
+		if tk.EOF() {
+			return nil
+		}
+		break
+	}
+
+	if err := parser.ParseFromLexer(peeker, ast); err != nil {
+		return fmt.Errorf("error parsing file %s: %w", f.Name(), err)
+	}
+
+	if err := eval.evalFile(scope, f.Name(), ast); err != nil {
+		return fmt.Errorf("error evaluating file %s: %w", f.Name(), err)
 	}
 
 	return nil
