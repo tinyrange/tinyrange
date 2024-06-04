@@ -3,13 +3,18 @@ module github.com/tinyrange/pkg2
 go 1.22.2
 
 require (
+	github.com/alecthomas/participle v0.6.0
 	github.com/basgys/goxml2json v1.1.0
 	github.com/blakesmith/ar v0.0.0-20190502131153-809d4375e1fb
+	github.com/cavaliergopher/cpio v1.0.1
+	github.com/cavaliergopher/rpm v1.2.0
 	github.com/go-git/go-billy/v5 v5.5.0
 	github.com/go-git/go-git/v5 v5.11.0
 	github.com/go-python/gpython v0.2.0
+	github.com/google/go-cmp v0.6.0
 	github.com/icza/dyno v0.0.0-20230330125955-09f820a8d9c0
 	github.com/klauspost/compress v1.17.7
+	github.com/kythe/llvmbzlgen v0.0.0-20210514232551-cbd58c36d52d
 	github.com/nix-community/go-nix v0.0.0-20231219074122-93cb24a86856
 	github.com/schollz/progressbar/v3 v3.14.2
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
@@ -27,10 +32,7 @@ require (
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/ProtonMail/go-crypto v0.0.0-20230828082145-3c4c8a2d2371 // indirect
-	github.com/alecthomas/participle v0.6.0 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
-	github.com/cavaliergopher/cpio v1.0.1 // indirect
-	github.com/cavaliergopher/rpm v1.2.0 // indirect
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e // indirect
 	github.com/cloudflare/circl v1.3.3 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.4 // indirect
@@ -40,7 +42,6 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
-	github.com/kythe/llvmbzlgen v0.0.0-20210514232551-cbd58c36d52d // indirect
 	github.com/minio/sha256-simd v1.0.0 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
