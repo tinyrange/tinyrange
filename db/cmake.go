@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log/slog"
@@ -157,7 +158,6 @@ func (i *IfStatement) evalCondition(eval *CMakeEvaluatorScope) (bool, error) {
 	}
 
 	if len(args) == 3 {
-
 		op := args[1].Eval(eval.evaluator)[0]
 
 		_ = not
@@ -232,6 +232,13 @@ func (i *IfStatement) evalCondition(eval *CMakeEvaluatorScope) (bool, error) {
 		default:
 			return false, fmt.Errorf("if op not implemented: %s", op)
 		}
+	} else if len(args) == 1 {
+		val, err := i.evalArg(eval, args[0])
+		if err != nil {
+			return false, err
+		}
+
+		return val != "", nil
 	} else {
 		return false, fmt.Errorf("unhandled if statement: len(args) == %d", len(args))
 	}
@@ -271,7 +278,39 @@ type MacroStatement struct {
 var MACRO_MATCHER = regexp.MustCompile(`\$\{([A-Z0-9]+)\}`)
 
 func (m *MacroStatement) rawArgument(arg ast.Argument) string {
-	panic("unimplemented")
+	switch {
+	case arg.QuotedArgument != nil:
+		ret := "\""
+		for _, e := range arg.QuotedArgument.Elements {
+			if e.Ref != nil {
+				ret += "${"
+				for _, ele := range e.Ref.Elements {
+					if ele.Ref != nil {
+						panic("ele.Ref != nil")
+					}
+					ret += ele.Text
+				}
+				ret += "}"
+			} else {
+				ret += e.Text
+			}
+		}
+		return ret + "\""
+	case arg.UnquotedArgument != nil:
+		ret := ""
+		for _, e := range arg.UnquotedArgument.Elements {
+			if e.Ref != nil {
+				panic("e.Ref != nil")
+			}
+			ret += e.Text
+		}
+		return ret
+	case arg.BracketArgument != nil:
+		panic("BracketArgument")
+	case arg.ArgumentList != nil:
+		panic("ArgumentList")
+	}
+	panic("Missing concrete argument!")
 }
 
 func (m *MacroStatement) rawArguments(args []ast.Argument) string {
@@ -297,12 +336,10 @@ func (m *MacroStatement) evalMacro(scope *CMakeEvaluatorScope, args []ast.Argume
 		}
 	})
 
+	slog.Info("macro eval", "name", m.Name, "frag", frag)
+
 	// parse the new code fragment.
-	_ = frag
-
-	// execute the code fragment.
-
-	return fmt.Errorf("not implemented")
+	return scope.eval.evalFragment(scope, frag)
 }
 
 // Eval implements CMakeStatement.
@@ -656,6 +693,26 @@ func (eval *CMakeEvaluator) evalFileIf(scope *CMakeEvaluatorScope, f StarFileIf)
 	}
 
 	if err := eval.evalFile(scope, f.Name(), ast); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (eval *CMakeEvaluator) evalFragment(scope *CMakeEvaluatorScope, frag string) error {
+	parser := ast.NewParser()
+
+	ast, err := parser.Parse(bytes.NewReader([]byte(frag)))
+	if err != nil {
+		return err
+	}
+
+	stmts, err := eval.parseStatement("", ast.Commands)
+	if err != nil {
+		return err
+	}
+
+	if err := eval.evalBlock(scope, stmts); err != nil {
 		return err
 	}
 

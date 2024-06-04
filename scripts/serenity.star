@@ -37,12 +37,37 @@ def cmd_set(ctx, args):
     ctx[args[0]] = args[1]
     return None
 
+def cmd_find_program(ctx, args):
+    print("find_program", args)
+    return None
+
+def cmd_add_custom_target(ctx, args):
+    print("add_custom_target", args)
+    return None
+
+def cmd_configure_file(ctx, args):
+    print("configure_file", args)
+    return None
+
+def cmd_install(ctx, args):
+    print("install", args)
+    return None
+
+def cmd_add_compile_options(ctx, args):
+    print("add_compile_options", args)
+    return None
+
 COMMANDS = {
     "cmake_minimum_required": cmd_cmake_minimum_required,
     "list": cmd_list,
     "project": cmd_project,
     "message": cmd_message,
     "set": cmd_set,
+    "find_program": cmd_find_program,
+    "add_custom_target": cmd_add_custom_target,
+    "configure_file": cmd_configure_file,
+    "install": cmd_install,
+    "add_compile_options": cmd_add_compile_options,
 }
 
 def main(ctx):
