@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinyrange/pkg2/core"
-	"github.com/tinyrange/pkg2/db"
-	"github.com/tinyrange/pkg2/ui"
+	"github.com/tinyrange/pkg2/pkg/core"
+	"github.com/tinyrange/pkg2/pkg/db"
+	"github.com/tinyrange/pkg2/pkg/ui"
 )
 
 var (

@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/klauspost/compress/zstd"
-	"github.com/tinyrange/pkg2/db/common"
-	"github.com/tinyrange/pkg2/memtar"
+	"github.com/tinyrange/pkg2/pkg/common"
+	"github.com/tinyrange/pkg2/pkg/memtar"
 	"go.starlark.net/starlark"
 )
 

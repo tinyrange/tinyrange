@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinyrange/pkg2/db"
-	"github.com/tinyrange/pkg2/htm"
-	"github.com/tinyrange/pkg2/htm/bootstrap"
-	"github.com/tinyrange/pkg2/htm/html"
+	"github.com/tinyrange/pkg2/pkg/db"
+	"github.com/tinyrange/pkg2/pkg/htm"
+	"github.com/tinyrange/pkg2/pkg/htm/bootstrap"
+	"github.com/tinyrange/pkg2/pkg/htm/html"
 )
 
 func pageTemplate(pkgDb *db.PackageDatabase, name db.PackageName, start time.Time, frags ...htm.Fragment) htm.Fragment {

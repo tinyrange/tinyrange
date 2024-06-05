@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/cavaliergopher/rpm"
-	"github.com/tinyrange/pkg2/db/common"
+	"github.com/tinyrange/pkg2/pkg/common"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )

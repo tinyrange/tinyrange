@@ -4,8 +4,8 @@ import (
 	_ "embed"
 	"fmt"
 
-	"github.com/tinyrange/pkg2/htm"
-	"github.com/tinyrange/pkg2/htm/html"
+	"github.com/tinyrange/pkg2/pkg/htm"
+	"github.com/tinyrange/pkg2/pkg/htm/html"
 )
 
 var CSSSrc = html.Style(CssSrcRaw)

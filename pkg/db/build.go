@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinyrange/pkg2/db/common"
+	"github.com/tinyrange/pkg2/pkg/common"
 	"go.starlark.net/starlark"
 )
 

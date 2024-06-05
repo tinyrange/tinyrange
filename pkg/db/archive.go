@@ -11,7 +11,7 @@ import (
 	"github.com/blakesmith/ar"
 	"github.com/cavaliergopher/cpio"
 	"github.com/klauspost/compress/zstd"
-	"github.com/tinyrange/pkg2/memtar"
+	"github.com/tinyrange/pkg2/pkg/memtar"
 	"github.com/xi2/xz"
 )
 

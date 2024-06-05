@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/schollz/progressbar/v3"
-	"github.com/tinyrange/pkg2/core"
+	"github.com/tinyrange/pkg2/pkg/core"
 	"go.etcd.io/bbolt"
 	"go.starlark.net/starlark"
 )

@@ -10,7 +10,7 @@ import (
 	"github.com/alecthomas/participle"
 	"github.com/alecthomas/participle/lexer"
 	cmakeLexer "github.com/kythe/llvmbzlgen/cmakelib/lexer"
-	"github.com/tinyrange/pkg2/db/common"
+	"github.com/tinyrange/pkg2/pkg/common"
 	ast "github.com/tinyrange/pkg2/third_party/llvmbzlgen"
 	"go.starlark.net/starlark"
 )
