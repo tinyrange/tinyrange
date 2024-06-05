@@ -68,261 +68,174 @@ type CMakeEvaluator struct {
 	macros   map[string]CMakeMacro
 }
 
-func (eval *CMakeEvaluator) parseIfStatement(filename string, rest []ast.CommandInvocation) (CMakeStatement, []ast.CommandInvocation, error) {
-	if rest[0].Name != "if" {
-		return nil, nil, fmt.Errorf("parseIfStatement: rest[0].Name != \"if\"")
-	}
+type blockStack []*CMakeBlock
 
-	ret := &IfStatement{
-		CommandInvocation: rest[0],
-	}
-
-	target := ret
-
-	inElse := false
-
-	rest = rest[1:]
-
-outer:
-	for {
-		for i, cmd := range rest {
-			if cmd.Name == "endif" {
-				// slog.Info("if", "body", ret.Body, "else", ret.Else)
-				return ret, rest[i+1:], nil
-			} else if cmd.Name == "else" {
-				inElse = true
-			} else if cmd.Name == "elseif" {
-				if inElse {
-					return nil, nil, fmt.Errorf("else must be the last clause")
-				}
-
-				newTarget := &IfStatement{
-					CommandInvocation: cmd,
-				}
-
-				target.Else = []CMakeStatement{newTarget}
-
-				target = newTarget
-			} else if cmd.Name == "if" {
-				stmt, newRest, err := eval.parseIfStatement(filename, rest[i:])
-				if err != nil {
-					return nil, nil, err
-				}
-
-				if inElse {
-					target.Else = append(target.Else, stmt)
-				} else {
-					target.Body = append(target.Body, stmt)
-				}
-
-				rest = newRest
-
-				continue outer
-			} else if cmd.Name == "macro" {
-				stmt, newRest, err := eval.parseMacroStatement(filename, rest[i:])
-				if err != nil {
-					return nil, nil, err
-				}
-
-				if inElse {
-					target.Else = append(target.Else, stmt)
-				} else {
-					target.Body = append(target.Body, stmt)
-				}
-
-				rest = newRest
-
-				continue outer
-			} else if cmd.Name == "function" {
-				stmt, newRest, err := eval.parseFunctionStatement(filename, rest[i:])
-				if err != nil {
-					return nil, nil, err
-				}
-
-				if inElse {
-					target.Else = append(target.Else, stmt)
-				} else {
-					target.Body = append(target.Body, stmt)
-				}
-
-				rest = newRest
-
-				continue outer
-			} else if cmd.Name == "foreach" {
-				stmt, newRest, err := eval.parseForEachStatement(filename, rest[i:])
-				if err != nil {
-					return nil, nil, err
-				}
-
-				if inElse {
-					target.Else = append(target.Else, stmt)
-				} else {
-					target.Body = append(target.Body, stmt)
-				}
-
-				rest = newRest
-
-				continue outer
-			} else {
-				if inElse {
-					target.Else = append(target.Else, &CommandStatement{CommandInvocation: cmd})
-				} else {
-					target.Body = append(target.Body, &CommandStatement{CommandInvocation: cmd})
-				}
-			}
-		}
-		break outer
-	}
-
-	return nil, nil, fmt.Errorf("could not find an endif before the file ended")
+func (s blockStack) Push(v *CMakeBlock) blockStack {
+	return append(s, v)
 }
 
-func (eval *CMakeEvaluator) parseMacroStatement(filename string, rest []ast.CommandInvocation) (CMakeStatement, []ast.CommandInvocation, error) {
-	if rest[0].Name != "macro" {
-		return nil, nil, fmt.Errorf("parseMacroStatement: rest[0].Name != \"macro\"")
-	}
+func (s blockStack) Pop() (blockStack, *CMakeBlock) {
+	// FIXME: What do we do if the stack is empty, though?
 
-	ret := &MacroStatement{
-		CommandInvocation: rest[0],
-		Filename:          filename,
-	}
-
-	ret.StartPos = rest[0].Pos
-
-	rest = rest[1:]
-
-	for i, cmd := range rest {
-		if cmd.Name == "endmacro" {
-			ret.EndPos = cmd.Pos
-			return ret, rest[i+1:], nil
-		} else {
-			continue
-		}
-	}
-
-	return nil, nil, fmt.Errorf("could not find an endmacro before the file ended")
+	l := len(s)
+	return s[:l-1], s[l-1]
 }
 
-func (eval *CMakeEvaluator) parseFunctionStatement(filename string, rest []ast.CommandInvocation) (CMakeStatement, []ast.CommandInvocation, error) {
-	if rest[0].Name != "function" {
-		return nil, nil, fmt.Errorf("parseFunctionStatement: rest[0].Name != \"function\"")
-	}
-
-	ret := &FunctionStatement{
-		CommandInvocation: rest[0],
-	}
-
-	rest = rest[1:]
-
-	nesting := 0
-
-	for i, cmd := range rest {
-		if cmd.Name == "endfunction" && nesting == 0 {
-			return ret, rest[i+1:], nil
-		} else if cmd.Name == "endfunction" {
-			ret.body = append(ret.body, cmd)
-			nesting -= 1
-		} else if cmd.Name == "function" {
-			ret.body = append(ret.body, cmd)
-			nesting += 1
-		} else {
-			ret.body = append(ret.body, cmd)
-		}
-	}
-
-	return nil, nil, fmt.Errorf("could not find an endfunction before the file ended")
+func (s blockStack) Peek() *CMakeBlock {
+	l := len(s)
+	return s[l-1]
 }
 
-func (eval *CMakeEvaluator) parseForEachStatement(filename string, rest []ast.CommandInvocation) (CMakeStatement, []ast.CommandInvocation, error) {
-	if rest[0].Name != "foreach" {
-		return nil, nil, fmt.Errorf("parseForEachStatement: rest[0].Name != \"foreach\"")
-	}
+func (eval *CMakeEvaluator) parseStatement(filename string, cmds []ast.CommandInvocation) (*CMakeBlock, error) {
+	ret := &CMakeBlock{}
 
-	ret := &ForEachStatement{
-		CommandInvocation: rest[0],
-	}
+	stack := make(blockStack, 0)
 
-	rest = rest[1:]
+	stack = stack.Push(ret)
 
-	for i, cmd := range rest {
-		if cmd.Name == "endforeach" {
-			return ret, rest[i+1:], nil
-		} else {
-			ret.body = append(ret.body, cmd)
-		}
-	}
-
-	return nil, nil, fmt.Errorf("could not find an endfunction before the file ended")
-}
-
-func (eval *CMakeEvaluator) parseStatement(filename string, cmds []ast.CommandInvocation) ([]CMakeStatement, error) {
-	var ret []CMakeStatement
+	skip := 0
 
 	for i, cmd := range cmds {
-		if cmd.Name == "if" {
-			stmt, newRest, err := eval.parseIfStatement(filename, cmds[i:])
-			if err != nil {
-				return nil, err
-			}
-			ret = append(ret, stmt)
-
-			rest, err := eval.parseStatement(filename, newRest)
-			if err != nil {
-				return nil, err
-			}
-
-			return append(ret, rest...), nil
-		} else if cmd.Name == "macro" {
-			stmt, newRest, err := eval.parseMacroStatement(filename, cmds[i:])
-			if err != nil {
-				return nil, err
-			}
-			ret = append(ret, stmt)
-
-			rest, err := eval.parseStatement(filename, newRest)
-			if err != nil {
-				return nil, err
-			}
-
-			return append(ret, rest...), nil
-		} else if cmd.Name == "function" {
-			stmt, newRest, err := eval.parseFunctionStatement(filename, cmds[i:])
-			if err != nil {
-				return nil, err
-			}
-			ret = append(ret, stmt)
-
-			rest, err := eval.parseStatement(filename, newRest)
-			if err != nil {
-				return nil, err
-			}
-
-			return append(ret, rest...), nil
-		} else if cmd.Name == "foreach" {
-			stmt, newRest, err := eval.parseForEachStatement(filename, cmds[i:])
-			if err != nil {
-				return nil, err
-			}
-			ret = append(ret, stmt)
-
-			rest, err := eval.parseStatement(filename, newRest)
-			if err != nil {
-				return nil, err
-			}
-
-			return append(ret, rest...), nil
-		} else {
-			ret = append(ret, &CommandStatement{CommandInvocation: cmd})
+		if skip > 0 {
+			skip -= 1
+			continue
 		}
+
+		switch cmd.Name {
+		case "if":
+			stmt := &IfStatement{CommandInvocation: cmd}
+			stmt.Body = &CMakeBlock{Stmt: stmt}
+			stmt.Else = &CMakeBlock{Stmt: stmt}
+
+			top := stack.Peek()
+			top.Body = append(top.Body, stmt)
+
+			stack = stack.Push(stmt.Body)
+		case "elseif":
+			var block *CMakeBlock
+
+			stack, block = stack.Pop()
+
+			ifStmt, ok := block.Stmt.(*IfStatement)
+			if !ok {
+				// TOOD(joshua): Make this message more useful.
+				return nil, fmt.Errorf("invalid structure")
+			}
+
+			if block == ifStmt.Else {
+				return nil, fmt.Errorf("elseif has to come before else")
+			}
+
+			stmt := &IfStatement{CommandInvocation: cmd}
+			stmt.Body = &CMakeBlock{Stmt: stmt}
+			stmt.Else = &CMakeBlock{Stmt: stmt}
+
+			ifStmt.Else.Body = append(ifStmt.Else.Body, stmt)
+
+			stack = stack.Push(stmt.Body)
+		case "else":
+			var block *CMakeBlock
+
+			stack, block = stack.Pop()
+
+			ifStmt, ok := block.Stmt.(*IfStatement)
+			if !ok {
+				// TOOD(joshua): Make this message more useful.
+				return nil, fmt.Errorf("invalid structure")
+			}
+
+			if block == ifStmt.Else {
+				return nil, fmt.Errorf("if statements can not have more than 1 else block")
+			}
+
+			stack = stack.Push(ifStmt.Else)
+		case "endif":
+			var block *CMakeBlock
+
+			stack, block = stack.Pop()
+
+			_, ok := block.Stmt.(*IfStatement)
+			if !ok {
+				// TOOD(joshua): Make this message more useful.
+				return nil, fmt.Errorf("expected IfStatement for endif got %T", block.Stmt)
+			}
+		case "macro":
+			stmt := &MacroStatement{
+				CommandInvocation: cmd,
+				Filename:          filename,
+			}
+
+			stmt.StartPos = cmd.Pos
+
+			for i2, cmd := range cmds[i+1:] {
+				if cmd.Name == "endmacro" {
+					stmt.EndPos = cmd.Pos
+
+					// skip the body of the macro.
+					skip = i2 + 1
+					break
+				} else if cmd.Name == "macro" {
+					return nil, fmt.Errorf("nested macros are not supported")
+				} else {
+					continue
+				}
+			}
+
+			top := stack.Peek()
+			top.Body = append(top.Body, stmt)
+		case "function":
+			stmt := &FunctionStatement{CommandInvocation: cmd}
+			stmt.Body = &CMakeBlock{Stmt: stmt}
+
+			top := stack.Peek()
+			top.Body = append(top.Body, stmt)
+
+			stack = stack.Push(stmt.Body)
+		case "endfunction":
+			var block *CMakeBlock
+
+			stack, block = stack.Pop()
+
+			_, ok := block.Stmt.(*FunctionStatement)
+			if !ok {
+				// TOOD(joshua): Make this message more useful.
+				return nil, fmt.Errorf("expected FunctionStatement for endfunction got %T", block.Stmt)
+			}
+		case "foreach":
+			stmt := &ForEachStatement{CommandInvocation: cmd}
+			stmt.Body = &CMakeBlock{Stmt: stmt}
+
+			top := stack.Peek()
+			top.Body = append(top.Body, stmt)
+
+			stack = stack.Push(stmt.Body)
+		case "endforeach":
+			var block *CMakeBlock
+
+			stack, block = stack.Pop()
+
+			_, ok := block.Stmt.(*ForEachStatement)
+			if !ok {
+				// TOOD(joshua): Make this message more useful.
+				return nil, fmt.Errorf("expected ForEachStatement for endforeach got %T", block.Stmt)
+			}
+		default:
+			top := stack.Peek()
+			top.Body = append(top.Body, &CommandStatement{CommandInvocation: cmd})
+		}
+	}
+
+	if len(stack) != 1 {
+		return nil, fmt.Errorf("length of block stack is not 1")
 	}
 
 	return ret, nil
 }
 
-func (eval *CMakeEvaluator) evalBlock(scope *CMakeEvaluatorScope, stmts []CMakeStatement) error {
+func (eval *CMakeEvaluator) evalBlock(scope *CMakeEvaluatorScope, block *CMakeBlock) error {
 	// slog.Info("evalBlock", "stmts", stmts)
 
-	for _, stmt := range stmts {
+	for _, stmt := range block.Body {
 		if err := stmt.Eval(scope); err != nil {
 			return err
 		}

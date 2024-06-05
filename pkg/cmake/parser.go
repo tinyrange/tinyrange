@@ -17,6 +17,15 @@ type CMakeStatement interface {
 	Eval(eval *CMakeEvaluatorScope) error
 }
 
+type CMakeBlock struct {
+	Stmt CMakeStatement
+	Body []CMakeStatement
+}
+
+func (blk *CMakeBlock) String() string {
+	return fmt.Sprintf("%T", blk.Stmt)
+}
+
 type CommandStatement struct {
 	ast.CommandInvocation
 }
@@ -461,8 +470,8 @@ func (p *precedenceParser) stackPop() *ifStatementNode {
 type IfStatement struct {
 	ast.CommandInvocation
 
-	Body []CMakeStatement
-	Else []CMakeStatement
+	Body *CMakeBlock
+	Else *CMakeBlock
 }
 
 func (i *IfStatement) evalCondition(eval *CMakeEvaluatorScope) (bool, error) {
@@ -622,7 +631,7 @@ func (m *MacroStatement) cmakeStatement() { panic("unimplemented") }
 type FunctionStatement struct {
 	ast.CommandInvocation
 
-	body []ast.CommandInvocation
+	Body *CMakeBlock
 }
 
 // Eval implements CMakeStatement.
@@ -645,7 +654,7 @@ func (f *FunctionStatement) cmakeStatement() { panic("unimplemented") }
 type ForEachStatement struct {
 	ast.CommandInvocation
 
-	body []ast.CommandInvocation
+	Body *CMakeBlock
 }
 
 // Eval implements CMakeStatement.
