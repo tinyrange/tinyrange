@@ -132,7 +132,8 @@ func (n *ifStatementNode) Eval(eval *CMakeEvaluatorScope) (bool, error) {
 
 			_, ok, err := eval.eval.sourceRoot.OpenChild(val, false)
 			if err != nil {
-				return false, err
+				// Ignore error
+				return false, nil
 			}
 			return ok, nil
 		case "POLICY":
@@ -149,6 +150,10 @@ func (n *ifStatementNode) Eval(eval *CMakeEvaluatorScope) (bool, error) {
 
 			return eval.evaluator.Defined(val), nil
 		case "TARGET":
+			// TODO(joshua): implement
+			return false, nil
+		case "IS_ABSOLUTE":
+			// TODO(joshua): implement
 			return false, nil
 		default:
 			return false, fmt.Errorf("unimplemented unary op: %s", n.StringValue)
@@ -209,6 +214,37 @@ func (n *ifStatementNode) Eval(eval *CMakeEvaluatorScope) (bool, error) {
 			}
 
 			slog.Info("VERSION_GREATER_EQUAL", "lhs", lhs, "rhs", rhs)
+
+			return lhs == rhs, nil
+		case "IN_LIST":
+			lhs, err := n.Left.evalString(eval)
+			if err != nil {
+				return false, err
+			}
+
+			rhs, err := n.Right.evalString(eval)
+			if err != nil {
+				return false, err
+			}
+
+			_ = lhs
+			_ = rhs
+
+			slog.Info("IN_LIST TODO", "left", lhs, "right", rhs)
+
+			return false, nil
+		case "EQUAL":
+			lhs, err := n.Left.Eval(eval)
+			if err != nil {
+				return false, err
+			}
+
+			rhs, err := n.Right.Eval(eval)
+			if err != nil {
+				return false, err
+			}
+
+			slog.Info("EQUAL", "a", lhs, "b", rhs)
 
 			return lhs == rhs, nil
 		case "AND":
@@ -303,6 +339,8 @@ func (tk ifStatementToken) IsBinary() bool {
 		return true
 	case "MATCHES":
 		return true
+	case "IN_LIST":
+		return true
 	case "AND":
 		return true
 	case "OR":
@@ -323,6 +361,8 @@ func (tk ifStatementToken) IsUnary() bool {
 	case "POLICY":
 		return true
 	case "TARGET":
+		return true
+	case "IS_ABSOLUTE":
 		return true
 	case "NOT":
 		return true
@@ -357,6 +397,7 @@ func newIfStatementParser(args []ast.Argument) *precedenceParser {
 			"DEFINED":               4,
 			"POLICY":                4,
 			"TARGET":                4,
+			"IS_ABSOLUTE":           4,
 			"EQUAL":                 3,
 			"LESS":                  3,
 			"LESS_EQUAL":            3,
@@ -374,6 +415,7 @@ func newIfStatementParser(args []ast.Argument) *precedenceParser {
 			"VERSION_GREATER_EQUAL": 3,
 			"PATH_EQUAL":            3,
 			"MATCHES":               3,
+			"IN_LIST":               3,
 			"NOT":                   2,
 			"AND":                   1,
 			"OR":                    1,
@@ -416,7 +458,7 @@ func (p *precedenceParser) Parse() *ifStatementNode {
 		p.stack = append(p.stack, p.popOperator())
 	}
 
-	// slog.Info("", "stack", p.stack)
+	slog.Info("", "stack", p.stack)
 
 	if len(p.stack) != 1 {
 		panic("Invalid expression")
@@ -639,10 +681,18 @@ func (f *FunctionStatement) Eval(eval *CMakeEvaluatorScope) error {
 	args := f.Arguments.Eval(eval.evaluator)
 
 	name := args[0]
+	argNames := args[1:]
 
-	eval.eval.commands[name] = func(scope *CMakeEvaluatorScope, args []string) error {
-		slog.Info("call to user defined function", "name", name, "args", args)
-		return nil
+	eval.eval.commands[name] = func(scope *CMakeEvaluatorScope, callArgs []string) error {
+		child := scope.childScope(true, scope.evaluator.dirname)
+
+		for i, name := range argNames {
+			child.Set(name, callArgs[i])
+		}
+
+		slog.Info("call to user defined function", "name", name, "argNames", argNames, "callArgs", callArgs)
+
+		return scope.eval.evalBlock(child, f.Body)
 	}
 
 	return nil

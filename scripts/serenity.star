@@ -16,21 +16,30 @@ def cmd_list(ctx, args):
         if args[1] not in ctx:
             ctx[args[1]] = args[2]
         else:
-            ctx[args[1]] += " " + args[2]
+            ctx[args[1]] += ";" + args[2]
+        return None
+    elif args[0] == "PREPEND":
+        if args[1] not in ctx:
+            ctx[args[1]] = args[2]
+        else:
+            ctx[args[1]] = args[2] + ";" + ctx[args[1]]
         return None
     elif args[0] == "TRANSFORM":
         target = args[1]
         op = args[2]
         if op == "PREPEND":
             val = args[3]
-            ctx[target] = " ".join([val + s for s in ctx[target].split(" ")])
+            ctx[target] = ";".join([val + s for s in ctx[target].split(";")])
             return None
         else:
             return error("list not implemented" + str(args))
     elif args[0] == "REMOVE_ITEM":
         target = args[1]
         item = args[2]
-        ctx[target] = " ".join([s for s in ctx[target].split(" ") if s != item])
+        ctx[target] = ";".join([s for s in ctx[target].split(";") if s != item])
+        return None
+    elif args[0] == "FILTER":
+        print("list", args)
         return None
     else:
         return error("list not implemented" + str(args))
@@ -41,7 +50,8 @@ def cmd_project(ctx, args):
 
 def cmd_message(ctx, args):
     if args[0] == "FATAL_ERROR":
-        return error("".join(args[1:]))
+        print("fatal", "".join(args[1:]))
+        return None
     elif args[0] == "STATUS":
         print("".join(args[1:]))
         return None
@@ -150,6 +160,10 @@ def cmd_target_link_options(ctx, args):
     print("target_link_options", args)
     return None
 
+def cmd_target_link_directories(ctx, args):
+    print("target_link_directories", args)
+    return None
+
 def cmd_link_directories(ctx, args):
     print("link_directories", args)
     return None
@@ -160,6 +174,12 @@ def cmd_set_source_files_properties(ctx, args):
 
 def cmd_set_target_properties(ctx, args):
     print("set_target_properties", args)
+    return None
+
+def cmd_get_property(ctx, args):
+    print("get_property", args)
+    var = args[0]
+    ctx[var] = ""
     return None
 
 def cmd_set_property(ctx, args):
@@ -180,6 +200,18 @@ def cmd_file(ctx, args):
 
 def cmd_string(ctx, args):
     print("string", args)
+    return None
+
+def cmd_cmake_parse_arguments(ctx, args):
+    print("cmake_parse_arguments", args)
+    return None
+
+def cmd_cmake_path(ctx, args):
+    print("cmake_path", args)
+    return None
+
+def cmd_get_filename_component(ctx, args):
+    print("get_filename_component", args)
     return None
 
 COMMANDS = {
@@ -212,13 +244,18 @@ COMMANDS = {
     "target_compile_definitions": cmd_target_compile_definitions,
     "target_compile_options": cmd_target_compile_options,
     "target_link_options": cmd_target_link_options,
+    "target_link_directories": cmd_target_link_directories,
     "link_directories": cmd_link_directories,
     "set_source_files_properties": cmd_set_source_files_properties,
     "set_target_properties": cmd_set_target_properties,
+    "get_property": cmd_get_property,
     "set_property": cmd_set_property,
     "get_target_property": cmd_get_target_property,
     "file": cmd_file,
     "string": cmd_string,
+    "cmake_parse_arguments": cmd_cmake_parse_arguments,
+    "cmake_path": cmd_cmake_path,
+    "get_filename_component": cmd_get_filename_component,
 }
 
 def main(ctx):

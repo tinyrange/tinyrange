@@ -312,7 +312,11 @@ func (eval *CMakeEvaluator) searchForFile(name string, paths []string) (common.S
 func (eval *CMakeEvaluator) evalInclude(scope *CMakeEvaluatorScope, name string, opts []string) error {
 	slog.Info("include", "name", name, "opts", opts)
 
-	searchPath := strings.Split(scope.evaluator.Get("CMAKE_MODULE_PATH"), " ")
+	// Get the search path from the scope.
+	searchPath := strings.Split(scope.evaluator.Get("CMAKE_MODULE_PATH"), ";")
+
+	// Add the current directory to the search path.
+	searchPath = append([]string{scope.evaluator.dirname}, searchPath...)
 
 	if !strings.HasSuffix(name, ".cmake") {
 		name = name + ".cmake"
