@@ -12,29 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tinyrange/pkg2/db/common"
 	"github.com/tinyrange/pkg2/memtar"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 )
-
-type FileInfo interface {
-	fs.FileInfo
-	OwnerGroup() (int, int)
-	Linkname() string
-}
-
-type FileIf interface {
-	Open() (io.ReadCloser, error)
-	Stat() (FileInfo, error)
-}
-
-type StarFileIf interface {
-	starlark.Value
-	FileIf
-	Source() FileSource
-	Name() string
-	SetName(name string) (StarFileIf, error)
-}
 
 type MemoryFile struct {
 	contents []byte
@@ -85,12 +67,12 @@ func (m *MemoryFile) Sys() any {
 	return nil
 }
 
-// Stat implements FileIf.
-func (m *MemoryFile) Stat() (FileInfo, error) {
+// Stat implements common.FileIf.
+func (m *MemoryFile) Stat() (common.FileInfo, error) {
 	return m, nil
 }
 
-// Open implements FileIf.
+// Open implements common.FileIf.
 func (m *MemoryFile) Open() (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(m.contents)), nil
 }
@@ -100,7 +82,7 @@ func (m *MemoryFile) WrapStarlark(name string) starlark.Value {
 }
 
 var (
-	_ FileIf = &MemoryFile{}
+	_ common.FileIf = &MemoryFile{}
 )
 
 func NewMemoryFile(contents []byte) *MemoryFile {
@@ -135,27 +117,27 @@ func (e *entryWrapper) Sys() any {
 	return nil
 }
 
-// Open implements FileIf.
+// Open implements common.FileIf.
 func (e *entryWrapper) Open() (io.ReadCloser, error) {
 	return io.NopCloser(e.Entry.Open()), nil
 }
 
-// Stat implements FileIf.
-func (e *entryWrapper) Stat() (FileInfo, error) {
+// Stat implements common.FileIf.
+func (e *entryWrapper) Stat() (common.FileInfo, error) {
 	return e, nil
 }
 
 var (
-	_ FileIf = &entryWrapper{}
+	_ common.FileIf = &entryWrapper{}
 )
 
 type starFileWrapper struct {
-	FileIf
+	common.FileIf
 	name string
 }
 
-// Source implements StarFileIf.
-func (f *starFileWrapper) Source() FileSource {
+// Source implements common.StarFileIf.
+func (f *starFileWrapper) Source() common.FileSource {
 	return nil
 }
 
@@ -169,11 +151,11 @@ func (f *starFileWrapper) AttrNames() []string {
 	return starFileCommonAttrNames(f)
 }
 
-// Name implements StarFileIf.
+// Name implements common.StarFileIf.
 func (f *starFileWrapper) Name() string { return f.name }
 
-// SetName implements StarFileIf.
-func (f *starFileWrapper) SetName(name string) (StarFileIf, error) {
+// SetName implements common.StarFileIf.
+func (f *starFileWrapper) SetName(name string) (common.StarFileIf, error) {
 	return &starFileWrapper{name: name, FileIf: f}, nil
 }
 
@@ -184,18 +166,18 @@ func (*starFileWrapper) Truth() starlark.Bool  { return starlark.True }
 func (*starFileWrapper) Freeze()               {}
 
 var (
-	_ StarFileIf        = &starFileWrapper{}
+	_ common.StarFileIf = &starFileWrapper{}
 	_ starlark.HasAttrs = &starFileWrapper{}
 )
 
-func asStarFileIf(name string, v starlark.Value) (StarFileIf, error) {
+func asStarFileIf(name string, v starlark.Value) (common.StarFileIf, error) {
 	switch val := v.(type) {
 	case starlark.String:
 		return &starFileWrapper{
 			name:   name,
 			FileIf: NewMemoryFile([]byte(val)),
 		}, nil
-	case StarFileIf:
+	case common.StarFileIf:
 		return val, nil
 	default:
 		return nil, fmt.Errorf("could not convert %s to File", v.Type())
@@ -237,11 +219,21 @@ var (
 type StarDirectory struct {
 	name string
 
-	entries map[string]StarFileIf
+	entries map[string]common.StarFileIf
 }
 
-// Source implements StarFileIf.
-func (f *StarDirectory) Source() FileSource {
+// Entries implements common.StarDirectory.
+func (f *StarDirectory) Entries() map[string]common.StarFileIf {
+	return f.entries
+}
+
+// OpenChild implements common.StarDirectory.
+func (f *StarDirectory) OpenChild(path string, mkdir bool) (common.StarFileIf, bool, error) {
+	return f.openChild(path, mkdir)
+}
+
+// Source implements common.StarFileIf.
+func (f *StarDirectory) Source() common.FileSource {
 	return nil
 }
 
@@ -295,23 +287,23 @@ func (f *StarDirectory) Sys() any {
 	return nil
 }
 
-// Stat implements StarFileIf.
-func (f *StarDirectory) Stat() (FileInfo, error) {
+// Stat implements common.StarFileIf.
+func (f *StarDirectory) Stat() (common.FileInfo, error) {
 	return f, nil
 }
 
-// SetName implements StarFileIf.
-func (f *StarDirectory) SetName(name string) (StarFileIf, error) {
+// SetName implements common.StarFileIf.
+func (f *StarDirectory) SetName(name string) (common.StarFileIf, error) {
 	return &StarDirectory{
 		name:    name,
 		entries: f.entries,
 	}, nil
 }
 
-// Name implements StarFileIf.
+// Name implements common.StarFileIf.
 func (f *StarDirectory) Name() string { return f.name }
 
-// Open implements StarFileIf.
+// Open implements common.StarFileIf.
 func (f *StarDirectory) Open() (io.ReadCloser, error) {
 	panic("unimplemented")
 }
@@ -361,7 +353,7 @@ func (f *StarDirectory) splitPath(p string) ([]string, error) {
 	return strings.Split(p, "/"), nil
 }
 
-func (f *StarDirectory) getChild(name string, mkdir bool) (StarFileIf, bool, error) {
+func (f *StarDirectory) getChild(name string, mkdir bool) (common.StarFileIf, bool, error) {
 	child, ok := f.entries[name]
 	if !ok && mkdir {
 		if child, err := f.mkdir(name); err == nil {
@@ -407,7 +399,7 @@ func (f *StarDirectory) openPath(p string, mkdir bool) (*StarDirectory, string, 
 }
 
 func (f *StarDirectory) mkdirInternal(name string) (*StarDirectory, error) {
-	dir := &StarDirectory{name: path.Join(f.name, name), entries: make(map[string]StarFileIf)}
+	dir := &StarDirectory{name: path.Join(f.name, name), entries: make(map[string]common.StarFileIf)}
 
 	f.entries[name] = dir
 
@@ -426,7 +418,7 @@ func (f *StarDirectory) mkdir(p string) (*StarDirectory, error) {
 	return parent.mkdirInternal(name)
 }
 
-func (f *StarDirectory) openChild(p string, mkdir bool) (StarFileIf, bool, error) {
+func (f *StarDirectory) openChild(p string, mkdir bool) (common.StarFileIf, bool, error) {
 	parent, name, ok, err := f.openPath(p, mkdir)
 	if err != nil {
 		return nil, false, err
@@ -557,7 +549,7 @@ func (f *StarDirectory) MergeWith(other *StarDirectory) (*StarDirectory, error) 
 
 	ret := &StarDirectory{
 		name:    f.name,
-		entries: make(map[string]StarFileIf),
+		entries: make(map[string]common.StarFileIf),
 	}
 
 	for name, ent := range f.entries {
@@ -642,12 +634,12 @@ var (
 	_ starlark.IterableMapping = &StarDirectory{}
 	_ starlark.HasSetKey       = &StarDirectory{}
 	_ starlark.HasBinary       = &StarDirectory{}
-	_ StarFileIf               = &StarDirectory{}
+	_ common.StarDirectory     = &StarDirectory{}
 )
 
 func newFilesystem() *StarDirectory {
 	return &StarDirectory{
 		name:    ".",
-		entries: make(map[string]StarFileIf),
+		entries: make(map[string]common.StarFileIf),
 	}
 }

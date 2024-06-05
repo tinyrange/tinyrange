@@ -17,7 +17,9 @@ import (
 	xj "github.com/basgys/goxml2json"
 	"github.com/icza/dyno"
 	"github.com/schollz/progressbar/v3"
+	"github.com/tinyrange/pkg2/cmake"
 	"github.com/tinyrange/pkg2/core"
+	"github.com/tinyrange/pkg2/db/common"
 	"github.com/tinyrange/pkg2/jinja2"
 	"github.com/tinyrange/pkg2/memtar"
 	"github.com/tinyrange/pkg2/third_party/regexp"
@@ -195,7 +197,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			filename := f.Name()
 
 			return NewFile(
-				DownloadSource{
+				common.DownloadSource{
 					Kind:   "Download",
 					Url:    url,
 					Accept: accept,
@@ -472,7 +474,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 				return starlark.None, err
 			}
 
-			if fileIf, ok := file.(FileIf); ok {
+			if fileIf, ok := file.(common.FileIf); ok {
 				return parseRpm(fileIf)
 			} else {
 				return starlark.None, fmt.Errorf("expected FileIf got %s", file.Type())
@@ -499,7 +501,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			}
 
 			if fileIf, ok := file.(*StarDirectory); ok {
-				return evalCMake(fileIf, ctx, commands)
+				return cmake.EvalCMake(fileIf, ctx, commands)
 			} else {
 				return starlark.None, fmt.Errorf("expected StarFileIf got %s", file.Type())
 			}
@@ -580,7 +582,7 @@ func (db *PackageDatabase) getGlobals(name string) (starlark.StringDict, error) 
 			}
 
 			return NewFile(
-				LocalFileSource{
+				common.LocalFileSource{
 					Kind:     "LocalFile",
 					Filename: filename,
 				},

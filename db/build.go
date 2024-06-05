@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tinyrange/pkg2/db/common"
 	"go.starlark.net/starlark"
 )
 
@@ -30,7 +31,7 @@ func (e *extendedInfo) OwnerGroup() (int, int) {
 }
 
 var (
-	_ FileInfo = &extendedInfo{}
+	_ common.FileInfo = &extendedInfo{}
 )
 
 // The build system is a addressable managed cache. It is writable by the
@@ -225,7 +226,7 @@ func (db *PackageDatabase) build(tag starlark.Tuple, builder *starlark.Function,
 
 	return NewFile(nil, public, func() (io.ReadCloser, error) {
 		return os.Open(filename)
-	}, func() (FileInfo, error) {
+	}, func() (common.FileInfo, error) {
 		info, err := os.Stat(filename)
 		if err != nil {
 			return nil, err
@@ -339,7 +340,7 @@ func (b *BuildDef) Resolve(ctx BuildContent) (starlark.Value, error) {
 
 	return NewFile(nil, b.Tag, func() (io.ReadCloser, error) {
 		return os.Open(filename)
-	}, func() (FileInfo, error) {
+	}, func() (common.FileInfo, error) {
 		info, err := os.Stat(filename)
 		if err != nil {
 			return nil, err

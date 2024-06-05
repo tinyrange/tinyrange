@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/tinyrange/pkg2/db/common"
 	"go.starlark.net/starlark"
 )
 
@@ -27,7 +28,7 @@ type BaseImageDirective struct {
 
 type ArchiveDirective struct {
 	Kind           string // "Archive"
-	Source         FileSource
+	Source         common.FileSource
 	TargetFilename string
 }
 

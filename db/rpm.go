@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cavaliergopher/rpm"
+	"github.com/tinyrange/pkg2/db/common"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
@@ -282,7 +283,7 @@ var (
 	_ starlark.HasAttrs = &starRpm{}
 )
 
-func parseRpm(fif FileIf) (starlark.Value, error) {
+func parseRpm(fif common.FileIf) (starlark.Value, error) {
 	f, err := fif.Open()
 	if err != nil {
 		return starlark.None, err

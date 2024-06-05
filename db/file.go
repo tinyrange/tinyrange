@@ -11,19 +11,20 @@ import (
 	"strings"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/tinyrange/pkg2/db/common"
 	"github.com/tinyrange/pkg2/memtar"
 	"go.starlark.net/starlark"
 )
 
 type StarFile struct {
-	source FileSource
+	source common.FileSource
 	name   string
 	opener func() (io.ReadCloser, error)
-	stat   func() (FileInfo, error)
+	stat   func() (common.FileInfo, error)
 }
 
 // Source implements StarFileIf.
-func (f *StarFile) Source() FileSource {
+func (f *StarFile) Source() common.FileSource {
 	return f.source
 }
 
@@ -36,7 +37,7 @@ func (f *StarFile) Open() (io.ReadCloser, error) {
 }
 
 // SetName implements StarFileIf.
-func (f *StarFile) SetName(name string) (StarFileIf, error) {
+func (f *StarFile) SetName(name string) (common.StarFileIf, error) {
 	return &StarFile{
 		source: f.source,
 		name:   name,
@@ -46,7 +47,7 @@ func (f *StarFile) SetName(name string) (StarFileIf, error) {
 }
 
 // Stat implements StarFileIf.
-func (f *StarFile) Stat() (FileInfo, error) {
+func (f *StarFile) Stat() (common.FileInfo, error) {
 	if f.stat != nil {
 		return f.stat()
 	} else {
@@ -54,7 +55,7 @@ func (f *StarFile) Stat() (FileInfo, error) {
 	}
 }
 
-func starFileCommonAttrs(f StarFileIf, name string) (starlark.Value, error) {
+func starFileCommonAttrs(f common.StarFileIf, name string) (starlark.Value, error) {
 	if name == "read" {
 		return starlark.NewBuiltin("File.read", func(
 			thread *starlark.Thread,
@@ -104,7 +105,7 @@ func starFileCommonAttrs(f StarFileIf, name string) (starlark.Value, error) {
 				return starlark.None, fmt.Errorf("failed to read archive: %s", err)
 			}
 
-			return &StarArchive{source: ExtractArchiveSource{
+			return &StarArchive{source: common.ExtractArchiveSource{
 				Kind:            "ExtractArchive",
 				Source:          f.Source(),
 				Extension:       ext,
@@ -130,7 +131,7 @@ func starFileCommonAttrs(f StarFileIf, name string) (starlark.Value, error) {
 
 			if strings.HasSuffix(ext, ".gz") {
 				return NewFile(
-					DecompressSource{
+					common.DecompressSource{
 						Kind:      "Decompress",
 						Source:    f.Source(),
 						Extension: ".gz",
@@ -148,7 +149,7 @@ func starFileCommonAttrs(f StarFileIf, name string) (starlark.Value, error) {
 				), nil
 			} else if strings.HasSuffix(ext, ".bz2") {
 				return NewFile(
-					DecompressSource{
+					common.DecompressSource{
 						Kind:      "Decompress",
 						Source:    f.Source(),
 						Extension: ".bz2",
@@ -166,7 +167,7 @@ func starFileCommonAttrs(f StarFileIf, name string) (starlark.Value, error) {
 				), nil
 			} else if strings.HasSuffix(ext, ".zst") {
 				return NewFile(
-					DecompressSource{
+					common.DecompressSource{
 						Kind:      "Decompress",
 						Source:    f.Source(),
 						Extension: ".zst",
@@ -259,7 +260,7 @@ func starFileCommonAttrs(f StarFileIf, name string) (starlark.Value, error) {
 	}
 }
 
-func starFileCommonAttrNames(f StarFileIf) []string {
+func starFileCommonAttrNames(f common.StarFileIf) []string {
 	return []string{"read", "read_archive", "read_compressed", "read_rpm_xml", "hash", "name", "base", "size"}
 }
 
@@ -282,14 +283,14 @@ func (*StarFile) Freeze()               {}
 var (
 	_ starlark.Value    = &StarFile{}
 	_ starlark.HasAttrs = &StarFile{}
-	_ StarFileIf        = &StarFile{}
+	_ common.StarFileIf = &StarFile{}
 )
 
 func NewFile(
-	source FileSource,
+	source common.FileSource,
 	name string,
 	opener func() (io.ReadCloser, error),
-	stat func() (FileInfo, error),
+	stat func() (common.FileInfo, error),
 ) *StarFile {
 	return &StarFile{
 		source: source,
@@ -319,7 +320,7 @@ func (it *StarArchiveIterator) Next(p *starlark.Value) bool {
 
 	*p = NewFile(nil, ent.Filename(), func() (io.ReadCloser, error) {
 		return io.NopCloser(ent.Open()), nil
-	}, func() (FileInfo, error) { return memtar.FileInfoFromEntry(ent) })
+	}, func() (common.FileInfo, error) { return memtar.FileInfoFromEntry(ent) })
 
 	it.index += 1
 
@@ -331,7 +332,7 @@ var (
 )
 
 type StarArchive struct {
-	source FileSource
+	source common.FileSource
 	r      memtar.TarReader
 	name   string
 }
@@ -349,7 +350,7 @@ func (ar *StarArchive) Get(k starlark.Value) (v starlark.Value, found bool, err 
 		if ent.Filename() == filename {
 			return NewFile(nil, ent.Filename(), func() (io.ReadCloser, error) {
 				return io.NopCloser(ent.Open()), nil
-			}, func() (FileInfo, error) { return memtar.FileInfoFromEntry(ent) }), true, nil
+			}, func() (common.FileInfo, error) { return memtar.FileInfoFromEntry(ent) }), true, nil
 		}
 	}
 
