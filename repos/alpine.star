@@ -4,7 +4,15 @@ Repository configuration for Alpine.
 
 load("fetchers/alpine.star", "fetch_alpine_repository")
 
-alpine_mirror = "https://dl-cdn.alpinelinux.org/alpine"
+add_mirror("alpine", [
+    "https://dl-cdn.alpinelinux.org/alpine",
+])
+add_mirror("wolfi", [
+    "https://packages.wolfi.dev",
+])
+add_mirror("postmarketos", [
+    "https://mirror.postmarketos.org/postmarketos",
+])
 
 alpine_versions = [
     "edge",
@@ -41,7 +49,7 @@ def add_alpine_fetchers(only_latest = True):
 
                 fetch_repo(
                     fetch_alpine_repository,
-                    ("{}/{}/{}/{}".format(alpine_mirror, version, repo, arch), repo),
+                    ("mirror://alpine/{}/{}/{}".format(version, repo, arch), repo),
                     distro = "alpine@{}".format(version),
                 )
 
@@ -49,21 +57,34 @@ def add_wolfi_fetchers():
     for arch in ["x86_64"]:
         fetch_repo(
             fetch_alpine_repository,
-            ("https://packages.wolfi.dev/os/{}".format(arch), "os"),
+            ("mirror://wolfi/os/{}".format(arch), "os"),
             distro = "wolfi",
         )
 
 def add_postmarketos_fetchers(only_latest = True):
-    for version in ["master", "staging", "v20.05", "v21.03", "v21.06", "v21.12", "v22.06", "v22.12", "v23.06", "v23.12"]:
+    for version in [
+        "master",
+        "staging",
+        "v20.05",
+        "v21.03",
+        "v21.06",
+        "v21.12",
+        "v22.06",
+        "v22.12",
+        "v23.06",
+        "v23.12",
+    ]:
         for arch in ["x86_64"]:
             if only_latest and version != "master":
                 continue
 
             fetch_repo(
                 fetch_alpine_repository,
-                ("https://mirror.postmarketos.org/postmarketos/{}/{}".format(version, arch), "postmarketos"),
+                ("mirror://postmarketos/{}/{}".format(version, arch), "postmarketos"),
                 distro = "postmarketos@{}".format(version),
             )
 
 if __name__ == "__main__":
-    add_alpine_fetchers()
+    add_alpine_fetchers(only_latest = False)
+    add_wolfi_fetchers()
+    add_postmarketos_fetchers(only_latest = False)

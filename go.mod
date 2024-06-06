@@ -23,7 +23,7 @@ require (
 	golang.org/x/exp v0.0.0-20240318143956-a85f2c67cd81
 	golang.org/x/mod v0.16.0
 	golang.org/x/net v0.22.0
-	gopkg.in/yaml.v3 v3.0.1
+	gopkg.in/yaml.v2 v2.2.4
 	howett.net/plist v1.0.1
 	mvdan.cc/sh/v3 v3.8.0
 )

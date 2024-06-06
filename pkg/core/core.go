@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,6 +60,7 @@ type EnvironmentInterface struct {
 	httpMutex     sync.Mutex
 	lastRequest   map[string]time.Time
 	waitTimeMutex sync.Mutex
+	mirrors       map[string][]string
 }
 
 func (eif *EnvironmentInterface) needsRefresh(url string, age time.Duration) bool {
@@ -229,82 +231,105 @@ func (eif *EnvironmentInterface) HttpGetReader(url string, options HttpOptions) 
 		return nil, err
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
+	urls, err := eif.resolveUrls(url)
 	if err != nil {
-		if exists {
-			slog.Warn("could not fetch", "url", url, "error", err)
-			return os.Open(path)
-		} else {
+		return nil, err
+	}
+
+	onlyNotFound := true
+
+	for _, url := range urls {
+		slog.Info("fetching", "url", url)
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			if exists {
+				slog.Warn("could not fetch", "url", url, "error", err)
+				return os.Open(path)
+			} else {
+				slog.Warn("could not fetch, trying next mirror", "url", url)
+				onlyNotFound = false
+				continue
+			}
+		}
+
+		if options.Accept != "" {
+			req.Header.Add("Accept", options.Accept)
+		}
+
+		resp, err := eif.client.Do(req)
+		if err != nil {
+			if exists {
+				slog.Warn("could not fetch", "url", url, "error", err)
+				return os.Open(path)
+			} else {
+				slog.Warn("could not fetch, trying next mirror", "url", url)
+				onlyNotFound = false
+				continue
+			}
+		}
+
+		if resp.StatusCode == http.StatusNotFound {
+			slog.Warn("could not fetch, trying next mirror", "url", url)
+			continue
+		} else if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("http error: %s", resp.Status)
+		}
+
+		if resp.ContentLength != -1 {
+			if options.ExpectedSize != 0 && resp.ContentLength != options.ExpectedSize {
+				return nil, fmt.Errorf("size mismatch: %d != %d", resp.ContentLength, options.ExpectedSize)
+			}
+		}
+
+		tmpFilename := path + ".tmp"
+
+		out, err := os.Create(tmpFilename)
+		if err != nil {
 			return nil, err
 		}
-	}
 
-	if options.Accept != "" {
-		req.Header.Add("Accept", options.Accept)
-	}
+		var writer io.Writer = out
 
-	resp, err := eif.client.Do(req)
-	if err != nil {
-		if exists {
-			slog.Warn("could not fetch", "url", url, "error", err)
-			return os.Open(path)
+		Log(options.Logger, fmt.Sprintf("downloading %s", url))
+
+		if resp.ContentLength != -1 && resp.ContentLength < 100000 {
+			// Don't display the progress bar for downloads under 100k
 		} else {
+			pb := progressbar.DefaultBytes(resp.ContentLength, fmt.Sprintf("downloading %s", url))
+			defer pb.Close()
+
+			writer = io.MultiWriter(pb, out)
+		}
+
+		var n int64
+		if n, err = io.Copy(writer, resp.Body); err != nil {
+			out.Close()
 			return nil, err
 		}
+
+		if options.ExpectedSize != 0 && n != options.ExpectedSize {
+			out.Close()
+			return nil, fmt.Errorf("size mismatch: %d != %d", n, options.ExpectedSize)
+		}
+
+		if err := out.Close(); err != nil {
+			return nil, err
+		}
+
+		if err := os.Rename(tmpFilename, path); err != nil {
+			return nil, err
+		}
+
+		return eif.HttpGetReader(originalUrl, options)
 	}
 
-	if resp.StatusCode == http.StatusNotFound {
+	slog.Warn("could not fetch from any mirrors", "urls", urls)
+
+	if onlyNotFound {
 		return nil, ErrNotFound
-	} else if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("http error: %s", resp.Status)
-	}
-
-	if resp.ContentLength != -1 {
-		if options.ExpectedSize != 0 && resp.ContentLength != options.ExpectedSize {
-			return nil, fmt.Errorf("size mismatch: %d != %d", resp.ContentLength, options.ExpectedSize)
-		}
-	}
-
-	tmpFilename := path + ".tmp"
-
-	out, err := os.Create(tmpFilename)
-	if err != nil {
-		return nil, err
-	}
-
-	var writer io.Writer = out
-
-	Log(options.Logger, fmt.Sprintf("downloading %s", url))
-
-	if resp.ContentLength != -1 && resp.ContentLength < 100000 {
-		// Don't display the progress bar for downloads under 100k
 	} else {
-		pb := progressbar.DefaultBytes(resp.ContentLength, fmt.Sprintf("downloading %s", url))
-		defer pb.Close()
-
-		writer = io.MultiWriter(pb, out)
+		return nil, fmt.Errorf("could not fetch %s from any mirrors", urls)
 	}
-
-	var n int64
-	if n, err = io.Copy(writer, resp.Body); err != nil {
-		out.Close()
-		return nil, err
-	}
-
-	if options.ExpectedSize != 0 && n != options.ExpectedSize {
-		out.Close()
-		return nil, fmt.Errorf("size mismatch: %d != %d", n, options.ExpectedSize)
-	}
-
-	if err := out.Close(); err != nil {
-		return nil, err
-	}
-
-	if err := os.Rename(tmpFilename, path); err != nil {
-		return nil, err
-	}
-
-	return eif.HttpGetReader(originalUrl, options)
 }
 
 // A generic interface to caching arbitrary data.
@@ -388,10 +413,46 @@ func (eif *EnvironmentInterface) CacheObjects(
 	return nil
 }
 
+func (eif *EnvironmentInterface) resolveUrls(urlStr string) ([]string, error) {
+	parsed, err := url.Parse(urlStr)
+	if err != nil {
+		return nil, err
+	}
+
+	if parsed.Scheme != "mirror" {
+		return []string{urlStr}, nil
+	}
+
+	mirrorName := parsed.Hostname()
+
+	prefix := "mirror://" + mirrorName
+	suffix := strings.TrimPrefix(urlStr, prefix)
+
+	urls, ok := eif.mirrors[mirrorName]
+	if !ok {
+		return nil, fmt.Errorf("mirror %s not found", mirrorName)
+	}
+
+	var ret []string
+
+	for _, url := range urls {
+		ret = append(ret, url+suffix)
+	}
+
+	return ret, nil
+}
+
+func (eif *EnvironmentInterface) AddMirror(name string, urls []string) error {
+	eif.mirrors[name] = urls
+
+	return nil
+}
+
 func NewEif(cachePath string) *EnvironmentInterface {
 	return &EnvironmentInterface{
 		cachePath:   cachePath,
 		client:      &http.Client{},
 		lastRequest: make(map[string]time.Time),
+		mirrors:     make(map[string][]string),
 	}
 }
