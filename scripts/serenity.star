@@ -8,7 +8,7 @@ def fetch_github_archive(owner, repo, commit):
     return ark["{}-{}".format(repo, commit)]
 
 def cmd_cmake_minimum_required(ctx, args):
-    print("cmake_minimum_required", args)
+    print("cmake_minimum_required stub", args)
     return None
 
 def cmd_list(ctx, args):
@@ -39,18 +39,26 @@ def cmd_list(ctx, args):
         ctx[target] = ";".join([s for s in ctx[target].split(";") if s != item])
         return None
     elif args[0] == "FILTER":
-        print("list", args)
+        print("list stub", args)
+        return None
+    elif args[0] == "GET":
+        lst = args[1]
+        index = int(args[2])
+        target = args[3]
+
+        ctx[target] = ctx[lst].split(";")[index]
+
         return None
     else:
         return error("list not implemented" + str(args))
 
 def cmd_project(ctx, args):
-    print("project", args)
+    print("project stub", args)
     return None
 
 def cmd_message(ctx, args):
     if args[0] == "FATAL_ERROR":
-        print("fatal", "".join(args[1:]))
+        print("fatal stub", "".join(args[1:]))
         return None
     elif args[0] == "STATUS":
         print("".join(args[1:]))
@@ -60,8 +68,8 @@ def cmd_message(ctx, args):
         return error("message not implemented")
 
 def cmd_set(ctx, args):
-    print("set", args)
     if len(args) > 2 and args[2] == "CACHE":
+        print("set stub", args)
         ctx[args[0]] = args[1]
         return None
     else:
@@ -69,153 +77,159 @@ def cmd_set(ctx, args):
         return None
 
 def cmd_unset(ctx, args):
-    print("unset", args)
+    print("unset stub", args)
     return None
 
 def cmd_option(ctx, args):
-    print("option", args)
+    print("option stub", args)
     return None
 
 def cmd_define_property(ctx, args):
-    print("define_property", args)
+    print("define_property stub", args)
     return None
 
 def cmd_find_program(ctx, args):
-    print("find_program", args)
+    print("find_program stub", args)
     return None
 
 def cmd_add_custom_target(ctx, args):
-    print("add_custom_target", args)
+    print("add_custom_target stub", args)
     return None
 
 def cmd_configure_file(ctx, args):
-    print("configure_file", args)
+    print("configure_file stub", args)
     return None
 
 def cmd_install(ctx, args):
-    print("install", args)
+    print("install stub", args)
     return None
 
 def cmd_add_compile_options(ctx, args):
-    print("add_compile_options", args)
+    print("add_compile_options stub", args)
     return None
 
 def cmd_add_link_options(ctx, args):
-    print("add_link_options", args)
+    print("add_link_options stub", args)
     return None
 
 def cmd_add_compile_definitions(ctx, args):
-    print("add_compile_definitions", args)
+    print("add_compile_definitions stub", args)
     return None
 
 def cmd_include_directories(ctx, args):
-    print("include_directories", args)
+    print("include_directories stub", args)
     return None
 
 def cmd_add_dependencies(ctx, args):
-    print("add_dependencies", args)
+    print("add_dependencies stub", args)
     return None
 
 def cmd_find_package(ctx, args):
-    print("find_package", args)
+    print("find_package stub", args)
     return None
 
 def cmd_add_library(ctx, args):
-    print("add_library", args)
+    print("add_library stub", args)
     return None
 
 def cmd_add_custom_command(ctx, args):
-    print("add_custom_command", args)
+    print("add_custom_command stub", args)
     return None
 
 def cmd_target_link_libraries(ctx, args):
-    print("target_link_libraries", args)
+    print("target_link_libraries stub", args)
     return None
 
 def cmd_add_executable(ctx, args):
-    print("add_executable", args)
+    print("add_executable stub", args)
     return None
 
 def cmd_execute_process(ctx, args):
-    print("execute_process", args)
+    print("execute_process stub", args)
     return None
 
 def cmd_add_definitions(ctx, args):
-    print("add_definitions", args)
+    print("add_definitions stub", args)
     return None
 
 def cmd_target_sources(ctx, args):
-    print("target_sources", args)
+    print("target_sources stub", args)
     return None
 
 def cmd_target_compile_definitions(ctx, args):
-    print("target_compile_definitions", args)
+    print("target_compile_definitions stub", args)
     return None
 
 def cmd_target_compile_options(ctx, args):
-    print("target_compile_options", args)
+    print("target_compile_options stub", args)
     return None
 
 def cmd_target_link_options(ctx, args):
-    print("target_link_options", args)
+    print("target_link_options stub", args)
     return None
 
 def cmd_target_link_directories(ctx, args):
-    print("target_link_directories", args)
+    print("target_link_directories stub", args)
     return None
 
 def cmd_link_directories(ctx, args):
-    print("link_directories", args)
+    print("link_directories stub", args)
     return None
 
 def cmd_set_source_files_properties(ctx, args):
-    print("set_source_files_properties", args)
+    print("set_source_files_properties stub", args)
     return None
 
 def cmd_set_target_properties(ctx, args):
-    print("set_target_properties", args)
+    print("set_target_properties stub", args)
     return None
 
 def cmd_get_property(ctx, args):
-    print("get_property", args)
+    print("get_property stub", args)
     var = args[0]
     ctx[var] = ""
     return None
 
 def cmd_set_property(ctx, args):
-    print("set_property", args)
+    print("set_property stub", args)
     return None
 
 def cmd_get_target_property(ctx, args):
     var = args[0]
     target = args[1]
     property = args[2]
-    print("get_target_property", args)
+    print("get_target_property stub", args)
     ctx[var] = ""
     return None
 
 def cmd_file(ctx, args):
-    print("file", args)
+    print("file stub", args)
+    if args[0] == "DOWNLOAD":
+        ctx["download_result"] = "0;"
     return None
 
 def cmd_string(ctx, args):
-    print("string", args)
+    print("string stub", args)
     return None
 
 def cmd_cmake_parse_arguments(ctx, args):
-    print("cmake_parse_arguments", args)
+    print("cmake_parse_arguments stub", args)
     return None
 
 def cmd_cmake_path(ctx, args):
-    print("cmake_path", args)
+    print("cmake_path stub", args)
     return None
 
 def cmd_get_filename_component(ctx, args):
-    print("get_filename_component", args)
+    print("get_filename_component stub", args)
     return None
 
 COMMANDS = {
+    #CMake
     "cmake_minimum_required": cmd_cmake_minimum_required,
+    "cmake_parse_arguments": cmd_cmake_parse_arguments,
+    "cmake_path": cmd_cmake_path,
+    # General
     "list": cmd_list,
     "project": cmd_project,
     "message": cmd_message,
@@ -238,13 +252,6 @@ COMMANDS = {
     "add_executable": cmd_add_executable,
     "execute_process": cmd_execute_process,
     "add_definitions": cmd_add_definitions,
-    # Target
-    "target_sources": cmd_target_sources,
-    "target_link_libraries": cmd_target_link_libraries,
-    "target_compile_definitions": cmd_target_compile_definitions,
-    "target_compile_options": cmd_target_compile_options,
-    "target_link_options": cmd_target_link_options,
-    "target_link_directories": cmd_target_link_directories,
     "link_directories": cmd_link_directories,
     "set_source_files_properties": cmd_set_source_files_properties,
     "set_target_properties": cmd_set_target_properties,
@@ -253,9 +260,14 @@ COMMANDS = {
     "get_target_property": cmd_get_target_property,
     "file": cmd_file,
     "string": cmd_string,
-    "cmake_parse_arguments": cmd_cmake_parse_arguments,
-    "cmake_path": cmd_cmake_path,
     "get_filename_component": cmd_get_filename_component,
+    # Target
+    "target_sources": cmd_target_sources,
+    "target_link_libraries": cmd_target_link_libraries,
+    "target_compile_definitions": cmd_target_compile_definitions,
+    "target_compile_options": cmd_target_compile_options,
+    "target_link_options": cmd_target_link_options,
+    "target_link_directories": cmd_target_link_directories,
 }
 
 def main(ctx):

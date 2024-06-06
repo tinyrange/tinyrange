@@ -2,6 +2,7 @@ package cmake
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path"
@@ -13,6 +14,11 @@ import (
 	"github.com/tinyrange/pkg2/pkg/common"
 	ast "github.com/tinyrange/pkg2/third_party/llvmbzlgen"
 	"go.starlark.net/starlark"
+)
+
+var (
+	ErrControlBreak    = errors.New("break")
+	ErrControlContinue = errors.New("continue")
 )
 
 type CMakeCommand func(scope *CMakeEvaluatorScope, args []string) error
@@ -457,6 +463,14 @@ func EvalCMake(f common.StarDirectory, ctx *starlark.Dict, cmds *starlark.Dict) 
 
 	eval.commands["add_subdirectory"] = func(scope *CMakeEvaluatorScope, args []string) error {
 		return eval.addSubdirectory(scope, args[0])
+	}
+
+	eval.commands["break"] = func(scope *CMakeEvaluatorScope, args []string) error {
+		return ErrControlBreak
+	}
+
+	eval.commands["continue"] = func(scope *CMakeEvaluatorScope, args []string) error {
+		return ErrControlContinue
 	}
 
 	cmds.Entries(func(k, v starlark.Value) bool {

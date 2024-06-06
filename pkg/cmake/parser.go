@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/alecthomas/participle/lexer"
@@ -85,7 +86,13 @@ func (n *ifStatementNode) evalArg(eval *CMakeEvaluatorScope) (string, error) {
 	case arg.UnquotedArgument != nil:
 		val := strings.Join(arg.UnquotedArgument.Eval(eval.evaluator), " ")
 
-		return eval.evaluator.Get(val), nil
+		_, err := strconv.Atoi(val)
+		if err == nil {
+			// If the value parses as a int then return the raw value.
+			return val, nil
+		} else {
+			return eval.evaluator.Get(val), nil
+		}
 	case arg.BracketArgument != nil:
 		return strings.Join(arg.BracketArgument.Eval(eval.evaluator), " "), nil
 	case arg.ArgumentList != nil:
@@ -234,12 +241,12 @@ func (n *ifStatementNode) Eval(eval *CMakeEvaluatorScope) (bool, error) {
 
 			return false, nil
 		case "EQUAL":
-			lhs, err := n.Left.Eval(eval)
+			lhs, err := n.Left.evalString(eval)
 			if err != nil {
 				return false, err
 			}
 
-			rhs, err := n.Right.Eval(eval)
+			rhs, err := n.Right.evalString(eval)
 			if err != nil {
 				return false, err
 			}
@@ -458,7 +465,7 @@ func (p *precedenceParser) Parse() *ifStatementNode {
 		p.stack = append(p.stack, p.popOperator())
 	}
 
-	slog.Info("", "stack", p.stack)
+	// slog.Info("", "stack", p.stack)
 
 	if len(p.stack) != 1 {
 		panic("Invalid expression")
@@ -709,7 +716,48 @@ type ForEachStatement struct {
 
 // Eval implements CMakeStatement.
 func (f *ForEachStatement) Eval(eval *CMakeEvaluatorScope) error {
-	slog.Info("foreach unimplemented", "args", f.Arguments.Eval(eval.evaluator))
+	args := f.Arguments.Eval(eval.evaluator)
+
+	// slog.Info("foreach unimplemented", "args", args)
+
+	if len(args) == 0 {
+		return fmt.Errorf("foreach with no arguments")
+	}
+
+	name := args[0]
+	var vals []string
+
+	if len(args) > 2 && args[1] == "IN" {
+		if len(args) > 3 && args[2] == "LISTS" {
+			lst := args[3]
+
+			vals = strings.Split(eval.evaluator.Get(lst), ";")
+		} else {
+			return fmt.Errorf("unimplemented foreach variation 2: %+v", args)
+		}
+	} else {
+		vals = args[1:]
+	}
+
+	// Don't loop though empty lists.
+	if len(vals) == 1 && vals[0] == "" {
+		return nil
+	}
+
+	for _, val := range vals {
+		child := eval.childScope(false, eval.evaluator.dirname)
+
+		child.Set(name, val)
+
+		err := child.eval.evalBlock(child, f.Body)
+		if err == ErrControlBreak {
+			break
+		} else if err == ErrControlContinue {
+			continue
+		} else if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
