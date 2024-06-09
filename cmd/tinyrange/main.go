@@ -1,11 +1,17 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
+	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
+	"time"
 
+	"github.com/tinyrange/tinyrange/pkg/cpio"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 )
@@ -158,7 +164,68 @@ func LoadVirtualMachineFactory(filename string) (*VirtualMachineFactory, error) 
 	return factory, nil
 }
 
+func createRootFilesystem(input string, filename string) error {
+	f, err := os.Open(input)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	reader, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	tarReader := tar.NewReader(reader)
+
+	cpioFs := cpio.New()
+
+	for {
+		hdr, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+
+		contents, err := io.ReadAll(tarReader)
+		if err != nil {
+			return err
+		}
+
+		if err := cpioFs.AddFromTar(hdr, contents); err != nil {
+			return err
+		}
+	}
+
+	initScript := "#!/bin/sh\nlogin -f root"
+
+	if err := cpioFs.AddFromTar(&tar.Header{
+		Typeflag: tar.TypeReg,
+		Name:     "./init",
+		Mode:     int64(fs.ModePerm),
+		Size:     int64(len(initScript)),
+		ModTime:  time.Unix(0, 0),
+	}, []byte(initScript)); err != nil {
+		return err
+	}
+
+	if err := cpioFs.WriteCpio(filename); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func tinyRangeMain() error {
+	if err := createRootFilesystem(
+		"local/alpine-minirootfs-3.20.0-x86_64.tar.gz",
+		"local/initramfs.cpio",
+	); err != nil {
+		return err
+	}
+
 	factory, err := LoadVirtualMachineFactory("hv/qemu/qemu.star")
 	if err != nil {
 		return err
