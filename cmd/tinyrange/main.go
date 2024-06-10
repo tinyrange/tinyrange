@@ -2,9 +2,8 @@ package main
 
 import (
 	"archive/tar"
-	"compress/gzip"
+	_ "embed"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -15,6 +14,9 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 )
+
+//go:embed init.star
+var _INIT_SCRIPT []byte
 
 type vmmFactoryExecutable struct {
 	command string
@@ -165,49 +167,30 @@ func LoadVirtualMachineFactory(filename string) (*VirtualMachineFactory, error) 
 }
 
 func createRootFilesystem(input string, filename string) error {
-	f, err := os.Open(input)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	reader, err := gzip.NewReader(f)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-
-	tarReader := tar.NewReader(reader)
-
 	cpioFs := cpio.New()
 
-	for {
-		hdr, err := tarReader.Next()
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return err
-		}
-
-		contents, err := io.ReadAll(tarReader)
-		if err != nil {
-			return err
-		}
-
-		if err := cpioFs.AddFromTar(hdr, contents); err != nil {
-			return err
-		}
+	init, err := os.ReadFile(input)
+	if err != nil {
+		return err
 	}
-
-	initScript := "#!/bin/sh\nlogin -f root"
 
 	if err := cpioFs.AddFromTar(&tar.Header{
 		Typeflag: tar.TypeReg,
 		Name:     "./init",
 		Mode:     int64(fs.ModePerm),
-		Size:     int64(len(initScript)),
+		Size:     int64(len(init)),
 		ModTime:  time.Unix(0, 0),
-	}, []byte(initScript)); err != nil {
+	}, init); err != nil {
+		return err
+	}
+
+	if err := cpioFs.AddFromTar(&tar.Header{
+		Typeflag: tar.TypeReg,
+		Name:     "./init.star",
+		Mode:     int64(fs.ModePerm),
+		Size:     int64(len(_INIT_SCRIPT)),
+		ModTime:  time.Unix(0, 0),
+	}, _INIT_SCRIPT); err != nil {
 		return err
 	}
 
@@ -220,7 +203,7 @@ func createRootFilesystem(input string, filename string) error {
 
 func tinyRangeMain() error {
 	if err := createRootFilesystem(
-		"local/alpine-minirootfs-3.20.0-x86_64.tar.gz",
+		"build/init_x86_64",
 		"local/initramfs.cpio",
 	); err != nil {
 		return err

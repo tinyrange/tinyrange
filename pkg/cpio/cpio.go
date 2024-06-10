@@ -280,7 +280,7 @@ func (file *file) makeSymlink(linkname string) {
 }
 
 func newFile(name string) *file {
-	return &file{cpioEntry: &cpioEntry{name: name, kind: _CPIO_KIND_REGULAR}}
+	return &file{cpioEntry: &cpioEntry{name: name, kind: _CPIO_KIND_REGULAR, mtime: time.Unix(0, 0)}}
 }
 
 type directory struct {
@@ -320,7 +320,7 @@ func (dir *directory) Children() []entry {
 
 func newDirectory(name string) *directory {
 	return &directory{
-		cpioEntry: &cpioEntry{name: name, kind: _CPIO_KIND_DIRECTORY},
+		cpioEntry: &cpioEntry{name: name, kind: _CPIO_KIND_DIRECTORY, mtime: time.Unix(0, 0)},
 		entries:   make(map[string]entry),
 	}
 }
