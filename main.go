@@ -18,7 +18,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
+	"sync"
 	"time"
 
 	starlarkjson "go.starlark.net/lib/json"
@@ -279,6 +281,7 @@ type BuildResult interface {
 
 type BuildDefinition interface {
 	BuildSource
+	NeedsBuild(ctx *BuildContext, cacheTime time.Time) (bool, error)
 	Build(ctx *BuildContext) (BuildResult, error)
 }
 
@@ -288,6 +291,42 @@ type StarBuildDefinition struct {
 	BuilderArgs starlark.Tuple
 }
 
+func (def *StarBuildDefinition) resultToStarlark(argDef BuildDefinition, result File) (starlark.Value, error) {
+	switch arg := argDef.(type) {
+	case *ReadArchiveBuildDefinition:
+		ark, err := ReadArchiveFromFile(result)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		return NewStarArchive(ark, argDef.Tag()), nil
+	default:
+		return starlark.None, fmt.Errorf("resultToStarlark not implemented for: %T %+v", arg, arg)
+	}
+}
+
+// NeedsBuild implements BuildDefinition.
+func (def *StarBuildDefinition) NeedsBuild(ctx *BuildContext, cacheTime time.Time) (bool, error) {
+	if ctx.Database.RebuildUserDefinitions {
+		return true, nil
+	}
+
+	for _, arg := range def.BuilderArgs {
+		if argDef, ok := arg.(BuildDefinition); ok {
+			needsBuild, err := ctx.NeedsBuild(argDef)
+			if err != nil {
+				return true, err
+			}
+
+			if needsBuild {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
 // Tag implements BuildSource.
 func (def *StarBuildDefinition) Tag() string {
 	var parts []string
@@ -295,19 +334,40 @@ func (def *StarBuildDefinition) Tag() string {
 	parts = append(parts, def.Name...)
 
 	for _, arg := range def.BuilderArgs {
-		str, ok := starlark.AsString(arg)
-		if !ok {
+		if src, ok := arg.(BuildSource); ok {
+			parts = append(parts, src.Tag())
+		} else if str, ok := starlark.AsString(arg); ok {
+			parts = append(parts, str)
+		} else {
+			slog.Warn("could not convert to string", "type", arg.Type())
 			continue
 		}
-
-		parts = append(parts, str)
 	}
 
 	return strings.Join(parts, "_")
 }
 
 func (def *StarBuildDefinition) Build(ctx *BuildContext) (BuildResult, error) {
-	res, err := ctx.Call(def.Builder, def.BuilderArgs...)
+	var args starlark.Tuple
+	for _, arg := range def.BuilderArgs {
+		if argDef, ok := arg.(BuildDefinition); ok {
+			res, err := ctx.BuildChild(argDef)
+			if err != nil {
+				return nil, err
+			}
+
+			val, err := def.resultToStarlark(argDef, res)
+			if err != nil {
+				return nil, err
+			}
+
+			args = append(args, val)
+		} else {
+			args = append(args, arg)
+		}
+	}
+
+	res, err := ctx.Call(def.Builder, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -350,9 +410,20 @@ func NewStarBuildDefinition(name string, builder starlark.Value, args starlark.T
 var ErrNotFound = errors.New("HTTP 404: Not Found")
 
 type FetchHttpBuildDefinition struct {
-	Url string
+	Url        string
+	ExpireTime time.Duration
 
 	resp *http.Response
+}
+
+// NeedsBuild implements BuildDefinition.
+func (f *FetchHttpBuildDefinition) NeedsBuild(ctx *BuildContext, cacheTime time.Time) (bool, error) {
+	if f.ExpireTime != 0 {
+		return time.Now().After(cacheTime.Add(f.ExpireTime)), nil
+	}
+
+	// The HTTP cache is never invalidated unless the client asks it to be.
+	return false, nil
 }
 
 // WriteTo implements BuildResult.
@@ -398,6 +469,8 @@ func (f *FetchHttpBuildDefinition) Build(ctx *BuildContext) (BuildResult, error)
 			onlyNotFound = false
 			continue
 		}
+
+		// TODO(joshua): Check the last modified time on the server.
 	}
 
 	if onlyNotFound {
@@ -426,8 +499,8 @@ var (
 	_ BuildResult     = &FetchHttpBuildDefinition{}
 )
 
-func NewFetchHttpBuildDefinition(url string) *FetchHttpBuildDefinition {
-	return &FetchHttpBuildDefinition{Url: url}
+func NewFetchHttpBuildDefinition(url string, expireTime time.Duration) *FetchHttpBuildDefinition {
+	return &FetchHttpBuildDefinition{Url: url, ExpireTime: expireTime}
 }
 
 func ReadArchiveFromFile(f File) (Archive, error) {
@@ -480,6 +553,19 @@ type ReadArchiveBuildDefinition struct {
 	Kind string
 
 	r *tar.Reader
+}
+
+// NeedsBuild implements BuildDefinition.
+func (r *ReadArchiveBuildDefinition) NeedsBuild(ctx *BuildContext, cacheTime time.Time) (bool, error) {
+	build, err := ctx.NeedsBuild(r.Base)
+	if err != nil {
+		return true, err
+	}
+	if build {
+		return true, nil
+	} else {
+		return false, nil // archives don't need to be re-extracted unless the underlying file changes.
+	}
 }
 
 // WriteTo implements BuildResult.
@@ -592,7 +678,16 @@ func (r *ReadArchiveBuildDefinition) Tag() string {
 	return strings.Join([]string{"ReadArchive", r.Base.Tag(), r.Kind}, "_")
 }
 
+func (def *ReadArchiveBuildDefinition) String() string { return def.Tag() }
+func (*ReadArchiveBuildDefinition) Type() string       { return "FetchHttpBuildDefinition" }
+func (*ReadArchiveBuildDefinition) Hash() (uint32, error) {
+	return 0, fmt.Errorf("FetchHttpBuildDefinition is not hashable")
+}
+func (*ReadArchiveBuildDefinition) Truth() starlark.Bool { return starlark.True }
+func (*ReadArchiveBuildDefinition) Freeze()              {}
+
 var (
+	_ starlark.Value  = &ReadArchiveBuildDefinition{}
 	_ BuildDefinition = &ReadArchiveBuildDefinition{}
 	_ BuildResult     = &ReadArchiveBuildDefinition{}
 )
@@ -815,10 +910,26 @@ type ContainerBuilder struct {
 	DisplayName    string
 	BaseDirectives []Directive
 	Packages       *PackageCollection
+
+	loaded bool
+}
+
+func (builder *ContainerBuilder) Loaded() bool {
+	return builder.loaded
 }
 
 func (builder *ContainerBuilder) Load(db *PackageDatabase) error {
-	return builder.Packages.Load(db)
+	if builder.Loaded() {
+		return nil
+	}
+
+	if err := builder.Packages.Load(db); err != nil {
+		return err
+	}
+
+	builder.loaded = true
+
+	return nil
 }
 
 func (builder *ContainerBuilder) Plan(packages []PackageQuery) (*InstallationPlan, error) {
@@ -1010,42 +1121,37 @@ func (b *BuildContext) hasCreatedOutput() bool {
 	return b.output != nil
 }
 
+func (b *BuildContext) BuildChild(def BuildDefinition) (File, error) {
+	return b.Database.Build(b, def)
+}
+
+func (b *BuildContext) NeedsBuild(def BuildDefinition) (bool, error) {
+	// TODO(joshua): This code should be merged with the Build method.
+
+	hash := getSha256Hash([]byte(def.Tag()))
+
+	filename := filepath.Join("local", "build", hash+".bin")
+
+	// Get a child context for the build.
+	child := b.childContext(def, filename+".tmp")
+
+	// Check if the file already exists. If it does then return it.
+	if info, err := os.Stat(filename); err == nil {
+		// If the file has already been created then check if a rebuild is needed.
+		needsRebuild, err := def.NeedsBuild(child, info.ModTime())
+		if err != nil {
+			return false, err
+		}
+
+		return needsRebuild, nil
+	}
+
+	return true, nil
+}
+
 // Attr implements starlark.HasAttrs.
 func (b *BuildContext) Attr(name string) (starlark.Value, error) {
-	if name == "read_archive" {
-		return starlark.NewBuiltin("BuildContext.read_archive", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				def  BuildDefinition
-				kind string
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"def", &def,
-				"kind", &kind,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			archiveDef := NewReadArchiveBuildDefinition(def, kind)
-
-			f, err := b.Database.Build(b, archiveDef)
-			if err != nil {
-				return starlark.None, err
-			}
-
-			ark, err := ReadArchiveFromFile(f)
-			if err != nil {
-				return starlark.None, err
-			}
-
-			return NewStarArchive(ark, def.Tag()), nil
-		}), nil
-	} else if name == "recordwriter" {
+	if name == "recordwriter" {
 		return starlark.NewBuiltin("BuildContext.recordwriter", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -1087,7 +1193,7 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (b *BuildContext) AttrNames() []string {
-	return []string{"fetch_http"}
+	return []string{"recordwriter", "add_package"}
 }
 
 func (ctx *BuildContext) newThread() *starlark.Thread {
@@ -1116,6 +1222,8 @@ var (
 
 type PackageDatabase struct {
 	ContainerBuilders map[string]*ContainerBuilder
+
+	RebuildUserDefinitions bool
 
 	mirrors map[string][]string
 }
@@ -1214,16 +1322,35 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
 				var (
-					url string
+					url        string
+					expireTime int64
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"url", &url,
+					"expire_time?", &expireTime,
 				); err != nil {
 					return starlark.None, err
 				}
 
-				return NewFetchHttpBuildDefinition(url), nil
+				return NewFetchHttpBuildDefinition(url, time.Duration(expireTime)), nil
+			}),
+			"read_archive": starlark.NewBuiltin("define.read_archive", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+				var (
+					def  BuildDefinition
+					kind string
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"def", &def,
+					"kind", &kind,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				archiveDef := NewReadArchiveBuildDefinition(def, kind)
+
+				return archiveDef, nil
 			}),
 		},
 	}
@@ -1340,6 +1467,30 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		return db.NewName(name, version, stringTags)
 	})
 
+	ret["duration"] = starlark.NewBuiltin("duration", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			dur string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"dur", &dur,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		d, err := time.ParseDuration(dur)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.MakeInt64(int64(d)), nil
+	})
+
 	ret["error"] = starlark.NewBuiltin("error", func(
 		thread *starlark.Thread,
 		fn *starlark.Builtin,
@@ -1425,14 +1576,45 @@ func (db *PackageDatabase) LoadScript(filename string) error {
 	return nil
 }
 
-func (db *PackageDatabase) LoadAll() error {
-	for _, builder := range db.ContainerBuilders {
-		if err := builder.Load(db); err != nil {
-			return err
-		}
-	}
+func (db *PackageDatabase) LoadAll(parallel bool) error {
+	if parallel {
+		var wg sync.WaitGroup
+		done := make(chan bool)
+		errors := make(chan error)
 
-	return nil
+		for _, builder := range db.ContainerBuilders {
+			wg.Add(1)
+
+			go func(builder *ContainerBuilder) {
+				defer wg.Done()
+
+				if err := builder.Load(db); err != nil {
+					errors <- err
+				}
+			}(builder)
+		}
+
+		go func() {
+			wg.Wait()
+
+			done <- true
+		}()
+
+		select {
+		case err := <-errors:
+			return err
+		case <-done:
+			return nil
+		}
+	} else {
+		for _, builder := range db.ContainerBuilders {
+			if err := builder.Load(db); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
 }
 
 func (db *PackageDatabase) NewBuildContext(source BuildSource) *BuildContext {
@@ -1444,15 +1626,26 @@ func (db *PackageDatabase) Build(ctx *BuildContext, def BuildDefinition) (File, 
 
 	filename := filepath.Join("local", "build", hash+".bin")
 
-	// Check if the file already exists. If it does then return it.
-	if _, err := os.Stat(filename); err == nil {
-		return &LocalFile{Filename: filename}, nil
-	}
-
 	// Get a child context for the build.
 	child := ctx.childContext(def, filename+".tmp")
 
-	slog.Info("building", "Tag", def.Tag())
+	// Check if the file already exists. If it does then return it.
+	if info, err := os.Stat(filename); err == nil {
+		// If the file has already been created then check if a rebuild is needed.
+		needsRebuild, err := def.NeedsBuild(child, info.ModTime())
+		if err != nil {
+			return nil, err
+		}
+
+		// If no rebuild is nessasory then skip it.
+		if !needsRebuild {
+			return &LocalFile{Filename: filename}, nil
+		}
+
+		slog.Info("rebuild requested", "Tag", def.Tag())
+	} else {
+		slog.Info("building", "Tag", def.Tag())
+	}
 
 	// If not then trigger the build.
 	result, err := def.Build(child)
@@ -1509,6 +1702,12 @@ func (db *PackageDatabase) GetBuilder(name string) (*ContainerBuilder, error) {
 	builder, ok := db.ContainerBuilders[name]
 	if !ok {
 		return nil, fmt.Errorf("builder %s not found", name)
+	}
+
+	if !builder.Loaded() {
+		if err := builder.Load(db); err != nil {
+			return nil, err
+		}
 	}
 
 	return builder, nil
@@ -1590,14 +1789,30 @@ func New() *PackageDatabase {
 }
 
 var (
-	makeList = flag.String("make", "", "make a container from a list of packages")
-	builder  = flag.String("builder", "", "specify a builder to use for making containers")
+	makeList   = flag.String("make", "", "make a container from a list of packages")
+	builder    = flag.String("builder", "", "specify a builder to use for making containers")
+	test       = flag.Bool("test", false, "load all container builders")
+	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+	memprofile = flag.String("memprofile", "", "write memory profile to this file")
+	rebuild    = flag.Bool("rebuild", false, "rebuild all starlark-defined build definitions")
+	noParallel = flag.Bool("noparallel", false, "disable parallel initialization of container builders")
 )
 
 func main() {
 	flag.Parse()
 
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	db := New()
+
+	db.RebuildUserDefinitions = *rebuild
 
 	for _, arg := range flag.Args() {
 		if err := db.LoadScript(arg); err != nil {
@@ -1605,8 +1820,10 @@ func main() {
 		}
 	}
 
-	if err := db.LoadAll(); err != nil {
-		log.Fatal(err)
+	if *test {
+		if err := db.LoadAll(!*noParallel); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	if *builder != "" {
@@ -1644,7 +1861,17 @@ func main() {
 		} else {
 			flag.Usage()
 		}
-	} else {
+	} else if !*test {
 		flag.Usage()
+	}
+
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.WriteHeapProfile(f)
+		f.Close()
+		return
 	}
 }

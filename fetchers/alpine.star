@@ -1,11 +1,34 @@
 db.add_mirror("alpine", ["https://dl-cdn.alpinelinux.org/alpine"])
 
-def parse_alpine_repo(ctx, url):
-    # Read the index in one line by requesting the URL.
-    index = ctx.read_archive(
-        define.fetch_http(url + "/APKINDEX.tar.gz"),
-        ".tar.gz",
-    )["APKINDEX"]
+LATEST_ALPINE_VERSION = "3.20"
+
+ALPINE_VERSIONS = [
+    "edge",
+    "3.20",
+    "3.19",
+    "3.18",
+    "3.17",
+    "3.16",
+    "3.15",
+    "3.14",
+    "3.13",
+    "3.12",
+    "3.11",
+    "3.10",
+    "3.9",
+    "3.8",
+    "3.7",
+    "3.6",
+    "3.5",
+    "3.4",
+    "3.3",
+    "3.2",
+    "3.1",
+    "3.0",
+]
+
+def parse_alpine_repo(ctx, index):
+    index = index["APKINDEX"]
 
     # Create a record writer which writes starlark objects to a file.
     ret = ctx.recordwriter()
@@ -39,12 +62,34 @@ def parse_alpine_packages(ctx, ent):
 def make_alpine_repos(only_latest = True):
     alpine_repos = {}
 
-    for version in ["3.20"]:
+    for version in ALPINE_VERSIONS:
+        if only_latest and version != LATEST_ALPINE_VERSION:
+            continue
+
         repos = []
-        for repo in ["main", "community"]:
+
+        repo_list = ["main"]
+
+        server_version = version
+
+        if version == "edge":
+            repo_list.append("community")
+            repo_list.append("testing")
+        else:
+            server_version = "v" + server_version
+            if int(version.split(".")[1]) > 3:
+                repo_list.append("community")
+
+        for repo in repo_list:
             repos.append(define.build(
                 parse_alpine_repo,
-                "mirror://alpine/v{}/{}/{}".format(version, repo, "x86_64"),
+                define.read_archive(
+                    define.fetch_http(
+                        "mirror://alpine/{}/{}/{}/APKINDEX.tar.gz".format(server_version, repo, "x86_64"),
+                        expire_time = duration("8h"),
+                    ),
+                    ".tar.gz",
+                ),
             ))
 
         # Define a package collection containing all the repos.
@@ -73,5 +118,5 @@ def make_alpine_builders(repos):
     return ret
 
 if __name__ == "__main__":
-    for builder in make_alpine_builders(make_alpine_repos(only_latest = True)):
+    for builder in make_alpine_builders(make_alpine_repos(only_latest = False)):
         db.add_container_builder(builder)
