@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/xi2/xz"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
@@ -209,6 +210,8 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 			return starlark.String(contents), nil
 		}), nil
+	} else if name == "name" {
+		return starlark.String(f.Name), nil
 	} else {
 		return nil, nil
 	}
@@ -216,7 +219,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (f *StarFile) AttrNames() []string {
-	return []string{"read"}
+	return []string{"read", "name"}
 }
 
 func (f *StarFile) String() string      { return fmt.Sprintf("File{%s}", f.Name) }
@@ -291,7 +294,7 @@ type StarBuildDefinition struct {
 	BuilderArgs starlark.Tuple
 }
 
-func (def *StarBuildDefinition) resultToStarlark(argDef BuildDefinition, result File) (starlark.Value, error) {
+func buildResultToStarlark(argDef BuildDefinition, result File) (starlark.Value, error) {
 	switch arg := argDef.(type) {
 	case *ReadArchiveBuildDefinition:
 		ark, err := ReadArchiveFromFile(result)
@@ -300,6 +303,10 @@ func (def *StarBuildDefinition) resultToStarlark(argDef BuildDefinition, result 
 		}
 
 		return NewStarArchive(ark, argDef.Tag()), nil
+	case *FetchHttpBuildDefinition:
+		return NewStarFile(result, argDef.Tag()), nil
+	case *DecompressFileBuildDefinition:
+		return NewStarFile(result, argDef.Tag()), nil
 	default:
 		return starlark.None, fmt.Errorf("resultToStarlark not implemented for: %T %+v", arg, arg)
 	}
@@ -356,7 +363,7 @@ func (def *StarBuildDefinition) Build(ctx *BuildContext) (BuildResult, error) {
 				return nil, err
 			}
 
-			val, err := def.resultToStarlark(argDef, res)
+			val, err := buildResultToStarlark(argDef, res)
 			if err != nil {
 				return nil, err
 			}
@@ -696,6 +703,81 @@ func NewReadArchiveBuildDefinition(base BuildDefinition, kind string) *ReadArchi
 	return &ReadArchiveBuildDefinition{Base: base, Kind: kind}
 }
 
+type DecompressFileBuildDefinition struct {
+	Base BuildDefinition
+	Kind string
+
+	r io.ReadCloser
+}
+
+// NeedsBuild implements BuildDefinition.
+func (def *DecompressFileBuildDefinition) NeedsBuild(ctx *BuildContext, cacheTime time.Time) (bool, error) {
+	build, err := ctx.NeedsBuild(def.Base)
+	if err != nil {
+		return true, err
+	}
+	if build {
+		return true, nil
+	} else {
+		return false, nil // compressed files don't need to be re-extracted unless the underlying file changes.
+	}
+}
+
+// WriteTo implements BuildResult.
+func (def *DecompressFileBuildDefinition) WriteTo(w io.Writer) (n int64, err error) {
+	return io.Copy(w, def.r)
+}
+
+// Build implements BuildDefinition.
+func (def *DecompressFileBuildDefinition) Build(ctx *BuildContext) (BuildResult, error) {
+	f, err := ctx.Database.Build(ctx, def.Base)
+	if err != nil {
+		return nil, err
+	}
+
+	fh, err := f.Open()
+	if err != nil {
+		return nil, err
+	}
+
+	switch def.Kind {
+	case ".xz":
+		reader, err := xz.NewReader(fh, xz.DefaultDictMax)
+		if err != nil {
+			return nil, err
+		}
+
+		def.r = io.NopCloser(reader)
+	default:
+		return nil, fmt.Errorf("DecompressFile with unknown kind: %s", def.Kind)
+	}
+
+	return def, nil
+}
+
+// Tag implements BuildDefinition.
+func (def *DecompressFileBuildDefinition) Tag() string {
+	return strings.Join([]string{"DecompressFile", def.Base.Tag(), def.Kind}, "_")
+}
+
+func (def *DecompressFileBuildDefinition) String() string { return def.Tag() }
+func (*DecompressFileBuildDefinition) Type() string       { return "DecompressFileBuildDefinition" }
+func (*DecompressFileBuildDefinition) Hash() (uint32, error) {
+	return 0, fmt.Errorf("DecompressFileBuildDefinition is not hashable")
+}
+func (*DecompressFileBuildDefinition) Truth() starlark.Bool { return starlark.True }
+func (*DecompressFileBuildDefinition) Freeze()              {}
+
+var (
+	_ starlark.Value  = &DecompressFileBuildDefinition{}
+	_ BuildDefinition = &DecompressFileBuildDefinition{}
+	_ BuildResult     = &DecompressFileBuildDefinition{}
+)
+
+func NewDecompressFileBuildDefinition(base BuildDefinition, kind string) *DecompressFileBuildDefinition {
+	return &DecompressFileBuildDefinition{Base: base, Kind: kind}
+}
+
 type PackageQuery struct {
 	Name    string
 	Version string
@@ -956,8 +1038,10 @@ func (builder *ContainerBuilder) Plan(packages []PackageQuery) (*InstallationPla
 	return plan, nil
 }
 
-func (*ContainerBuilder) String() string { return "ContainerBuilder" }
-func (*ContainerBuilder) Type() string   { return "ContainerBuilder" }
+func (builder *ContainerBuilder) String() string {
+	return fmt.Sprintf("ContainerBuilder{%s}", builder.Packages)
+}
+func (*ContainerBuilder) Type() string { return "ContainerBuilder" }
 func (*ContainerBuilder) Hash() (uint32, error) {
 	return 0, fmt.Errorf("ContainerBuilder is not hashable")
 }
@@ -1186,6 +1270,30 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
+	} else if name == "build" {
+		return starlark.NewBuiltin("BuildContext.build", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				def BuildDefinition
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"def", &def,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			result, err := b.BuildChild(def)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return buildResultToStarlark(def, result)
+		}), nil
 	} else {
 		return nil, nil
 	}
@@ -1193,7 +1301,7 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (b *BuildContext) AttrNames() []string {
-	return []string{"recordwriter", "add_package"}
+	return []string{"recordwriter", "add_package", "build"}
 }
 
 func (ctx *BuildContext) newThread() *starlark.Thread {
@@ -1335,7 +1443,12 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				return NewFetchHttpBuildDefinition(url, time.Duration(expireTime)), nil
 			}),
-			"read_archive": starlark.NewBuiltin("define.read_archive", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			"read_archive": starlark.NewBuiltin("define.read_archive", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
 				var (
 					def  BuildDefinition
 					kind string
@@ -1351,6 +1464,28 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				archiveDef := NewReadArchiveBuildDefinition(def, kind)
 
 				return archiveDef, nil
+			}),
+			"decompress_file": starlark.NewBuiltin("define.decompress_file", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					def  BuildDefinition
+					kind string
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"def", &def,
+					"kind", &kind,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				decompressDef := NewDecompressFileBuildDefinition(def, kind)
+
+				return decompressDef, nil
 			}),
 		},
 	}
