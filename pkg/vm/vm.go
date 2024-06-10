@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 )
@@ -30,6 +31,8 @@ type VirtualMachine struct {
 	factory *VirtualMachineFactory
 	kernel  string
 	initrd  string
+	ns      *netstack.NetStack
+	nic     *netstack.NetworkInterface
 }
 
 func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable) error {
@@ -43,6 +46,13 @@ func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable) error {
 }
 
 func (vm *VirtualMachine) Run() error {
+	nic, err := vm.ns.AttachNetworkInterface()
+	if err != nil {
+		return err
+	}
+
+	vm.nic = nic
+
 	ret, err := starlark.Call(
 		&starlark.Thread{Name: "VirtualMachine"},
 		vm.factory.callable,
@@ -66,6 +76,12 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 		return starlark.String(vm.kernel), nil
 	} else if name == "initrd" {
 		return starlark.String(vm.initrd), nil
+	} else if name == "net_send" {
+		return starlark.String(vm.nic.NetSend), nil
+	} else if name == "net_recv" {
+		return starlark.String(vm.nic.NetRecv), nil
+	} else if name == "mac_address" {
+		return starlark.String(vm.nic.MacAddress), nil
 	} else {
 		return nil, nil
 	}
@@ -162,8 +178,12 @@ func (factory *VirtualMachineFactory) load(filename string) error {
 	return nil
 }
 
-func (factory *VirtualMachineFactory) Create(kernel string, initrd string) (*VirtualMachine, error) {
-	return &VirtualMachine{factory: factory, kernel: kernel, initrd: initrd}, nil
+func (factory *VirtualMachineFactory) Create(
+	kernel string,
+	initrd string,
+	ns *netstack.NetStack,
+) (*VirtualMachine, error) {
+	return &VirtualMachine{factory: factory, ns: ns, kernel: kernel, initrd: initrd}, nil
 }
 
 func LoadVirtualMachineFactory(filename string) (*VirtualMachineFactory, error) {

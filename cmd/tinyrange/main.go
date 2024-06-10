@@ -5,10 +5,12 @@ import (
 	_ "embed"
 	"io/fs"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/cpio"
+	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"github.com/tinyrange/tinyrange/pkg/vm"
 )
 
@@ -58,6 +60,36 @@ func tinyRangeMain() error {
 		return err
 	}
 
+	ns := netstack.New()
+
+	f, err := os.Create("local/network.pcap")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := ns.OpenPacketCapture(f); err != nil {
+		return err
+	}
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+
+		listen, err := ns.ListenInternal("tcp", ":80")
+		if err != nil {
+			slog.Error("failed to listen", "err", err)
+			return
+		}
+
+		mux := http.NewServeMux()
+
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("Hello, World\n"))
+		})
+
+		slog.Error("failed to serve", "err", http.Serve(listen, mux))
+	}()
+
 	factory, err := vm.LoadVirtualMachineFactory("hv/qemu/qemu.star")
 	if err != nil {
 		return err
@@ -66,6 +98,7 @@ func tinyRangeMain() error {
 	vm, err := factory.Create(
 		"local/vmlinux_x86_64",
 		"local/initramfs.cpio",
+		ns,
 	)
 	if err != nil {
 		return err

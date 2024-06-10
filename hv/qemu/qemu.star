@@ -15,5 +15,9 @@ def main(ctx):
             "-append",
             "console=ttyS0 reboot=k panic=-1 init=/init",
             "-no-reboot",
+            "-netdev",
+            "socket,id=net,udp={},localaddr={}".format(ctx.net_send, ctx.net_recv),
+            "-device",
+            "virtio-net,netdev=net,mac={},romfile=".format(ctx.mac_address),
         ],
     )
