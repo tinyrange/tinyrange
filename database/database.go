@@ -396,13 +396,37 @@ func (db *PackageDatabase) AddContainerBuilder(builder *ContainerBuilder) error 
 	return nil
 }
 
-func (db *PackageDatabase) LoadScript(filename string) error {
+func (db *PackageDatabase) LoadFile(filename string) error {
 	thread := db.newThread(filename)
 
 	globals := db.getGlobals("__main__")
 
 	// Execute the file.
 	if _, err := starlark.ExecFileOptions(db.getFileOptions(), thread, filename, nil, globals); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (db *PackageDatabase) RunScript(filename string) error {
+	thread := db.newThread(filename)
+
+	globals := db.getGlobals("__main__")
+
+	// Execute the script.
+	decls, err := starlark.ExecFileOptions(db.getFileOptions(), thread, filename, nil, globals)
+	if err != nil {
+		return err
+	}
+
+	// Call the main function.
+	mainFunc, ok := decls["main"]
+	if !ok {
+		return fmt.Errorf("main function not found")
+	}
+	_, err = starlark.Call(thread, mainFunc, starlark.Tuple{}, []starlark.Tuple{})
+	if err != nil {
 		return err
 	}
 
