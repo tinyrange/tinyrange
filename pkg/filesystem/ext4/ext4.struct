@@ -1,0 +1,322 @@
+type Superblock struct {
+    inodes_count                    u32_le          // Inodes count 
+    blocks_count_lo                 u32_le          // Blocks count 
+    r_blocks_count_lo               u32_le          // Reserved blocks count 
+    free_blocks_count_lo            u32_le          // Free blocks count 
+    free_inodes_count               u32_le          // Free inodes count 
+    first_data_block                u32_le          // First Data Block 
+    log_block_size                  u32_le          // Block size 
+    log_cluster_size                u32_le          // Allocation cluster size 
+
+    blocks_per_group                u32_le          // # Blocks per group 
+    clusters_per_group              u32_le          // # Clusters per group 
+    inodes_per_group                u32_le          // # Inodes per group 
+
+    mtime                           u32_le          // Mount time 
+    wtime                           u32_le          // Write time 
+
+    mnt_count                       u16_le          // Mount count 
+    max_mnt_count                   u16_le          // Maximal mount count 
+
+    magic                           u16_le          // Magic signature 
+
+    state                           u16_le          // File system state 
+
+    errors                          u16_le          // Behaviour when detecting errors 
+
+    minor_rev_level                 u16_le          // minor revision level 
+
+    lastcheck                       u32_le          // time of last check 
+    checkinterval                   u32_le          // max. time between checks 
+
+    creator_os                      u32_le          // OS 
+
+    rev_level                       u32_le          // Revision level 
+
+    def_resuid                      u16_le          // Default uid for reserved blocks 
+    def_resgid                      u16_le          // Default gid for reserved blocks 
+
+    // These fields are for EXT4_DYNAMIC_REV superblocks only.
+    first_ino                       u32_le          // First non-reserved inode 
+    inode_size                      u16_le          // size of inode structure 
+    block_group_nr                  u16_le          // block group # of this superblock 
+
+    feature_compat                  u32_le          // compatible feature set 
+    feature_incompat                u32_le          // incompatible feature set 
+    feature_ro_compat               u32_le          // readonly-compatible feature set 
+
+    uuid                            [16]u8          // 128-bit uuid for volume 
+    volume_name                     [16]string      // volume name 
+
+    last_mounted                    [64]string      // directory where last mounted 
+
+    algorithm_usage_bitmap          u32_le          // For compression 
+
+    // Performance hints.
+    prealloc_blocks                 u8              // Nr of blocks to try to preallocate
+    prealloc_dir_blocks             u8              // Nr to preallocate for dirs 
+    reserved_gdt_blocks             u16_le          // Per group desc for online growth 
+
+    // Journaling support valid if EXT4_FEATURE_COMPAT_HAS_JOURNAL set.
+    journal_uuid                    [16]u8          // uuid of journal superblock 
+    journal_inum                    u32_le          // inode number of journal file 
+    journal_dev                     u32_le          // device number of journal file 
+
+    last_orphan                     u32_le          // start of list of inodes to delete 
+
+    hash_seed                       [4]u32_le       // HTREE hash seed 
+
+    def_hash_version                u8              // Default hash version to use 
+
+    jnl_backup_type                 u8                              
+
+    desc_size                       u16_le          // size of group descriptor 
+
+    s_default_mount_opts            u32_le
+
+    first_meta_bg                   u32_le          // First metablock block group 
+
+    mkfs_time                       u32_le          // When the filesystem was created 
+
+    jnl_blocks                      [17]u32_le      // Backup of the journal inode 
+
+    // 64bit support valid if EXT4_FEATURE_INCOMPAT_64BIT
+    blocks_count_hi                 u32_le          // Blocks count 
+    r_blocks_count_hi               u32_le          // Reserved blocks count 
+    free_blocks_count_hi            u32_le          // Free blocks count
+    
+    field blocks_count u64_le = ($blocks_count_lo @ $blocks_count_hi)
+    field r_blocks_count u64_le = ($r_blocks_count_lo @ $r_blocks_count_hi)
+    field free_blocks_count u64_le = ($free_blocks_count_lo @ $free_blocks_count_hi)
+
+    min_extra_isize                 u16_le          // All inodes have at least # bytes 
+    want_extra_isize                u16_le          // New inodes should reserve # bytes 
+
+    flags                           u32_le          // Miscellaneous flags 
+
+    raid_stride                     u16_le          // RAID stride 
+
+    mmp_update_interval             u16_le          // # seconds to wait in MMP checking 
+    mmp_block                       u64_le          // Block for multi-mount protection 
+    raid_stripe_width               u32_le          // blocks on all data disks (N*stride)
+
+    log_groups_per_flex             u8              // FLEX_BG group size 
+
+    checksum_type                   u8              // metadata checksum algorithm used 
+
+    encryption_level                u8              // versioning level for encryption 
+
+    reserved_pad                    u8              // Padding to next 32bits 
+
+    kbytes_written                  u64_le          // nr of lifetime kilobytes written 
+
+    snapshot_inum                   u32_le          // Inode number of active snapshot 
+    snapshot_id                     u32_le          // sequential ID of active snapshot 
+    snapshot_r_blocks_count         u64_le          // reserved blocks for active snapshot's future use 
+    snapshot_list                   u32_le          // inode number of the head of the on-disk snapshot list 
+
+    error_count                     u32_le          // number of fs errors 
+
+    first_error_time                u32_le          // first time an error happened 
+    first_error_ino                 u32_le          // inode involved in first error 
+    first_error_block               u64_le          // block involved of first error 
+    first_error_func                [32]u8          // function where the error happened 
+    first_error_line                u32_le          // line number where error happened 
+
+    last_error_time                 u32_le          // most recent time of an error 
+    last_error_ino                  u32_le          // inode involved in last error 
+    last_error_line                 u32_le          // line number where error happened 
+    last_error_block                u64_le          // block involved of last error 
+    last_error_func[32]             u8              // function where the error happened 
+
+    mount_opts                      [64]u8
+
+    usr_quota_inum                  u32_le          // inode for tracking user quota 
+    grp_quota_inum                  u32_le          // inode for tracking group quota 
+
+    overhead_clusters               u32_le          // overhead blocks/clusters in fs 
+
+    backup_bgs                      [2]u32_le       // groups with sparse_super2 SBs 
+
+    encrypt_algos                   [4]u8           // Encryption algorithms in use  
+    encrypt_pw_salt                 [16]u8          // Salt used for string2key algorithm 
+
+    lpf_ino                         u32_le          // Location of the lost+found inode 
+    prj_quota_inum                  u32_le          // inode for tracking project quota 
+
+    checksum_seed                   u32_le          // crc32c(uuid) if csum_seed set 
+
+    wtime_hi                        u8
+    mtime_hi                        u8
+    mkfs_time_hi                    u8
+    lastcheck_hi                    u8
+    first_error_time_hi             u8
+    last_error_time_hi              u8
+
+    first_error_errcode             u8
+    last_error_errcode              u8
+
+    encoding                        u16_le          // Filename charset encoding 
+    encoding_flags                  u16_le          // Filename charset encoding flags 
+
+    orphan_file_inum                u32_le          // Inode for tracking orphan inodes 
+
+    reserved                        [94]u32_le      // Padding to the end of the block 
+
+    checksum                        u32_le          // crc32c(superblock) 
+}
+
+type BlockGroupDescriptor struct {
+    block_bitmap_lo                 u32_le          // Lower 32-bits of location of block bitmap.
+    inode_bitmap_lo                 u32_le          // Lower 32-bits of location of inode bitmap.
+    inode_table_lo                  u32_le          // Lower 32-bits of location of inode table.
+
+    free_blocks_count_lo            u16_le          // Lower 16-bits of free block count.
+    free_inodes_count_lo            u16_le          // Lower 16-bits of free inode count.
+    used_dirs_count_lo              u16_le          // Lower 16-bits of directory count.
+
+    flags                           u16_le          // Block group flags. See the bgflags table below.
+
+    exclude_bitmap_lo               u32_le          // Lower 32-bits of location of snapshot exclusion bitmap.
+
+    block_bitmap_csum_lo            u16_le          // Lower 16-bits of the block bitmap checksum.
+    inode_bitmap_csum_lo            u16_le          // Lower 16-bits of the inode bitmap checksum.
+
+    itable_unused_lo                u16_le          // Lower 16-bits of unused inode count. If set, we needn't scan past the (sb.s_inodes_per_group - gdt.bg_itable_unused) th entry in the inode table for this group.
+
+    checksum                        u16_le          // Group descriptor checksum; crc16(sb_uuid+group_num+bg_desc) if the RO_COMPAT_GDT_CSUM feature is set, or crc32c(sb_uuid+group_num+bg_desc) & 0xFFFF if the RO_COMPAT_METADATA_CSUM feature is set. The bg_checksum field in bg_desc is skipped when calculating crc16 checksum, and set to zero if crc32c checksum is used.
+    
+    // These fields only exist if the 64bit feature is enabled and s_desc_size > 32.
+    block_bitmap_hi                 u32_le          // Upper 32-bits of location of block bitmap.
+    inode_bitmap_hi                 u32_le          // Upper 32-bits of location of inodes bitmap.
+    inode_table_hi                  u32_le          // Upper 32-bits of location of inodes table.
+    
+    field block_bitmap u64_le = ($block_bitmap_lo @ $block_bitmap_hi)
+    field inode_bitmap u64_le = ($inode_bitmap_lo @ $inode_bitmap_hi)
+    field inode_table u64_le = ($inode_table_lo @ $inode_table_hi)
+
+    free_blocks_count_hi            u16_le          // Upper 16-bits of free block count.
+    free_inodes_count_hi            u16_le          // Upper 16-bits of free inode count.
+    used_dirs_count_hi              u16_le          // Upper 16-bits of directory count.
+
+    field free_blocks_count u32_le = ($free_blocks_count_lo @ $free_blocks_count_hi)
+    field free_inodes_count u32_le = ($free_inodes_count_lo @ $free_inodes_count_hi)
+    field used_dirs_count u32_le = ($used_dirs_count_lo @ $used_dirs_count_hi)
+
+    itable_unused_hi                u16_le          // Upper 16-bits of unused inode count.
+
+    exclude_bitmap_hi               u32_le          // Upper 32-bits of location of snapshot exclusion bitmap.
+
+    block_bitmap_csum_hi            u16_le          // Upper 16-bits of the block bitmap checksum.
+    inode_bitmap_csum_hi            u16_le          // Upper 16-bits of the inode bitmap checksum.
+
+    reserved                        u32_le          // Padding to 64 bytes. 
+}
+
+type Inode struct {
+    mode                u16_le
+    uid                 u16_le
+    size_lo             u32_le
+    atime               u32_le
+    ctime               u32_le
+    mtime               u32_le
+    dtime               u32_le
+    gid                 u16_le
+    links_count         u16_le
+    blocks_lo           u32_le
+    flags               u32_le
+    i_version           u32_le
+
+    block_magic         u16_le  // Magic number, 0xF30A.
+    block_entries       u16_le  // Number of valid entries following the header.
+    block_max           u16_le  // Maximum number of entries that could follow the header.
+    block_depth         u16_le  // Depth of this extent node in the extent tree. 0 = this extent node points to data blocks; otherwise, this extent node points to other extent nodes. The extent tree can be at most 5 levels deep: a logical block number can be at most 2^32, and the smallest n that satisfies 4*(((blocksize - 12)/12)^n) >= 2^32 is 5.
+    block_generation    u32_le  // Generation of the tree. (Used by Lustre, but not standard ext4).
+
+    block_0_block       u32_le  // First file block number that this extent covers.
+    block_0_len         u16_le  // Number of blocks covered by extent. If the value of this field is <= 32768, the extent is initialized. If the value of the field is > 32768, the extent is uninitialized and the actual extent length is ee_len - 32768. Therefore, the maximum length of a initialized extent is 32768 blocks, and the maximum length of an uninitialized extent is 32767.
+    block_0_start_hi    u16_le  // Upper 16-bits of the block number to which this extent points.
+    block_0_start_lo    u32_le  // Lower 32-bits of the block number to which this extent points.
+
+    field block_0_start u64_le = ($block_0_start_lo @ $block_0_start_hi)
+
+    block_1_block       u32_le  // First file block number that this extent covers.
+    block_1_len         u16_le  // Number of blocks covered by extent. If the value of this field is <= 32768, the extent is initialized. If the value of the field is > 32768, the extent is uninitialized and the actual extent length is ee_len - 32768. Therefore, the maximum length of a initialized extent is 32768 blocks, and the maximum length of an uninitialized extent is 32767.
+    block_1_start_hi    u16_le  // Upper 16-bits of the block number to which this extent points.
+    block_1_start_lo    u32_le  // Lower 32-bits of the block number to which this extent points.
+
+    field block_1_start u64_le = ($block_1_start_lo @ $block_1_start_hi)
+
+    block_2_block       u32_le  // First file block number that this extent covers.
+    block_2_len         u16_le  // Number of blocks covered by extent. If the value of this field is <= 32768, the extent is initialized. If the value of the field is > 32768, the extent is uninitialized and the actual extent length is ee_len - 32768. Therefore, the maximum length of a initialized extent is 32768 blocks, and the maximum length of an uninitialized extent is 32767.
+    block_2_start_hi    u16_le  // Upper 16-bits of the block number to which this extent points.
+    block_2_start_lo    u32_le  // Lower 32-bits of the block number to which this extent points.
+
+    field block_2_start u64_le = ($block_2_start_lo @ $block_2_start_hi)
+
+    block_3_block       u32_le  // First file block number that this extent covers.
+    block_3_len         u16_le  // Number of blocks covered by extent. If the value of this field is <= 32768, the extent is initialized. If the value of the field is > 32768, the extent is uninitialized and the actual extent length is ee_len - 32768. Therefore, the maximum length of a initialized extent is 32768 blocks, and the maximum length of an uninitialized extent is 32767.
+    block_3_start_hi    u16_le  // Upper 16-bits of the block number to which this extent points.
+    block_3_start_lo    u32_le  // Lower 32-bits of the block number to which this extent points.
+
+    field block_3_start u64_le = ($block_3_start_lo @ $block_3_start_hi)
+    
+    generation          u32_le
+    file_acl_lo         u32_le
+    size_high           u32_le
+    obso_faddr          u32_le
+    blocks_high         u16_le
+    file_acl_high       u16_le
+    uid_high            u16_le
+    gid_high            u16_le
+    checksum_lo         u16_le
+    reserved            u16_le
+    extra_isize         u16_le
+    checksum_hi         u16_le
+    ctime_extra         u32_le
+    mtime_extra         u32_le
+    atime_extra         u32_le
+    crtime              u32_le
+    crtime_extra        u32_le
+    version_hi          u32_le
+    projid              u32_le
+    extra               [96]byte
+
+    field n_size u64_le = ($size_lo @ $size_high)
+    field blocks u64_le = ($blocks_lo @ $blocks_high)
+}
+
+type ExtentTreeHeader struct {
+    magic               u16_le  // Magic number, 0xF30A.
+    entries             u16_le  // Number of valid entries following the header.
+    max                 u16_le  // Maximum number of entries that could follow the header.
+    depth               u16_le  // Depth of this extent node in the extent tree. 0 = this extent node points to data blocks; otherwise, this extent node points to other extent nodes. The extent tree can be at most 5 levels deep: a logical block number can be at most 2^32, and the smallest n that satisfies 4*(((blocksize - 12)/12)^n) >= 2^32 is 5.
+    generation          u32_le  // Generation of the tree. (Used by Lustre, but not standard ext4).
+}
+
+type ExtentTreeIdx struct {
+    block               u32_le  // This index node covers file blocks from 'block' onward.
+    leaf_lo             u32_le  // Lower 32-bits of the block number of the extent node that is the next level lower in the tree. The tree node pointed to can be either another internal node or a leaf node, described below.
+    leaf_hi             u16_le  // Upper 16-bits of the previous field.
+    unused              u16_le
+}
+
+type ExtentTreeNode struct {
+    block               u32_le  // First file block number that this extent covers.
+    len                 u16_le  // Number of blocks covered by extent. If the value of this field is <= 32768, the extent is initialized. If the value of the field is > 32768, the extent is uninitialized and the actual extent length is ee_len - 32768. Therefore, the maximum length of a initialized extent is 32768 blocks, and the maximum length of an uninitialized extent is 32767.
+    start_hi            u16_le  // Upper 16-bits of the block number to which this extent points.
+    start_lo            u32_le  // Lower 32-bits of the block number to which this extent points.
+
+    field start u64_le = ($start_lo @ $start_hi)
+}
+
+type ExtentTreeTail struct {
+    checksum            u32_le
+}
+
+type DirEntry2 struct {
+    inode               u32_le  // Number of the inode that this directory entry points to.
+    rec_len             u16_le  // Length of this directory entry.
+    name_len            u8      // Length of the file name.
+    file_type           u8      // File type code, see ftype table below.
+}

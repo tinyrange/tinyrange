@@ -28,11 +28,12 @@ var (
 )
 
 type VirtualMachine struct {
-	factory *VirtualMachineFactory
-	kernel  string
-	initrd  string
-	ns      *netstack.NetStack
-	nic     *netstack.NetworkInterface
+	factory   *VirtualMachineFactory
+	kernel    string
+	initrd    string
+	diskImage string
+	ns        *netstack.NetStack
+	nic       *netstack.NetworkInterface
 }
 
 func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable) error {
@@ -76,6 +77,8 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 		return starlark.String(vm.kernel), nil
 	} else if name == "initrd" {
 		return starlark.String(vm.initrd), nil
+	} else if name == "disk_image" {
+		return starlark.String(vm.diskImage), nil
 	} else if name == "net_send" {
 		return starlark.String(vm.nic.NetSend), nil
 	} else if name == "net_recv" {
@@ -89,7 +92,14 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (vm *VirtualMachine) AttrNames() []string {
-	return []string{"kernel", "initrd"}
+	return []string{
+		"kernel",
+		"initrd",
+		"disk_image",
+		"net_send",
+		"net_recv",
+		"mac_address",
+	}
 }
 
 func (*VirtualMachine) String() string { return "VirtualMachine" }
@@ -181,9 +191,16 @@ func (factory *VirtualMachineFactory) load(filename string) error {
 func (factory *VirtualMachineFactory) Create(
 	kernel string,
 	initrd string,
+	diskImage string,
 	ns *netstack.NetStack,
 ) (*VirtualMachine, error) {
-	return &VirtualMachine{factory: factory, ns: ns, kernel: kernel, initrd: initrd}, nil
+	return &VirtualMachine{
+		factory:   factory,
+		ns:        ns,
+		kernel:    kernel,
+		initrd:    initrd,
+		diskImage: diskImage,
+	}, nil
 }
 
 func LoadVirtualMachineFactory(filename string) (*VirtualMachineFactory, error) {
