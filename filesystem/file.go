@@ -1,12 +1,10 @@
 package filesystem
 
 import (
-	"encoding/json"
-	"fmt"
+	"bytes"
 	"io"
 	"io/fs"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -21,6 +19,15 @@ type FileInfo interface {
 type File interface {
 	Open() (FileHandle, error)
 	Stat() (FileInfo, error)
+}
+
+type MutableFile interface {
+	File
+
+	Chmod(mode fs.FileMode) error
+	Chown(uid int, gid int) error
+	Chtimes(mtime time.Time) error
+	Overwrite(contents []byte) error
 }
 
 type FileType byte
@@ -103,21 +110,6 @@ var (
 	_ Entry = &CacheEntry{}
 )
 
-type Archive interface {
-	Entries() ([]Entry, error)
-}
-
-type ArrayArchive []Entry
-
-// Entries implements Archive.
-func (a ArrayArchive) Entries() ([]Entry, error) {
-	return a, nil
-}
-
-var (
-	_ Archive = ArrayArchive{}
-)
-
 type LocalFile struct {
 	Filename string
 }
@@ -136,47 +128,94 @@ var (
 	_ File = &LocalFile{}
 )
 
-func ReadArchiveFromFile(f File) (Archive, error) {
-	fh, err := f.Open()
-	if err != nil {
-		return nil, err
+func NewLocalFile(filename string) File {
+	return &LocalFile{Filename: filename}
+}
+
+type memoryFile struct {
+	mTime    time.Time
+	mode     fs.FileMode
+	uid      int
+	gid      int
+	contents []byte
+}
+
+// IsDir implements FileInfo.
+func (m *memoryFile) IsDir() bool {
+	return false
+}
+
+// ModTime implements FileInfo.
+func (m *memoryFile) ModTime() time.Time {
+	return m.mTime
+}
+
+// Mode implements FileInfo.
+func (m *memoryFile) Mode() fs.FileMode {
+	return m.mode
+}
+
+// Name implements FileInfo.
+func (m *memoryFile) Name() string {
+	return ""
+}
+
+// Size implements FileInfo.
+func (m *memoryFile) Size() int64 {
+	return int64(len(m.contents))
+}
+
+// Sys implements FileInfo.
+func (m *memoryFile) Sys() any {
+	return m
+}
+
+// Chmod implements MutableFile.
+func (m *memoryFile) Chmod(mode fs.FileMode) error {
+	m.mode = mode
+
+	return nil
+}
+
+// Chown implements MutableFile.
+func (m *memoryFile) Chown(uid int, gid int) error {
+	m.uid = uid
+	m.gid = gid
+
+	return nil
+}
+
+// Chtimes implements MutableFile.
+func (m *memoryFile) Chtimes(mtime time.Time) error {
+	m.mTime = mtime
+
+	return nil
+}
+
+// Open implements MutableFile.
+func (m *memoryFile) Open() (FileHandle, error) {
+	return io.NopCloser(bytes.NewReader(m.contents)), nil
+}
+
+// Overwrite implements MutableFile.
+func (m *memoryFile) Overwrite(contents []byte) error {
+	m.contents = contents
+
+	return nil
+}
+
+// Stat implements MutableFile.
+func (m *memoryFile) Stat() (FileInfo, error) {
+	return m, nil
+}
+
+var (
+	_ MutableFile = &memoryFile{}
+)
+
+func NewMemoryFile() MutableFile {
+	return &memoryFile{
+		mode:  fs.ModeDir | fs.FileMode(0755),
+		mTime: time.Now(),
 	}
-
-	readAt, ok := fh.(io.ReaderAt)
-	if !ok {
-		return nil, fmt.Errorf("%T does not support io.ReaderAt", fh)
-	}
-
-	var ret ArrayArchive
-
-	var off int64 = 0
-
-	hdrBytes := make([]byte, 1024)
-
-	for {
-		_, err := readAt.ReadAt(hdrBytes, off)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-
-		off += 1024
-
-		hdrEnd := strings.IndexByte(string(hdrBytes), '\x00')
-
-		var hdr CacheEntry
-
-		if err := json.Unmarshal(hdrBytes[:hdrEnd], &hdr); err != nil {
-			return nil, err
-		}
-
-		hdr.underlyingFile = readAt
-
-		ret = append(ret, &hdr)
-
-		off += hdr.CSize
-	}
-
-	return ret, nil
 }

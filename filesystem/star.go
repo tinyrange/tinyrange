@@ -3,6 +3,8 @@ package filesystem
 import (
 	"fmt"
 	"io"
+	"io/fs"
+	"path"
 
 	"go.starlark.net/starlark"
 )
@@ -35,14 +37,24 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 		}), nil
 	} else if name == "name" {
 		return starlark.String(f.Name), nil
-	} else {
-		return nil, nil
 	}
+
+	if mut, ok := f.File.(MutableFile); ok {
+		_ = mut
+	}
+
+	return nil, nil
 }
 
 // AttrNames implements starlark.HasAttrs.
 func (f *StarFile) AttrNames() []string {
-	return []string{"read", "name"}
+	ret := []string{"read", "name"}
+
+	if _, ok := f.File.(MutableFile); ok {
+		ret = append(ret, []string{}...)
+	}
+
+	return ret
 }
 
 func (f *StarFile) String() string      { return fmt.Sprintf("File{%s}", f.Name) }
@@ -99,4 +111,122 @@ var (
 
 func NewStarArchive(ark Archive, name string) *StarArchive {
 	return &StarArchive{Archive: ark, Name: name}
+}
+
+type starDirectoryIterator struct {
+	name string
+	ents []DirectoryEntry
+	off  int
+}
+
+// Done implements starlark.Iterator.
+func (s *starDirectoryIterator) Done() {
+	s.off = len(s.ents)
+}
+
+// Next implements starlark.Iterator.
+func (s *starDirectoryIterator) Next(p *starlark.Value) bool {
+	if s.off == len(s.ents) {
+		return false
+	}
+
+	ent := s.ents[s.off]
+
+	childName := path.Join(s.name, ent.Name)
+
+	if dir, ok := ent.File.(Directory); ok {
+		*p = NewStarDirectory(dir, childName)
+	} else {
+		*p = NewStarFile(ent.File, childName)
+	}
+
+	s.off += 1
+
+	return true
+}
+
+var (
+	_ starlark.Iterator = &starDirectoryIterator{}
+)
+
+type StarDirectory struct {
+	Name string
+	Directory
+}
+
+// Iterate implements starlark.Iterable.
+func (f *StarDirectory) Iterate() starlark.Iterator {
+	children, err := f.Readdir()
+	if err != nil {
+		// It's kinda annoying that this method can't return an error.
+		return nil
+	}
+
+	return &starDirectoryIterator{name: f.Name, ents: children}
+}
+
+// Get implements starlark.Mapping.
+func (f *StarDirectory) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
+	name, ok := starlark.AsString(k)
+	if !ok {
+		return nil, false, fmt.Errorf("expected string got %s", k.Type())
+	}
+
+	ent, err := OpenPath(f, name)
+	if err == fs.ErrNotExist {
+		return nil, false, nil
+	} else if err != nil {
+		return nil, false, err
+	}
+
+	childName := path.Join(f.Name, ent.Name)
+
+	if dir, ok := ent.File.(Directory); ok {
+		return NewStarDirectory(dir, childName), true, nil
+	} else {
+		return NewStarFile(ent.File, childName), true, nil
+	}
+}
+
+// SetKey implements starlark.HasSetKey.
+func (f *StarDirectory) SetKey(k starlark.Value, v starlark.Value) error {
+	name, ok := starlark.AsString(k)
+	if !ok {
+		return fmt.Errorf("expected string got %s", k.Type())
+	}
+
+	file, ok := v.(File)
+	if !ok {
+		return fmt.Errorf("expected File got %s", v.Type())
+	}
+
+	return CreateChild(f, name, file)
+}
+
+// Attr implements starlark.HasAttrs.
+func (f *StarDirectory) Attr(name string) (starlark.Value, error) {
+	return nil, nil
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (f *StarDirectory) AttrNames() []string {
+	return []string{}
+}
+
+func (f *StarDirectory) String() string      { return fmt.Sprintf("Directory{%s}", f.Name) }
+func (*StarDirectory) Type() string          { return "Directory" }
+func (*StarDirectory) Hash() (uint32, error) { return 0, fmt.Errorf("Directory is not hashable") }
+func (*StarDirectory) Truth() starlark.Bool  { return starlark.True }
+func (*StarDirectory) Freeze()               {}
+
+var (
+	_ starlark.Value     = &StarDirectory{}
+	_ starlark.HasAttrs  = &StarDirectory{}
+	_ starlark.Mapping   = &StarDirectory{}
+	_ starlark.HasSetKey = &StarDirectory{}
+	_ starlark.Iterable  = &StarDirectory{}
+)
+
+func NewStarDirectory(dir Directory, name string) *StarDirectory {
+	return &StarDirectory{Directory: dir, Name: name}
 }
