@@ -22,6 +22,7 @@ This branch tracks a public rewrite of TinyRange documented through the medium o
 
 - Part 1 (item 1 and 2): https://www.youtube.com/watch?v=W5OwOUV9iAQ
 - Part 2 (item 3 and 4): https://www.youtube.com/watch?v=tTTcN2kflFM
+- Part 3 (item 5): https://www.youtube.com/watch?v=3d-4S2oaDfw
 
 # Getting Started
 
