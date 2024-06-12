@@ -1,4 +1,4 @@
-def main():
+def main(args):
     fs = filesystem()
     fs["hello.txt"] = file("Hello, World", executable = True)
 

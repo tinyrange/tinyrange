@@ -5,12 +5,41 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 	"strings"
 
 	"github.com/tinyrange/pkg2/v2/common"
 	"github.com/tinyrange/pkg2/v2/database"
+	"github.com/tinyrange/pkg2/v2/filesystem"
 )
+
+type fileListArray map[string]filesystem.File
+
+// String implements flag.Value.
+func (i fileListArray) String() string {
+	var ret []string
+
+	for name := range i {
+		ret = append(ret, name)
+	}
+
+	return "[" + strings.Join(ret, ", ") + "]"
+}
+
+func (i fileListArray) Set(value string) error {
+	if k, v, ok := strings.Cut(value, "="); ok {
+		i[k] = filesystem.NewLocalFile(v)
+
+		return nil
+	} else {
+		base := filepath.Base(value)
+
+		i[base] = filesystem.NewLocalFile(value)
+
+		return nil
+	}
+}
 
 var (
 	makeList   = flag.String("make", "", "make a container from a list of packages")
@@ -21,9 +50,11 @@ var (
 	rebuild    = flag.Bool("rebuild", false, "rebuild all starlark-defined build definitions")
 	noParallel = flag.Bool("noparallel", false, "disable parallel initialization of container builders")
 	script     = flag.String("script", "", "load a script rather than providing a interface for the package database")
+	fileList   = make(fileListArray)
 )
 
 func pkg2Main() error {
+	flag.Var(&fileList, "file", "specify files that will be accessible to scripts")
 	flag.Parse()
 
 	if *cpuprofile != "" {
@@ -46,7 +77,7 @@ func pkg2Main() error {
 	}
 
 	if *script != "" {
-		if err := db.RunScript(*script); err != nil {
+		if err := db.RunScript(*script, fileList); err != nil {
 			return err
 		}
 	} else {

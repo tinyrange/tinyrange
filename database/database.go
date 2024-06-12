@@ -17,6 +17,36 @@ import (
 	"go.starlark.net/syntax"
 )
 
+type scriptArguments struct {
+	args map[string]starlark.Value
+}
+
+// Get implements starlark.Mapping.
+func (s *scriptArguments) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
+	key, ok := starlark.AsString(k)
+	if !ok {
+		return nil, false, fmt.Errorf("expected string got %s", k.Type())
+	}
+
+	val, ok := s.args[key]
+	if !ok {
+		return nil, false, nil
+	}
+
+	return val, true, nil
+}
+
+func (*scriptArguments) String() string        { return "Arguments" }
+func (*scriptArguments) Type() string          { return "Arguments" }
+func (*scriptArguments) Hash() (uint32, error) { return 0, fmt.Errorf("Arguments is not hashable") }
+func (*scriptArguments) Truth() starlark.Bool  { return starlark.True }
+func (*scriptArguments) Freeze()               {}
+
+var (
+	_ starlark.Value   = &scriptArguments{}
+	_ starlark.Mapping = &scriptArguments{}
+)
+
 type PackageDatabase struct {
 	ContainerBuilders map[string]*ContainerBuilder
 
@@ -97,7 +127,7 @@ func (db *PackageDatabase) LoadFile(filename string) error {
 	return nil
 }
 
-func (db *PackageDatabase) RunScript(filename string) error {
+func (db *PackageDatabase) RunScript(filename string, files map[string]filesystem.File) error {
 	thread := db.newThread(filename)
 
 	globals := db.getGlobals("__main__")
@@ -108,12 +138,18 @@ func (db *PackageDatabase) RunScript(filename string) error {
 		return err
 	}
 
+	args := &scriptArguments{args: make(map[string]starlark.Value)}
+
+	for k, v := range files {
+		args.args[k] = filesystem.NewStarFile(v, k)
+	}
+
 	// Call the main function.
 	mainFunc, ok := decls["main"]
 	if !ok {
 		return fmt.Errorf("main function not found")
 	}
-	_, err = starlark.Call(thread, mainFunc, starlark.Tuple{}, []starlark.Tuple{})
+	_, err = starlark.Call(thread, mainFunc, starlark.Tuple{args}, []starlark.Tuple{})
 	if err != nil {
 		return err
 	}
