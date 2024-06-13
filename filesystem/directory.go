@@ -33,9 +33,8 @@ func OpenPath(dir Directory, p string) (DirectoryEntry, error) {
 	tokens := strings.Split(path.Clean(p), "/")
 
 	var currentDir = dir
-	var current DirectoryEntry
 
-	for _, token := range tokens {
+	for _, token := range tokens[:len(tokens)-1] {
 		child, err := currentDir.GetChild(token)
 		if err != nil {
 			return DirectoryEntry{}, err
@@ -43,13 +42,13 @@ func OpenPath(dir Directory, p string) (DirectoryEntry, error) {
 
 		childDir, ok := child.File.(Directory)
 		if !ok {
-			return DirectoryEntry{}, fmt.Errorf("child is not a directory")
+			return DirectoryEntry{}, fmt.Errorf("child %T is not a directory", child.File)
 		}
 
 		currentDir = childDir
 	}
 
-	return current, nil
+	return currentDir.GetChild(tokens[len(tokens)-1])
 }
 
 func Mkdir(dir Directory, p string) (MutableDirectory, error) {

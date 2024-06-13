@@ -7,6 +7,7 @@ import (
 
 	"github.com/tinyrange/pkg2/v2/builder"
 	"github.com/tinyrange/pkg2/v2/common"
+	"github.com/tinyrange/pkg2/v2/emulator"
 	"github.com/tinyrange/pkg2/v2/filesystem"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
@@ -316,7 +317,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		)
 
 		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-			"ark", &ark,
+			"ark?", &ark,
 		); err != nil {
 			return starlark.None, err
 		}
@@ -353,6 +354,46 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		f := filesystem.NewMemoryFile()
 
 		return filesystem.NewStarFile(f, ""), nil
+	})
+
+	ret["emulator"] = starlark.NewBuiltin("emulator", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			root *filesystem.StarDirectory
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"root", &root,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		return emulator.New(root), nil
+	})
+
+	ret["program"] = starlark.NewBuiltin("program", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			name     string
+			callable starlark.Callable
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"name", &name,
+			"callable", &callable,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		return emulator.NewStarProgram(name, callable)
 	})
 
 	ret["error"] = starlark.NewBuiltin("error", func(
