@@ -20,6 +20,17 @@ type BuildContext struct {
 	filename string
 	output   io.WriteCloser
 	packages []*common.Package
+	inMemory bool
+}
+
+// IsInMemory implements common.BuildContext.
+func (b *BuildContext) IsInMemory() bool {
+	return b.inMemory
+}
+
+// SetInMemory implements common.BuildContext.
+func (b *BuildContext) SetInMemory() {
+	b.inMemory = true
 }
 
 // Packages implements common.BuildContext.
@@ -39,10 +50,15 @@ func (b *BuildContext) ChildContext(source common.BuildSource, filename string) 
 		output:   nil,
 		Source:   source,
 		database: b.database,
+		inMemory: b.inMemory,
 	}
 }
 
 func (b *BuildContext) createOutput() (io.WriteCloser, error) {
+	if b.IsInMemory() {
+		return nil, fmt.Errorf("pre-creating output for in-memory items is not implemented")
+	}
+
 	if b.output != nil {
 		return nil, fmt.Errorf("output already created")
 	}
@@ -66,6 +82,10 @@ func (b *BuildContext) BuildChild(def common.BuildDefinition) (filesystem.File, 
 }
 
 func (b *BuildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
+	if b.inMemory {
+		return true, nil
+	}
+
 	// TODO(joshua): This code should be merged with the Build method.
 
 	hash := common.GetSha256Hash([]byte(def.Tag()))
@@ -148,7 +168,7 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return buildResultToStarlark(def, result)
+			return BuildResultToStarlark(def, result)
 		}), nil
 	} else {
 		return nil, nil

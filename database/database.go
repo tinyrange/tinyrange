@@ -1,6 +1,7 @@
 package database
 
 import (
+	"bytes"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -53,6 +54,8 @@ type PackageDatabase struct {
 	RebuildUserDefinitions bool
 
 	mirrors map[string][]string
+
+	memoryCache map[string][]byte
 }
 
 // ShouldRebuildUserDefinitions implements common.PackageDatabase.
@@ -69,6 +72,7 @@ func (db *PackageDatabase) getFileOptions() *syntax.FileOptions {
 		Set:             true,
 		While:           true,
 		TopLevelControl: true,
+		Recursion:       true,
 	}
 }
 
@@ -205,70 +209,111 @@ func (db *PackageDatabase) NewBuildContext(source common.BuildSource) common.Bui
 func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefinition) (filesystem.File, error) {
 	hash := common.GetSha256Hash([]byte(def.Tag()))
 
-	filename := filepath.Join("local", "build", hash+".bin")
+	if ctx.IsInMemory() {
+		// If this is in memory then check the in-memory cache.
+		if contents, ok := db.memoryCache[hash]; ok {
+			// TODO(joshua): Support needs build for memory cached items.
+			f := filesystem.NewMemoryFile()
 
-	// Get a child context for the build.
-	child := ctx.ChildContext(def, filename+".tmp")
+			if err := f.Overwrite(contents); err != nil {
+				return nil, err
+			}
 
-	// Check if the file already exists. If it does then return it.
-	if info, err := os.Stat(filename); err == nil {
-		// If the file has already been created then check if a rebuild is needed.
-		needsRebuild, err := def.NeedsBuild(child, info.ModTime())
+			return f, nil
+		}
+
+		// Get a child context for the build.
+		child := ctx.ChildContext(def, "")
+
+		// Trigger the build
+		result, err := def.Build(child)
 		if err != nil {
 			return nil, err
 		}
 
-		// If no rebuild is necessary then skip it.
-		if !needsRebuild {
-			return &filesystem.LocalFile{Filename: filename}, nil
+		// Write the build result into a bytes buffer.
+		buf := new(bytes.Buffer)
+		if _, err := result.WriteTo(buf); err != nil {
+			return nil, err
 		}
 
-		slog.Info("rebuild requested", "Tag", def.Tag())
+		// Add the bytes buffer to the in-memory cache.
+		db.memoryCache[hash] = buf.Bytes()
+
+		// Create and return a in-memory file.
+		f := filesystem.NewMemoryFile()
+
+		if err := f.Overwrite(buf.Bytes()); err != nil {
+			return nil, err
+		}
+
+		return f, nil
 	} else {
-		slog.Info("building", "Tag", def.Tag())
-	}
+		filename := filepath.Join("local", "build", hash+".bin")
 
-	// If not then trigger the build.
-	result, err := def.Build(child)
-	if err != nil {
-		return nil, err
-	}
+		// Get a child context for the build.
+		child := ctx.ChildContext(def, filename+".tmp")
 
-	// If the build has already been written then don't write it again.
-	if !child.HasCreatedOutput() {
-		// Once the build is complete then write it to disk.
-		outFile, err := os.Create(filename + ".tmp")
+		// Check if the file already exists. If it does then return it.
+		if info, err := os.Stat(filename); err == nil {
+			// If the file has already been created then check if a rebuild is needed.
+			needsRebuild, err := def.NeedsBuild(child, info.ModTime())
+			if err != nil {
+				return nil, err
+			}
+
+			// If no rebuild is necessary then skip it.
+			if !needsRebuild {
+				return &filesystem.LocalFile{Filename: filename}, nil
+			}
+
+			slog.Info("rebuild requested", "Tag", def.Tag())
+		} else {
+			slog.Info("building", "Tag", def.Tag())
+		}
+
+		// If not then trigger the build.
+		result, err := def.Build(child)
 		if err != nil {
 			return nil, err
 		}
 
-		// Write the build result to disk. If any of these steps fail then remove the temporary file.
-		if _, err := result.WriteTo(outFile); err != nil {
-			outFile.Close()
+		// If the build has already been written then don't write it again.
+		if !child.HasCreatedOutput() {
+			// Once the build is complete then write it to disk.
+			outFile, err := os.Create(filename + ".tmp")
+			if err != nil {
+				return nil, err
+			}
+
+			// Write the build result to disk. If any of these steps fail then remove the temporary file.
+			if _, err := result.WriteTo(outFile); err != nil {
+				outFile.Close()
+				os.Remove(filename + ".tmp")
+				return nil, err
+			}
+
+			if err := outFile.Close(); err != nil {
+				os.Remove(filename + ".tmp")
+				return nil, err
+			}
+		} else {
+			// Let the result close the file on it's own.
+			if _, err := result.WriteTo(nil); err != nil {
+				os.Remove(filename + ".tmp")
+				return nil, err
+			}
+		}
+
+		// Finally rename the temporary file to the final filename.
+		if err := os.Rename(filename+".tmp", filename); err != nil {
 			os.Remove(filename + ".tmp")
 			return nil, err
 		}
 
-		if err := outFile.Close(); err != nil {
-			os.Remove(filename + ".tmp")
-			return nil, err
-		}
-	} else {
-		// Let the result close the file on it's own.
-		if _, err := result.WriteTo(nil); err != nil {
-			os.Remove(filename + ".tmp")
-			return nil, err
-		}
+		// Return the file.
+		return &filesystem.LocalFile{Filename: filename}, nil
 	}
-
-	// Finally rename the temporary file to the final filename.
-	if err := os.Rename(filename+".tmp", filename); err != nil {
-		os.Remove(filename + ".tmp")
-		return nil, err
-	}
-
-	// Return the file.
-	return &filesystem.LocalFile{Filename: filename}, nil
 }
 
 func (db *PackageDatabase) NewName(name string, version string, tags []string) (common.PackageName, error) {
@@ -341,6 +386,38 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, db.AddContainerBuilder(builder)
 		}), nil
+	} else if name == "build" {
+		return starlark.NewBuiltin("Database.build", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				def      common.BuildDefinition
+				inMemory bool
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"def", &def,
+				"memory?", &inMemory,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			ctx := db.NewBuildContext(def)
+
+			if inMemory {
+				ctx.SetInMemory()
+			}
+
+			result, err := db.Build(ctx, def)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return builder.BuildResultToStarlark(def, result)
+		}), nil
 	} else {
 		return nil, nil
 	}
@@ -367,5 +444,6 @@ func New() *PackageDatabase {
 	return &PackageDatabase{
 		ContainerBuilders: make(map[string]*ContainerBuilder),
 		mirrors:           make(map[string][]string),
+		memoryCache:       make(map[string][]byte),
 	}
 }

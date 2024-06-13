@@ -2,7 +2,6 @@ package filesystem
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"strings"
 )
@@ -28,11 +27,6 @@ func ReadArchiveFromFile(f File) (Archive, error) {
 		return nil, err
 	}
 
-	readAt, ok := fh.(io.ReaderAt)
-	if !ok {
-		return nil, fmt.Errorf("%T does not support io.ReaderAt", fh)
-	}
-
 	var ret ArrayArchive
 
 	var off int64 = 0
@@ -40,7 +34,7 @@ func ReadArchiveFromFile(f File) (Archive, error) {
 	hdrBytes := make([]byte, 1024)
 
 	for {
-		_, err := readAt.ReadAt(hdrBytes, off)
+		_, err := fh.ReadAt(hdrBytes, off)
 		if err == io.EOF {
 			break
 		} else if err != nil {
@@ -57,7 +51,7 @@ func ReadArchiveFromFile(f File) (Archive, error) {
 			return nil, err
 		}
 
-		hdr.underlyingFile = readAt
+		hdr.underlyingFile = fh
 
 		ret = append(ret, &hdr)
 
@@ -65,4 +59,19 @@ func ReadArchiveFromFile(f File) (Archive, error) {
 	}
 
 	return ret, nil
+}
+
+func ExtractArchive(ark Archive, mut MutableDirectory) error {
+	ents, err := ark.Entries()
+	if err != nil {
+		return err
+	}
+
+	for _, ent := range ents {
+		if err := ExtractEntry(ent, mut); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

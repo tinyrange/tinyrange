@@ -8,8 +8,29 @@ import (
 	"time"
 )
 
+type BasicFileHandle interface {
+	io.Reader
+	io.ReaderAt
+}
+
 type FileHandle interface {
-	io.ReadCloser
+	BasicFileHandle
+	io.Closer
+}
+
+type nopCloserFileHandle struct {
+	BasicFileHandle
+}
+
+// Close implements FileHandle.
+func (n *nopCloserFileHandle) Close() error { return nil }
+
+var (
+	_ FileHandle = &nopCloserFileHandle{}
+)
+
+func NewNopCloserFileHandle(fh BasicFileHandle) FileHandle {
+	return &nopCloserFileHandle{BasicFileHandle: fh}
 }
 
 type FileInfo interface {
@@ -37,6 +58,19 @@ const (
 	TypeDirectory
 	TypeSymlink
 )
+
+func (t FileType) String() string {
+	switch t {
+	case TypeRegular:
+		return "Regular"
+	case TypeDirectory:
+		return "Directory"
+	case TypeSymlink:
+		return "Symlink"
+	default:
+		return "<unknown>"
+	}
+}
 
 type Entry interface {
 	File
@@ -87,7 +121,7 @@ func (e *CacheEntry) Sys() any {
 
 // Open implements Entry.
 func (e *CacheEntry) Open() (FileHandle, error) {
-	return io.NopCloser(io.NewSectionReader(e.underlyingFile, e.COffset, e.CSize)), nil
+	return NewNopCloserFileHandle(io.NewSectionReader(e.underlyingFile, e.COffset, e.CSize)), nil
 }
 
 // Stat implements Entry.
@@ -194,7 +228,7 @@ func (m *memoryFile) Chtimes(mtime time.Time) error {
 
 // Open implements MutableFile.
 func (m *memoryFile) Open() (FileHandle, error) {
-	return io.NopCloser(bytes.NewReader(m.contents)), nil
+	return NewNopCloserFileHandle(bytes.NewReader(m.contents)), nil
 }
 
 // Overwrite implements MutableFile.

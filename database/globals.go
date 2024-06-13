@@ -123,20 +123,26 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
 				var (
-					def  common.BuildDefinition
+					val  starlark.Value
 					kind string
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-					"def", &def,
+					"def", &val,
 					"kind", &kind,
 				); err != nil {
 					return starlark.None, err
 				}
 
-				archiveDef := builder.NewReadArchiveBuildDefinition(def, kind)
+				if def, ok := val.(common.BuildDefinition); ok {
+					return builder.NewReadArchiveBuildDefinition(def, kind), nil
+				} else if file, ok := val.(filesystem.File); ok {
+					fileDef := builder.NewFileDefinition(file)
 
-				return archiveDef, nil
+					return builder.NewReadArchiveBuildDefinition(fileDef, kind), nil
+				} else {
+					return starlark.None, fmt.Errorf("expected BuildDefinition got %s", val.Type())
+				}
 			}),
 			"decompress_file": starlark.NewBuiltin("define.decompress_file", func(
 				thread *starlark.Thread,
@@ -305,7 +311,23 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		args starlark.Tuple,
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
+		var (
+			ark *filesystem.StarArchive
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"ark", &ark,
+		); err != nil {
+			return starlark.None, err
+		}
+
 		dir := filesystem.NewMemoryDirectory()
+
+		if ark != nil {
+			if err := filesystem.ExtractArchive(ark, dir); err != nil {
+				return starlark.None, err
+			}
+		}
 
 		return filesystem.NewStarDirectory(dir, ""), nil
 	})

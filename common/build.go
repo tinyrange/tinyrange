@@ -20,6 +20,8 @@ type BuildDefinition interface {
 
 type BuildContext interface {
 	HasCreatedOutput() bool
+	SetInMemory()
+	IsInMemory() bool
 	Database() PackageDatabase
 	BuildChild(def BuildDefinition) (filesystem.File, error)
 	NeedsBuild(def BuildDefinition) (bool, error)

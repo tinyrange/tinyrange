@@ -52,6 +52,44 @@ func OpenPath(dir Directory, p string) (DirectoryEntry, error) {
 	return current, nil
 }
 
+func Mkdir(dir Directory, p string) (MutableDirectory, error) {
+	tokens := strings.Split(path.Clean(p), "/")
+
+	var currentDir = dir
+
+	for _, token := range tokens[:len(tokens)-1] {
+		child, err := currentDir.GetChild(token)
+		if err == fs.ErrNotExist {
+			if mut := getMutable(currentDir); mut != nil {
+				newChild, err := mut.Mkdir(token)
+				if err != nil {
+					return nil, err
+				}
+
+				child = DirectoryEntry{File: newChild, Name: token}
+			} else {
+				return nil, err
+			}
+		} else if err != nil {
+			return nil, err
+		}
+
+		childDir, ok := child.File.(Directory)
+		if !ok {
+			return nil, fmt.Errorf("child is not a directory")
+		}
+
+		currentDir = childDir
+	}
+
+	mut := getMutable(currentDir)
+	if mut == nil {
+		return nil, fmt.Errorf("directory %T is not mutable", currentDir)
+	}
+
+	return mut.Mkdir(tokens[len(tokens)-1])
+}
+
 func CreateChild(dir Directory, p string, f File) error {
 	tokens := strings.Split(path.Clean(p), "/")
 
@@ -186,5 +224,33 @@ func NewMemoryDirectory() MutableDirectory {
 	return &memoryDirectory{
 		memoryFile: NewMemoryFile().(*memoryFile),
 		entries:    make(map[string]File),
+	}
+}
+
+func ExtractEntry(ent Entry, dir MutableDirectory) error {
+	switch ent.Typeflag() {
+	case TypeDirectory:
+		child, err := Mkdir(dir, ent.Name())
+		if err != nil {
+			return err
+		}
+
+		if err := child.Chmod(ent.Mode()); err != nil {
+			return err
+		}
+
+		if err := child.Chown(ent.Uid(), ent.Gid()); err != nil {
+			return err
+		}
+
+		if err := child.Chtimes(ent.ModTime()); err != nil {
+			return err
+		}
+
+		return nil
+	case TypeRegular:
+		return CreateChild(dir, ent.Name(), ent)
+	default:
+		return fmt.Errorf("unknown Entry type: %s", ent.Typeflag())
 	}
 }

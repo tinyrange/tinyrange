@@ -17,7 +17,7 @@ type StarBuildDefinition struct {
 	BuilderArgs starlark.Tuple
 }
 
-func buildResultToStarlark(argDef common.BuildDefinition, result filesystem.File) (starlark.Value, error) {
+func BuildResultToStarlark(argDef common.BuildDefinition, result filesystem.File) (starlark.Value, error) {
 	switch arg := argDef.(type) {
 	case *ReadArchiveBuildDefinition:
 		ark, err := filesystem.ReadArchiveFromFile(result)
@@ -86,7 +86,7 @@ func (def *StarBuildDefinition) Build(ctx common.BuildContext) (common.BuildResu
 				return nil, err
 			}
 
-			val, err := buildResultToStarlark(argDef, res)
+			val, err := BuildResultToStarlark(argDef, res)
 			if err != nil {
 				return nil, err
 			}
