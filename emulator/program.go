@@ -3,21 +3,13 @@ package emulator
 import (
 	"fmt"
 
+	"github.com/tinyrange/pkg2/v2/emulator/common"
 	"github.com/tinyrange/pkg2/v2/filesystem"
 	"go.starlark.net/starlark"
 )
 
-type Process interface {
-}
-
-type Program interface {
-	filesystem.File
-	Name() string
-	Run(proc Process, argv []string) error
-}
-
 type starProcess struct {
-	proc Process
+	proc common.Process
 }
 
 func (f *starProcess) String() string      { return "Process" }
@@ -42,7 +34,7 @@ type starProgram struct {
 func (s *starProgram) Name() string { return s.name }
 
 // Run implements Program.
-func (s *starProgram) Run(proc Process, argv []string) error {
+func (s *starProgram) Run(proc common.Process, argv []string) error {
 	thread := &starlark.Thread{Name: s.name}
 
 	process := &starProcess{proc: proc}
@@ -69,7 +61,7 @@ func (*starProgram) Truth() starlark.Bool  { return starlark.True }
 func (*starProgram) Freeze()               {}
 
 var (
-	_ Program        = &starProgram{}
+	_ common.Program = &starProgram{}
 	_ starlark.Value = &starProgram{}
 )
 

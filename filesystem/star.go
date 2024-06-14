@@ -195,12 +195,20 @@ func (f *StarDirectory) SetKey(k starlark.Value, v starlark.Value) error {
 		return fmt.Errorf("expected string got %s", k.Type())
 	}
 
-	file, ok := v.(File)
-	if !ok {
+	if file, ok := v.(File); ok {
+		return CreateChild(f, name, file)
+	} else if contents, ok := v.(starlark.String); ok {
+		file := NewMemoryFile()
+
+		if err := file.Overwrite([]byte(contents)); err != nil {
+			return err
+		}
+
+		return CreateChild(f, name, file)
+	} else {
 		return fmt.Errorf("expected File got %s", v.Type())
 	}
 
-	return CreateChild(f, name, file)
 }
 
 // Attr implements starlark.HasAttrs.
