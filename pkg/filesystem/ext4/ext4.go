@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"github.com/tinyrange/vm"
 	"golang.org/x/exp/constraints"
 )
 

@@ -7,6 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/insomniacslk/dhcp v0.0.0-20240529192340-51bc6136a0a6
 	github.com/jsimonetti/rtnetlink v1.4.2
+	github.com/tinyrange/vm v0.0.0-20240616031946-b46d8ccc03db
 	go.starlark.net v0.0.0-20240520160348-046347dcd104
 	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090
 	gvisor.dev/gvisor v0.0.0-20240607232048-44edc9b3c5c2

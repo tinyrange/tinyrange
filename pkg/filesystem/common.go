@@ -10,30 +10,27 @@ import (
 	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
-	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"github.com/tinyrange/vm"
 )
 
-func ExtractArchiveTo(input string, fs *ext4.Ext4Filesystem) error {
-	var reader io.Reader
+func ExtractReaderTo(input io.Reader, kind string, fs *ext4.Ext4Filesystem, filter func(hdr *tar.Header) bool) error {
+	var (
+		reader io.Reader
+		err    error
+	)
 
-	f, err := os.Open(input)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	if strings.HasSuffix(input, ".gz") {
-		reader, err = gzip.NewReader(f)
+	if strings.HasSuffix(kind, ".gz") {
+		reader, err = gzip.NewReader(input)
 		if err != nil {
 			return err
 		}
 
-		input = strings.TrimSuffix(input, ".gz")
+		kind = strings.TrimSuffix(kind, ".gz")
 	} else {
-		reader = f
+		reader = input
 	}
 
-	if strings.HasSuffix(input, ".tar") {
+	if strings.HasSuffix(kind, ".tar") {
 		tarReader := tar.NewReader(reader)
 
 		for {
@@ -42,6 +39,10 @@ func ExtractArchiveTo(input string, fs *ext4.Ext4Filesystem) error {
 				break
 			} else if err != nil {
 				return err
+			}
+
+			if filter != nil && !filter(hdr) {
+				continue
 			}
 
 			name := path.Clean(hdr.Name)
@@ -59,6 +60,10 @@ func ExtractArchiveTo(input string, fs *ext4.Ext4Filesystem) error {
 					}
 				case tar.TypeSymlink:
 					if err := fs.Symlink(name, hdr.Linkname); err != nil {
+						return err
+					}
+				case tar.TypeLink:
+					if err := fs.Link(name, hdr.Linkname); err != nil {
 						return err
 					}
 				case tar.TypeDir:
@@ -87,4 +92,14 @@ func ExtractArchiveTo(input string, fs *ext4.Ext4Filesystem) error {
 	} else {
 		return fmt.Errorf("input has unknown archive format: %s", input)
 	}
+}
+
+func ExtractArchiveTo(input string, fs *ext4.Ext4Filesystem) error {
+	f, err := os.Open(input)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return ExtractReaderTo(f, input, fs, func(hdr *tar.Header) bool { return true })
 }

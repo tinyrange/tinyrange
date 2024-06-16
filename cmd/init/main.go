@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,7 +14,52 @@ import (
 	"github.com/jsimonetti/rtnetlink/rtnl"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
+	"golang.org/x/sys/unix"
 )
+
+// From: https://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go
+func exists(name string) (bool, error) {
+	_, err := os.Stat(name)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
+}
+
+type mountOptions struct {
+	Readonly bool
+}
+
+func mount(kind string, mountName string, mountPoint string, opts mountOptions) error {
+	var flags uintptr
+	if opts.Readonly {
+		flags |= unix.MS_RDONLY
+	}
+	err := unix.Mount(mountName, mountPoint, kind, flags, "")
+	if err != nil {
+		return fmt.Errorf("failed mounting %s(%s) on %s: %v", mountName, kind, mountPoint, err)
+	}
+	return nil
+}
+
+func ensure(path string, mode os.FileMode) error {
+	exists, err := exists(path)
+	if err != nil {
+		return fmt.Errorf("failed to check for path: %v", err)
+	}
+
+	if !exists {
+		err := os.Mkdir(path, mode)
+		if err != nil {
+			return fmt.Errorf("failed to create directory: %v", err)
+		}
+	}
+
+	return nil
+}
 
 func initMain() error {
 	globals := starlark.StringDict{}
@@ -160,6 +206,94 @@ func initMain() error {
 		cmd.Stdin = os.Stdin
 
 		if err := cmd.Run(); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
+	globals["set_hostname"] = starlark.NewBuiltin("set_hostname", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			hostname string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"hostname", &hostname,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := unix.Sethostname([]byte(hostname)); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
+	globals["mount"] = starlark.NewBuiltin("linux_mount", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			fsKind      string
+			name        string
+			mountPoint  string
+			ensurePath  bool
+			ignoreError bool
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"kind", &fsKind,
+			"name", &name,
+			"mount_point", &mountPoint,
+			"ensure_path?", &ensurePath,
+			"ignore_error?", &ignoreError,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if ensurePath {
+			err := ensure(mountPoint, os.ModePerm)
+
+			if err != nil && !ignoreError {
+				return starlark.None, fmt.Errorf("failed to create mount point: %v", err)
+			}
+		}
+
+		err := mount(fsKind, name, mountPoint, mountOptions{})
+		if err != nil && !ignoreError {
+			return starlark.None, fmt.Errorf("failed to mount: %v", err)
+		}
+
+		return starlark.None, nil
+	})
+
+	globals["path_symlink"] = starlark.NewBuiltin("path_symlink", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			source string
+			target string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"source", &source,
+			"target", &target,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := os.Symlink(source, target); err != nil {
 			return starlark.None, err
 		}
 

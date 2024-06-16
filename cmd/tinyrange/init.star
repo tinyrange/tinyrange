@@ -7,4 +7,21 @@ def main():
 
     print(contents)
 
+    set_hostname("login")
+
+    # Mount /proc filesystem.
+    mount("proc", "proc", "/proc", ensure_path = True)
+
+    # Mount other filesystems.
+    mount("devtmpfs", "devtmpfs", "/dev", ensure_path = True, ignore_error = True)
+    mount("sysfs", "none", "/sys", ensure_path = True)
+    mount("cgroup2", "cgroup2", "/sys/fs/cgroup")
+    mount("bpf", "/bpf", "/sys/fs/bpf")
+    mount("debugfs", "debugfs", "/sys/kernel/debug", ignore_error = True)
+    mount("devpts", "devpts", "/dev/pts", ensure_path = True)
+    mount("tmpfs", "tmpfs", "/dev/shm", ensure_path = True)
+
+    # Symlink /dev/fd to /proc/self/fd
+    path_symlink("/proc/self/fd", "/dev/fd")
+
     run("/bin/login", "-f", "root")

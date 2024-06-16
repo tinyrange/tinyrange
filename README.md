@@ -11,18 +11,18 @@ This branch tracks a public rewrite of TinyRange documented through the medium o
 3. [x] Write an init system for the virtual machine in Go and replace the existing initramfs.
 4. [x] Connect networking from the host to the guest using gVisor netstack.
 5. [x] Connect an ext4 filesystem exposed as a NBD(Network Block Device) from the host.
-6. [ ] Boot a full Linux distribution from a OCI image.
+6. [x] Boot a full Linux distribution from a OCI image.
 7. [ ] Write a DHCP and DNS server in the host for the virtual guest.
 8. [ ] Switch from using stdout from QEMU to SSH from the host.
-9. [ ] Write a network caching layer for the virtual guest so it can download packages.
-10. [ ] Add support for connecting to arbitrary websites in the guest.
-11. [ ] Make the virtual machine customizable. Including customizable scripts.
+9. [ ] Add support for connecting to arbitrary websites in the guest.
+10. [ ] Make the virtual machine customizable. Including customizable scripts.
 
 ## Videos
 
 - Part 1 (item 1 and 2): https://www.youtube.com/watch?v=W5OwOUV9iAQ
 - Part 2 (item 3 and 4): https://www.youtube.com/watch?v=tTTcN2kflFM
 - Part 3 (item 5): https://www.youtube.com/watch?v=3d-4S2oaDfw
+- Part 4 (item 6): https://www.youtube.com/watch?v=HKvnG4SOpzo
 
 # Getting Started
 
