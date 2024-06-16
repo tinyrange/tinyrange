@@ -33,3 +33,10 @@ mkdir -p local
 ./build.sh
 ./build/tinyrange
 ```
+
+# Rebuilding `pkg/filesystem/ext4/ext4_gen.go`
+
+```sh
+go install github.com/tinyrange/vm/cmd/structgen
+structgen -input pkg/filesystem/ext4/ext4.struct -output pkg/filesystem/ext4/ext4_gen.go -package ext4
+```
