@@ -34,19 +34,29 @@ type VirtualMachine struct {
 	diskImage string
 	ns        *netstack.NetStack
 	nic       *netstack.NetworkInterface
+	cmd       *exec.Cmd
 }
 
-func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable) error {
-	cmd := exec.Command(exe.command, exe.args...)
+func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bool) error {
+	vm.cmd = exec.Command(exe.command, exe.args...)
 
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
+	if bindOutput {
+		vm.cmd.Stdout = os.Stdout
+		vm.cmd.Stderr = os.Stderr
+		vm.cmd.Stdin = os.Stdin
+	}
 
-	return cmd.Run()
+	return vm.cmd.Run()
 }
 
-func (vm *VirtualMachine) Run() error {
+func (vm *VirtualMachine) Shutdown() error {
+	if vm.cmd != nil {
+		return vm.cmd.Process.Kill()
+	}
+	return nil
+}
+
+func (vm *VirtualMachine) Run(bindOutput bool) error {
 	nic, err := vm.ns.AttachNetworkInterface()
 	if err != nil {
 		return err
@@ -65,7 +75,7 @@ func (vm *VirtualMachine) Run() error {
 	}
 
 	if exec, ok := ret.(*vmmFactoryExecutable); ok {
-		return vm.runExecutable(exec)
+		return vm.runExecutable(exec, bindOutput)
 	} else {
 		return fmt.Errorf("expected Executable got %s", ret.Type())
 	}

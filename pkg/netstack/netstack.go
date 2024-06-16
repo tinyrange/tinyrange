@@ -130,6 +130,22 @@ func (ns *NetStack) splitAddress(addr string) (tcpip.FullAddress, error) {
 	}, nil
 }
 
+func (ns *NetStack) DialInternal(network string, address string) (net.Conn, error) {
+	addr, err := ns.splitAddress(address)
+	if err != nil {
+		return nil, err
+	}
+
+	if network == "tcp" || network == "tcp4" || network == "tcp6" {
+		return gonet.DialTCP(ns.nStack, addr, ipv4.ProtocolNumber)
+	} else if network == "udp" {
+		// log.Printf("Dial UDP %+v", addr)
+		return gonet.DialUDP(ns.nStack, nil, &addr, ipv4.ProtocolNumber)
+	} else {
+		return nil, fmt.Errorf("DialInternal not implemented for network: %v", network)
+	}
+}
+
 func (ns *NetStack) ListenInternal(network string, address string) (net.Listener, error) {
 	if network != "tcp" && network != "tcp4" && network != "tcp6" {
 		return nil, fmt.Errorf("ListenInternal not implemented for network: %v", network)

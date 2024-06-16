@@ -1,6 +1,10 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -9,13 +13,213 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"time"
 
+	"github.com/creack/pty"
 	"github.com/insomniacslk/dhcp/netboot"
 	"github.com/jsimonetti/rtnetlink/rtnl"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/sys/unix"
 )
+
+type sshServer struct {
+	command string
+}
+
+func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, env []string, resizes <-chan []byte) error {
+	shell := exec.Command("/bin/login", "-f", "root")
+
+	shell.Env = env
+
+	close := func() {
+		if shell.Process != nil {
+			if ps, err := shell.Process.Wait(); err != nil && ps != nil {
+				slog.Warn("failed to exit shell", "error", err)
+			}
+		}
+
+		connection.Close()
+	}
+
+	//start a shell for this channel's connection
+	shellf, err := pty.Start(shell)
+	if err != nil {
+		close()
+		return fmt.Errorf("could not start pty (%s)", err)
+	}
+
+	//dequeue resizes
+	// go func() {
+	// 	for payload := range resizes {
+	// 		w, h := parseDims(payload)
+	// 		_ = SetWinsize(shellf.Fd(), w, h)
+	// 	}
+	// }()
+
+	//pipe session to shell and visa-versa
+	go func() {
+		err := Proxy(connection, shellf)
+		if err != nil {
+			slog.Warn("proxy failed", "error", err)
+		}
+
+		close()
+	}()
+
+	go func() {
+		// Start proactively listening for process death, for those ptys that
+		// don't signal on EOF.
+		if shell.Process != nil {
+			if ps, err := shell.Process.Wait(); err != nil && ps != nil {
+				slog.Warn("failed to exit shell", "error", err)
+			}
+
+			// It appears that closing the pty is an idempotent operation
+			// therefore making this call ensures that the other two coroutines
+			// will fall through and exit, and there is no downside.
+
+			// Well it does have a downside. Closing immediately will prevent
+			// the remaining IO from flushing.
+			// This is currently a bad hack and I should do something more
+			// intelligent here.
+			time.Sleep(50 * time.Millisecond)
+
+			shellf.Close()
+		}
+	}()
+	return nil
+}
+
+func (s *sshServer) handleChannel(conn ssh.Conn, newChannel ssh.NewChannel) {
+	if t := newChannel.ChannelType(); t != "session" {
+		_ = newChannel.Reject(ssh.UnknownChannelType, fmt.Sprintf("unknown channel type: %s", t))
+		return
+	}
+
+	connection, requests, err := newChannel.Accept()
+	if err != nil {
+		slog.Warn("could not accept channel", "error", err)
+		return
+	}
+
+	go s.handleRequests(conn, connection, requests)
+}
+
+func (s *sshServer) handleRequests(conn ssh.Conn, connection ssh.Channel, requests <-chan *ssh.Request) {
+	// prepare to handle client requests
+	env := os.Environ()
+
+	resizes := make(chan []byte, 10)
+
+	defer close(resizes)
+
+	// Sessions have out-of-band requests such as "shell", "pty-req" and "env"
+	for req := range requests {
+		switch req.Type {
+		case "pty-req":
+			slog.Info("pty-req", "payload", hex.EncodeToString(req.Payload))
+			termLen := req.Payload[3]
+
+			// Make sure we correctly forward the terminal from the host.
+			term := string(req.Payload[4 : 4+termLen])
+			env = append(env, fmt.Sprintf("TERM=%s", term))
+
+			resizes <- req.Payload[termLen+4:]
+			// Responding true (OK) here will let the client
+			// know we have a pty ready
+			_ = req.Reply(true, nil)
+		case "window-change":
+			resizes <- req.Payload
+		case "shell":
+			// Responding true (OK) here will let the client
+			// know we have attached the shell (pty) to the connection
+			if len(req.Payload) > 0 {
+				slog.Debug("shell command ignored", "payload", req.Payload)
+			}
+
+			err := s.attachShell(conn, connection, env, resizes)
+			if err != nil {
+				slog.Warn("failed to attach shell", "error", err)
+			}
+
+			_ = req.Reply(err == nil, nil)
+		case "exec":
+			slog.Debug("ignored exec", "payload", req.Payload)
+		default:
+			slog.Debug("unknown request", "type", req.Type, "reply", req.WantReply, "data", req.Payload)
+		}
+	}
+}
+
+func (s *sshServer) handleChannels(conn ssh.Conn, chans <-chan ssh.NewChannel) {
+	// Service the incoming Channel channel in go routine
+	for newChannel := range chans {
+		go s.handleChannel(conn, newChannel)
+	}
+}
+
+func (s *sshServer) handleClient(nConn net.Conn, config *ssh.ServerConfig) error {
+	// Before use, a handshake must be performed on the incoming net.Conn.
+	sshConn, chans, reqs, err := ssh.NewServerConn(nConn, config)
+	if err != nil {
+		return err
+	}
+
+	slog.Debug("new SSH connection", "remote", sshConn.RemoteAddr(), "client_version", sshConn.ClientVersion())
+
+	// Discard all global out-of-band Requests
+	go ssh.DiscardRequests(reqs)
+
+	// Accept all channels
+	go s.handleChannels(sshConn, chans)
+
+	return nil
+}
+
+func (s *sshServer) run(password string) error {
+	listener, err := net.Listen("tcp", "0.0.0.0:2222")
+	if err != nil {
+		return fmt.Errorf("ssh: failed to listen for connection: %v", err)
+	}
+
+	config := &ssh.ServerConfig{
+		PasswordCallback: func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
+			// Should use constant-time compare (or better, salt+hash) in
+			// a production setting.
+			if string(pass) == password {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("password rejected for %q", c.User())
+		},
+	}
+
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("ssh: failed to generate key: %v", err)
+	}
+
+	hostSigner, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		return fmt.Errorf("ssh: failed to make signer: %v", err)
+	}
+
+	config.AddHostKey(hostSigner)
+
+	for {
+		nConn, err := listener.Accept()
+		if err != nil {
+			return err
+		}
+		go func() {
+			err := s.handleClient(nConn, config)
+			if err != nil {
+				slog.Warn("failed to handle ssh client", "err", err)
+			}
+		}()
+	}
+}
 
 // From: https://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go
 func exists(name string) (bool, error) {
@@ -344,6 +548,24 @@ func initMain() error {
 		if err := os.WriteFile(path, []byte(contents), os.ModePerm); err != nil {
 			return starlark.None, err
 		}
+
+		return starlark.None, nil
+	})
+
+	globals["run_ssh_server"] = starlark.NewBuiltin("run_ssh_server", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		sshServer := &sshServer{}
+
+		// go func() {
+		err := sshServer.run("insecurepassword")
+		if err != nil {
+			slog.Error("failed to run ssh server", "error", err)
+		}
+		// }()
 
 		return starlark.None, nil
 	})

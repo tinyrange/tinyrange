@@ -3,6 +3,7 @@ module github.com/tinyrange/tinyrange
 go 1.22.2
 
 require (
+	github.com/creack/pty v1.1.21
 	github.com/google/gopacket v1.1.19
 	github.com/google/uuid v1.6.0
 	github.com/insomniacslk/dhcp v0.0.0-20240529192340-51bc6136a0a6
@@ -10,8 +11,10 @@ require (
 	github.com/miekg/dns v1.1.61
 	github.com/tinyrange/vm v0.0.0-20240616031946-b46d8ccc03db
 	go.starlark.net v0.0.0-20240520160348-046347dcd104
+	golang.org/x/crypto v0.24.0
 	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090
 	golang.org/x/sys v0.21.0
+	golang.org/x/term v0.21.0
 	gvisor.dev/gvisor v0.0.0-20240607232048-44edc9b3c5c2
 )
 
