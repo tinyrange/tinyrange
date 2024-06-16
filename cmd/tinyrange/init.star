@@ -3,10 +3,7 @@ def main():
     network_interface_up("eth0")
     network_interface_configure("eth0", ip = "10.42.0.2/16", router = "10.42.0.1")
 
-    contents = fetch_http("http://10.42.0.1/hello")
-
-    print(contents)
-
+    # Set the hostname.
     set_hostname("login")
 
     # Mount /proc filesystem.
@@ -23,5 +20,9 @@ def main():
 
     # Symlink /dev/fd to /proc/self/fd
     path_symlink("/proc/self/fd", "/dev/fd")
+
+    # Write /etc/resolv.conf
+    path_ensure("/etc")
+    file_write("/etc/resolv.conf", "nameserver 10.42.0.1\n")
 
     run("/bin/login", "-f", "root")

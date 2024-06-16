@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/miekg/dns"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"github.com/tinyrange/tinyrange/pkg/oci"
@@ -65,6 +66,52 @@ func (vm *vmBackend) Size() (int64, error) {
 // Sync implements common.Backend.
 func (*vmBackend) Sync() error {
 	return nil
+}
+
+type dnsServer struct {
+	server    *dns.Server
+	dnsLookup func(name string) (string, error)
+}
+
+func (s *dnsServer) parseQuery(r *dns.Msg, m *dns.Msg) {
+	for _, q := range m.Question {
+		switch q.Qtype {
+		case dns.TypeA:
+			ip, err := s.dnsLookup(q.Name)
+			if err != nil {
+				slog.Error("error resolving dns", "name", q.Name, "err", err)
+				m.SetRcode(r, dns.RcodeServerFailure)
+				return
+			}
+
+			if ip != "" {
+				rr, err := dns.NewRR(fmt.Sprintf("%s A %s", q.Name, ip))
+				if err == nil {
+					m.Answer = append(m.Answer, rr)
+				}
+			} else {
+				slog.Error("DNS Query for unknown name", "name", q.Name)
+				m.SetRcode(r, dns.RcodeNameError)
+				return
+			}
+		}
+	}
+}
+
+func (s *dnsServer) handleDnsRequest(w dns.ResponseWriter, r *dns.Msg) {
+	m := new(dns.Msg)
+	m.SetReply(r)
+	m.Compress = false
+	m.Authoritative = true
+
+	switch r.Opcode {
+	case dns.OpcodeQuery:
+		s.parseQuery(r, m)
+	}
+
+	// log.Printf("Dns Response: %v", m)
+
+	_ = w.WriteMsg(m)
 }
 
 var (
@@ -169,7 +216,43 @@ func tinyRangeMain() error {
 			w.Write([]byte("Hello, World\n"))
 		})
 
-		slog.Error("failed to serve", "err", http.Serve(listen, mux))
+		go func() {
+			slog.Error("failed to serve", "err", http.Serve(listen, mux))
+		}()
+
+		dnsServer := &dnsServer{
+			dnsLookup: func(name string) (string, error) {
+				if name == "host.internal." {
+					return "10.42.0.1", nil
+				} else {
+					return "", nil
+				}
+			},
+		}
+
+		dnsMux := dns.NewServeMux()
+
+		dnsMux.HandleFunc(".", dnsServer.handleDnsRequest)
+
+		packetConn, err := ns.ListenPacketInternal("udp", ":53")
+		if err != nil {
+			slog.Error("dns: failed to create packet connection", "err", err)
+		}
+
+		dnsServer.server = &dns.Server{
+			Addr:       ":53",
+			Net:        "udp",
+			Handler:    dnsMux,
+			PacketConn: packetConn,
+		}
+
+		go func() {
+			err := dnsServer.server.ActivateAndServe()
+			if err != nil {
+				slog.Error("dns: failed to start server", "error", err.Error())
+			}
+		}()
+
 	}()
 
 	factory, err := virtualMachine.LoadVirtualMachineFactory("hv/qemu/qemu.star")

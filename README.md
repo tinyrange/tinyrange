@@ -12,7 +12,7 @@ This branch tracks a public rewrite of TinyRange documented through the medium o
 4. [x] Connect networking from the host to the guest using gVisor netstack.
 5. [x] Connect an ext4 filesystem exposed as a NBD(Network Block Device) from the host.
 6. [x] Boot a full Linux distribution from a OCI image.
-7. [ ] Write a DHCP and DNS server in the host for the virtual guest.
+7. [x] Write a DNS server in the host for the virtual guest.
 8. [ ] Switch from using stdout from QEMU to SSH from the host.
 9. [ ] Add support for connecting to arbitrary websites in the guest.
 10. [ ] Make the virtual machine customizable. Including customizable scripts.

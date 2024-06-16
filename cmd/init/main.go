@@ -275,6 +275,29 @@ func initMain() error {
 		return starlark.None, nil
 	})
 
+	globals["path_ensure"] = starlark.NewBuiltin("path_ensure", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			path string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"path", &path,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := ensure(path, os.ModePerm); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
 	globals["path_symlink"] = starlark.NewBuiltin("path_symlink", func(
 		thread *starlark.Thread,
 		fn *starlark.Builtin,
@@ -294,6 +317,31 @@ func initMain() error {
 		}
 
 		if err := os.Symlink(source, target); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
+	globals["file_write"] = starlark.NewBuiltin("file_write", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			path     string
+			contents string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"path", &path,
+			"contents", &contents,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := os.WriteFile(path, []byte(contents), os.ModePerm); err != nil {
 			return starlark.None, err
 		}
 

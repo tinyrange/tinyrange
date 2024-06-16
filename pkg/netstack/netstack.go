@@ -26,6 +26,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
+	"gvisor.dev/gvisor/pkg/waiter"
 )
 
 const (
@@ -140,6 +141,46 @@ func (ns *NetStack) ListenInternal(network string, address string) (net.Listener
 	}
 
 	return gonet.ListenTCP(ns.nStack, addr, ipv4.ProtocolNumber)
+}
+
+func (ns *NetStack) ListenPacketInternal(network string, address string) (net.PacketConn, error) {
+	if network != "udp" && network != "udp4" && network != "udp6" {
+		return nil, fmt.Errorf("ListenPacketInternal not implemented for network: %v", network)
+	}
+
+	addr, err := ns.splitAddress(address)
+	if err != nil {
+		return nil, err
+	}
+
+	if addr.Addr.String() == "255.255.255.255" {
+		var queue waiter.Queue
+
+		ep, tcpErr := ns.nStack.NewEndpoint(udp.ProtocolNumber, ipv4.ProtocolNumber, &queue)
+		if tcpErr != nil {
+			return nil, fmt.Errorf("tcpip error: %v", tcpErr)
+		}
+
+		// HACK FOR DHCP
+		// Enable broadcast option.
+		ep.SocketOptions().SetBroadcast(true)
+
+		tcpErr = ep.Bind(addr)
+		if tcpErr != nil {
+			return nil, fmt.Errorf("tcpip error: %v", tcpErr)
+		}
+
+		udpConn := gonet.NewUDPConn(&queue, ep)
+
+		return udpConn, nil
+	} else {
+		conn, err := gonet.DialUDP(ns.nStack, &addr, nil, ipv4.ProtocolNumber)
+		if err != nil {
+			return nil, err
+		}
+
+		return conn, nil
+	}
 }
 
 func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
