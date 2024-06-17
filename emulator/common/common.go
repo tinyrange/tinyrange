@@ -2,6 +2,7 @@ package common
 
 import (
 	"io"
+	"io/fs"
 
 	"github.com/tinyrange/pkg2/v2/filesystem"
 )
@@ -16,6 +17,7 @@ type Process interface {
 	Spawn(cwd string, argv []string, envp map[string]string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error
 
 	Open(filename string) (io.ReadCloser, error)
+	Stat(filename string) (fs.FileInfo, error)
 
 	Stdin() io.ReadCloser
 	Stdout() io.WriteCloser

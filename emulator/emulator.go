@@ -66,6 +66,21 @@ func (proc *process) Open(filename string) (io.ReadCloser, error) {
 	return ent.File.Open()
 }
 
+// Stat implements common.Process.
+func (proc *process) Stat(filename string) (fs.FileInfo, error) {
+	joined := path.Clean(filename)
+	if !strings.HasPrefix(filename, "/") {
+		joined = path.Join(proc.cwd, filename)
+	}
+
+	ent, err := filesystem.OpenPath(proc.emu.root, joined)
+	if err != nil {
+		return nil, err
+	}
+
+	return ent.File.Stat()
+}
+
 // Spawn implements common.Process.
 func (proc *process) Spawn(cwd string, argv []string, envp map[string]string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
 	child, err := proc.emu.spawn(cwd, envp, proc.stdin, proc.stdout, proc.stderr)
@@ -113,24 +128,29 @@ func (proc *process) exec(argv []string) error {
 		}
 
 		// Check for the shabang in the first 2 chars.
-		if !bytes.Equal(buf[:2], []byte("#!")) {
+		if bytes.Equal(buf[:2], []byte("#!")) {
+			// Get the first line.
+			firstLine, _, _ := strings.Cut(string(buf), "\n")
+
+			firstLine = strings.TrimPrefix(firstLine, "#!")
+
+			firstLine = strings.Trim(firstLine, " ")
+
+			args, err := shlex.Split(firstLine, true)
+			if err != nil {
+				return err
+			}
+
+			return proc.exec(append(args, argv...))
+		} else if bytes.Equal(buf[:4], []byte("\x00asm")) {
+			// Assume wasm.
+			prog := NewWasmProgram(f)
+
+			return prog.Run(proc, argv)
+		} else {
 			// This is probably the point to add ELF support (haha, somehow).
 			return fmt.Errorf("unknown executable format for %+v", f)
 		}
-
-		// Get the first line.
-		firstLine, _, _ := strings.Cut(string(buf), "\n")
-
-		firstLine = strings.TrimPrefix(firstLine, "#!")
-
-		firstLine = strings.Trim(firstLine, " ")
-
-		args, err := shlex.Split(firstLine, true)
-		if err != nil {
-			return err
-		}
-
-		return proc.exec(append(args, argv...))
 	}
 }
 

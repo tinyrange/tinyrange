@@ -75,7 +75,7 @@ func Mkdir(dir Directory, p string) (MutableDirectory, error) {
 
 		childDir, ok := child.File.(Directory)
 		if !ok {
-			return nil, fmt.Errorf("child is not a directory")
+			return nil, fmt.Errorf("child %T is not a directory", child.File)
 		}
 
 		currentDir = childDir
@@ -113,7 +113,7 @@ func CreateChild(dir Directory, p string, f File) error {
 
 		childDir, ok := child.File.(Directory)
 		if !ok {
-			return fmt.Errorf("child is not a directory")
+			return fmt.Errorf("child %T is not a directory", child.File)
 		}
 
 		currentDir = childDir

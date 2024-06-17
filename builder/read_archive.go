@@ -2,6 +2,7 @@ package builder
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -14,28 +15,81 @@ import (
 	"go.starlark.net/starlark"
 )
 
-type ReadArchiveBuildDefinition struct {
-	Base common.BuildDefinition
-	Kind string
+type zipToArchiveBuildResult struct {
+	r *zip.Reader
+}
 
+// WriteTo implements common.BuildResult.
+func (z *zipToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
+	for _, file := range z.r.File {
+		var typ filesystem.FileType
+
+		if file.Mode().IsDir() {
+			typ = filesystem.TypeDirectory
+		} else {
+			typ = filesystem.TypeRegular
+		}
+
+		ent := &filesystem.CacheEntry{
+			COffset:   n + 1024,
+			CTypeflag: typ,
+			CName:     file.Name,
+			CLinkname: "",
+			CSize:     int64(file.UncompressedSize64),
+			CMode:     int64(file.Mode()),
+			CUid:      0,
+			CGid:      0,
+			CModTime:  file.Modified.UnixMicro(),
+			CDevmajor: 0,
+			CDevminor: 0,
+		}
+
+		bytes, err := json.Marshal(&ent)
+		if err != nil {
+			return -1, err
+		}
+
+		if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
+			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
+		} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
+			tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
+			copy(tmp, bytes)
+			bytes = tmp
+		}
+
+		childN, err := w.Write(bytes)
+		if err != nil {
+			return -1, err
+		}
+
+		n += int64(childN)
+
+		fh, err := file.Open()
+		if err != nil {
+			return -1, err
+		}
+
+		childN64, err := io.CopyN(w, fh, int64(file.UncompressedSize64))
+		if err != nil {
+			return -1, err
+		}
+
+		n += childN64
+	}
+
+	return
+}
+
+var (
+	_ common.BuildResult = &zipToArchiveBuildResult{}
+)
+
+type tarToArchiveBuildResult struct {
 	r *tar.Reader
 }
 
-// NeedsBuild implements BuildDefinition.
-func (r *ReadArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
-	build, err := ctx.NeedsBuild(r.Base)
-	if err != nil {
-		return true, err
-	}
-	if build {
-		return true, nil
-	} else {
-		return false, nil // archives don't need to be re-extracted unless the underlying file changes.
-	}
-}
-
-// WriteTo implements BuildResult.
-func (r *ReadArchiveBuildDefinition) WriteTo(w io.Writer) (n int64, err error) {
+// WriteTo implements common.BuildResult.
+func (r *tarToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 	for {
 		hdr, err := r.r.Next()
 		if err == io.EOF {
@@ -104,6 +158,28 @@ func (r *ReadArchiveBuildDefinition) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
+var (
+	_ common.BuildResult = &tarToArchiveBuildResult{}
+)
+
+type ReadArchiveBuildDefinition struct {
+	Base common.BuildDefinition
+	Kind string
+}
+
+// NeedsBuild implements BuildDefinition.
+func (r *ReadArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+	build, err := ctx.NeedsBuild(r.Base)
+	if err != nil {
+		return true, err
+	}
+	if build {
+		return true, nil
+	} else {
+		return false, nil // archives don't need to be re-extracted unless the underlying file changes.
+	}
+}
+
 // Build implements BuildDefinition.
 func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	f, err := ctx.Database().Build(ctx, r.Base)
@@ -116,26 +192,39 @@ func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.Buil
 		return nil, err
 	}
 
-	kind := r.Kind
-
-	var reader io.Reader
-
-	if strings.HasSuffix(kind, ".gz") {
-		reader, err = gzip.NewReader(fh)
+	if strings.HasSuffix(r.Kind, ".zip") {
+		info, err := f.Stat()
 		if err != nil {
 			return nil, err
 		}
 
-		kind = strings.TrimSuffix(kind, ".gz")
-	} else {
-		reader = fh
-	}
+		reader, err := zip.NewReader(fh, info.Size())
+		if err != nil {
+			return nil, err
+		}
 
-	if strings.HasSuffix(kind, ".tar") {
-		r.r = tar.NewReader(reader)
-		return r, nil
+		return &zipToArchiveBuildResult{r: reader}, nil
 	} else {
-		return nil, fmt.Errorf("ReadArchive with unknown kind: %s", r.Kind)
+		kind := r.Kind
+
+		var reader io.Reader
+
+		if strings.HasSuffix(kind, ".gz") {
+			reader, err = gzip.NewReader(fh)
+			if err != nil {
+				return nil, err
+			}
+
+			kind = strings.TrimSuffix(kind, ".gz")
+		} else {
+			reader = fh
+		}
+
+		if strings.HasSuffix(kind, ".tar") {
+			return &tarToArchiveBuildResult{r: tar.NewReader(reader)}, nil
+		} else {
+			return nil, fmt.Errorf("ReadArchive with unknown kind: %s", r.Kind)
+		}
 	}
 }
 
@@ -155,7 +244,6 @@ func (*ReadArchiveBuildDefinition) Freeze()              {}
 var (
 	_ starlark.Value         = &ReadArchiveBuildDefinition{}
 	_ common.BuildDefinition = &ReadArchiveBuildDefinition{}
-	_ common.BuildResult     = &ReadArchiveBuildDefinition{}
 )
 
 func NewReadArchiveBuildDefinition(base common.BuildDefinition, kind string) *ReadArchiveBuildDefinition {
