@@ -28,6 +28,7 @@ type BuildContext interface {
 	Call(callable starlark.Callable, args ...starlark.Value) (starlark.Value, error)
 	ChildContext(source BuildSource, filename string) BuildContext
 	Packages() []*Package
+	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
 }
 
 type BuildSource interface {

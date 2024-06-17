@@ -416,7 +416,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return builder.BuildResultToStarlark(def, result)
+			return builder.BuildResultToStarlark(ctx, def, result)
 		}), nil
 	} else {
 		return nil, nil

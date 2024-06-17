@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/pkg2/v2/common"
 	"go.starlark.net/starlark"
 )
@@ -18,7 +19,10 @@ type FetchHttpBuildDefinition struct {
 	Url        string
 	ExpireTime time.Duration
 
-	resp *http.Response
+	requestMaker func(method string, url string) (*http.Request, error)
+	// If this returns false, nil then the request will be redone.
+	responseHandler func(resp *http.Response) (bool, error)
+	resp            *http.Response
 }
 
 // NeedsBuild implements BuildDefinition.
@@ -35,7 +39,10 @@ func (f *FetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime
 func (f *FetchHttpBuildDefinition) WriteTo(w io.Writer) (n int64, err error) {
 	defer f.resp.Body.Close()
 
-	return io.Copy(w, f.resp.Body)
+	prog := progressbar.DefaultBytes(f.resp.ContentLength, f.Url)
+	defer prog.Close()
+
+	return io.Copy(io.MultiWriter(prog, w), f.resp.Body)
 }
 
 // Build implements BuildDefinition.
@@ -53,9 +60,18 @@ func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext) (common.BuildR
 	onlyNotFound := true
 
 	for _, url := range urls {
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return nil, err
+		var req *http.Request
+
+		if f.requestMaker != nil {
+			req, err = f.requestMaker("GET", url)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			req, err = http.NewRequest("GET", url, nil)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		resp, err := client.Do(req)
@@ -63,6 +79,17 @@ func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext) (common.BuildR
 			slog.Warn("failed to fetch", "url", url, "err", err)
 			onlyNotFound = false
 			continue
+		}
+
+		if f.responseHandler != nil {
+			ok, err := f.responseHandler(resp)
+			if err != nil {
+				return nil, err
+			}
+
+			if !ok {
+				return f.Build(ctx)
+			}
 		}
 
 		if resp.StatusCode == http.StatusOK {

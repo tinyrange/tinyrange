@@ -17,7 +17,7 @@ type StarBuildDefinition struct {
 	BuilderArgs starlark.Tuple
 }
 
-func BuildResultToStarlark(argDef common.BuildDefinition, result filesystem.File) (starlark.Value, error) {
+func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinition, result filesystem.File) (starlark.Value, error) {
 	switch arg := argDef.(type) {
 	case *ReadArchiveBuildDefinition:
 		ark, err := filesystem.ReadArchiveFromFile(result)
@@ -30,8 +30,32 @@ func BuildResultToStarlark(argDef common.BuildDefinition, result filesystem.File
 		return filesystem.NewStarFile(result, argDef.Tag()), nil
 	case *DecompressFileBuildDefinition:
 		return filesystem.NewStarFile(result, argDef.Tag()), nil
+	case *fetchOciImageDefinition:
+		if err := parseJsonFromFile(result, &arg); err != nil {
+			return nil, err
+		}
+
+		fs := filesystem.NewMemoryDirectory()
+
+		for _, layer := range arg.LayerArchives {
+			layerFile, err := ctx.FileFromDigest(layer)
+			if err != nil {
+				return nil, err
+			}
+
+			ark, err := filesystem.ReadArchiveFromFile(layerFile)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			if err := filesystem.ExtractArchive(ark, fs); err != nil {
+				return starlark.None, err
+			}
+		}
+
+		return filesystem.NewStarDirectory(fs, ""), nil
 	default:
-		return starlark.None, fmt.Errorf("resultToStarlark not implemented for: %T %+v", arg, arg)
+		return starlark.None, fmt.Errorf("BuildResultToStarlark not implemented for: %T %+v", arg, arg)
 	}
 }
 
@@ -86,7 +110,7 @@ func (def *StarBuildDefinition) Build(ctx common.BuildContext) (common.BuildResu
 				return nil, err
 			}
 
-			val, err := BuildResultToStarlark(argDef, res)
+			val, err := BuildResultToStarlark(ctx, argDef, res)
 			if err != nil {
 				return nil, err
 			}

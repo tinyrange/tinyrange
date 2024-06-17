@@ -109,6 +109,8 @@ func (r *tarToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 			typeFlag = filesystem.TypeDirectory
 		case tar.TypeSymlink:
 			typeFlag = filesystem.TypeSymlink
+		case tar.TypeLink:
+			typeFlag = filesystem.TypeLink
 		default:
 			return -1, fmt.Errorf("unknown type flag: %d", hdr.Typeflag)
 		}

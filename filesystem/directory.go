@@ -249,6 +249,10 @@ func ExtractEntry(ent Entry, dir MutableDirectory) error {
 		return nil
 	case TypeRegular:
 		return CreateChild(dir, ent.Name(), ent)
+	case TypeSymlink:
+		return CreateChild(dir, ent.Name(), ent)
+	case TypeLink:
+		return CreateChild(dir, ent.Name(), ent)
 	default:
 		return fmt.Errorf("unknown Entry type: %s", ent.Typeflag())
 	}

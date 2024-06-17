@@ -23,6 +23,15 @@ type BuildContext struct {
 	inMemory bool
 }
 
+// FileFromDigest implements common.BuildContext.
+func (b *BuildContext) FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error) {
+	if digest.Hash != "" {
+		return &filesystem.LocalFile{Filename: digest.Hash}, nil
+	}
+
+	return nil, fmt.Errorf("could not convert digest to hash")
+}
+
 // IsInMemory implements common.BuildContext.
 func (b *BuildContext) IsInMemory() bool {
 	return b.inMemory
@@ -168,7 +177,7 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return BuildResultToStarlark(def, result)
+			return BuildResultToStarlark(b, def, result)
 		}), nil
 	} else {
 		return nil, nil

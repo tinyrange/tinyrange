@@ -167,6 +167,30 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				return decompressDef, nil
 			}),
+			"fetch_oci_image": starlark.NewBuiltin("define.fetch_oci_image", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					registry     string
+					image        string
+					tag          string
+					architecture string
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"registry?", &registry,
+					"image", &image,
+					"tag?", &tag,
+					"arch?", &architecture,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				return builder.NewFetchOCIImageDefinition(registry, image, tag, architecture), nil
+			}),
 		},
 	}
 

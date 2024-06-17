@@ -37,9 +37,16 @@ type FileInfo interface {
 	fs.FileInfo
 }
 
+type FileDigest struct {
+	Hash string
+}
+
 type File interface {
 	Open() (FileHandle, error)
 	Stat() (FileInfo, error)
+
+	// Returns nil if it's not supported.
+	Digest() *FileDigest
 }
 
 type MutableFile interface {
@@ -57,6 +64,7 @@ const (
 	TypeRegular FileType = iota
 	TypeDirectory
 	TypeSymlink
+	TypeLink
 )
 
 func (t FileType) String() string {
@@ -67,6 +75,8 @@ func (t FileType) String() string {
 		return "Directory"
 	case TypeSymlink:
 		return "Symlink"
+	case TypeLink:
+		return "Link"
 	default:
 		return "<unknown>"
 	}
@@ -109,6 +119,11 @@ type CacheEntry struct {
 	CDevminor int64    `json:"i"`
 }
 
+// Digest implements Entry.
+func (e *CacheEntry) Digest() *FileDigest {
+	return nil
+}
+
 // IsDir implements FileInfo.
 func (e *CacheEntry) IsDir() bool {
 	return e.Mode().IsDir()
@@ -148,6 +163,11 @@ type LocalFile struct {
 	Filename string
 }
 
+// Digest implements File.
+func (l *LocalFile) Digest() *FileDigest {
+	return &FileDigest{Hash: l.Filename}
+}
+
 // Open implements File.
 func (l *LocalFile) Open() (FileHandle, error) {
 	return os.Open(l.Filename)
@@ -172,6 +192,11 @@ type memoryFile struct {
 	uid      int
 	gid      int
 	contents []byte
+}
+
+// Digest implements MutableFile.
+func (m *memoryFile) Digest() *FileDigest {
+	return nil
 }
 
 // IsDir implements FileInfo.
