@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"runtime/pprof"
 	"strings"
+	"time"
 
 	"github.com/tinyrange/pkg2/v2/common"
 	"github.com/tinyrange/pkg2/v2/database"
 	"github.com/tinyrange/pkg2/v2/filesystem"
+	"github.com/tinyrange/pkg2/v2/ui"
 )
 
 type fileListArray map[string]filesystem.File
@@ -50,6 +52,7 @@ var (
 	rebuild    = flag.Bool("rebuild", false, "rebuild all starlark-defined build definitions")
 	noParallel = flag.Bool("noparallel", false, "disable parallel initialization of container builders")
 	script     = flag.String("script", "", "load a script rather than providing a interface for the package database")
+	httpAddr   = flag.String("http", "", "if specified run a web frontend listening on this address")
 	fileList   = make(fileListArray)
 )
 
@@ -82,9 +85,13 @@ func pkg2Main() error {
 		}
 	} else {
 		if *test {
+			start := time.Now()
+
 			if err := db.LoadAll(!*noParallel); err != nil {
 				return err
 			}
+
+			slog.Info("loaded all container builders", "duration", time.Since(start))
 		}
 
 		if *builder != "" {
@@ -122,6 +129,10 @@ func pkg2Main() error {
 			} else {
 				flag.Usage()
 			}
+		} else if *httpAddr != "" {
+			ui := ui.New(*httpAddr, db)
+
+			return ui.ListenAndServe()
 		} else if !*test {
 			flag.Usage()
 		}

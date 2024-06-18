@@ -68,6 +68,7 @@ def parse_debian_package(ctx, ent):
             # This is a basic package defintion that just uses apt-get to install the package.
             directive.run_command("apt-get install -y {}".format(ent["package"])),
         ],
+        raw = ent,
     ))
 
 def make_ubuntu_repos(only_latest = True):

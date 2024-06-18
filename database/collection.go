@@ -14,7 +14,7 @@ type PackageCollection struct {
 	Parser  starlark.Callable
 	Sources []common.BuildDefinition
 
-	Packages []*common.Package
+	Packages map[string]*common.Package
 }
 
 // Tag implements BuildSource.
@@ -53,7 +53,9 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 			return err
 		}
 
-		parser.Packages = append(parser.Packages, child.Packages()...)
+		for _, pkg := range child.Packages() {
+			parser.Packages[pkg.Name.Key()] = pkg
+		}
 	}
 
 	return nil
@@ -91,8 +93,9 @@ func NewPackageCollection(name string, parser starlark.Value, sources []common.B
 	}
 
 	return &PackageCollection{
-		Name:    []string{name, f.Name()},
-		Parser:  f,
-		Sources: sources,
+		Name:     []string{name, f.Name()},
+		Parser:   f,
+		Sources:  sources,
+		Packages: make(map[string]*common.Package),
 	}, nil
 }

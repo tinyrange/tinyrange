@@ -57,6 +57,7 @@ def parse_alpine_packages(ctx, ent):
             # This is a basic package defintion that just uses apk to install the package.
             directive.run_command("apk add {}".format(ent["P"])),
         ],
+        raw = ent,
     ))
 
 def make_alpine_repos(only_latest = True):

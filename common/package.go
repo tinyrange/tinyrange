@@ -40,6 +40,10 @@ func (name PackageName) Matches(query PackageQuery) bool {
 	return true
 }
 
+func (name PackageName) Key() string {
+	return name.String()
+}
+
 func (name PackageName) String() string   { return fmt.Sprintf("%s:%s", name.Name, name.Version) }
 func (PackageName) Type() string          { return "PackageName" }
 func (PackageName) Hash() (uint32, error) { return 0, fmt.Errorf("PackageName is not hashable") }
@@ -53,6 +57,7 @@ var (
 type Package struct {
 	Name       PackageName
 	Directives []Directive
+	Raw        string
 }
 
 func (pkg *Package) Matches(query PackageQuery) bool {
@@ -69,6 +74,6 @@ var (
 	_ starlark.Value = &Package{}
 )
 
-func NewPackage(name PackageName, directives []Directive) *Package {
-	return &Package{Name: name, Directives: directives}
+func NewPackage(name PackageName, directives []Directive, raw string) *Package {
+	return &Package{Name: name, Directives: directives, Raw: raw}
 }

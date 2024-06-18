@@ -245,11 +245,13 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		var (
 			name          common.PackageName
 			directiveList starlark.Iterable
+			raw           starlark.Value
 		)
 
 		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 			"name", &name,
 			"directives", &directiveList,
+			"raw", &raw,
 		); err != nil {
 			return starlark.None, err
 		}
@@ -269,7 +271,12 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 			directives = append(directives, dir.Directive)
 		}
 
-		return common.NewPackage(name, directives), nil
+		formattedRaw, err := common.StarlarkJsonEncode(nil, starlark.Tuple{raw}, []starlark.Tuple{})
+		if err != nil {
+			return nil, err
+		}
+
+		return common.NewPackage(name, directives, string(formattedRaw.(starlark.String))), nil
 	})
 
 	ret["name"] = starlark.NewBuiltin("name", func(
