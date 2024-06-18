@@ -56,6 +56,9 @@ type PackageDatabase struct {
 	mirrors map[string][]string
 
 	memoryCache map[string][]byte
+
+	buildStatusMtx sync.Mutex
+	buildStatuses  map[common.BuildDefinition]*common.BuildStatus
 }
 
 // ShouldRebuildUserDefinitions implements common.PackageDatabase.
@@ -206,8 +209,18 @@ func (db *PackageDatabase) NewBuildContext(source common.BuildSource) common.Bui
 	return builder.NewBuildContext(source, db)
 }
 
+func (db *PackageDatabase) updateBuildStatus(def common.BuildDefinition, status *common.BuildStatus) {
+	db.buildStatusMtx.Lock()
+	defer db.buildStatusMtx.Unlock()
+
+	db.buildStatuses[def] = status
+}
+
 func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefinition) (filesystem.File, error) {
-	hash := common.GetSha256Hash([]byte(def.Tag()))
+	tag := def.Tag()
+	hash := common.GetSha256Hash([]byte(tag))
+
+	status := &common.BuildStatus{Tag: tag}
 
 	if ctx.IsInMemory() {
 		// If this is in memory then check the in-memory cache.
@@ -219,11 +232,16 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 				return nil, err
 			}
 
+			status.Status = common.BuildStatusCached
+
+			// Write the build status.
+			db.updateBuildStatus(def, status)
+
 			return f, nil
 		}
 
 		// Get a child context for the build.
-		child := ctx.ChildContext(def, "")
+		child := ctx.ChildContext(def, status, "")
 
 		// Trigger the build
 		result, err := def.Build(child)
@@ -247,12 +265,17 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 			return nil, err
 		}
 
+		status.Status = common.BuildStatusBuilt
+
+		// Write the build status.
+		db.updateBuildStatus(def, status)
+
 		return f, nil
 	} else {
 		filename := filepath.Join("local", "build", hash+".bin")
 
 		// Get a child context for the build.
-		child := ctx.ChildContext(def, filename+".tmp")
+		child := ctx.ChildContext(def, status, filename+".tmp")
 
 		// Check if the file already exists. If it does then return it.
 		if info, err := os.Stat(filename); err == nil {
@@ -264,6 +287,11 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 
 			// If no rebuild is necessary then skip it.
 			if !needsRebuild {
+				status.Status = common.BuildStatusCached
+
+				// Write the build status.
+				db.updateBuildStatus(def, status)
+
 				return &filesystem.LocalFile{Filename: filename}, nil
 			}
 
@@ -311,9 +339,22 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 			return nil, err
 		}
 
+		status.Status = common.BuildStatusBuilt
+
+		// Write the build status.
+		db.updateBuildStatus(def, status)
+
 		// Return the file.
 		return &filesystem.LocalFile{Filename: filename}, nil
 	}
+}
+
+func (db *PackageDatabase) GetBuildStatus(def common.BuildDefinition) (*common.BuildStatus, error) {
+	status, ok := db.buildStatuses[def]
+	if !ok {
+		return nil, fmt.Errorf("build status not found")
+	}
+	return status, nil
 }
 
 func (db *PackageDatabase) NewName(name string, version string, tags []string) (common.PackageName, error) {
@@ -445,5 +486,6 @@ func New() *PackageDatabase {
 		ContainerBuilders: make(map[string]*ContainerBuilder),
 		mirrors:           make(map[string][]string),
 		memoryCache:       make(map[string][]byte),
+		buildStatuses:     make(map[common.BuildDefinition]*common.BuildStatus),
 	}
 }

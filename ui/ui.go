@@ -21,6 +21,30 @@ type WebFrontend struct {
 	db   *database.PackageDatabase
 }
 
+func (ui *WebFrontend) renderBuildStatus(defs ...common.BuildDefinition) (htm.Fragment, error) {
+	var ret htm.Group
+
+	for _, def := range defs {
+		status, err := ui.db.GetBuildStatus(def)
+		if err != nil {
+			return nil, err
+		}
+
+		children, err := ui.renderBuildStatus(status.Children...)
+		if err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, bootstrap.Card(
+			html.Div(html.Code(html.Textf("%s", status.Tag))),
+			html.Div(html.Textf("%s", status.Status)),
+			children,
+		))
+	}
+
+	return ret, nil
+}
+
 func (ui *WebFrontend) pageTemplate(title string, body ...htm.Fragment) htm.Fragment {
 	return html.Html(
 		htm.Attr("lang", "en"),
@@ -82,6 +106,12 @@ func (ui *WebFrontend) handleBuilderIndex(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	buildStatus, err := ui.renderBuildStatus(builder.Packages.Sources...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	if err := htm.Render(r.Context(), w, ui.pageTemplate(
 		"Package Metadata Database",
 		html.H1(html.Textf("Builder: %s", builder.DisplayName)),
@@ -96,6 +126,10 @@ func (ui *WebFrontend) handleBuilderIndex(w http.ResponseWriter, r *http.Request
 				}),
 				bootstrap.SubmitButton("Search", bootstrap.ButtonColorPrimary),
 			),
+		),
+		bootstrap.Card(
+			bootstrap.CardTitle("Build Status"),
+			buildStatus,
 		),
 	)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

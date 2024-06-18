@@ -46,7 +46,7 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 	// For each record in the list call the parser to parse the record into a package.
 	// This can also happen in parallel,
 	for _, record := range records {
-		child := ctx.ChildContext(parser, "")
+		child := ctx.ChildContext(parser, nil, "")
 
 		_, err := child.Call(parser.Parser, record)
 		if err != nil {

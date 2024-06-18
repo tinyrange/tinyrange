@@ -26,11 +26,35 @@ type BuildContext interface {
 	BuildChild(def BuildDefinition) (filesystem.File, error)
 	NeedsBuild(def BuildDefinition) (bool, error)
 	Call(callable starlark.Callable, args ...starlark.Value) (starlark.Value, error)
-	ChildContext(source BuildSource, filename string) BuildContext
+	ChildContext(source BuildSource, status *BuildStatus, filename string) BuildContext
 	Packages() []*Package
 	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
 }
 
 type BuildSource interface {
 	Tag() string
+}
+
+type BuildStatusKind byte
+
+const (
+	BuildStatusBuilt BuildStatusKind = iota
+	BuildStatusCached
+)
+
+func (s BuildStatusKind) String() string {
+	switch s {
+	case BuildStatusBuilt:
+		return "Built"
+	case BuildStatusCached:
+		return "Cached"
+	default:
+		return "<unknown BuildStatusKind>"
+	}
+}
+
+type BuildStatus struct {
+	Status   BuildStatusKind
+	Tag      string
+	Children []BuildDefinition
 }

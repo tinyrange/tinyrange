@@ -16,6 +16,7 @@ type BuildContext struct {
 	Source   common.BuildSource
 	database common.PackageDatabase
 	parent   *BuildContext
+	status   *common.BuildStatus
 
 	filename string
 	output   io.WriteCloser
@@ -52,11 +53,12 @@ func (b *BuildContext) Database() common.PackageDatabase {
 	return b.database
 }
 
-func (b *BuildContext) ChildContext(source common.BuildSource, filename string) common.BuildContext {
+func (b *BuildContext) ChildContext(source common.BuildSource, status *common.BuildStatus, filename string) common.BuildContext {
 	return &BuildContext{
 		parent:   b,
 		filename: filename,
 		output:   nil,
+		status:   status,
 		Source:   source,
 		database: b.database,
 		inMemory: b.inMemory,
@@ -87,6 +89,10 @@ func (b *BuildContext) HasCreatedOutput() bool {
 }
 
 func (b *BuildContext) BuildChild(def common.BuildDefinition) (filesystem.File, error) {
+	if b.status != nil {
+		b.status.Children = append(b.status.Children, def)
+	}
+
 	return b.database.Build(b, def)
 }
 
@@ -102,7 +108,7 @@ func (b *BuildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
 	filename := filepath.Join("local", "build", hash+".bin")
 
 	// Get a child context for the build.
-	child := b.ChildContext(def, filename+".tmp")
+	child := b.ChildContext(def, b.status, filename+".tmp")
 
 	// Check if the file already exists. If it does then return it.
 	if info, err := os.Stat(filename); err == nil {
