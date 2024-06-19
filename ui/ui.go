@@ -194,6 +194,30 @@ func (ui *WebFrontend) handleBuilderPackageDetail(w http.ResponseWriter, r *http
 		return
 	}
 
+	var installers htm.Group
+
+	for _, installer := range pkg.Installers {
+		var depends []htm.Group
+
+		for _, depend := range installer.Dependencies {
+			depends = append(depends, htm.Group{html.Textf("%+v", depend)})
+		}
+
+		var directives []htm.Group
+
+		for _, directive := range installer.Directives {
+			directives = append(directives, htm.Group{html.Textf("%+v", directive)})
+		}
+
+		installers = append(installers, bootstrap.Card(
+			html.H5(html.Textf("Tags: %+v", installer.Tags)),
+			html.H6(html.Textf("Depends")),
+			bootstrap.Table(htm.Group{html.Textf("Name")}, depends),
+			html.H6(html.Textf("Directives")),
+			bootstrap.Table(htm.Group{html.Textf("Name")}, directives),
+		))
+	}
+
 	buf := new(bytes.Buffer)
 
 	if err := json.Indent(buf, []byte(pkg.Raw), "", "  "); err != nil {
@@ -204,6 +228,10 @@ func (ui *WebFrontend) handleBuilderPackageDetail(w http.ResponseWriter, r *http
 	if err := htm.Render(r.Context(), w, ui.pageTemplate(
 		"Package Metadata Database",
 		bootstrap.Card(bootstrap.CardTitle(pkg.Name.String())),
+		bootstrap.Card(
+			bootstrap.CardTitle("Installers"),
+			installers,
+		),
 		bootstrap.Card(
 			bootstrap.CardTitle("Raw"),
 			html.Code(html.Pre(html.Textf("%s", buf.String()))),

@@ -64,9 +64,14 @@ def parse_debian_package(ctx, ent):
             name = ent["package"],
             version = ent["version"],
         ),
-        directives = [
-            # This is a basic package defintion that just uses apt-get to install the package.
-            directive.run_command("apt-get install -y {}".format(ent["package"])),
+        installers = [
+            installer(
+                tags = ["level1"],
+                directives = [
+                    # This is a basic package defintion that just uses apt-get to install the package.
+                    directive.run_command("apt-get install -y {}".format(ent["package"])),
+                ],
+            ),
         ],
         raw = ent,
     ))

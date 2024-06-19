@@ -47,16 +47,53 @@ def parse_alpine_repo(ctx, index):
 
     return ret
 
+def split_alpine_name(q):
+    n, v = "", ""
+
+    if ">=" in q:
+        n, _, v = q.partition(">=")
+        v = ">" + v
+    elif "=" in q:
+        n, _, v = q.partition("=")
+    else:
+        n = q
+
+    n = n.replace(":", "_")
+    return n, v
+
+def parse_alpine_query(q):
+    n, v = split_alpine_name(q)
+
+    return query(n + ":" + v)
+
+def parse_alpine_alias(q):
+    n, v = split_alpine_name(q)
+
+    return name(name = n, version = v)
+
 def parse_alpine_packages(ctx, ent):
     ctx.add_package(package(
         name = name(
-            name = ent["P"],
+            name = ent["P"].replace(":", "_"),
             version = ent["V"],
         ),
-        directives = [
-            # This is a basic package defintion that just uses apk to install the package.
-            directive.run_command("apk add {}".format(ent["P"])),
+        installers = [
+            installer(
+                tags = ["level1"],
+                # This is a basic package defintion that just uses apk to install the package.
+                directives = [
+                    directive.run_command("apk add {}".format(ent["P"])),
+                ],
+            ),
+            installer(
+                tags = ["level2"],
+                directives = [
+                    directive.run_command("apk add {}".format(ent["P"])),
+                ],
+                dependencies = [parse_alpine_query(dep) for dep in ent["D"].split(" ")] if "D" in ent else [],
+            ),
         ],
+        aliases = [parse_alpine_alias(provides) for provides in ent["p"].split(" ")] if "p" in ent else [],
         raw = ent,
     ))
 

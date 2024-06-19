@@ -26,6 +26,7 @@ func H2(children ...htm.Fragment) htm.Fragment { return htm.NewHtmlFragment("h2"
 func H3(children ...htm.Fragment) htm.Fragment { return htm.NewHtmlFragment("h3", children...) }
 func H4(children ...htm.Fragment) htm.Fragment { return htm.NewHtmlFragment("h4", children...) }
 func H5(children ...htm.Fragment) htm.Fragment { return htm.NewHtmlFragment("h5", children...) }
+func H6(children ...htm.Fragment) htm.Fragment { return htm.NewHtmlFragment("h6", children...) }
 
 func Link(target string, children ...htm.Fragment) htm.Fragment {
 	childList := []htm.Fragment{

@@ -34,25 +34,15 @@ func (builder *ContainerBuilder) Load(db *PackageDatabase) error {
 	return nil
 }
 
-func (builder *ContainerBuilder) Plan(packages []common.PackageQuery) (*InstallationPlan, error) {
-	plan := &InstallationPlan{}
+func (builder *ContainerBuilder) Plan(packages []common.PackageQuery, tags common.TagList) (*InstallationPlan, error) {
+	plan := &InstallationPlan{installedNames: make(map[string]string)}
 
 	plan.Directives = append(plan.Directives, builder.BaseDirectives...)
 
 	for _, pkg := range packages {
-		results, err := builder.Packages.Query(pkg)
-		if err != nil {
+		if err := plan.Add(builder, pkg, tags); err != nil {
 			return nil, err
 		}
-
-		if len(results) == 0 {
-			return nil, fmt.Errorf("could not find package for query: %s", pkg)
-		}
-
-		result := results[0]
-
-		plan.Directives = append(plan.Directives, result.Directives...)
-		plan.Packages = append(plan.Packages, result)
 	}
 
 	return plan, nil

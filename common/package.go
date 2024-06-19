@@ -12,6 +12,16 @@ type PackageQuery struct {
 	Version string
 }
 
+func (q PackageQuery) String() string      { return fmt.Sprintf("%s:%s", q.Name, q.Version) }
+func (PackageQuery) Type() string          { return "PackageQuery" }
+func (PackageQuery) Hash() (uint32, error) { return 0, fmt.Errorf("PackageQuery is not hashable") }
+func (PackageQuery) Truth() starlark.Bool  { return starlark.True }
+func (PackageQuery) Freeze()               {}
+
+var (
+	_ starlark.Value = PackageQuery{}
+)
+
 func ParsePackageQuery(s string) (PackageQuery, error) {
 	name, version, _ := strings.Cut(s, ":")
 
@@ -31,11 +41,11 @@ func (name PackageName) Matches(query PackageQuery) bool {
 		}
 	}
 
-	if query.Version != "" {
-		if name.Version != query.Version {
-			return false
-		}
-	}
+	// if query.Version != "" {
+	// 	if name.Version != query.Version {
+	// 		return false
+	// 	}
+	// }
 
 	return true
 }
@@ -54,14 +64,45 @@ var (
 	_ starlark.Value = PackageName{}
 )
 
+type Installer struct {
+	Tags         TagList
+	Directives   []Directive
+	Dependencies []PackageQuery
+}
+
+func (*Installer) String() string        { return "Installer" }
+func (*Installer) Type() string          { return "Installer" }
+func (*Installer) Hash() (uint32, error) { return 0, fmt.Errorf("Installer is not hashable") }
+func (*Installer) Truth() starlark.Bool  { return starlark.True }
+func (*Installer) Freeze()               {}
+
+var (
+	_ starlark.Value = &Package{}
+)
+
+func NewInstaller(tagList TagList, directives []Directive, dependencies []PackageQuery) *Installer {
+	return &Installer{Tags: tagList, Directives: directives, Dependencies: dependencies}
+}
+
 type Package struct {
 	Name       PackageName
-	Directives []Directive
+	Installers []*Installer
+	Aliases    []PackageName
 	Raw        string
 }
 
 func (pkg *Package) Matches(query PackageQuery) bool {
-	return pkg.Name.Matches(query)
+	if pkg.Name.Matches(query) {
+		return true
+	}
+
+	for _, alias := range pkg.Aliases {
+		if alias.Matches(query) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (pkg *Package) String() string    { return pkg.Name.String() }
@@ -74,6 +115,6 @@ var (
 	_ starlark.Value = &Package{}
 )
 
-func NewPackage(name PackageName, directives []Directive, raw string) *Package {
-	return &Package{Name: name, Directives: directives, Raw: raw}
+func NewPackage(name PackageName, installers []*Installer, aliases []PackageName, raw string) *Package {
+	return &Package{Name: name, Installers: installers, Aliases: aliases, Raw: raw}
 }

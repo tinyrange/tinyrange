@@ -46,6 +46,7 @@ func (i fileListArray) Set(value string) error {
 var (
 	makeList   = flag.String("make", "", "make a container from a list of packages")
 	builder    = flag.String("builder", "", "specify a builder to use for making containers")
+	buildTags  = flag.String("tags", "level1", "specify a list of tags to build the container with")
 	test       = flag.Bool("test", false, "load all container builders")
 	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 	memprofile = flag.String("memprofile", "", "write memory profile to this file")
@@ -113,7 +114,9 @@ func pkg2Main() error {
 					queries = append(queries, query)
 				}
 
-				plan, err := builder.Plan(queries)
+				tags := strings.Split((*buildTags), ",")
+
+				plan, err := builder.Plan(queries, common.TagList(tags))
 				if err != nil {
 					return err
 				}

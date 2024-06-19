@@ -236,39 +236,122 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		},
 	}
 
+	ret["installer"] = starlark.NewBuiltin("installer", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		var (
+			val starlark.Value
+			err error
+		)
+
+		var (
+			tagListIt      starlark.Iterable
+			directiveList  starlark.Iterable
+			dependencyList starlark.Iterable
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"tags?", &tagListIt,
+			"directives?", &directiveList,
+			"dependencies?", &dependencyList,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		var directives []common.Directive
+		var dependencies []common.PackageQuery
+
+		if directiveList != nil {
+			directiveIter := directiveList.Iterate()
+			defer directiveIter.Done()
+
+			for directiveIter.Next(&val) {
+				dir, ok := val.(*common.StarDirective)
+				if !ok {
+					return nil, fmt.Errorf("could not convert %s to Directive", val.Type())
+				}
+
+				directives = append(directives, dir.Directive)
+			}
+		}
+
+		if dependencyList != nil {
+			dependencyIter := dependencyList.Iterate()
+			defer dependencyIter.Done()
+
+			for dependencyIter.Next(&val) {
+				dep, ok := val.(common.PackageQuery)
+				if !ok {
+					return nil, fmt.Errorf("could not convert %s to PackageQuery", val.Type())
+				}
+
+				dependencies = append(dependencies, dep)
+			}
+		}
+
+		var tagList []string
+
+		if tagListIt != nil {
+			tagList, err = common.ToStringList(tagListIt)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		return common.NewInstaller(tagList, directives, dependencies), nil
+	})
+
 	ret["package"] = starlark.NewBuiltin("package", func(
 		thread *starlark.Thread,
 		fn *starlark.Builtin,
 		args starlark.Tuple,
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
+		var val starlark.Value
+
 		var (
-			name          common.PackageName
-			directiveList starlark.Iterable
-			raw           starlark.Value
+			name           common.PackageName
+			installersList starlark.Iterable
+			aliasList      starlark.Iterable
+			raw            starlark.Value
 		)
 
 		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 			"name", &name,
-			"directives", &directiveList,
+			"installers", &installersList,
+			"aliases?", &aliasList,
 			"raw", &raw,
 		); err != nil {
 			return starlark.None, err
 		}
 
-		iter := directiveList.Iterate()
-		defer iter.Done()
+		var installers []*common.Installer
+		var aliases []common.PackageName
 
-		var directives []common.Directive
+		{
+			iter := installersList.Iterate()
+			defer iter.Done()
 
-		var val starlark.Value
-		for iter.Next(&val) {
-			dir, ok := val.(*common.StarDirective)
-			if !ok {
-				return nil, fmt.Errorf("could not convert %s to Directive", val.Type())
+			for iter.Next(&val) {
+				installer, ok := val.(*common.Installer)
+				if !ok {
+					return nil, fmt.Errorf("could not convert %s to Installer", val.Type())
+				}
+
+				installers = append(installers, installer)
 			}
+		}
 
-			directives = append(directives, dir.Directive)
+		if aliasList != nil {
+			iter := aliasList.Iterate()
+			defer iter.Done()
+
+			for iter.Next(&val) {
+				alias, ok := val.(common.PackageName)
+				if !ok {
+					return nil, fmt.Errorf("could not convert %s to PackageName", val.Type())
+				}
+
+				aliases = append(aliases, alias)
+			}
 		}
 
 		formattedRaw, err := common.StarlarkJsonEncode(nil, starlark.Tuple{raw}, []starlark.Tuple{})
@@ -276,7 +359,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 			return nil, err
 		}
 
-		return common.NewPackage(name, directives, string(formattedRaw.(starlark.String))), nil
+		return common.NewPackage(name, installers, aliases, string(formattedRaw.(starlark.String))), nil
 	})
 
 	ret["name"] = starlark.NewBuiltin("name", func(
@@ -311,6 +394,30 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		}
 
 		return db.NewName(name, version, stringTags)
+	})
+
+	ret["query"] = starlark.NewBuiltin("query", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			name string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"name", &name,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		q, err := common.ParsePackageQuery(name)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		return q, nil
 	})
 
 	ret["duration"] = starlark.NewBuiltin("duration", func(
