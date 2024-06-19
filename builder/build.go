@@ -24,6 +24,25 @@ type BuildContext struct {
 	inMemory bool
 }
 
+// CreateFile implements common.BuildContext.
+func (b *BuildContext) CreateFile(name string) (string, io.WriteCloser, error) {
+	if b.IsInMemory() {
+		return "", nil, fmt.Errorf("creating files for in-memory items is not implemented")
+	}
+
+	out, err := os.Create(b.filename + name)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return out.Name(), out, nil
+}
+
+// FilenameFromDigest implements common.BuildContext.
+func (b *BuildContext) FilenameFromDigest(digest *filesystem.FileDigest) (string, error) {
+	return digest.Hash, nil
+}
+
 // FileFromDigest implements common.BuildContext.
 func (b *BuildContext) FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error) {
 	if digest.Hash != "" {
@@ -65,7 +84,7 @@ func (b *BuildContext) ChildContext(source common.BuildSource, status *common.Bu
 	}
 }
 
-func (b *BuildContext) createOutput() (io.WriteCloser, error) {
+func (b *BuildContext) CreateOutput() (io.WriteCloser, error) {
 	if b.IsInMemory() {
 		return nil, fmt.Errorf("pre-creating output for in-memory items is not implemented")
 	}
@@ -133,7 +152,7 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
-			f, err := b.createOutput()
+			f, err := b.CreateOutput()
 			if err != nil {
 				return nil, err
 			}

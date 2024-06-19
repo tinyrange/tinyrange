@@ -175,6 +175,9 @@ type fetchOciImageDefinition struct {
 	LayerArchives []*filesystem.FileDigest
 }
 
+// tagDirective implements common.Directive.
+func (def *fetchOciImageDefinition) TagDirective() { panic("unimplemented") }
+
 func (def *fetchOciImageDefinition) SetDefaults() {
 	if def.registry == "" {
 		def.registry = DEFAULT_REGISTRY
@@ -358,7 +361,7 @@ func (def *fetchOciImageDefinition) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 func (def *fetchOciImageDefinition) String() string { return def.Tag() }
-func (*fetchOciImageDefinition) Type() string       { return "fetchOciImageDefinition" }
+func (*fetchOciImageDefinition) Type() string       { return "FetchOciImageDefinition" }
 func (*fetchOciImageDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("fetchOciImageDefinition is not hashable")
 }
@@ -369,6 +372,7 @@ var (
 	_ starlark.Value         = &fetchOciImageDefinition{}
 	_ common.BuildDefinition = &fetchOciImageDefinition{}
 	_ common.BuildResult     = &fetchOciImageDefinition{}
+	_ common.Directive       = &fetchOciImageDefinition{}
 )
 
 func NewFetchOCIImageDefinition(registry, image, tag, architecture string) *fetchOciImageDefinition {

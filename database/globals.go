@@ -14,6 +14,16 @@ import (
 	"go.starlark.net/starlarkstruct"
 )
 
+func asDirective(val starlark.Value) (common.Directive, error) {
+	if starDir, ok := val.(*common.StarDirective); ok {
+		return starDir.Directive, nil
+	} else if directive, ok := val.(common.Directive); ok {
+		return directive, nil
+	} else {
+		return nil, fmt.Errorf("could not convert %s to Directive", val.Type())
+	}
+}
+
 func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 	ret := starlark.StringDict{}
 
@@ -181,8 +191,8 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-					"registry?", &registry,
 					"image", &image,
+					"registry?", &registry,
 					"tag?", &tag,
 					"arch?", &architecture,
 				); err != nil {
@@ -190,6 +200,42 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				}
 
 				return builder.NewFetchOCIImageDefinition(registry, image, tag, architecture), nil
+			}),
+			"build_vm": starlark.NewBuiltin("define.build_vm", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var val starlark.Value
+
+				var (
+					directiveList starlark.Iterable
+					output        string
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"directives", &directiveList,
+					"output", &output,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				var directives []common.Directive
+
+				directiveIter := directiveList.Iterate()
+				defer directiveIter.Done()
+
+				for directiveIter.Next(&val) {
+					dir, err := asDirective(val)
+					if err != nil {
+						return nil, err
+					}
+
+					directives = append(directives, dir)
+				}
+
+				return builder.NewBuildVmDefinition(directives, output), nil
 			}),
 		},
 	}
@@ -236,7 +282,12 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		},
 	}
 
-	ret["installer"] = starlark.NewBuiltin("installer", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	ret["installer"] = starlark.NewBuiltin("installer", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
 		var (
 			val starlark.Value
 			err error

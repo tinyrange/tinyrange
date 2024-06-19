@@ -19,6 +19,8 @@ type BuildDefinition interface {
 }
 
 type BuildContext interface {
+	CreateOutput() (io.WriteCloser, error)
+	CreateFile(name string) (string, io.WriteCloser, error)
 	HasCreatedOutput() bool
 	SetInMemory()
 	IsInMemory() bool
@@ -29,6 +31,7 @@ type BuildContext interface {
 	ChildContext(source BuildSource, status *BuildStatus, filename string) BuildContext
 	Packages() []*Package
 	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
+	FilenameFromDigest(digest *filesystem.FileDigest) (string, error)
 }
 
 type BuildSource interface {
