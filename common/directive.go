@@ -17,6 +17,10 @@ type DirectiveFactory interface {
 
 type DirectiveBaseImage string
 
+func (d DirectiveBaseImage) String() string {
+	return fmt.Sprintf("base_image{%s}", string(d))
+}
+
 // Tag implements Directive.
 func (d DirectiveBaseImage) Tag() string {
 	return fmt.Sprintf("BaseImage_%s", d)

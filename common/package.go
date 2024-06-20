@@ -34,6 +34,13 @@ type PackageName struct {
 	Tags    []string
 }
 
+func (name PackageName) Query() PackageQuery {
+	return PackageQuery{
+		Name:    name.Name,
+		Version: name.Version,
+	}
+}
+
 func (name PackageName) Matches(query PackageQuery) bool {
 	if query.Name != "" {
 		if name.Name != query.Name {

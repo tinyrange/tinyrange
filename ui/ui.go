@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"slices"
+	"strings"
 
 	"github.com/tinyrange/pkg2/v2/common"
 	"github.com/tinyrange/pkg2/v2/database"
@@ -16,9 +18,10 @@ import (
 )
 
 type WebFrontend struct {
-	addr string
-	mux  *http.ServeMux
-	db   *database.PackageDatabase
+	addr               string
+	mux                *http.ServeMux
+	db                 *database.PackageDatabase
+	currentPackageList map[string][]common.PackageQuery
 }
 
 func (ui *WebFrontend) renderBuildStatus(defs ...common.BuildDefinition) (htm.Fragment, error) {
@@ -106,6 +109,82 @@ func (ui *WebFrontend) handleBuilderIndex(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	var resultsSection htm.Fragment
+
+	pkgName := r.FormValue("name")
+
+	pkgName = strings.Trim(pkgName, " ")
+
+	if pkgName != "" {
+		q, err := common.ParsePackageQuery(r.FormValue("name"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		results, err := builder.Search(q)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		var resultRows []htm.Group
+
+		for _, result := range results {
+			resultRows = append(resultRows, htm.Group{
+				html.Div(
+					html.Form(
+						html.FormTarget("POST", fmt.Sprintf("/builder/%s/add", name)),
+						html.HiddenFormField(html.NewId(), "pkgName", result.Name.Key()),
+						bootstrap.SubmitButton("Add", bootstrap.ButtonColorSuccess, bootstrap.ButtonSmall),
+					),
+				),
+				html.Link(fmt.Sprintf("/builder/%s/package/%s", name, result.Name.Key()), html.Text(result.Name.Name)),
+				html.Textf("%s", result.Name.Version),
+			})
+		}
+
+		resultsSection = bootstrap.Card(
+			bootstrap.CardTitle("Results"),
+			bootstrap.Table(htm.Group{
+				html.Textf("Actions"),
+				html.Textf("Name"),
+				html.Textf("Version"),
+			}, resultRows),
+		)
+	}
+
+	var currentPackagesSection htm.Fragment
+
+	packageList := ui.currentPackageList[name]
+
+	if len(packageList) > 0 {
+		var bagRows []htm.Group
+		for _, q := range packageList {
+			params := make(url.Values)
+
+			params.Add("name", q.String())
+
+			bagRows = append(bagRows, htm.Group{
+				html.Link(fmt.Sprintf("/builder/%s?%s", name, params.Encode()), html.Textf("%+v", q.String())),
+			})
+		}
+
+		currentPackagesSection = bootstrap.Card(
+			bootstrap.CardTitle("Package Bag"),
+			bootstrap.Table(htm.Group{html.Textf("Name")}, bagRows),
+			html.Form(
+				html.FormTarget("POST", fmt.Sprintf("/builder/%s/plan", name)),
+				bootstrap.FormField("Precompute Dependencies", "precompute", html.FormOptions{
+					Kind:          html.FormFieldCheckbox,
+					Value:         false,
+					LabelSameLine: true,
+				}),
+				bootstrap.SubmitButton("Make Installation Plan", bootstrap.ButtonColorPrimary),
+			),
+		)
+	}
+
 	buildStatus, err := ui.renderBuildStatus(builder.Packages.Sources...)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -114,21 +193,23 @@ func (ui *WebFrontend) handleBuilderIndex(w http.ResponseWriter, r *http.Request
 
 	if err := htm.Render(r.Context(), w, ui.pageTemplate(
 		"Package Metadata Database",
-		html.H1(html.Textf("Builder: %s", builder.DisplayName)),
+		html.H1(html.Text("Builder: "), html.Link(fmt.Sprintf("/builder/%s", name), html.Textf("%s", builder.DisplayName))),
 		bootstrap.Card(
 			bootstrap.CardTitle("Search"),
 			html.Form(
-				html.FormTarget("GET", fmt.Sprintf("/builder/%s/search", name)),
+				html.FormTarget("GET", fmt.Sprintf("/builder/%s", name)),
 				bootstrap.FormField("Package Name", "name", html.FormOptions{
 					Kind:          html.FormFieldText,
-					Value:         "",
+					Value:         pkgName,
 					LabelSameLine: true,
 				}),
 				bootstrap.SubmitButton("Search", bootstrap.ButtonColorPrimary),
 			),
 		),
+		resultsSection,
+		currentPackagesSection,
 		bootstrap.Card(
-			bootstrap.CardTitle("Build Status"),
+			bootstrap.CardTitle("Internal Build Status"),
 			buildStatus,
 		),
 	)); err != nil {
@@ -137,7 +218,7 @@ func (ui *WebFrontend) handleBuilderIndex(w http.ResponseWriter, r *http.Request
 	}
 }
 
-func (ui *WebFrontend) handleBuilderSearch(w http.ResponseWriter, r *http.Request) {
+func (ui *WebFrontend) handleBuilderAddPackage(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
 	builder, ok := ui.db.ContainerBuilders[name]
@@ -146,31 +227,78 @@ func (ui *WebFrontend) handleBuilderSearch(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	q := common.PackageQuery{
-		Name: r.FormValue("name"),
+	pkgName := r.FormValue("pkgName")
+
+	pkg, ok := builder.Get(pkgName)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
 	}
 
-	results, err := builder.Search(q)
+	q := pkg.Name.Query()
+
+	for _, other := range ui.currentPackageList[builder.Name] {
+		if other == q {
+			http.Redirect(w, r, fmt.Sprintf("/builder/%s", name), http.StatusFound)
+
+			return
+		}
+	}
+
+	ui.currentPackageList[builder.Name] = append(ui.currentPackageList[builder.Name], q)
+
+	http.Redirect(w, r, fmt.Sprintf("/builder/%s", name), http.StatusFound)
+}
+
+func (ui *WebFrontend) handleBuilderMakePlan(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	builder, ok := ui.db.ContainerBuilders[name]
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	precompute := r.FormValue("precompute") != ""
+
+	level := "level1"
+	if precompute {
+		level = "level2"
+	}
+
+	pkgs := ui.currentPackageList[builder.Name]
+
+	plan, err := builder.Plan(pkgs, common.TagList{level})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	var resultRows []htm.Group
+	var directives []htm.Group
 
-	for _, result := range results {
-		resultRows = append(resultRows, htm.Group{
-			html.Link(fmt.Sprintf("/builder/%s/package/%s", name, result.Name.Key()), html.Text(result.Name.Name)),
-			html.Textf("%s", result.Name.Version),
+	for _, directive := range plan.Directives {
+		directives = append(directives, htm.Group{
+			html.Code(html.Textf("%+v", directive)),
 		})
+	}
+
+	dFile, err := database.EmitDockerfile(plan)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	if err := htm.Render(r.Context(), w, ui.pageTemplate(
 		"Package Metadata Database",
-		bootstrap.Table(htm.Group{
-			html.Textf("Name"),
-			html.Textf("Version"),
-		}, resultRows),
+		html.H1(html.Text("Builder: "), html.Link(fmt.Sprintf("/builder/%s", name), html.Textf("%s", builder.DisplayName))),
+		bootstrap.Card(
+			bootstrap.CardTitle("Plan Directives"),
+			bootstrap.Table(htm.Group{}, directives),
+		),
+		bootstrap.Card(
+			bootstrap.CardTitle("Rendered Dockerfile"),
+			html.Code(html.Pre(html.Textf("%s", dFile))),
+		),
 	)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -200,13 +328,21 @@ func (ui *WebFrontend) handleBuilderPackageDetail(w http.ResponseWriter, r *http
 		var depends []htm.Group
 
 		for _, depend := range installer.Dependencies {
-			depends = append(depends, htm.Group{html.Textf("%+v", depend)})
+			params := make(url.Values)
+
+			params.Add("name", depend.String())
+
+			depends = append(depends, htm.Group{
+				html.Link(fmt.Sprintf("/builder/%s?%s", name, params.Encode()), html.Textf("%+v", depend.String())),
+			})
 		}
 
 		var directives []htm.Group
 
 		for _, directive := range installer.Directives {
-			directives = append(directives, htm.Group{html.Textf("%+v", directive)})
+			directives = append(directives, htm.Group{
+				html.Code(html.Textf("%+v", directive)),
+			})
 		}
 
 		installers = append(installers, bootstrap.Card(
@@ -214,7 +350,7 @@ func (ui *WebFrontend) handleBuilderPackageDetail(w http.ResponseWriter, r *http
 			html.H6(html.Textf("Depends")),
 			bootstrap.Table(htm.Group{html.Textf("Name")}, depends),
 			html.H6(html.Textf("Directives")),
-			bootstrap.Table(htm.Group{html.Textf("Name")}, directives),
+			bootstrap.Table(htm.Group{}, directives),
 		))
 	}
 
@@ -227,6 +363,7 @@ func (ui *WebFrontend) handleBuilderPackageDetail(w http.ResponseWriter, r *http
 
 	if err := htm.Render(r.Context(), w, ui.pageTemplate(
 		"Package Metadata Database",
+		html.H1(html.Text("Builder: "), html.Link(fmt.Sprintf("/builder/%s", name), html.Textf("%s", builder.DisplayName))),
 		bootstrap.Card(bootstrap.CardTitle(pkg.Name.String())),
 		bootstrap.Card(
 			bootstrap.CardTitle("Installers"),
@@ -245,7 +382,8 @@ func (ui *WebFrontend) handleBuilderPackageDetail(w http.ResponseWriter, r *http
 func (ui *WebFrontend) registerRoutes() {
 	ui.mux.HandleFunc("/", ui.handleIndex)
 	ui.mux.HandleFunc("/builder/{name}", ui.handleBuilderIndex)
-	ui.mux.HandleFunc("/builder/{name}/search", ui.handleBuilderSearch)
+	ui.mux.HandleFunc("/builder/{name}/add", ui.handleBuilderAddPackage)
+	ui.mux.HandleFunc("/builder/{name}/plan", ui.handleBuilderMakePlan)
 	ui.mux.HandleFunc("/builder/{name}/package/{pkgName}", ui.handleBuilderPackageDetail)
 }
 
@@ -258,8 +396,9 @@ func (ui *WebFrontend) ListenAndServe() error {
 
 func New(addr string, db *database.PackageDatabase) *WebFrontend {
 	return &WebFrontend{
-		addr: addr,
-		mux:  http.NewServeMux(),
-		db:   db,
+		addr:               addr,
+		mux:                http.NewServeMux(),
+		db:                 db,
+		currentPackageList: make(map[string][]common.PackageQuery),
 	}
 }
