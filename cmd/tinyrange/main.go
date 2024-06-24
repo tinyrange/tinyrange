@@ -154,6 +154,14 @@ func tinyRangeMain() error {
 
 	ns := netstack.New()
 
+	out, err := os.Create("local/network.pcap")
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	ns.OpenPacketCapture(out)
+
 	go func() {
 		// TODO(joshua): Fix this horrible hack.
 		time.Sleep(100 * time.Millisecond)
@@ -235,6 +243,10 @@ func tinyRangeMain() error {
 	if err != nil {
 		return err
 	}
+
+	// for {
+	// 	time.Sleep(1 * time.Hour)
+	// }
 
 	return nil
 }

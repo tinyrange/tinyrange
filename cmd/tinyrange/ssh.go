@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -48,7 +49,10 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, pass
 	)
 
 	for {
-		conn, err = ns.DialInternal("tcp", address)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		conn, err = ns.DialInternalContext(ctx, "tcp", address)
 		if err != nil {
 			slog.Warn("failed to connect", "err", err)
 			time.Sleep(100 * time.Millisecond)

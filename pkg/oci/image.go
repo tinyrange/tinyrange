@@ -214,7 +214,6 @@ func (dl *OciImageDownloader) ExtractOciImage(fs *ext4.Ext4Filesystem, name stri
 				if hdr.Typeflag == tar.TypeLink && !strings.HasPrefix(hdr.Linkname, "/") {
 					hdr.Linkname = "/" + hdr.Linkname
 				}
-				slog.Info("", "hdr", hdr)
 
 				return true
 			}); err != nil {
