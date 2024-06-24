@@ -18,6 +18,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/insomniacslk/dhcp/netboot"
 	"github.com/jsimonetti/rtnetlink/rtnl"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 	"golang.org/x/crypto/ssh"
@@ -60,7 +61,7 @@ func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, env []str
 
 	//pipe session to shell and visa-versa
 	go func() {
-		err := Proxy(connection, shellf)
+		err := common.Proxy(connection, shellf)
 		if err != nil {
 			slog.Warn("proxy failed", "error", err)
 		}

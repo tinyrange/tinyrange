@@ -15,6 +15,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
@@ -130,14 +131,14 @@ func (ns *NetStack) splitAddress(addr string) (tcpip.FullAddress, error) {
 	}, nil
 }
 
-func (ns *NetStack) DialInternal(network string, address string) (net.Conn, error) {
+func (ns *NetStack) DialInternalContext(ctx context.Context, network string, address string) (net.Conn, error) {
 	addr, err := ns.splitAddress(address)
 	if err != nil {
 		return nil, err
 	}
 
 	if network == "tcp" || network == "tcp4" || network == "tcp6" {
-		return gonet.DialTCP(ns.nStack, addr, ipv4.ProtocolNumber)
+		return gonet.DialContextTCP(ctx, ns.nStack, addr, ipv4.ProtocolNumber)
 	} else if network == "udp" {
 		// log.Printf("Dial UDP %+v", addr)
 		return gonet.DialUDP(ns.nStack, nil, &addr, ipv4.ProtocolNumber)
@@ -213,47 +214,64 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 
 	nic.channel = channel.New(HOST_CHANNEL_SIZE, HOST_CHANNEL_MTU, tcpip.LinkAddress(hostMac))
 
-	tcpErr := ns.nStack.CreateNIC(nicId, nic.channel)
-	if tcpErr != nil {
-		return nil, fmt.Errorf("tcpip error: %v", tcpErr)
+	if err := ns.nStack.CreateNIC(nicId, nic.channel); err != nil {
+		return nil, fmt.Errorf("tcpip error: %v", err)
+	}
+
+	sackEnabledOpt := tcpip.TCPSACKEnabled(true) // TCP SACK is disabled by default
+	if err := ns.nStack.SetTransportProtocolOption(
+		tcp.ProtocolNumber,
+		&sackEnabledOpt,
+	); err != nil {
+		return nil, fmt.Errorf("could not enable TCP SACK: %v", err)
 	}
 
 	// Enable forwarding on the host-attached nic.
-	_, tcpErr = ns.nStack.SetNICForwarding(nicId, ipv4.ProtocolNumber, true)
-	if tcpErr != nil {
-		return nil, fmt.Errorf("tcpip error: %v", tcpErr)
+	if _, err := ns.nStack.SetNICForwarding(nicId, ipv4.ProtocolNumber, true); err != nil {
+		return nil, fmt.Errorf("tcpip error: %v", err)
 	}
-	_, tcpErr = ns.nStack.SetNICForwarding(nicId, ipv6.ProtocolNumber, true)
-	if tcpErr != nil {
-		return nil, fmt.Errorf("tcpip error: %v", tcpErr)
+	if _, err := ns.nStack.SetNICForwarding(nicId, ipv6.ProtocolNumber, true); err != nil {
+		return nil, fmt.Errorf("tcpip error: %v", err)
 	}
 
-	tcpErr = ns.nStack.AddProtocolAddress(nicId, tcpip.ProtocolAddress{
+	if err := ns.nStack.AddProtocolAddress(nicId, tcpip.ProtocolAddress{
 		Protocol: ipv4.ProtocolNumber,
 		AddressWithPrefix: tcpip.AddressWithPrefix{
 			PrefixLen: 16,
 			Address:   tcpip.AddrFromSlice([]byte{10, 42, 0, 1}),
 		},
-	}, stack.AddressProperties{})
-	if tcpErr != nil {
-		return nil, fmt.Errorf("tcpip error: %v", tcpErr)
+	}, stack.AddressProperties{
+		PEB:        stack.CanBePrimaryEndpoint, // zero value default
+		ConfigType: stack.AddressConfigStatic,  // zero value default
+	}); err != nil {
+		return nil, fmt.Errorf("tcpip error: %v", err)
 	}
 
-	remoteAddr, addrErr := netip.ParseAddr("0.0.0.0")
-	if addrErr != nil {
-		return nil, err
-	}
-
-	subnet, addrErr := tcpip.NewSubnet(tcpip.AddrFromSlice(remoteAddr.AsSlice()), tcpip.MaskFromBytes([]byte{0x00, 0x00, 0x00, 0x00}))
+	subnet, addrErr := tcpip.NewSubnet(
+		tcpip.AddrFromSlice(make([]byte, 4)),
+		tcpip.MaskFromBytes(make([]byte, 4)),
+	)
 	if addrErr != nil {
 		return nil, err
 	}
 
 	ns.nStack.AddRoute(tcpip.Route{
 		Destination: subnet,
-		Gateway:     subnet.ID(),
-		NIC:         1,
+		// Gateway:     subnet.ID(),
+		NIC: nicId,
 	})
+
+	// Maybe needed due to https://github.com/google/gvisor/issues/3876
+	// seems to break the networking with it enabled though.
+	if err := ns.nStack.SetPromiscuousMode(nicId, true); err != nil {
+		return nil, fmt.Errorf("failed to set promiscuous mode: %s", err)
+	}
+
+	// Enable spoofing on the nic so we can get addresses for the internet
+	// sites the guest reaches out to.
+	if err := ns.nStack.SetSpoofing(nicId, true); err != nil {
+		return nil, fmt.Errorf("failed to set spoofing mode: %s", err)
+	}
 
 	send, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
 	if err != nil {
@@ -274,7 +292,7 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 
 			pkt := buf[:n]
 
-			// slog.Info("got packet", "data", pkt)
+			// slog.Info("got packet from client", "data", pkt)
 
 			if ns.packetDump != nil {
 				ns.packetDump.WritePacket(gopacket.CaptureInfo{
@@ -368,14 +386,74 @@ func (ns *NetStack) OpenPacketCapture(w io.Writer) error {
 	return nil
 }
 
+func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
+	id := r.ID()
+
+	loc := &net.TCPAddr{
+		IP:   net.IP(id.LocalAddress.AsSlice()),
+		Port: int(id.LocalPort),
+	}
+
+	var wq waiter.Queue
+
+	ep, ipErr := r.CreateEndpoint(&wq)
+	if ipErr != nil {
+		slog.Error("error creating endpoint", "err", ipErr)
+		r.Complete(true)
+		return
+	}
+
+	r.Complete(false)
+	ep.SocketOptions().SetDelayOption(true)
+
+	conn := gonet.NewTCPConn(&wq, ep)
+
+	go func() {
+		defer conn.Close()
+
+		slog.Info("dialing remote host", "addr", loc.String())
+
+		outbound, err := net.DialTCP("tcp", nil, loc)
+		if err != nil {
+			return
+		}
+		defer outbound.Close()
+
+		if err := common.Proxy(outbound, conn); err != nil {
+			return
+		}
+	}()
+}
+
+// func (ns *NetStack) handleUdpForward(r *udp.ForwarderRequest) {
+// 	slog.Info("udp forwarding request", "req", r)
+// }
+
 func New() *NetStack {
 	ns := NetStack{}
 
 	ns.nStack = stack.New(stack.Options{
-		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol, arp.NewProtocol},
-		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol, icmp.NewProtocol6, icmp.NewProtocol4},
-		HandleLocal:        true,
+		NetworkProtocols: []stack.NetworkProtocolFactory{
+			ipv4.NewProtocol,
+			ipv6.NewProtocol,
+			arp.NewProtocol,
+		},
+		TransportProtocols: []stack.TransportProtocolFactory{
+			tcp.NewProtocol,
+			udp.NewProtocol,
+			icmp.NewProtocol6,
+			icmp.NewProtocol4,
+		},
+		// HandleLocal: true,
 	})
+
+	const tcpReceiveBufferSize = 0
+	const maxInFlightConnectionAttempts = 1024
+	tcpFwd := tcp.NewForwarder(ns.nStack, tcpReceiveBufferSize, maxInFlightConnectionAttempts, ns.handleTcpForward)
+	ns.nStack.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpFwd.HandlePacket)
+
+	// fwdUdp := udp.NewForwarder(ns.nStack, ns.handleUdpForward)
+	// ns.nStack.SetTransportProtocolHandler(udp.ProtocolNumber, fwdUdp.HandlePacket)
 
 	return &ns
 }

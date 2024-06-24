@@ -154,6 +154,14 @@ func tinyRangeMain() error {
 
 	ns := netstack.New()
 
+	out, err := os.Create("local/network.pcap")
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	ns.OpenPacketCapture(out)
+
 	go func() {
 		// TODO(joshua): Fix this horrible hack.
 		time.Sleep(100 * time.Millisecond)
@@ -178,9 +186,17 @@ func tinyRangeMain() error {
 			dnsLookup: func(name string) (string, error) {
 				if name == "host.internal." {
 					return "10.42.0.1", nil
-				} else {
-					return "", nil
 				}
+
+				slog.Info("doing DNS lookup", "name", name)
+
+				// Do a DNS lookup on the host.
+				addr, err := net.ResolveIPAddr("ip4", name)
+				if err != nil {
+					return "", err
+				}
+
+				return string(addr.IP.String()), nil
 			},
 		}
 
@@ -235,6 +251,10 @@ func tinyRangeMain() error {
 	if err != nil {
 		return err
 	}
+
+	// for {
+	// 	time.Sleep(1 * time.Hour)
+	// }
 
 	return nil
 }
