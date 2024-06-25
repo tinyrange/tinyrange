@@ -33,7 +33,6 @@ type VirtualMachine struct {
 	kernel    string
 	initrd    string
 	diskImage string
-	ns        *netstack.NetStack
 	nic       *netstack.NetworkInterface
 	cmd       *exec.Cmd
 	mtx       sync.Mutex
@@ -44,16 +43,9 @@ func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bo
 
 	vm.cmd = exec.Command(exe.command, exe.args...)
 
-	out, err := os.Create("stdout")
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	vm.cmd.Stdout = out
-	vm.cmd.Stderr = out
-
 	if bindOutput {
+		vm.cmd.Stdout = os.Stdout
+		vm.cmd.Stderr = os.Stderr
 		vm.cmd.Stdin = os.Stdin
 	}
 
@@ -72,12 +64,7 @@ func (vm *VirtualMachine) Shutdown() error {
 	return nil
 }
 
-func (vm *VirtualMachine) Run(bindOutput bool) error {
-	nic, err := vm.ns.AttachNetworkInterface()
-	if err != nil {
-		return err
-	}
-
+func (vm *VirtualMachine) Run(nic *netstack.NetworkInterface, bindOutput bool) error {
 	vm.nic = nic
 
 	ret, err := starlark.Call(
@@ -218,11 +205,9 @@ func (factory *VirtualMachineFactory) Create(
 	kernel string,
 	initrd string,
 	diskImage string,
-	ns *netstack.NetStack,
 ) (*VirtualMachine, error) {
 	return &VirtualMachine{
 		factory:   factory,
-		ns:        ns,
 		kernel:    kernel,
 		initrd:    initrd,
 		diskImage: diskImage,

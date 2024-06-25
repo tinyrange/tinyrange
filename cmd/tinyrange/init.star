@@ -27,6 +27,8 @@ def main():
     path_ensure("/etc")
     file_write("/etc/resolv.conf", "nameserver 10.42.0.1\n")
 
+    print("Running SSH server.")
+
     run_ssh_server()
 
     # run("/bin/login", "-f", "root")

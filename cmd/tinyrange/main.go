@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/miekg/dns"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
@@ -162,14 +161,30 @@ func tinyRangeMain() error {
 
 	// ns.OpenPacketCapture(out)
 
-	go func() {
-		// TODO(joshua): Fix this horrible hack.
-		time.Sleep(100 * time.Millisecond)
+	factory, err := virtualMachine.LoadVirtualMachineFactory("hv/qemu/qemu.star")
+	if err != nil {
+		return err
+	}
 
+	virtualMachine, err := factory.Create(
+		"local/vmlinux_x86_64",
+		"",
+		"nbd://"+listener.Addr().String(),
+	)
+	if err != nil {
+		return err
+	}
+
+	nic, err := ns.AttachNetworkInterface()
+	if err != nil {
+		return err
+	}
+
+	// Create internal HTTP server.
+	{
 		listen, err := ns.ListenInternal("tcp", ":80")
 		if err != nil {
-			slog.Error("failed to listen", "err", err)
-			return
+			return err
 		}
 
 		mux := http.NewServeMux()
@@ -181,7 +196,10 @@ func tinyRangeMain() error {
 		go func() {
 			slog.Error("failed to serve", "err", http.Serve(listen, mux))
 		}()
+	}
 
+	// Create DNS server.
+	{
 		dnsServer := &dnsServer{
 			dnsLookup: func(name string) (string, error) {
 				if name == "host.internal." {
@@ -199,14 +217,13 @@ func tinyRangeMain() error {
 				return string(addr.IP.String()), nil
 			},
 		}
-
 		dnsMux := dns.NewServeMux()
 
 		dnsMux.HandleFunc(".", dnsServer.handleDnsRequest)
 
 		packetConn, err := ns.ListenPacketInternal("udp", ":53")
 		if err != nil {
-			slog.Error("dns: failed to create packet connection", "err", err)
+			return err
 		}
 
 		dnsServer.server = &dns.Server{
@@ -222,26 +239,12 @@ func tinyRangeMain() error {
 				slog.Error("dns: failed to start server", "error", err.Error())
 			}
 		}()
-
-	}()
-
-	factory, err := virtualMachine.LoadVirtualMachineFactory("hv/qemu/qemu.star")
-	if err != nil {
-		return err
 	}
 
-	virtualMachine, err := factory.Create(
-		"local/vmlinux_x86_64",
-		"",
-		"nbd://"+listener.Addr().String(),
-		ns,
-	)
-	if err != nil {
-		return err
-	}
+	slog.Info("Starting virtual machine.")
 
 	go func() {
-		if err := virtualMachine.Run(false); err != nil {
+		if err := virtualMachine.Run(nic, false); err != nil {
 			slog.Error("failed to run virtual machine", "err", err)
 		}
 	}()

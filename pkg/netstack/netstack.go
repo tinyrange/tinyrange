@@ -358,8 +358,7 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 
 			_, err := nic.udpConn.Write(pktBytes)
 			if err != nil {
-				slog.Error("failed to write packet to guest", "err", err)
-				return
+				slog.Debug("failed to write packet to guest", "err", err)
 			}
 
 			pkt.DecRef()
