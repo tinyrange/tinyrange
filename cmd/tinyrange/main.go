@@ -154,13 +154,13 @@ func tinyRangeMain() error {
 
 	ns := netstack.New()
 
-	out, err := os.Create("local/network.pcap")
-	if err != nil {
-		return err
-	}
-	defer out.Close()
+	// out, err := os.Create("local/network.pcap")
+	// if err != nil {
+	// 	return err
+	// }
+	// defer out.Close()
 
-	ns.OpenPacketCapture(out)
+	// ns.OpenPacketCapture(out)
 
 	go func() {
 		// TODO(joshua): Fix this horrible hack.
@@ -247,16 +247,17 @@ func tinyRangeMain() error {
 	}()
 	defer virtualMachine.Shutdown()
 
-	err = connectOverSsh(ns, "10.42.0.2:2222", "root", "insecurepassword")
-	if err != nil {
-		return err
+	// Start a loop so SSH can be restarted when requested by the user.
+	for {
+		err = connectOverSsh(ns, "10.42.0.2:2222", "root", "insecurepassword")
+		if err == ErrRestart {
+			continue
+		} else if err != nil {
+			return err
+		}
+
+		return nil
 	}
-
-	// for {
-	// 	time.Sleep(1 * time.Hour)
-	// }
-
-	return nil
 }
 
 func main() {

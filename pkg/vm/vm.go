@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sync"
 
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"go.starlark.net/starlark"
@@ -35,21 +36,36 @@ type VirtualMachine struct {
 	ns        *netstack.NetStack
 	nic       *netstack.NetworkInterface
 	cmd       *exec.Cmd
+	mtx       sync.Mutex
 }
 
 func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bool) error {
+	vm.mtx.Lock()
+
 	vm.cmd = exec.Command(exe.command, exe.args...)
 
+	out, err := os.Create("stdout")
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	vm.cmd.Stdout = out
+	vm.cmd.Stderr = out
+
 	if bindOutput {
-		vm.cmd.Stdout = os.Stdout
-		vm.cmd.Stderr = os.Stderr
 		vm.cmd.Stdin = os.Stdin
 	}
+
+	vm.mtx.Unlock()
 
 	return vm.cmd.Run()
 }
 
 func (vm *VirtualMachine) Shutdown() error {
+	vm.mtx.Lock()
+	defer vm.mtx.Unlock()
+
 	if vm.cmd != nil {
 		return vm.cmd.Process.Kill()
 	}
