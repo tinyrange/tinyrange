@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,14 +11,17 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/miekg/dns"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"github.com/tinyrange/tinyrange/pkg/oci"
 	virtualMachine "github.com/tinyrange/tinyrange/pkg/vm"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"github.com/tinyrange/vm"
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed init.star
@@ -67,15 +71,12 @@ func (*vmBackend) Sync() error {
 	return nil
 }
 
-var (
-	storageSize = flag.Int("storage-size", 64, "the size of the VM storage in megabytes")
-	image       = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
-)
+func runWithConfig(cfg config.TinyRangeConfig) error {
+	if cfg.StorageSize == 0 {
+		return fmt.Errorf("invalid config")
+	}
 
-func tinyRangeMain() error {
-	flag.Parse()
-
-	fsSize := int64(*storageSize * 1024 * 1024)
+	fsSize := int64(cfg.StorageSize * 1024 * 1024)
 
 	vmem := vm.NewVirtualMemory(fsSize, 4096)
 
@@ -84,35 +85,46 @@ func tinyRangeMain() error {
 		return err
 	}
 
-	initExe, err := os.Open("build/init_x86_64")
-	if err != nil {
-		return err
-	}
-	defer initExe.Close()
+	for _, frag := range cfg.RootFsFragments {
+		if localFile := frag.LocalFile; localFile != nil {
+			file, err := os.Open(localFile.HostFilename)
+			if err != nil {
+				return err
+			}
 
-	initRegion, err := vm.NewFileRegion(initExe)
-	if err != nil {
-		return err
-	}
+			region, err := vm.NewFileRegion(file)
+			if err != nil {
+				return err
+			}
 
-	if err := fs.CreateFile("/init", initRegion); err != nil {
-		return err
-	}
-	if err := fs.Chmod("/init", goFs.FileMode(0755)); err != nil {
-		return err
-	}
+			if err := fs.CreateFile(localFile.GuestFilename, region); err != nil {
+				return err
+			}
 
-	if err := fs.CreateFile("/init.star", vm.RawRegion(_INIT_SCRIPT)); err != nil {
-		return err
-	}
-	if err := fs.Chmod("/init.star", goFs.FileMode(0755)); err != nil {
-		return err
-	}
+			if localFile.Executable {
+				if err := fs.Chmod(localFile.GuestFilename, goFs.FileMode(0755)); err != nil {
+					return err
+				}
+			}
+		} else if fileContents := frag.FileContents; fileContents != nil {
+			if err := fs.CreateFile(fileContents.GuestFilename, vm.RawRegion(fileContents.Contents)); err != nil {
+				return err
+			}
 
-	ociDl := oci.NewDownloader()
+			if fileContents.Executable {
+				if err := fs.Chmod(fileContents.GuestFilename, goFs.FileMode(0755)); err != nil {
+					return err
+				}
+			}
+		} else if ociImage := frag.OCIImage; ociImage != nil {
+			ociDl := oci.NewDownloader()
 
-	if err := ociDl.ExtractOciImage(fs, *image); err != nil {
-		return err
+			if err := ociDl.ExtractOciImage(fs, ociImage.ImageName); err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("unknown oci image kind")
+		}
 	}
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -161,14 +173,14 @@ func tinyRangeMain() error {
 
 	// ns.OpenPacketCapture(out)
 
-	factory, err := virtualMachine.LoadVirtualMachineFactory("hv/qemu/qemu.star")
+	factory, err := virtualMachine.LoadVirtualMachineFactory(cfg.HypervisorScript)
 	if err != nil {
 		return err
 	}
 
 	virtualMachine, err := factory.Create(
-		"local/vmlinux_x86_64",
-		"",
+		cfg.KernelFilename,
+		cfg.InitFilesystemFilename,
 		"nbd://"+listener.Addr().String(),
 	)
 	if err != nil {
@@ -260,6 +272,54 @@ func tinyRangeMain() error {
 		}
 
 		return nil
+	}
+}
+
+var (
+	storageSize = flag.Int("storage-size", 64, "the size of the VM storage in megabytes")
+	image       = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
+	configFile  = flag.String("config", "", "passes a custom config. this overrides all other flags.")
+)
+
+func tinyRangeMain() error {
+	flag.Parse()
+
+	if *configFile != "" {
+		f, err := os.Open(*configFile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		var cfg config.TinyRangeConfig
+
+		if strings.HasSuffix(f.Name(), ".json") {
+
+			dec := json.NewDecoder(f)
+
+			if err := dec.Decode(&cfg); err != nil {
+				return err
+			}
+		} else if strings.HasSuffix(f.Name(), ".yml") {
+			dec := yaml.NewDecoder(f)
+
+			if err := dec.Decode(&cfg); err != nil {
+				return err
+			}
+		}
+
+		return runWithConfig(cfg)
+	} else {
+		return runWithConfig(config.TinyRangeConfig{
+			HypervisorScript: "hv/qemu/qemu.star",
+			KernelFilename:   "local/vmlinux_x86_64",
+			RootFsFragments: []config.Fragment{
+				{LocalFile: &config.LocalFileFragment{HostFilename: "build/init_x86_64", GuestFilename: "/init", Executable: true}},
+				{FileContents: &config.FileContentsFragment{Contents: _INIT_SCRIPT, GuestFilename: "/init.star"}},
+				{OCIImage: &config.OCIImageFragment{ImageName: *image}},
+			},
+			StorageSize: *storageSize,
+		})
 	}
 }
 

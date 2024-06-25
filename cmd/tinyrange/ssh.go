@@ -87,7 +87,7 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, pass
 	)
 
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 		defer cancel()
 
 		conn, err = ns.DialInternalContext(ctx, "tcp", address)
