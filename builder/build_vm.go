@@ -9,23 +9,29 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/tinyrange/pkg2/v2/builder/config"
 	"github.com/tinyrange/pkg2/v2/common"
 	"go.starlark.net/starlark"
 )
 
-func runTinyRange(configFilename string) (*exec.Cmd, error) {
-	return nil, fmt.Errorf("runTinyRange not implemented")
-}
+const TINYRANGE_PATH = "/home/joshua/dev/projects/tinyrange2"
 
-type TinyRangeConfig struct {
-	BaseDirectory     string
-	RootFsArchives    []string
-	Commands          []string
-	SupervisorAddress string
-	OutputFilename    string
+func runTinyRange(configFilename string) (*exec.Cmd, error) {
+	cmd := exec.Command(filepath.Join(TINYRANGE_PATH, "build/tinyrange"), "-config", configFilename)
+
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	return cmd, nil
 }
 
 type BuildVmDefinition struct {
@@ -41,7 +47,9 @@ type BuildVmDefinition struct {
 
 // WriteTo implements common.BuildResult.
 func (def *BuildVmDefinition) WriteTo(w io.Writer) (n int64, err error) {
-	def.cmd.Process.Kill()
+	if err := def.cmd.Wait(); err != nil {
+		return 0, err
+	}
 
 	def.server.Shutdown(context.Background())
 
@@ -52,15 +60,30 @@ func (def *BuildVmDefinition) WriteTo(w io.Writer) (n int64, err error) {
 
 // Build implements common.BuildDefinition.
 func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	config := TinyRangeConfig{}
+	cfg := config.TinyRangeConfig{}
 
 	wd, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
 
-	config.BaseDirectory = wd
-	config.OutputFilename = def.OutputFile
+	cfg.BaseDirectory = wd
+	cfg.HypervisorScript = filepath.Join(TINYRANGE_PATH, "hv/qemu/qemu.star")
+	cfg.KernelFilename = filepath.Join(TINYRANGE_PATH, "local/vmlinux_x86_64")
+	cfg.StorageSize = 1024
+
+	// Hard code the init file and script.
+	cfg.RootFsFragments = append(cfg.RootFsFragments,
+		config.Fragment{LocalFile: &config.LocalFileFragment{
+			HostFilename:  filepath.Join(TINYRANGE_PATH, "build/init_x86_64"),
+			GuestFilename: "/init",
+			Executable:    true,
+		}},
+		config.Fragment{LocalFile: &config.LocalFileFragment{
+			HostFilename:  filepath.Join(TINYRANGE_PATH, "cmd/tinyrange/init.star"),
+			GuestFilename: "/init.star",
+		}},
+	)
 
 	// Launch child builds for each directive.
 	for _, directive := range def.Directives {
@@ -81,10 +104,10 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 					return nil, err
 				}
 
-				config.RootFsArchives = append(config.RootFsArchives, filename)
+				cfg.RootFsFragments = append(cfg.RootFsFragments, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
 			}
 		case common.DirectiveRunCommand:
-			config.Commands = append(config.Commands, string(directive))
+			// config.Commands = append(config.Commands, string(directive))
 		default:
 			return nil, fmt.Errorf("BuildVmDefinition.Build: directive type %T unhandled", directive)
 		}
@@ -94,8 +117,6 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	if err != nil {
 		return nil, err
 	}
-
-	config.SupervisorAddress = listener.Addr().String()
 
 	def.mux = http.NewServeMux()
 
@@ -127,7 +148,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 
 	enc := json.NewEncoder(out)
 
-	if err := enc.Encode(&config); err != nil {
+	if err := enc.Encode(&cfg); err != nil {
 		out.Close()
 		return nil, err
 	}
@@ -148,6 +169,10 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 
 // NeedsBuild implements common.BuildDefinition.
 func (def *BuildVmDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+	if ctx.Database().ShouldRebuildUserDefinitions() {
+		return true, nil
+	}
+
 	// TODO(joshua): Check if any of the child directives
 	return false, nil
 }

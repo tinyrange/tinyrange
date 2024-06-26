@@ -30,6 +30,8 @@ func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinitio
 		return filesystem.NewStarFile(result, argDef.Tag()), nil
 	case *DecompressFileBuildDefinition:
 		return filesystem.NewStarFile(result, argDef.Tag()), nil
+	case *BuildVmDefinition:
+		return filesystem.NewStarFile(result, argDef.Tag()), nil
 	case *fetchOciImageDefinition:
 		if err := parseJsonFromFile(result, &arg); err != nil {
 			return nil, err
