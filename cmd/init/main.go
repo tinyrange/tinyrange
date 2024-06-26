@@ -25,12 +25,74 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func ToStringList(it starlark.Iterable) ([]string, error) {
+	iter := it.Iterate()
+	defer iter.Done()
+
+	var ret []string
+
+	var val starlark.Value
+	for iter.Next(&val) {
+		str, ok := starlark.AsString(val)
+		if !ok {
+			return nil, fmt.Errorf("could not convert %s to string", val.Type())
+		}
+
+		ret = append(ret, str)
+	}
+
+	return ret, nil
+}
+
 type sshServer struct {
-	command string
+	callable starlark.Callable
+	command  []string
+}
+
+// Attr implements starlark.HasAttrs.
+func (s *sshServer) Attr(name string) (starlark.Value, error) {
+	if name == "run" {
+		return starlark.NewBuiltin("SSHServer.run", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				cmdArgs starlark.Iterable
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"args", &cmdArgs,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			var err error
+
+			s.command, err = ToStringList(cmdArgs)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.None, nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (s *sshServer) AttrNames() []string {
+	return []string{"run"}
 }
 
 func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, env []string, resizes <-chan []byte) error {
-	shell := exec.Command("/bin/login", "-f", "root")
+	if _, err := starlark.Call(&starlark.Thread{}, s.callable, starlark.Tuple{s}, []starlark.Tuple{}); err != nil {
+		return err
+	}
+
+	shell := exec.Command(s.command[0], s.command[1:]...)
 
 	shell.Env = env
 
@@ -179,7 +241,9 @@ func (s *sshServer) handleClient(nConn net.Conn, config *ssh.ServerConfig) error
 	return nil
 }
 
-func (s *sshServer) run(password string) error {
+func (s *sshServer) run(password string, callable starlark.Callable) error {
+	s.callable = callable
+
 	listener, err := net.Listen("tcp", "0.0.0.0:2222")
 	if err != nil {
 		return fmt.Errorf("ssh: failed to listen for connection: %v", err)
@@ -221,6 +285,17 @@ func (s *sshServer) run(password string) error {
 		}()
 	}
 }
+
+func (*sshServer) String() string        { return "SSHServer" }
+func (*sshServer) Type() string          { return "SSHServer" }
+func (*sshServer) Hash() (uint32, error) { return 0, fmt.Errorf("SSHServer is not hashable") }
+func (*sshServer) Truth() starlark.Bool  { return starlark.True }
+func (*sshServer) Freeze()               {}
+
+var (
+	_ starlark.Value    = &sshServer{}
+	_ starlark.HasAttrs = &sshServer{}
+)
 
 // From: https://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go
 func exists(name string) (bool, error) {
@@ -559,14 +634,22 @@ func initMain() error {
 		args starlark.Tuple,
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
+		var (
+			callable starlark.Callable
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"callable", &callable,
+		); err != nil {
+			return starlark.None, err
+		}
+
 		sshServer := &sshServer{}
 
-		// go func() {
-		err := sshServer.run("insecurepassword")
+		err := sshServer.run("insecurepassword", callable)
 		if err != nil {
-			slog.Error("failed to run ssh server", "error", err)
+			return starlark.None, err
 		}
-		// }()
 
 		return starlark.None, nil
 	})

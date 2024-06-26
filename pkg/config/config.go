@@ -1,5 +1,10 @@
 package config
 
+import (
+	"path/filepath"
+	"strings"
+)
+
 type LocalFileFragment struct {
 	HostFilename  string `json:"host_filename" yaml:"host_filename"`
 	GuestFilename string `json:"guest_filename" yaml:"guest_filename"`
@@ -43,4 +48,12 @@ type TinyRangeConfig struct {
 	StorageSize int `json:"storage_size" yaml:"storage_size"`
 	// Config parameters to pass to the hypervisor.
 	HypervisorConfig map[string]string `json:"hypervisor_config" yaml:"hypervisor_config"`
+}
+
+func (cfg TinyRangeConfig) Resolve(filename string) string {
+	if strings.HasPrefix(filename, "/") {
+		return filename
+	}
+
+	return filepath.Join(cfg.BaseDirectory, filename)
 }

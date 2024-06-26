@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/miekg/dns"
+	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
@@ -71,7 +72,7 @@ func (*vmBackend) Sync() error {
 	return nil
 }
 
-func runWithConfig(cfg config.TinyRangeConfig) error {
+func runWithConfig(cfg config.TinyRangeConfig, debug bool) error {
 	if cfg.StorageSize == 0 {
 		return fmt.Errorf("invalid config")
 	}
@@ -87,7 +88,7 @@ func runWithConfig(cfg config.TinyRangeConfig) error {
 
 	for _, frag := range cfg.RootFsFragments {
 		if localFile := frag.LocalFile; localFile != nil {
-			file, err := os.Open(localFile.HostFilename)
+			file, err := os.Open(cfg.Resolve(localFile.HostFilename))
 			if err != nil {
 				return err
 			}
@@ -122,8 +123,57 @@ func runWithConfig(cfg config.TinyRangeConfig) error {
 			if err := ociDl.ExtractOciImage(fs, ociImage.ImageName); err != nil {
 				return err
 			}
+		} else if ark := frag.Archive; ark != nil {
+			fh, err := os.Open(cfg.Resolve(ark.HostFilename))
+			if err != nil {
+				return err
+			}
+
+			entries, err := archive.ReadArchiveFromFile(fh)
+			if err != nil {
+				return err
+			}
+
+			for _, ent := range entries {
+				name := "/" + ent.CName
+				switch ent.CTypeflag {
+				case archive.TypeDirectory:
+					name = strings.TrimSuffix(name, "/")
+					if err := fs.Mkdir(name, true); err != nil {
+						return err
+					}
+				case archive.TypeSymlink:
+					if err := fs.Symlink(name, ent.CLinkname); err != nil {
+						return err
+					}
+				case archive.TypeRegular:
+					f, err := ent.Open()
+					if err != nil {
+						return err
+					}
+
+					region, err := vm.NewFileRegion(f)
+					if err != nil {
+						return err
+					}
+
+					if err := fs.CreateFile(name, region); err != nil {
+						return err
+					}
+				default:
+					return fmt.Errorf("unimplemented entry type: %s", ent.CTypeflag)
+				}
+
+				if err := fs.Chown(name, uint16(ent.CUid), uint16(ent.CGid)); err != nil {
+					return err
+				}
+
+				if err := fs.Chmod(name, goFs.FileMode(ent.CMode)); err != nil {
+					return err
+				}
+			}
 		} else {
-			return fmt.Errorf("unknown oci image kind")
+			return fmt.Errorf("unknown fragment kind")
 		}
 	}
 
@@ -173,14 +223,14 @@ func runWithConfig(cfg config.TinyRangeConfig) error {
 
 	// ns.OpenPacketCapture(out)
 
-	factory, err := virtualMachine.LoadVirtualMachineFactory(cfg.HypervisorScript)
+	factory, err := virtualMachine.LoadVirtualMachineFactory(cfg.Resolve(cfg.HypervisorScript))
 	if err != nil {
 		return err
 	}
 
 	virtualMachine, err := factory.Create(
-		cfg.KernelFilename,
-		cfg.InitFilesystemFilename,
+		cfg.Resolve(cfg.KernelFilename),
+		cfg.Resolve(cfg.InitFilesystemFilename),
 		"nbd://"+listener.Addr().String(),
 	)
 	if err != nil {
@@ -256,7 +306,7 @@ func runWithConfig(cfg config.TinyRangeConfig) error {
 	slog.Info("Starting virtual machine.")
 
 	go func() {
-		if err := virtualMachine.Run(nic, false); err != nil {
+		if err := virtualMachine.Run(nic, debug); err != nil {
 			slog.Error("failed to run virtual machine", "err", err)
 		}
 	}()
@@ -279,6 +329,7 @@ var (
 	storageSize = flag.Int("storage-size", 64, "the size of the VM storage in megabytes")
 	image       = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
 	configFile  = flag.String("config", "", "passes a custom config. this overrides all other flags.")
+	debug       = flag.Bool("debug", false, "redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup")
 )
 
 func tinyRangeMain() error {
@@ -308,7 +359,7 @@ func tinyRangeMain() error {
 			}
 		}
 
-		return runWithConfig(cfg)
+		return runWithConfig(cfg, *debug)
 	} else {
 		return runWithConfig(config.TinyRangeConfig{
 			HypervisorScript: "hv/qemu/qemu.star",
@@ -319,7 +370,7 @@ func tinyRangeMain() error {
 				{OCIImage: &config.OCIImageFragment{ImageName: *image}},
 			},
 			StorageSize: *storageSize,
-		})
+		}, *debug)
 	}
 }
 

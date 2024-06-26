@@ -1,3 +1,6 @@
+def ssh_connect(ctx):
+    return ctx.run(["/bin/login", "-f", "root"])
+
 def main():
     network_interface_up("lo")
     network_interface_up("eth0")
@@ -27,8 +30,6 @@ def main():
     path_ensure("/etc")
     file_write("/etc/resolv.conf", "nameserver 10.42.0.1\n")
 
-    print("Running SSH server.")
-
-    run_ssh_server()
+    run_ssh_server(ssh_connect)
 
     # run("/bin/login", "-f", "root")
