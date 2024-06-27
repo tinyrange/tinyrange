@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -42,7 +43,7 @@ type BuildVmDefinition struct {
 	mux    *http.ServeMux
 	server *http.Server
 	cmd    *exec.Cmd
-	out    io.Closer
+	out    io.WriteCloser
 }
 
 // WriteTo implements common.BuildResult.
@@ -60,20 +61,31 @@ func (def *BuildVmDefinition) WriteTo(w io.Writer) (n int64, err error) {
 
 // Build implements common.BuildDefinition.
 func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	cfg := config.TinyRangeConfig{}
+	builderCfg := config.BuilderConfig{}
+
+	builderCfg.OutputFilename = def.OutputFile
+
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		return nil, err
+	}
+
+	builderCfg.HostAddress = fmt.Sprintf("10.42.0.100:%d", listener.Addr().(*net.TCPAddr).Port)
+
+	vmCfg := config.TinyRangeConfig{}
 
 	wd, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
 
-	cfg.BaseDirectory = wd
-	cfg.HypervisorScript = filepath.Join(TINYRANGE_PATH, "hv/qemu/qemu.star")
-	cfg.KernelFilename = filepath.Join(TINYRANGE_PATH, "local/vmlinux_x86_64")
-	cfg.StorageSize = 1024
+	vmCfg.BaseDirectory = wd
+	vmCfg.HypervisorScript = filepath.Join(TINYRANGE_PATH, "hv/qemu/qemu.star")
+	vmCfg.KernelFilename = filepath.Join(TINYRANGE_PATH, "local/vmlinux_x86_64")
+	vmCfg.StorageSize = 1024
 
 	// Hard code the init file and script.
-	cfg.RootFsFragments = append(cfg.RootFsFragments,
+	vmCfg.RootFsFragments = append(vmCfg.RootFsFragments,
 		config.Fragment{LocalFile: &config.LocalFileFragment{
 			HostFilename:  filepath.Join(TINYRANGE_PATH, "build/init_x86_64"),
 			GuestFilename: "/init",
@@ -82,6 +94,17 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		config.Fragment{LocalFile: &config.LocalFileFragment{
 			HostFilename:  filepath.Join(TINYRANGE_PATH, "cmd/tinyrange/init.star"),
 			GuestFilename: "/init.star",
+		}},
+		// Use init.json to set /builder as the SSH command.
+		config.Fragment{FileContents: &config.FileContentsFragment{
+			Contents:      []byte("{\"ssh_command\": [\"/builder\"]}"),
+			GuestFilename: "/init.json",
+		}},
+		// Send the local builder executable.
+		config.Fragment{LocalFile: &config.LocalFileFragment{
+			HostFilename:  "build/builder",
+			GuestFilename: "/builder",
+			Executable:    true,
 		}},
 	)
 
@@ -104,19 +127,26 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 					return nil, err
 				}
 
-				cfg.RootFsFragments = append(cfg.RootFsFragments, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+				vmCfg.RootFsFragments = append(vmCfg.RootFsFragments, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
 			}
 		case common.DirectiveRunCommand:
-			// config.Commands = append(config.Commands, string(directive))
+			builderCfg.Commands = append(builderCfg.Commands, string(directive))
 		default:
 			return nil, fmt.Errorf("BuildVmDefinition.Build: directive type %T unhandled", directive)
 		}
 	}
 
-	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	buildConfig, err := json.Marshal(&builderCfg)
 	if err != nil {
 		return nil, err
 	}
+
+	vmCfg.RootFsFragments = append(vmCfg.RootFsFragments,
+		config.Fragment{FileContents: &config.FileContentsFragment{
+			Contents:      buildConfig,
+			GuestFilename: "/builder.json",
+		}},
+	)
 
 	def.mux = http.NewServeMux()
 
@@ -130,9 +160,10 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	}
 	def.out = out
 
-	def.mux.HandleFunc("/uploadOutput", func(w http.ResponseWriter, r *http.Request) {
-		_, err := io.Copy(out, r.Body)
+	def.mux.HandleFunc("/upload_output", func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.Copy(def.out, r.Body)
 		if err != nil {
+			slog.Error("error writing output from VM", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
@@ -148,7 +179,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 
 	enc := json.NewEncoder(out)
 
-	if err := enc.Encode(&cfg); err != nil {
+	if err := enc.Encode(&vmCfg); err != nil {
 		out.Close()
 		return nil, err
 	}
