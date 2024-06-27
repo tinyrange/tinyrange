@@ -15,7 +15,7 @@ This branch tracks a public rewrite of TinyRange documented through the medium o
 7. [x] Write a DNS server in the host for the virtual guest.
 8. [x] Switch from using stdout from QEMU to SSH from the host.
 9. [x] Add support for connecting to arbitrary websites in the guest.
-10. [ ] Make the virtual machine customizable. Including customizable scripts.
+10. [x] Make the virtual machine customizable. Including customizable scripts.
 
 ## Videos
 
@@ -25,7 +25,7 @@ This branch tracks a public rewrite of TinyRange documented through the medium o
 - Part 4 (item 6): https://www.youtube.com/watch?v=HKvnG4SOpzo
 - Part 5 (item 7 and 8): https://www.youtube.com/watch?v=nEC2dUQHLnc
 
-I've completed part 9 and I'll edit and publish a separate video for it.
+I've completed part 9 and part 10 and I'll edit and publish a separate video for it.
 
 # Getting Started
 

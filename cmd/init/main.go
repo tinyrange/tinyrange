@@ -19,11 +19,14 @@ import (
 	"github.com/insomniacslk/dhcp/netboot"
 	"github.com/jsimonetti/rtnetlink/rtnl"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/sys/unix"
 )
+
+var starlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builtin).CallInternal
 
 func ToStringList(it starlark.Iterable) ([]string, error) {
 	iter := it.Iterate()
@@ -342,7 +345,23 @@ func ensure(path string, mode os.FileMode) error {
 }
 
 func initMain() error {
+	var args starlark.Value = starlark.NewDict(0)
+
+	if ok, _ := exists("/init.json"); ok {
+		contents, err := os.ReadFile("/init.json")
+		if err != nil {
+			return err
+		}
+
+		args, err = starlarkJsonDecode(nil, starlark.Tuple{starlark.String(contents)}, []starlark.Tuple{})
+		if err != nil {
+			return err
+		}
+	}
+
 	globals := starlark.StringDict{}
+
+	globals["args"] = args
 
 	globals["exit"] = starlark.NewBuiltin("exit", func(
 		thread *starlark.Thread,
