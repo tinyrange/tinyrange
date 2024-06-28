@@ -37,8 +37,9 @@ func runTinyRange(configFilename string) (*exec.Cmd, error) {
 
 type BuildVmDefinition struct {
 	// TOOD(joshua): Allow customizing the kernel, hypervisor, and startup script.
-	Directives []common.Directive
-	OutputFile string
+	Directives  []common.Directive
+	OutputFile  string
+	StorageSize int
 
 	mux    *http.ServeMux
 	server *http.Server
@@ -82,7 +83,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	vmCfg.BaseDirectory = wd
 	vmCfg.HypervisorScript = filepath.Join(TINYRANGE_PATH, "hv/qemu/qemu.star")
 	vmCfg.KernelFilename = filepath.Join(TINYRANGE_PATH, "local/vmlinux_x86_64")
-	vmCfg.StorageSize = 1024
+	vmCfg.StorageSize = def.StorageSize
 
 	// Hard code the init file and script.
 	vmCfg.RootFsFragments = append(vmCfg.RootFsFragments,
@@ -249,6 +250,9 @@ var (
 	_ common.BuildResult     = &BuildVmDefinition{}
 )
 
-func NewBuildVmDefinition(dir []common.Directive, output string) *BuildVmDefinition {
-	return &BuildVmDefinition{Directives: dir, OutputFile: output}
+func NewBuildVmDefinition(dir []common.Directive, output string, storageSize int) *BuildVmDefinition {
+	if storageSize == 0 {
+		storageSize = 1024
+	}
+	return &BuildVmDefinition{Directives: dir, OutputFile: output, StorageSize: storageSize}
 }

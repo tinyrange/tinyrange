@@ -115,9 +115,9 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"name", &name,
+					"plan_callback", &planCallback,
+					"packages", &packages,
 					"display_name?", &displayName,
-					"plan_callback?", &planCallback,
-					"packages?", &packages,
 					"metadata?", &metadata,
 				); err != nil {
 					return starlark.None, err
@@ -230,11 +230,13 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				var (
 					directiveList starlark.Iterable
 					output        string
+					storageSize   int
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"directives", &directiveList,
 					"output?", &output,
+					"storage_size?", &storageSize,
 				); err != nil {
 					return starlark.None, err
 				}
@@ -253,7 +255,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					directives = append(directives, dir)
 				}
 
-				return builder.NewBuildVmDefinition(directives, output), nil
+				return builder.NewBuildVmDefinition(directives, output, storageSize), nil
 			}),
 		},
 	}

@@ -116,7 +116,7 @@ func (ui *WebFrontend) handleBuilderIndex(w http.ResponseWriter, r *http.Request
 	pkgName = strings.Trim(pkgName, " ")
 
 	if pkgName != "" {
-		q, err := common.ParsePackageQuery(r.FormValue("name"))
+		q, err := common.ParsePackageQuery(pkgName)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -356,9 +356,11 @@ func (ui *WebFrontend) handleBuilderPackageDetail(w http.ResponseWriter, r *http
 
 	buf := new(bytes.Buffer)
 
-	if err := json.Indent(buf, []byte(pkg.Raw), "", "  "); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	if pkg.Raw != "" {
+		if err := json.Indent(buf, []byte(pkg.Raw), "", "  "); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if err := htm.Render(r.Context(), w, ui.pageTemplate(

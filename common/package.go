@@ -23,6 +23,10 @@ var (
 )
 
 func ParsePackageQuery(s string) (PackageQuery, error) {
+	if s == "*" {
+		return PackageQuery{}, nil
+	}
+
 	name, version, _ := strings.Cut(s, ":")
 
 	return PackageQuery{Name: name, Version: version}, nil

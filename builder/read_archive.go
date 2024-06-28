@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/tinyrange/pkg2/v2/common"
 	"github.com/tinyrange/pkg2/v2/filesystem"
 	"go.starlark.net/starlark"
@@ -365,6 +366,13 @@ func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.Buil
 			}
 
 			kind = strings.TrimSuffix(kind, ".gz")
+		} else if strings.HasSuffix(kind, ".zst") {
+			reader, err = zstd.NewReader(fh)
+			if err != nil {
+				return nil, err
+			}
+
+			kind = strings.TrimSuffix(kind, ".zst")
 		} else {
 			reader = fh
 		}

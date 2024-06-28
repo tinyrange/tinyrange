@@ -4,6 +4,7 @@ go 1.22.2
 
 require (
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
+	github.com/klauspost/compress v1.17.9
 	github.com/schollz/progressbar/v3 v3.14.4
 	github.com/tetratelabs/wazero v1.7.3
 	github.com/tinyrange/vm v0.0.0-20240616015422-9346daafb84c

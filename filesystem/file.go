@@ -11,6 +11,8 @@ import (
 
 func GetLinkName(ent File) (string, error) {
 	switch ent := ent.(type) {
+	case *StarFile:
+		return GetLinkName(ent.File)
 	case *CacheEntry:
 		return ent.CLinkname, nil
 	default:
