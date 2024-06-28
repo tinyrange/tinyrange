@@ -166,7 +166,7 @@ var (
 	_ common.BuildDefinition = &registryRequestDefinition{}
 )
 
-type fetchOciImageDefinition struct {
+type FetchOciImageDefinition struct {
 	registry     string
 	image        string
 	tag          string
@@ -176,9 +176,13 @@ type fetchOciImageDefinition struct {
 }
 
 // tagDirective implements common.Directive.
-func (def *fetchOciImageDefinition) TagDirective() { panic("unimplemented") }
+func (def *FetchOciImageDefinition) TagDirective() { panic("unimplemented") }
 
-func (def *fetchOciImageDefinition) SetDefaults() {
+func (def *FetchOciImageDefinition) FromDirective() string {
+	return fmt.Sprintf("%s:%s", def.image, def.tag)
+}
+
+func (def *FetchOciImageDefinition) SetDefaults() {
 	if def.registry == "" {
 		def.registry = DEFAULT_REGISTRY
 	}
@@ -190,7 +194,7 @@ func (def *fetchOciImageDefinition) SetDefaults() {
 	}
 }
 
-func (def *fetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.BuildDefinition {
+func (def *FetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.BuildDefinition {
 	return &registryRequestDefinition{
 		ctx: regCtx,
 		url: fmt.Sprintf("/%s/manifests/%s", def.image, def.tag),
@@ -202,7 +206,7 @@ func (def *fetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.
 	}
 }
 
-func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext, regCtx *ociRegistryContext, index oci.ImageIndexV1) (common.BuildResult, error) {
+func (def *FetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext, regCtx *ociRegistryContext, index oci.ImageIndexV1) (common.BuildResult, error) {
 	// Request all the layers.
 	for _, layer := range index.FsLayers {
 		layerArchive, err := ctx.BuildChild(&ReadArchiveBuildDefinition{
@@ -231,7 +235,7 @@ func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext, re
 
 }
 
-func (def *fetchOciImageDefinition) buildFromManifest(ctx common.BuildContext, regCtx *ociRegistryContext, manifest oci.ImageManifest) (common.BuildResult, error) {
+func (def *FetchOciImageDefinition) buildFromManifest(ctx common.BuildContext, regCtx *ociRegistryContext, manifest oci.ImageManifest) (common.BuildResult, error) {
 	// Request all the layers.
 	for _, layer := range manifest.Layers {
 		layerArchive, err := ctx.BuildChild(&ReadArchiveBuildDefinition{
@@ -259,7 +263,7 @@ func (def *fetchOciImageDefinition) buildFromManifest(ctx common.BuildContext, r
 	return def, nil
 }
 
-func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext, regCtx *ociRegistryContext, index oci.ImageIndexV2) (common.BuildResult, error) {
+func (def *FetchOciImageDefinition) buildFromIndex(ctx common.BuildContext, regCtx *ociRegistryContext, index oci.ImageIndexV2) (common.BuildResult, error) {
 	// Get the right manifest for the architecture.
 	var manifestId oci.ImageManifestIdentifier
 	for _, manifest := range index.Manifests {
@@ -296,7 +300,7 @@ func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext, regC
 }
 
 // Build implements common.BuildDefinition.
-func (def *fetchOciImageDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+func (def *FetchOciImageDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	regCtx := &ociRegistryContext{registry: def.registry}
 
 	// Get the index for the image tag.
@@ -336,19 +340,19 @@ func (def *fetchOciImageDefinition) Build(ctx common.BuildContext) (common.Build
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *fetchOciImageDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+func (def *FetchOciImageDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
 	return ctx.NeedsBuild(def.indexDef(&ociRegistryContext{registry: def.registry}))
 }
 
 // Tag implements common.BuildDefinition.
-func (def *fetchOciImageDefinition) Tag() string {
+func (def *FetchOciImageDefinition) Tag() string {
 	tag := []string{"fetchOciImage", def.registry, def.image, def.tag, def.architecture}
 
 	return strings.Join(tag, "_")
 }
 
 // WriteTo implements common.BuildResult.
-func (def *fetchOciImageDefinition) WriteTo(w io.Writer) (n int64, err error) {
+func (def *FetchOciImageDefinition) WriteTo(w io.Writer) (n int64, err error) {
 	buf := new(bytes.Buffer)
 
 	enc := json.NewEncoder(buf)
@@ -360,23 +364,23 @@ func (def *fetchOciImageDefinition) WriteTo(w io.Writer) (n int64, err error) {
 	return io.Copy(w, buf)
 }
 
-func (def *fetchOciImageDefinition) String() string { return def.Tag() }
-func (*fetchOciImageDefinition) Type() string       { return "FetchOciImageDefinition" }
-func (*fetchOciImageDefinition) Hash() (uint32, error) {
+func (def *FetchOciImageDefinition) String() string { return def.Tag() }
+func (*FetchOciImageDefinition) Type() string       { return "FetchOciImageDefinition" }
+func (*FetchOciImageDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("fetchOciImageDefinition is not hashable")
 }
-func (*fetchOciImageDefinition) Truth() starlark.Bool { return starlark.True }
-func (*fetchOciImageDefinition) Freeze()              {}
+func (*FetchOciImageDefinition) Truth() starlark.Bool { return starlark.True }
+func (*FetchOciImageDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value         = &fetchOciImageDefinition{}
-	_ common.BuildDefinition = &fetchOciImageDefinition{}
-	_ common.BuildResult     = &fetchOciImageDefinition{}
-	_ common.Directive       = &fetchOciImageDefinition{}
+	_ starlark.Value         = &FetchOciImageDefinition{}
+	_ common.BuildDefinition = &FetchOciImageDefinition{}
+	_ common.BuildResult     = &FetchOciImageDefinition{}
+	_ common.Directive       = &FetchOciImageDefinition{}
 )
 
-func NewFetchOCIImageDefinition(registry, image, tag, architecture string) *fetchOciImageDefinition {
-	ret := &fetchOciImageDefinition{
+func NewFetchOCIImageDefinition(registry, image, tag, architecture string) *FetchOciImageDefinition {
+	ret := &FetchOciImageDefinition{
 		registry:     registry,
 		image:        image,
 		tag:          tag,

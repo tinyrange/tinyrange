@@ -2,11 +2,38 @@ package filesystem
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"time"
 )
+
+func GetLinkName(ent File) (string, error) {
+	switch ent := ent.(type) {
+	case *CacheEntry:
+		return ent.CLinkname, nil
+	default:
+		return "", fmt.Errorf("GetLinkName not implemented: %T", ent)
+	}
+}
+
+func GetUidAndGid(ent File) (int, int, error) {
+	switch ent := ent.(type) {
+	case *StarDirectory:
+		return GetUidAndGid(ent.Directory)
+	case *StarFile:
+		return GetUidAndGid(ent.File)
+	case *memoryDirectory:
+		return GetUidAndGid(ent.memoryFile)
+	case *memoryFile:
+		return ent.uid, ent.gid, nil
+	case *CacheEntry:
+		return ent.CUid, ent.CGid, nil
+	default:
+		return -1, -1, fmt.Errorf("GetUidAndGid not implemented: %T", ent)
+	}
+}
 
 type BasicFileHandle interface {
 	io.Reader
@@ -274,7 +301,7 @@ var (
 
 func NewMemoryFile() MutableFile {
 	return &memoryFile{
-		mode:  fs.ModeDir | fs.FileMode(0755),
+		mode:  fs.FileMode(0755),
 		mTime: time.Now(),
 	}
 }

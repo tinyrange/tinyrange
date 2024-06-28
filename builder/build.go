@@ -3,6 +3,7 @@ package builder
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -18,10 +19,21 @@ type BuildContext struct {
 	parent   *BuildContext
 	status   *common.BuildStatus
 
-	filename string
-	output   io.WriteCloser
-	packages []*common.Package
-	inMemory bool
+	filename  string
+	output    io.WriteCloser
+	packages  []*common.Package
+	inMemory  bool
+	hasCached bool
+}
+
+// SetHasCached implements common.BuildContext.
+func (b *BuildContext) SetHasCached() {
+	b.hasCached = true
+}
+
+// HasCached implements common.BuildContext.
+func (b *BuildContext) HasCached() bool {
+	return b.hasCached
 }
 
 // CreateFile implements common.BuildContext.
@@ -112,7 +124,7 @@ func (b *BuildContext) BuildChild(def common.BuildDefinition) (filesystem.File, 
 		b.status.Children = append(b.status.Children, def)
 	}
 
-	return b.database.Build(b, def)
+	return b.database.Build(b, def, common.BuildOptions{})
 }
 
 func (b *BuildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
@@ -159,6 +171,25 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 
 			return record.NewWriter(f), nil
 		}), nil
+	} else if name == "archive" {
+		return starlark.NewBuiltin("BuildContext.archive", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				dir *filesystem.StarDirectory
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"dir", &dir,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return &directoryToArchiveBuildResult{dir: dir}, nil
+		}), nil
 	} else if name == "add_package" {
 		return starlark.NewBuiltin("BuildContext.add_package", func(
 			thread *starlark.Thread,
@@ -188,21 +219,29 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				def common.BuildDefinition
+				val starlark.Value
 			)
 
 			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"def", &def,
+				"def", &val,
 			); err != nil {
 				return starlark.None, err
 			}
 
-			result, err := b.BuildChild(def)
+			var buildDef common.BuildDefinition
+
+			if def, ok := val.(common.BuildDefinition); ok {
+				buildDef = def
+			} else {
+				return starlark.None, fmt.Errorf("could not convert %s to BuildDefinition", val.Type())
+			}
+
+			result, err := b.BuildChild(buildDef)
 			if err != nil {
 				return starlark.None, err
 			}
 
-			return BuildResultToStarlark(b, def, result)
+			return BuildResultToStarlark(b, buildDef, result)
 		}), nil
 	} else {
 		return nil, nil
@@ -221,6 +260,9 @@ func (ctx *BuildContext) newThread() *starlark.Thread {
 func (ctx *BuildContext) Call(target starlark.Callable, args ...starlark.Value) (starlark.Value, error) {
 	result, err := starlark.Call(ctx.newThread(), target, append(starlark.Tuple{ctx}, args...), []starlark.Tuple{})
 	if err != nil {
+		if sErr, ok := err.(*starlark.EvalError); ok {
+			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+		}
 		return starlark.None, err
 	}
 

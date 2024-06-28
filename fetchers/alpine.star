@@ -27,22 +27,24 @@ ALPINE_VERSIONS = [
     "3.0",
 ]
 
-def parse_alpine_repo(ctx, index):
+def parse_alpine_repo(ctx, index, url_base):
     index = index["APKINDEX"]
 
     # Create a record writer which writes starlark objects to a file.
     ret = ctx.recordwriter()
 
-    pkg = {}
+    pkg = {"url_base": url_base}
 
     for line in index.read().split("\n"):
         if len(line) == 0:
-            ret.emit(pkg)
+            if len(pkg) > 1:
+                ret.emit(pkg)
+            pkg = {"url_base": url_base}
         else:
             k, v = line.split(":", 1)
             pkg[k] = v
 
-    if len(pkg) != 0:
+    if len(pkg) > 1:
         ret.emit(pkg)
 
     return ret
@@ -71,7 +73,63 @@ def parse_alpine_alias(q):
 
     return name(name = n, version = v)
 
+def parse_alpine_pkginfo(contents):
+    ret = {}
+    for line in contents.split("\n"):
+        if line.startswith("#"):
+            continue
+        k, _, v = line.partition(" = ")
+        if k not in ret:
+            ret[k] = []
+        ret[k].append(v)
+    return ret
+
+def apk_download(ctx, name, fs):
+    fs = filesystem(fs)
+
+    ret = filesystem()
+
+    info = parse_alpine_pkginfo(fs[".PKGINFO"].read())
+
+    for ent in fs:
+        if ent.name.startswith("."):
+            if ent.name.startswith(".SIGN."):
+                continue
+            elif ent.name == ".PKGINFO":
+                ret[".pkg/{}/info".format(name)] = ent
+            elif ent.name == ".dummy":
+                continue
+            elif ent.name == ".pre-install":
+                ret[".pkg/{}/pre-install.sh".format(name)] = ent
+            elif ent.name == ".post-install":
+                ret[".pkg/{}/post-install.sh".format(name)] = ent
+            elif ent.name == ".pre-upgrade":
+                continue  # We only install packages.
+            elif ent.name == ".post-upgrade":
+                continue  # We only install packages.
+            elif ent.name == ".pre-deinstall":
+                continue
+            elif ent.name == ".trigger":
+                triggers = info["triggers"][0].split(" ")
+                ret[".pkg/{}/trigger.sh".format(name)] = ent
+                ret[".pkg/{}/trigger.json".format(name)] = json.encode(triggers)
+            else:
+                return error("name {} not implemented".format(ent.name))
+        else:
+            ret[ent.name] = ent
+
+    return ctx.archive(ret)
+
 def parse_alpine_packages(ctx, ent):
+    deps = [parse_alpine_query(dep) for dep in ent["D"].split(" ")] if "D" in ent else []
+
+    download_archive = define.read_archive(
+        define.fetch_http(
+            "{}/{}-{}.apk".format(ent["url_base"], ent["P"], ent["V"]),
+        ),
+        ".tar.gz",
+    )
+
     ctx.add_package(package(
         name = name(
             name = ent["P"].replace(":", "_"),
@@ -90,7 +148,18 @@ def parse_alpine_packages(ctx, ent):
                 directives = [
                     directive.run_command("apk add {}".format(ent["P"])),
                 ],
-                dependencies = [parse_alpine_query(dep) for dep in ent["D"].split(" ")] if "D" in ent else [],
+                dependencies = deps,
+            ),
+            installer(
+                tags = ["level3"],
+                directives = [
+                    define.build(
+                        apk_download,
+                        ent["P"],
+                        download_archive,
+                    ),
+                ],
+                dependencies = deps,
             ),
         ],
         aliases = [parse_alpine_alias(provides) for provides in ent["p"].split(" ")] if "p" in ent else [],
@@ -128,6 +197,7 @@ def make_alpine_repos(only_latest = True):
                     ),
                     ".tar.gz",
                 ),
+                "mirror://alpine/{}/{}/{}".format(server_version, repo, "x86_64"),
             ))
 
         # Define a package collection containing all the repos.
@@ -138,6 +208,69 @@ def make_alpine_repos(only_latest = True):
 
     return alpine_repos
 
+def build_alpine_install_layer(ctx, directives):
+    ret = filesystem()
+
+    scripts = []
+
+    for pkg in directives:
+        if type(pkg) == "common.DirectiveRunCommand":
+            continue
+
+        res = ctx.build(pkg)
+
+        fs = filesystem(res.read_archive())
+
+        for ent in fs[".pkg"]:
+            if "post-install.sh" in ent:
+                file = ent["post-install.sh"]
+                scripts.append({
+                    "kind": "execute",
+                    "exec": file.name,
+                })
+
+            if "pre-install.sh" in ent:
+                file = ent["pre-install.sh"]
+                scripts.append({
+                    "kind": "execute",
+                    "exec": file.name,
+                })
+
+            if "trigger.json" in ent:
+                file = ent["trigger.json"]
+                triggers = json.decode(file.read())
+
+                scripts.append({
+                    "kind": "trigger_on",
+                    "triggers": triggers,
+                    "exec": file.name.removesuffix(".json") + ".sh",
+                })
+
+    ret[".pkg/scripts.json"] = json.encode(scripts)
+
+    return ctx.archive(ret)
+
+def build_alpine_directives(builder, plan):
+    if plan.tags.contains("level3"):
+        # If we are using level3 then add a first layer that generates the inital scripts.
+
+        return [
+            define.build(
+                build_alpine_install_layer,
+                plan.directives,
+            ),
+        ] + plan.directives + [
+            directive.run_command("/builder -runScripts /.pkg/scripts.json"),
+        ]
+    else:
+        # If we are level1 or level2 then just make sure we have the normal base image.
+        return [
+            define.fetch_oci_image(
+                image = "library/alpine",
+                version = builder.metadata["version"],
+            ),
+        ] + plan.directives
+
 def make_alpine_builders(repos):
     ret = []
     for version in repos:
@@ -145,12 +278,18 @@ def make_alpine_builders(repos):
         ret.append(define.container_builder(
             name = "alpine@" + version,
             display_name = "Alpine " + version,
-            base_directives = [
-                # All containers made with this builder start with a base image.
-                directive.base_image("library/alpine:" + version),
-            ],
+
+            # Specify a plan callback to add the initial layer.
+            # The plan callback just returns the list of directives after the plan is created.
+            plan_callback = build_alpine_directives,
+
             # This builder is scoped to just the packages in this repo.
             packages = repos[version],
+
+            # Make the alpine version avalible to the plan_callback.
+            metadata = {
+                "version": version,
+            },
         ))
 
     return ret

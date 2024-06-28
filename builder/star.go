@@ -28,11 +28,13 @@ func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinitio
 		return filesystem.NewStarArchive(ark, argDef.Tag()), nil
 	case *FetchHttpBuildDefinition:
 		return filesystem.NewStarFile(result, argDef.Tag()), nil
+	case *StarBuildDefinition:
+		return filesystem.NewStarFile(result, argDef.Tag()), nil
 	case *DecompressFileBuildDefinition:
 		return filesystem.NewStarFile(result, argDef.Tag()), nil
 	case *BuildVmDefinition:
 		return filesystem.NewStarFile(result, argDef.Tag()), nil
-	case *fetchOciImageDefinition:
+	case *FetchOciImageDefinition:
 		if err := parseJsonFromFile(result, &arg); err != nil {
 			return nil, err
 		}
@@ -92,6 +94,8 @@ func (def *StarBuildDefinition) Tag() string {
 	for _, arg := range def.BuilderArgs {
 		if src, ok := arg.(common.BuildSource); ok {
 			parts = append(parts, src.Tag())
+		} else if lst, ok := arg.(*starlark.List); ok {
+			parts = append(parts, fmt.Sprintf("%+v", lst))
 		} else if str, ok := starlark.AsString(arg); ok {
 			parts = append(parts, str)
 		} else {
@@ -128,12 +132,11 @@ func (def *StarBuildDefinition) Build(ctx common.BuildContext) (common.BuildResu
 		return nil, err
 	}
 
-	result, ok := res.(common.BuildResult)
-	if !ok {
+	if result, ok := res.(common.BuildResult); ok {
+		return result, nil
+	} else {
 		return nil, fmt.Errorf("could not convert %s to BuildResult", res.Type())
 	}
-
-	return result, nil
 }
 
 func (def *StarBuildDefinition) String() string { return def.Tag() }

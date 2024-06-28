@@ -15,17 +15,6 @@ type DirectiveFactory interface {
 	AsDirective() (Directive, error)
 }
 
-type DirectiveBaseImage string
-
-func (d DirectiveBaseImage) String() string {
-	return fmt.Sprintf("base_image{%s}", string(d))
-}
-
-// Tag implements Directive.
-func (d DirectiveBaseImage) Tag() string {
-	return fmt.Sprintf("BaseImage_%s", d)
-}
-
 type DirectiveRunCommand string
 
 // Tag implements Directive.
@@ -34,7 +23,6 @@ func (d DirectiveRunCommand) Tag() string {
 }
 
 var (
-	_ Directive = DirectiveBaseImage("")
 	_ Directive = DirectiveRunCommand("")
 )
 
@@ -42,8 +30,8 @@ type StarDirective struct {
 	Directive
 }
 
-func (*StarDirective) String() string        { return "Directive" }
-func (*StarDirective) Type() string          { return "Directive" }
+func (d *StarDirective) String() string      { return d.Tag() }
+func (d *StarDirective) Type() string        { return fmt.Sprintf("%T", d.Directive) }
 func (*StarDirective) Hash() (uint32, error) { return 0, fmt.Errorf("Directive is not hashable") }
 func (*StarDirective) Truth() starlark.Bool  { return starlark.True }
 func (*StarDirective) Freeze()               {}

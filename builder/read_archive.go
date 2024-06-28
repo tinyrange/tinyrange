@@ -7,12 +7,159 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/tinyrange/pkg2/v2/common"
 	"github.com/tinyrange/pkg2/v2/filesystem"
 	"go.starlark.net/starlark"
+)
+
+type directoryToArchiveBuildResult struct {
+	dir filesystem.Directory
+	off int64
+}
+
+func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.File, name string) (n int64, err error) {
+	info, err := ent.Stat()
+	if err != nil {
+		return
+	}
+
+	var typ filesystem.FileType
+
+	// slog.Info("info", "name", name, "mode", info.Mode(), "isDir", info.Mode().IsDir(), "size", info.Size())
+
+	// TODO(joshua): Check for symlinks.
+	var linkname = ""
+
+	if info.Mode().Type() == fs.ModeSymlink {
+		linkname, err = filesystem.GetLinkName(ent)
+		if err != nil {
+			return
+		}
+		typ = filesystem.TypeSymlink
+	} else if info.Mode().IsDir() {
+		typ = filesystem.TypeDirectory
+	} else {
+		typ = filesystem.TypeRegular
+	}
+
+	uid, gid, err := filesystem.GetUidAndGid(ent)
+	if err != nil {
+		return
+	}
+
+	cacheEnt := &filesystem.CacheEntry{
+		COffset:   d.off + 1024,
+		CTypeflag: typ,
+		CName:     name,
+		CLinkname: linkname,
+		CSize:     int64(info.Size()),
+		CMode:     int64(info.Mode()),
+		CUid:      uid,
+		CGid:      gid,
+		CModTime:  info.ModTime().UnixMicro(),
+		CDevmajor: 0,
+		CDevminor: 0,
+	}
+
+	bytes, err := json.Marshal(&cacheEnt)
+	if err != nil {
+		return -1, err
+	}
+
+	if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
+		return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
+	} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
+		tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
+		copy(tmp, bytes)
+		bytes = tmp
+	}
+
+	childN, err := w.Write(bytes)
+	if err != nil {
+		return -1, err
+	}
+
+	n += int64(childN)
+	d.off += int64(childN)
+
+	return
+}
+
+func (d *directoryToArchiveBuildResult) writeFileTo(w io.Writer, ent filesystem.File, name string) (n int64, err error) {
+	n, err = d.writeEntry(w, ent, name)
+	if err != nil {
+		return
+	}
+
+	contents, err := ent.Open()
+	if err != nil {
+		return
+	}
+
+	childN, err := io.Copy(w, contents)
+	if err != nil {
+		return n + childN, err
+	}
+
+	n += childN
+	d.off += childN
+
+	return
+}
+
+func (d *directoryToArchiveBuildResult) writeDirTo(w io.Writer, ent filesystem.Directory, name string) (n int64, err error) {
+	n, err = d.writeEntry(w, ent, name)
+	if err != nil {
+		return
+	}
+
+	ents, err := ent.Readdir()
+	if err != nil {
+		return 0, err
+	}
+
+	for _, ent := range ents {
+		if dir, ok := ent.File.(filesystem.Directory); ok {
+			childN, err := d.writeDirTo(w, dir, path.Join(name, ent.Name))
+			if err != nil {
+				return n + childN, err
+			}
+
+			n += childN
+		} else {
+			childN, err := d.writeFileTo(w, ent.File, path.Join(name, ent.Name))
+			if err != nil {
+				return n + childN, err
+			}
+
+			n += childN
+		}
+	}
+
+	return
+}
+
+// WriteTo implements common.BuildResult.
+func (d *directoryToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
+	return d.writeDirTo(w, d.dir, "")
+}
+
+func (*directoryToArchiveBuildResult) String() string { return "directoryToArchiveBuildResult" }
+func (*directoryToArchiveBuildResult) Type() string   { return "directoryToArchiveBuildResult" }
+func (*directoryToArchiveBuildResult) Hash() (uint32, error) {
+	return 0, fmt.Errorf("directoryToArchiveBuildResult is not hashable")
+}
+func (*directoryToArchiveBuildResult) Truth() starlark.Bool { return starlark.True }
+func (*directoryToArchiveBuildResult) Freeze()              {}
+
+var (
+	_ starlark.Value     = &directoryToArchiveBuildResult{}
+	_ common.BuildResult = &directoryToArchiveBuildResult{}
 )
 
 type zipToArchiveBuildResult struct {
@@ -184,7 +331,7 @@ func (r *ReadArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTi
 
 // Build implements BuildDefinition.
 func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	f, err := ctx.Database().Build(ctx, r.Base)
+	f, err := ctx.BuildChild(r.Base)
 	if err != nil {
 		return nil, err
 	}

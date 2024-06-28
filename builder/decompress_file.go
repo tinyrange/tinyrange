@@ -38,7 +38,7 @@ func (def *DecompressFileBuildDefinition) WriteTo(w io.Writer) (n int64, err err
 
 // Build implements BuildDefinition.
 func (def *DecompressFileBuildDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	f, err := ctx.Database().Build(ctx, def.Base)
+	f, err := ctx.BuildChild(def.Base)
 	if err != nil {
 		return nil, err
 	}

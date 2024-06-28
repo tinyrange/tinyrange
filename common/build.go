@@ -22,6 +22,8 @@ type BuildContext interface {
 	CreateOutput() (io.WriteCloser, error)
 	CreateFile(name string) (string, io.WriteCloser, error)
 	HasCreatedOutput() bool
+	SetHasCached()
+	HasCached() bool
 	SetInMemory()
 	IsInMemory() bool
 	Database() PackageDatabase

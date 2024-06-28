@@ -2,6 +2,7 @@ package emulator
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/tinyrange/pkg2/v2/emulator/common"
 	"github.com/tinyrange/pkg2/v2/filesystem"
@@ -46,6 +47,9 @@ func (s *starProgram) Run(proc common.Process, argv []string) error {
 
 	res, err := starlark.Call(thread, s.callable, starlark.Tuple{process, args}, []starlark.Tuple{})
 	if err != nil {
+		if sErr, ok := err.(*starlark.EvalError); ok {
+			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+		}
 		return err
 	}
 

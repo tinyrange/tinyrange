@@ -1,14 +1,22 @@
-ALPINE_IMAGE = define.fetch_oci_image("library/alpine")
+load_fetcher("fetchers/alpine.star")
 
 def main(args):
-    step = define.build_vm(
-        directives = [
-            ALPINE_IMAGE,
-            directive.run_command("echo \"hello world\" > /root/world"),
-        ],
-        output = "/root/world",
+    builder = db.builder("alpine@3.19")
+
+    package_list = [
+        query("busybox"),
+        query("alpine-baselayout"),
+        query("build-base"),
+    ]
+
+    # Run the virtual machine using TinyRange.
+    # The final run_command makes it interactive.
+    db.build(
+        define.build_vm(
+            directives = builder.plan(
+                packages = package_list,
+                tags = ["level3"],
+            ).directives + [directive.run_command("interactive")],
+        ),
+        always_rebuild = True,
     )
-
-    res = db.build(step)
-
-    print(res.read())

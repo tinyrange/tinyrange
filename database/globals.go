@@ -53,7 +53,20 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				args starlark.Tuple,
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
-				parser := args[0]
+				var (
+					additionalPackagesIt starlark.Iterable
+				)
+
+				parser, ok := args[0].(starlark.Callable)
+				if !ok {
+					return starlark.None, fmt.Errorf("could not convert %s to Callable", args[0].Type())
+				}
+
+				if err := starlark.UnpackArgs(fn.Name(), starlark.Tuple{}, kwargs,
+					"additional_packages?", &additionalPackagesIt,
+				); err != nil {
+					return starlark.None, err
+				}
 
 				var defs []common.BuildDefinition
 
@@ -66,7 +79,25 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					defs = append(defs, def)
 				}
 
-				return NewPackageCollection(thread.Name, parser, defs)
+				var additionalPackages []*common.Package
+
+				if additionalPackagesIt != nil {
+					var val starlark.Value
+
+					dependencyIter := additionalPackagesIt.Iterate()
+					defer dependencyIter.Done()
+
+					for dependencyIter.Next(&val) {
+						dep, ok := val.(*common.Package)
+						if !ok {
+							return nil, fmt.Errorf("could not convert %s to Package", val.Type())
+						}
+
+						additionalPackages = append(additionalPackages, dep)
+					}
+				}
+
+				return NewPackageCollection(thread.Name, parser, defs, additionalPackages)
 			}),
 			"container_builder": starlark.NewBuiltin("define.container_builder", func(
 				thread *starlark.Thread,
@@ -75,37 +106,24 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
 				var (
-					name             string
-					displayName      string
-					baseDirectivesIt starlark.Iterable
-					packages         *PackageCollection
+					name         string
+					displayName  string
+					planCallback starlark.Callable
+					packages     *PackageCollection
+					metadata     starlark.Value
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"name", &name,
 					"display_name?", &displayName,
-					"base_directives?", &baseDirectivesIt,
+					"plan_callback?", &planCallback,
 					"packages?", &packages,
+					"metadata?", &metadata,
 				); err != nil {
 					return starlark.None, err
 				}
 
-				iter := baseDirectivesIt.Iterate()
-				defer iter.Done()
-
-				var baseDirectives []common.Directive
-
-				var val starlark.Value
-				for iter.Next(&val) {
-					dir, ok := val.(*common.StarDirective)
-					if !ok {
-						return nil, fmt.Errorf("could not convert %s to Directive", val.Type())
-					}
-
-					baseDirectives = append(baseDirectives, dir.Directive)
-				}
-
-				return NewContainerBuilder(name, displayName, baseDirectives, packages)
+				return NewContainerBuilder(name, displayName, planCallback, packages, metadata)
 			}),
 			"fetch_http": starlark.NewBuiltin("define.fetch_http", func(
 				thread *starlark.Thread,
@@ -216,7 +234,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"directives", &directiveList,
-					"output", &output,
+					"output?", &output,
 				); err != nil {
 					return starlark.None, err
 				}
@@ -243,24 +261,6 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 	ret["directive"] = &starlarkstruct.Module{
 		Name: "directive",
 		Members: starlark.StringDict{
-			"base_image": starlark.NewBuiltin("directive.base_image", func(
-				thread *starlark.Thread,
-				fn *starlark.Builtin,
-				args starlark.Tuple,
-				kwargs []starlark.Tuple,
-			) (starlark.Value, error) {
-				var (
-					image string
-				)
-
-				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-					"image", &image,
-				); err != nil {
-					return starlark.None, err
-				}
-
-				return &common.StarDirective{Directive: common.DirectiveBaseImage(image)}, nil
-			}),
 			"run_command": starlark.NewBuiltin("directive.run_command", func(
 				thread *starlark.Thread,
 				fn *starlark.Builtin,
@@ -315,12 +315,12 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 			defer directiveIter.Done()
 
 			for directiveIter.Next(&val) {
-				dir, ok := val.(*common.StarDirective)
-				if !ok {
-					return nil, fmt.Errorf("could not convert %s to Directive", val.Type())
+				dir, err := asDirective(val)
+				if err != nil {
+					return nil, err
 				}
 
-				directives = append(directives, dir.Directive)
+				directives = append(directives, dir)
 			}
 		}
 
@@ -369,7 +369,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 			"name", &name,
 			"installers", &installersList,
 			"aliases?", &aliasList,
-			"raw", &raw,
+			"raw?", &raw,
 		); err != nil {
 			return starlark.None, err
 		}
@@ -405,12 +405,18 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 			}
 		}
 
-		formattedRaw, err := common.StarlarkJsonEncode(nil, starlark.Tuple{raw}, []starlark.Tuple{})
-		if err != nil {
-			return nil, err
+		rawString := ""
+
+		if raw != nil {
+			formattedRaw, err := common.StarlarkJsonEncode(nil, starlark.Tuple{raw}, []starlark.Tuple{})
+			if err != nil {
+				return nil, err
+			}
+
+			rawString = string(formattedRaw.(starlark.String))
 		}
 
-		return common.NewPackage(name, installers, aliases, string(formattedRaw.(starlark.String))), nil
+		return common.NewPackage(name, installers, aliases, rawString), nil
 	})
 
 	ret["name"] = starlark.NewBuiltin("name", func(

@@ -42,7 +42,7 @@ func OpenPath(dir Directory, p string) (DirectoryEntry, error) {
 
 		childDir, ok := child.File.(Directory)
 		if !ok {
-			return DirectoryEntry{}, fmt.Errorf("child %T is not a directory", child.File)
+			return DirectoryEntry{}, fmt.Errorf("OpenPath(%s): child %T is not a directory", p, child.File)
 		}
 
 		currentDir = childDir
@@ -75,7 +75,7 @@ func Mkdir(dir Directory, p string) (MutableDirectory, error) {
 
 		childDir, ok := child.File.(Directory)
 		if !ok {
-			return nil, fmt.Errorf("child %T is not a directory", child.File)
+			return nil, fmt.Errorf("Mkdir(%s): child %T is not a directory", p, child.File)
 		}
 
 		currentDir = childDir
@@ -113,7 +113,7 @@ func CreateChild(dir Directory, p string, f File) error {
 
 		childDir, ok := child.File.(Directory)
 		if !ok {
-			return fmt.Errorf("child %T is not a directory", child.File)
+			return fmt.Errorf("CreateChild(%s): child %T is not a directory", p, child.File)
 		}
 
 		currentDir = childDir
@@ -220,8 +220,10 @@ var (
 )
 
 func NewMemoryDirectory() MutableDirectory {
+	f := NewMemoryFile().(*memoryFile)
+	f.mode = fs.ModeDir | fs.FileMode(0755)
 	return &memoryDirectory{
-		memoryFile: NewMemoryFile().(*memoryFile),
+		memoryFile: f,
 		entries:    make(map[string]File),
 	}
 }

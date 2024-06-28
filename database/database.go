@@ -139,6 +139,29 @@ func (db *PackageDatabase) RunScript(filename string, files map[string]filesyste
 
 	globals := db.getGlobals("__main__")
 
+	globals["load_fetcher"] = starlark.NewBuiltin("load_fetcher", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			filename string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"filename", &filename,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := db.LoadFile(filename); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
 	// Execute the script.
 	decls, err := starlark.ExecFileOptions(db.getFileOptions(), thread, filename, nil, globals)
 	if err != nil {
@@ -158,6 +181,9 @@ func (db *PackageDatabase) RunScript(filename string, files map[string]filesyste
 	}
 	_, err = starlark.Call(thread, mainFunc, starlark.Tuple{args}, []starlark.Tuple{})
 	if err != nil {
+		if sErr, ok := err.(*starlark.EvalError); ok {
+			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+		}
 		return err
 	}
 
@@ -216,7 +242,7 @@ func (db *PackageDatabase) updateBuildStatus(def common.BuildDefinition, status 
 	db.buildStatuses[def] = status
 }
 
-func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefinition) (filesystem.File, error) {
+func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (filesystem.File, error) {
 	tag := def.Tag()
 	hash := common.GetSha256Hash([]byte(tag))
 
@@ -277,25 +303,31 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 		// Get a child context for the build.
 		child := ctx.ChildContext(def, status, filename+".tmp")
 
-		// Check if the file already exists. If it does then return it.
-		if info, err := os.Stat(filename); err == nil {
-			// If the file has already been created then check if a rebuild is needed.
-			needsRebuild, err := def.NeedsBuild(child, info.ModTime())
-			if err != nil {
-				return nil, err
+		if !opts.AlwaysRebuild {
+			// Check if the file already exists. If it does then return it.
+			if info, err := os.Stat(filename); err == nil {
+				// If the file has already been created then check if a rebuild is needed.
+				needsRebuild, err := def.NeedsBuild(child, info.ModTime())
+				if err != nil {
+					return nil, err
+				}
+
+				// If no rebuild is necessary then skip it.
+				if !needsRebuild {
+					status.Status = common.BuildStatusCached
+
+					// Write the build status.
+					db.updateBuildStatus(def, status)
+
+					return &filesystem.LocalFile{Filename: filename}, nil
+				}
+
+				child.SetHasCached()
+
+				slog.Info("rebuild requested", "Tag", def.Tag())
+			} else {
+				slog.Info("building", "Tag", def.Tag())
 			}
-
-			// If no rebuild is necessary then skip it.
-			if !needsRebuild {
-				status.Status = common.BuildStatusCached
-
-				// Write the build status.
-				db.updateBuildStatus(def, status)
-
-				return &filesystem.LocalFile{Filename: filename}, nil
-			}
-
-			slog.Info("rebuild requested", "Tag", def.Tag())
 		} else {
 			slog.Info("building", "Tag", def.Tag())
 		}
@@ -304,6 +336,16 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 		result, err := def.Build(child)
 		if err != nil {
 			return nil, err
+		}
+
+		// If the result is nil then the builder is telling us to use the cached version.
+		if result == nil {
+			status.Status = common.BuildStatusCached
+
+			// Write the build status.
+			db.updateBuildStatus(def, status)
+
+			return &filesystem.LocalFile{Filename: filename}, nil
 		}
 
 		// If the build has already been written then don't write it again.
@@ -435,13 +477,15 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				def      common.BuildDefinition
-				inMemory bool
+				def           common.BuildDefinition
+				inMemory      bool
+				alwaysRebuild bool
 			)
 
 			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 				"def", &def,
 				"memory?", &inMemory,
+				"always_rebuild?", &alwaysRebuild,
 			); err != nil {
 				return starlark.None, err
 			}
@@ -452,12 +496,44 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 				ctx.SetInMemory()
 			}
 
-			result, err := db.Build(ctx, def)
+			result, err := db.Build(ctx, def, common.BuildOptions{
+				AlwaysRebuild: alwaysRebuild,
+			})
 			if err != nil {
 				return starlark.None, err
 			}
 
 			return builder.BuildResultToStarlark(ctx, def, result)
+		}), nil
+	} else if name == "builder" {
+		return starlark.NewBuiltin("Database.builder", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				name string
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"name", &name,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			builder, err := db.GetBuilder(name)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			if !builder.Loaded() {
+				if err := builder.Load(db); err != nil {
+					return starlark.None, err
+				}
+			}
+
+			return builder, nil
 		}), nil
 	} else {
 		return nil, nil

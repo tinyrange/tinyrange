@@ -3,14 +3,50 @@ package database
 import (
 	"fmt"
 
+	"github.com/tinyrange/pkg2/v2/builder"
 	"github.com/tinyrange/pkg2/v2/common"
+	"go.starlark.net/starlark"
 )
 
 type InstallationPlan struct {
 	Packages   []*common.Package
 	Directives []common.Directive
+	Tags       common.TagList
 
 	installedNames map[string]string // map of names and versions.
+}
+
+// Attr implements starlark.HasAttrs.
+func (plan *InstallationPlan) Attr(name string) (starlark.Value, error) {
+	if name == "packages" {
+		var elems []starlark.Value
+
+		for _, pkg := range plan.Packages {
+			elems = append(elems, pkg)
+		}
+
+		return starlark.NewList(elems), nil
+	} else if name == "directives" {
+		var elems []starlark.Value
+
+		for _, directive := range plan.Directives {
+			if val, ok := directive.(starlark.Value); ok {
+				elems = append(elems, val)
+			} else {
+				elems = append(elems, &common.StarDirective{Directive: directive})
+			}
+		}
+		return starlark.NewList(elems), nil
+	} else if name == "tags" {
+		return plan.Tags, nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (plan *InstallationPlan) AttrNames() []string {
+	return []string{"packages", "directives", "tags"}
 }
 
 func (plan *InstallationPlan) checkName(name common.PackageName) bool {
@@ -86,13 +122,26 @@ func (plan *InstallationPlan) Add(builder *ContainerBuilder, query common.Packag
 	return nil
 }
 
+func (*InstallationPlan) String() string { return "InstallationPlan" }
+func (*InstallationPlan) Type() string   { return "InstallationPlan" }
+func (*InstallationPlan) Hash() (uint32, error) {
+	return 0, fmt.Errorf("InstallationPlan is not hashable")
+}
+func (*InstallationPlan) Truth() starlark.Bool { return starlark.True }
+func (*InstallationPlan) Freeze()              {}
+
+var (
+	_ starlark.Value    = &InstallationPlan{}
+	_ starlark.HasAttrs = &InstallationPlan{}
+)
+
 func EmitDockerfile(plan *InstallationPlan) (string, error) {
 	ret := ""
 
 	for _, directive := range plan.Directives {
 		switch directive := directive.(type) {
-		case common.DirectiveBaseImage:
-			ret += fmt.Sprintf("FROM %s\n", string(directive))
+		case *builder.FetchOciImageDefinition:
+			ret += fmt.Sprintf("FROM %s\n", directive.FromDirective())
 		case common.DirectiveRunCommand:
 			ret += fmt.Sprintf("RUN %s\n", string(directive))
 		default:

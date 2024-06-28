@@ -111,7 +111,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	// Launch child builds for each directive.
 	for _, directive := range def.Directives {
 		switch directive := directive.(type) {
-		case *fetchOciImageDefinition:
+		case *FetchOciImageDefinition:
 			res, err := ctx.BuildChild(directive)
 			if err != nil {
 				return nil, err
@@ -131,6 +131,20 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 			}
 		case common.DirectiveRunCommand:
 			builderCfg.Commands = append(builderCfg.Commands, string(directive))
+		case *StarBuildDefinition:
+			res, err := ctx.BuildChild(directive)
+			if err != nil {
+				return nil, err
+			}
+
+			digest := res.Digest()
+
+			filename, err := ctx.FilenameFromDigest(digest)
+			if err != nil {
+				return nil, err
+			}
+
+			vmCfg.RootFsFragments = append(vmCfg.RootFsFragments, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
 		default:
 			return nil, fmt.Errorf("BuildVmDefinition.Build: directive type %T unhandled", directive)
 		}

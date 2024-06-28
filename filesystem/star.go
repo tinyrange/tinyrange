@@ -35,8 +35,24 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 			return starlark.String(contents), nil
 		}), nil
+	} else if name == "read_archive" {
+		return starlark.NewBuiltin("File.read_archive", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			ark, err := ReadArchiveFromFile(f)
+			if err != nil {
+				return starlark.None, nil
+			}
+
+			return NewStarArchive(ark, f.Name), nil
+		}), nil
 	} else if name == "name" {
 		return starlark.String(f.Name), nil
+	} else if name == "base" {
+		return starlark.String(path.Base(f.Name)), nil
 	}
 
 	if mut, ok := f.File.(MutableFile); ok {
@@ -48,7 +64,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (f *StarFile) AttrNames() []string {
-	ret := []string{"read", "name"}
+	ret := []string{"read", "read_archive", "name", "base"}
 
 	if _, ok := f.File.(MutableFile); ok {
 		ret = append(ret, []string{}...)
@@ -213,12 +229,16 @@ func (f *StarDirectory) SetKey(k starlark.Value, v starlark.Value) error {
 
 // Attr implements starlark.HasAttrs.
 func (f *StarDirectory) Attr(name string) (starlark.Value, error) {
-	return nil, nil
+	if name == "name" {
+		return starlark.String(f.Name), nil
+	} else {
+		return nil, nil
+	}
 }
 
 // AttrNames implements starlark.HasAttrs.
 func (f *StarDirectory) AttrNames() []string {
-	return []string{}
+	return []string{"name"}
 }
 
 func (f *StarDirectory) String() string      { return fmt.Sprintf("Directory{%s}", f.Name) }

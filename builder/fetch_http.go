@@ -110,9 +110,13 @@ func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext) (common.BuildR
 
 	if onlyNotFound {
 		return nil, ErrNotFound
-	} else {
-		return nil, fmt.Errorf("unable to find options to fetch %s", f.Url)
 	}
+
+	if ctx.HasCached() {
+		return nil, nil
+	}
+
+	return nil, fmt.Errorf("unable to find options to fetch %s", f.Url)
 }
 
 // Tag implements BuildDefinition.

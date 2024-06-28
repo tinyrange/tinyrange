@@ -96,6 +96,10 @@ def make_ubuntu_repos(only_latest = True):
 
     return ubuntu_repos
 
+def build_debian_directives(builder, plan):
+    # All containers made with this builder start with a base image.
+    return [define.fetch_oci_image(image = "library/ubuntu", version = builder.metadata["version"])] + plan.directives
+
 def make_ubuntu_builders(repos):
     ret = []
     for version in repos:
@@ -103,12 +107,12 @@ def make_ubuntu_builders(repos):
         ret.append(define.container_builder(
             name = "ubuntu@" + version,
             display_name = "Ubuntu " + version,
-            base_directives = [
-                # All containers made with this builder start with a base image.
-                directive.base_image("library/ubuntu:" + version),
-            ],
+            plan_callback = build_debian_directives,
             # This builder is scoped to just the packages in this repo.
             packages = repos[version],
+            metadata = {
+                "version": version,
+            },
         ))
 
     return ret

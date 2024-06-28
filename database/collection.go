@@ -10,9 +10,10 @@ import (
 )
 
 type PackageCollection struct {
-	Name    []string
-	Parser  starlark.Callable
-	Sources []common.BuildDefinition
+	Name               []string
+	Parser             starlark.Callable
+	Sources            []common.BuildDefinition
+	AdditionalPackages []*common.Package
 
 	Packages map[string]*common.Package
 }
@@ -30,7 +31,7 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 	// Build all the package sources.
 	// This can happen in parallel.
 	for _, source := range parser.Sources {
-		built, err := db.Build(ctx, source)
+		built, err := db.Build(ctx, source, common.BuildOptions{})
 		if err != nil {
 			return err
 		}
@@ -56,6 +57,10 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 		for _, pkg := range child.Packages() {
 			parser.Packages[pkg.Name.Key()] = pkg
 		}
+	}
+
+	for _, pkg := range parser.AdditionalPackages {
+		parser.Packages[pkg.Name.Key()] = pkg
 	}
 
 	return nil
@@ -86,16 +91,12 @@ var (
 	_ common.BuildSource = &PackageCollection{}
 )
 
-func NewPackageCollection(name string, parser starlark.Value, sources []common.BuildDefinition) (*PackageCollection, error) {
-	f, ok := parser.(starlark.Callable)
-	if !ok {
-		return nil, fmt.Errorf("parser %s is not callable", parser.Type())
-	}
-
+func NewPackageCollection(name string, f starlark.Callable, sources []common.BuildDefinition, additionalPackages []*common.Package) (*PackageCollection, error) {
 	return &PackageCollection{
-		Name:     []string{name, f.Name()},
-		Parser:   f,
-		Sources:  sources,
-		Packages: make(map[string]*common.Package),
+		Name:               []string{name, f.Name()},
+		Parser:             f,
+		Sources:            sources,
+		AdditionalPackages: additionalPackages,
+		Packages:           make(map[string]*common.Package),
 	}, nil
 }
