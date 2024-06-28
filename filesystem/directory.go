@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -203,7 +204,15 @@ func (m *memoryDirectory) Overwrite(contents []byte) error {
 func (m *memoryDirectory) Readdir() ([]DirectoryEntry, error) {
 	var ret []DirectoryEntry
 
-	for name, file := range m.entries {
+	var names []string
+	for name := range m.entries {
+		names = append(names, name)
+	}
+
+	slices.Sort(names)
+
+	for _, name := range names {
+		file := m.entries[name]
 		ret = append(ret, DirectoryEntry{File: file, Name: name})
 	}
 

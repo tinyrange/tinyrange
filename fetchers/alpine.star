@@ -222,13 +222,6 @@ def build_alpine_install_layer(ctx, directives):
         fs = filesystem(res.read_archive())
 
         for ent in fs[".pkg"]:
-            if "post-install.sh" in ent:
-                file = ent["post-install.sh"]
-                scripts.append({
-                    "kind": "execute",
-                    "exec": file.name,
-                })
-
             if "pre-install.sh" in ent:
                 file = ent["pre-install.sh"]
                 scripts.append({
@@ -244,6 +237,13 @@ def build_alpine_install_layer(ctx, directives):
                     "kind": "trigger_on",
                     "triggers": triggers,
                     "exec": file.name.removesuffix(".json") + ".sh",
+                })
+
+            if "post-install.sh" in ent:
+                file = ent["post-install.sh"]
+                scripts.append({
+                    "kind": "execute",
+                    "exec": file.name,
                 })
 
     ret[".pkg/scripts.json"] = json.encode(scripts)

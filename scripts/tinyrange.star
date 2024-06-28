@@ -5,6 +5,7 @@ def main(args):
 
     package_list = [
         query("busybox"),
+        query("busybox-binsh"),
         query("alpine-baselayout"),
         query("build-base"),
     ]
