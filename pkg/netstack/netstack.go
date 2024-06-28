@@ -415,7 +415,7 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 			loc.IP = net.IPv4(127, 0, 0, 1)
 		}
 
-		slog.Info("dialing remote host", "addr", loc.String())
+		slog.Debug("dialing remote host", "addr", loc.String())
 
 		outbound, err := net.DialTCP("tcp", nil, loc)
 		if err != nil {

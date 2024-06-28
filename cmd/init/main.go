@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -344,7 +345,16 @@ func ensure(path string, mode os.FileMode) error {
 	return nil
 }
 
+var (
+	execShell = flag.Bool("shell", false, "start the shell instead of running /init.sh")
+)
+
 func initMain() error {
+	flag.Parse()
+	if *execShell {
+		return shellMain()
+	}
+
 	var args starlark.Value = starlark.NewDict(0)
 
 	if ok, _ := exists("/init.json"); ok {

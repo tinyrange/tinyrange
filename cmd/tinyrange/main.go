@@ -77,6 +77,8 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool) error {
 		return fmt.Errorf("invalid config")
 	}
 
+	slog.Info("starting TinyRange")
+
 	fsSize := int64(cfg.StorageSize * 1024 * 1024)
 
 	vmem := vm.NewVirtualMemory(fsSize, 4096)
@@ -136,6 +138,11 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool) error {
 
 			for _, ent := range entries {
 				name := "/" + ent.CName
+
+				if fs.Exists(name) {
+					continue
+				}
+
 				switch ent.CTypeflag {
 				case archive.TypeDirectory:
 					name = strings.TrimSuffix(name, "/")
@@ -268,7 +275,7 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool) error {
 					return "10.42.0.1", nil
 				}
 
-				slog.Info("doing DNS lookup", "name", name)
+				slog.Debug("doing DNS lookup", "name", name)
 
 				// Do a DNS lookup on the host.
 				addr, err := net.ResolveIPAddr("ip4", name)

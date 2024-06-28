@@ -3,6 +3,7 @@ module github.com/tinyrange/tinyrange
 go 1.22.2
 
 require (
+	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/creack/pty v1.1.21
 	github.com/google/gopacket v1.1.19
 	github.com/google/uuid v1.6.0
@@ -10,6 +11,7 @@ require (
 	github.com/jsimonetti/rtnetlink v1.4.2
 	github.com/miekg/dns v1.1.61
 	github.com/tinyrange/vm v0.0.0-20240616031946-b46d8ccc03db
+	github.com/wader/readline v0.0.0-20230307172220-bcb7158e7448
 	go.starlark.net v0.0.0-20240520160348-046347dcd104
 	golang.org/x/crypto v0.24.0
 	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090
@@ -30,6 +32,7 @@ require (
 	golang.org/x/mod v0.18.0 // indirect
 	golang.org/x/net v0.26.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
+	golang.org/x/text v0.16.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.22.0 // indirect
 )
