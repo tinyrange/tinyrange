@@ -153,6 +153,10 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool) error {
 					if err := fs.Symlink(name, ent.CLinkname); err != nil {
 						return err
 					}
+				case archive.TypeLink:
+					if err := fs.Link(name, "/"+ent.CLinkname); err != nil {
+						return err
+					}
 				case archive.TypeRegular:
 					f, err := ent.Open()
 					if err != nil {

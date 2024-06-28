@@ -273,7 +273,7 @@ func (d *LinearDirectory) increaseSize() error {
 	if len(extents) == len(d.blocks) {
 		// Allocate more blocks.
 		// The block allocation goes 1,4,16,64 blocks.
-		if err = d.extentTree.AllocateBlocks(int64(len(d.blocks) * 3)); err != nil {
+		if err = d.extentTree.AllocateBlocks(int64(len(d.blocks) * 4)); err != nil {
 			slog.Info("failed to allocate blocks", "blocks", int64(len(d.blocks)*2))
 			return err
 		}
@@ -1427,7 +1427,7 @@ func (fs *Ext4Filesystem) CreateFile(filename string, content vm.MemoryRegion) e
 	}
 
 	if err := node.addDirectoryEntry(f, path.Base(filename)); err != nil {
-		return fmt.Errorf("failed to addDirectoryEntry: %v", err)
+		return fmt.Errorf("CreateFile(%s): failed to addDirectoryEntry: %v", filename, err)
 	}
 
 	return nil
