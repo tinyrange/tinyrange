@@ -1,0 +1,44 @@
+type BiosParameterBlock struct {
+    bootJmp [3]byte
+    oemIdentifier [8]string
+    bytesPerSector u16_le
+    sectorsPerCluster u8
+    reservedSectors u16_le
+    fatCount u8
+    rootDirectoryEntries u16_le
+    totalSectors16 u16_le
+    mediaDescriptorType u8
+    tableSize16 u16_le
+    sectorsPerTrack u16_le
+    headSideCount u16_le
+    hiddenSectors u32_le
+    totalSectors32 u32_le
+
+    // Extended Boot Record
+    driveNumber u8
+    reserved u8
+    signature u8
+    volumeId u32_le
+    volumeLabel [11]string
+    systemIdentifier [8]string
+    bootCode [448]byte
+    bootablePartitionSignature u16_le
+}
+
+type DirectoryRecord struct {
+    filename [8]byte
+    ext [3]byte
+    attributes u8
+    reserved u8
+    creationTimeSeconds u8
+    creationTime u16_le
+    creationDate u16_le
+    lastAccessedDate u16_le
+    firstClusterNumberHigh u16_le
+    lastModificationTime u16_le
+    lastModificationDate u16_le
+    firstClusterNumberLow u16_le
+    fileSize u32_le
+
+    field firstClusterNumber u32_le = ($firstClusterNumberLow @ $firstClusterNumberHigh)
+}

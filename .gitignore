@@ -20,5 +20,7 @@
 # Go workspace file
 go.work
 
-local/
+result
 build/
+out.txt
+scripts/local
