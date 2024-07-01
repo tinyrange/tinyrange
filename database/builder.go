@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"github.com/tinyrange/pkg2/v2/common"
 	"go.starlark.net/starlark"
@@ -76,6 +77,27 @@ func (builder *ContainerBuilder) Attr(name string) (starlark.Value, error) {
 
 			return plan, nil
 		}), nil
+	} else if name == "packages" {
+		packages := make(map[string]*common.Package)
+		for _, pkg := range builder.Packages.Packages {
+			packages[pkg.Name.Key()] = pkg
+		}
+
+		var keys []string
+
+		for k := range packages {
+			keys = append(keys, k)
+		}
+
+		slices.Sort(keys)
+
+		var ret []starlark.Value
+
+		for _, k := range keys {
+			ret = append(ret, packages[k])
+		}
+
+		return starlark.NewList(ret), nil
 	} else if name == "metadata" {
 		return builder.Metadata, nil
 	} else {

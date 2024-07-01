@@ -109,6 +109,8 @@ def apk_download(ctx, name, fs):
                 continue  # We only install packages.
             elif ent.name == ".pre-deinstall":
                 continue
+            elif ent.name == ".post-deinstall":
+                continue
             elif ent.name == ".trigger":
                 triggers = info["triggers"][0].split(" ")
                 ret[".pkg/{}/trigger.sh".format(name)] = ent

@@ -81,6 +81,30 @@ type Installer struct {
 	Dependencies []PackageQuery
 }
 
+// Attr implements starlark.HasAttrs.
+func (i *Installer) Attr(name string) (starlark.Value, error) {
+	if name == "directives" {
+		var ret []starlark.Value
+
+		for _, directive := range i.Directives {
+			if val, ok := directive.(starlark.Value); ok {
+				ret = append(ret, val)
+			} else {
+				ret = append(ret, &StarDirective{Directive: directive})
+			}
+		}
+
+		return starlark.NewList(ret), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (i *Installer) AttrNames() []string {
+	return []string{"directives"}
+}
+
 func (*Installer) String() string        { return "Installer" }
 func (*Installer) Type() string          { return "Installer" }
 func (*Installer) Hash() (uint32, error) { return 0, fmt.Errorf("Installer is not hashable") }
@@ -88,7 +112,8 @@ func (*Installer) Truth() starlark.Bool  { return starlark.True }
 func (*Installer) Freeze()               {}
 
 var (
-	_ starlark.Value = &Package{}
+	_ starlark.Value    = &Installer{}
+	_ starlark.HasAttrs = &Installer{}
 )
 
 func NewInstaller(tagList TagList, directives []Directive, dependencies []PackageQuery) *Installer {
@@ -100,6 +125,50 @@ type Package struct {
 	Installers []*Installer
 	Aliases    []PackageName
 	Raw        string
+}
+
+// Attr implements starlark.HasAttrs.
+func (pkg *Package) Attr(name string) (starlark.Value, error) {
+	if name == "installer_for" {
+		return starlark.NewBuiltin("Package.installer_for", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				tags starlark.Iterable
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"tags", &tags,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			tagList, err := ToStringList(tags)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			var ret []starlark.Value
+
+			for _, installer := range pkg.Installers {
+				if installer.Tags.Matches(tagList) {
+					ret = append(ret, installer)
+				}
+			}
+
+			return starlark.NewList(ret), nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (pkg *Package) AttrNames() []string {
+	return []string{"installer_for"}
 }
 
 func (pkg *Package) Matches(query PackageQuery) bool {
@@ -123,7 +192,8 @@ func (*Package) Truth() starlark.Bool  { return starlark.True }
 func (*Package) Freeze()               {}
 
 var (
-	_ starlark.Value = &Package{}
+	_ starlark.Value    = &Package{}
+	_ starlark.HasAttrs = &Package{}
 )
 
 func NewPackage(name PackageName, installers []*Installer, aliases []PackageName, raw string) *Package {

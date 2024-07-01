@@ -36,6 +36,7 @@ func (plan *InstallationPlan) Attr(name string) (starlark.Value, error) {
 				elems = append(elems, &common.StarDirective{Directive: directive})
 			}
 		}
+
 		return starlark.NewList(elems), nil
 	} else if name == "tags" {
 		return plan.Tags, nil
