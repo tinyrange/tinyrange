@@ -3,8 +3,8 @@ package database
 import (
 	"fmt"
 
-	"github.com/tinyrange/tinyrange/common"
 	"github.com/tinyrange/tinyrange/pkg/builder"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"go.starlark.net/starlark"
 )
 

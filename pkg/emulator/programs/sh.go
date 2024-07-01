@@ -9,8 +9,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/tinyrange/tinyrange/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/emulator/common"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"

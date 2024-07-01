@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
-	"github.com/tinyrange/tinyrange/common"
-	"github.com/tinyrange/tinyrange/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 

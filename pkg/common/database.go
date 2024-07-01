@@ -3,7 +3,7 @@ package common
 import (
 	"net/http"
 
-	"github.com/tinyrange/tinyrange/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 )
 
 type BuildOptions struct {

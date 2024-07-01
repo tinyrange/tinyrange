@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/schollz/progressbar/v3"
-	"github.com/tinyrange/tinyrange/common"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"go.starlark.net/starlark"
 )
 

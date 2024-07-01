@@ -4,7 +4,7 @@ import (
 	"io"
 	"io/fs"
 
-	"github.com/tinyrange/tinyrange/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 )
 
 type Emulator interface {

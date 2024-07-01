@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinyrange/tinyrange/common"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/xi2/xz"
 	"go.starlark.net/starlark"
 )

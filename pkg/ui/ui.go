@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tinyrange/tinyrange/common"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/htm"
 	"github.com/tinyrange/tinyrange/pkg/htm/bootstrap"
