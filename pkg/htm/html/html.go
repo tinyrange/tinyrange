@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"strconv"
 
-	"github.com/tinyrange/tinyrange/htm"
+	"github.com/tinyrange/tinyrange/pkg/htm"
 )
 
 func Text(s string) htm.Fragment                 { return htm.Text(s) }

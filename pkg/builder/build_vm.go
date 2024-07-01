@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinyrange/tinyrange/builder/config"
 	"github.com/tinyrange/tinyrange/common"
+	"github.com/tinyrange/tinyrange/pkg/builder/config"
 	"go.starlark.net/starlark"
 )
 

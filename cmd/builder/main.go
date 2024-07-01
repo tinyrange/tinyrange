@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
-	"github.com/tinyrange/tinyrange/builder/config"
+	"github.com/tinyrange/tinyrange/pkg/builder/config"
 )
 
 // From: https://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go

@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
-	"github.com/tinyrange/tinyrange/emulator/common"
-	"github.com/tinyrange/tinyrange/emulator/programs"
 	"github.com/tinyrange/tinyrange/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/emulator/common"
+	"github.com/tinyrange/tinyrange/pkg/emulator/programs"
 	"go.starlark.net/starlark"
 )
 

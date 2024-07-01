@@ -11,10 +11,10 @@ import (
 	"strings"
 
 	"github.com/tinyrange/tinyrange/common"
-	"github.com/tinyrange/tinyrange/database"
-	"github.com/tinyrange/tinyrange/htm"
-	"github.com/tinyrange/tinyrange/htm/bootstrap"
-	"github.com/tinyrange/tinyrange/htm/html"
+	"github.com/tinyrange/tinyrange/pkg/database"
+	"github.com/tinyrange/tinyrange/pkg/htm"
+	"github.com/tinyrange/tinyrange/pkg/htm/bootstrap"
+	"github.com/tinyrange/tinyrange/pkg/htm/html"
 )
 
 type WebFrontend struct {

@@ -9,7 +9,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/common"
 	"github.com/tinyrange/tinyrange/filesystem"
-	"github.com/tinyrange/tinyrange/record"
+	"github.com/tinyrange/tinyrange/pkg/record"
 	"go.starlark.net/starlark"
 )
 

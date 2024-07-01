@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tinyrange/tinyrange/builder"
 	"github.com/tinyrange/tinyrange/common"
-	"github.com/tinyrange/tinyrange/emulator"
 	"github.com/tinyrange/tinyrange/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/builder"
+	"github.com/tinyrange/tinyrange/pkg/emulator"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"

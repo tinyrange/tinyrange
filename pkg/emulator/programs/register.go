@@ -1,8 +1,8 @@
 package programs
 
 import (
-	"github.com/tinyrange/tinyrange/emulator/common"
 	"github.com/tinyrange/tinyrange/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/emulator/common"
 )
 
 func AddShellUtilities(emu common.Emulator) error {

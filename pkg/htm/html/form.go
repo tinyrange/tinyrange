@@ -3,7 +3,7 @@ package html
 import (
 	"fmt"
 
-	"github.com/tinyrange/tinyrange/htm"
+	"github.com/tinyrange/tinyrange/pkg/htm"
 )
 
 func Form(children ...htm.Fragment) htm.Fragment { return htm.NewHtmlFragment("form", children...) }

@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/tinyrange/tinyrange/common"
-	"github.com/tinyrange/tinyrange/database"
 	"github.com/tinyrange/tinyrange/filesystem"
-	"github.com/tinyrange/tinyrange/ui"
+	"github.com/tinyrange/tinyrange/pkg/database"
+	"github.com/tinyrange/tinyrange/pkg/ui"
 )
 
 type fileListArray map[string]filesystem.File

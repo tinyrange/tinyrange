@@ -11,9 +11,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tinyrange/tinyrange/builder"
 	"github.com/tinyrange/tinyrange/common"
 	"github.com/tinyrange/tinyrange/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/builder"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 )

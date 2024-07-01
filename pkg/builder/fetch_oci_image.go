@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinyrange/tinyrange/builder/oci"
 	"github.com/tinyrange/tinyrange/common"
 	"github.com/tinyrange/tinyrange/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/builder/oci"
 	"go.starlark.net/starlark"
 )
 
