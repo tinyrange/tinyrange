@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,43 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
+)
+
+var ErrInterrupt = errors.New("Interrupt")
+var ErrRestart = errors.New("Restart")
+
+type closeType byte
+
+const (
+	closeExit closeType = iota
+	closeRestart
+)
+
+type stdinWrap struct {
+	io.Reader
+	close chan closeType
+}
+
+// Read implements io.Reader.
+func (s *stdinWrap) Read(p []byte) (n int, err error) {
+	// Read the underlying reader first.
+	n, err = s.Reader.Read(p)
+	if err != nil {
+		return
+	}
+
+	// Look for the interrupt char (CTRL-B) and return an error if that's encountered.
+	if n := bytes.IndexByte(p[:n], 0x02); n != -1 {
+		slog.Info("activating emergency restart")
+		s.close <- closeRestart
+		return 0, ErrInterrupt
+	}
+
+	return
+}
+
+var (
+	_ io.Reader = &stdinWrap{}
 )
 
 // FdReader is an io.Reader with an Fd function
@@ -49,7 +87,7 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, pass
 	)
 
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 		defer cancel()
 
 		conn, err = ns.DialInternalContext(ctx, "tcp", address)
@@ -98,21 +136,32 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, pass
 		return fmt.Errorf("failed to request pty: %v", err)
 	}
 
-	session.Stdin = os.Stdin
+	close := make(chan closeType, 1)
+
+	session.Stdin = &stdinWrap{Reader: os.Stdin, close: close}
 	session.Stdout = os.Stdout
 	session.Stderr = os.Stderr
 
 	if err := session.Shell(); err != nil {
-		time.Sleep(100 * time.Millisecond)
 		return fmt.Errorf("failed to start shell: %v", err)
 	}
 
-	if err := session.Wait(); err != nil {
-		if errors.Is(err, &ssh.ExitMissingError{}) {
-			slog.Debug("failed to wait", "error", err)
-		} else {
-			slog.Warn("failed to wait", "error", err)
+	go func() {
+		if err := session.Wait(); err != nil {
+			if errors.Is(err, &ssh.ExitMissingError{}) {
+				slog.Debug("failed to wait", "error", err)
+			} else {
+				slog.Warn("failed to wait", "error", err)
+			}
 		}
+		close <- closeExit
+	}()
+
+	switch <-close {
+	case closeExit:
+		return nil
+	case closeRestart:
+		return ErrRestart
 	}
 
 	return nil

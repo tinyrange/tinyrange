@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,15 +11,18 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"time"
+	"strings"
 
 	"github.com/miekg/dns"
+	"github.com/tinyrange/tinyrange/pkg/archive"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"github.com/tinyrange/tinyrange/pkg/oci"
 	virtualMachine "github.com/tinyrange/tinyrange/pkg/vm"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"github.com/tinyrange/vm"
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed init.star
@@ -68,15 +72,14 @@ func (*vmBackend) Sync() error {
 	return nil
 }
 
-var (
-	storageSize = flag.Int("storage-size", 64, "the size of the VM storage in megabytes")
-	image       = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
-)
+func runWithConfig(cfg config.TinyRangeConfig, debug bool) error {
+	if cfg.StorageSize == 0 {
+		return fmt.Errorf("invalid config")
+	}
 
-func tinyRangeMain() error {
-	flag.Parse()
+	slog.Info("starting TinyRange")
 
-	fsSize := int64(*storageSize * 1024 * 1024)
+	fsSize := int64(cfg.StorageSize * 1024 * 1024)
 
 	vmem := vm.NewVirtualMemory(fsSize, 4096)
 
@@ -85,35 +88,104 @@ func tinyRangeMain() error {
 		return err
 	}
 
-	initExe, err := os.Open("build/init_x86_64")
-	if err != nil {
-		return err
-	}
-	defer initExe.Close()
+	for _, frag := range cfg.RootFsFragments {
+		if localFile := frag.LocalFile; localFile != nil {
+			file, err := os.Open(cfg.Resolve(localFile.HostFilename))
+			if err != nil {
+				return err
+			}
 
-	initRegion, err := vm.NewFileRegion(initExe)
-	if err != nil {
-		return err
-	}
+			region, err := vm.NewFileRegion(file)
+			if err != nil {
+				return err
+			}
 
-	if err := fs.CreateFile("/init", initRegion); err != nil {
-		return err
-	}
-	if err := fs.Chmod("/init", goFs.FileMode(0755)); err != nil {
-		return err
-	}
+			if err := fs.CreateFile(localFile.GuestFilename, region); err != nil {
+				return err
+			}
 
-	if err := fs.CreateFile("/init.star", vm.RawRegion(_INIT_SCRIPT)); err != nil {
-		return err
-	}
-	if err := fs.Chmod("/init.star", goFs.FileMode(0755)); err != nil {
-		return err
-	}
+			if localFile.Executable {
+				if err := fs.Chmod(localFile.GuestFilename, goFs.FileMode(0755)); err != nil {
+					return err
+				}
+			}
+		} else if fileContents := frag.FileContents; fileContents != nil {
+			if err := fs.CreateFile(fileContents.GuestFilename, vm.RawRegion(fileContents.Contents)); err != nil {
+				return err
+			}
 
-	ociDl := oci.NewDownloader()
+			if fileContents.Executable {
+				if err := fs.Chmod(fileContents.GuestFilename, goFs.FileMode(0755)); err != nil {
+					return err
+				}
+			}
+		} else if ociImage := frag.OCIImage; ociImage != nil {
+			ociDl := oci.NewDownloader()
 
-	if err := ociDl.ExtractOciImage(fs, *image); err != nil {
-		return err
+			if err := ociDl.ExtractOciImage(fs, ociImage.ImageName); err != nil {
+				return err
+			}
+		} else if ark := frag.Archive; ark != nil {
+			fh, err := os.Open(cfg.Resolve(ark.HostFilename))
+			if err != nil {
+				return err
+			}
+
+			entries, err := archive.ReadArchiveFromFile(fh)
+			if err != nil {
+				return err
+			}
+
+			for _, ent := range entries {
+				name := "/" + ent.CName
+
+				if fs.Exists(name) {
+					continue
+				}
+
+				switch ent.CTypeflag {
+				case archive.TypeDirectory:
+					name = strings.TrimSuffix(name, "/")
+					if err := fs.Mkdir(name, true); err != nil {
+						return err
+					}
+				case archive.TypeSymlink:
+					if err := fs.Symlink(name, ent.CLinkname); err != nil {
+						return err
+					}
+				case archive.TypeLink:
+					if err := fs.Link(name, "/"+ent.CLinkname); err != nil {
+						return err
+					}
+				case archive.TypeRegular:
+					f, err := ent.Open()
+					if err != nil {
+						return err
+					}
+
+					region, err := vm.NewFileRegion(f)
+					if err != nil {
+						return err
+					}
+
+					if err := fs.CreateFile(name, region); err != nil {
+						return err
+					}
+				default:
+					return fmt.Errorf("unimplemented entry type: %s", ent.CTypeflag)
+				}
+
+				if err := fs.Chown(name, uint16(ent.CUid), uint16(ent.CGid)); err != nil {
+					return err
+				}
+
+				if err := fs.Chmod(name, goFs.FileMode(ent.CMode)); err != nil {
+					return err
+				}
+			}
+		} else {
+			return fmt.Errorf("unknown fragment kind")
+		}
 	}
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -154,22 +226,38 @@ func tinyRangeMain() error {
 
 	ns := netstack.New()
 
-	out, err := os.Create("local/network.pcap")
+	// out, err := os.Create("local/network.pcap")
+	// if err != nil {
+	// 	return err
+	// }
+	// defer out.Close()
+
+	// ns.OpenPacketCapture(out)
+
+	factory, err := virtualMachine.LoadVirtualMachineFactory(cfg.Resolve(cfg.HypervisorScript))
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 
-	ns.OpenPacketCapture(out)
+	virtualMachine, err := factory.Create(
+		cfg.Resolve(cfg.KernelFilename),
+		cfg.Resolve(cfg.InitFilesystemFilename),
+		"nbd://"+listener.Addr().String(),
+	)
+	if err != nil {
+		return err
+	}
 
-	go func() {
-		// TODO(joshua): Fix this horrible hack.
-		time.Sleep(100 * time.Millisecond)
+	nic, err := ns.AttachNetworkInterface()
+	if err != nil {
+		return err
+	}
 
+	// Create internal HTTP server.
+	{
 		listen, err := ns.ListenInternal("tcp", ":80")
 		if err != nil {
-			slog.Error("failed to listen", "err", err)
-			return
+			return err
 		}
 
 		mux := http.NewServeMux()
@@ -181,24 +269,34 @@ func tinyRangeMain() error {
 		go func() {
 			slog.Error("failed to serve", "err", http.Serve(listen, mux))
 		}()
+	}
 
+	// Create DNS server.
+	{
 		dnsServer := &dnsServer{
 			dnsLookup: func(name string) (string, error) {
 				if name == "host.internal." {
 					return "10.42.0.1", nil
-				} else {
-					return "", nil
 				}
+
+				slog.Debug("doing DNS lookup", "name", name)
+
+				// Do a DNS lookup on the host.
+				addr, err := net.ResolveIPAddr("ip4", name)
+				if err != nil {
+					return "", err
+				}
+
+				return string(addr.IP.String()), nil
 			},
 		}
-
 		dnsMux := dns.NewServeMux()
 
 		dnsMux.HandleFunc(".", dnsServer.handleDnsRequest)
 
 		packetConn, err := ns.ListenPacketInternal("udp", ":53")
 		if err != nil {
-			slog.Error("dns: failed to create packet connection", "err", err)
+			return err
 		}
 
 		dnsServer.server = &dns.Server{
@@ -214,41 +312,77 @@ func tinyRangeMain() error {
 				slog.Error("dns: failed to start server", "error", err.Error())
 			}
 		}()
-
-	}()
-
-	factory, err := virtualMachine.LoadVirtualMachineFactory("hv/qemu/qemu.star")
-	if err != nil {
-		return err
 	}
 
-	virtualMachine, err := factory.Create(
-		"local/vmlinux_x86_64",
-		"",
-		"nbd://"+listener.Addr().String(),
-		ns,
-	)
-	if err != nil {
-		return err
-	}
+	slog.Info("Starting virtual machine.")
 
 	go func() {
-		if err := virtualMachine.Run(false); err != nil {
+		if err := virtualMachine.Run(nic, debug); err != nil {
 			slog.Error("failed to run virtual machine", "err", err)
 		}
 	}()
 	defer virtualMachine.Shutdown()
 
-	err = connectOverSsh(ns, "10.42.0.2:2222", "root", "insecurepassword")
-	if err != nil {
-		return err
+	// Start a loop so SSH can be restarted when requested by the user.
+	for {
+		err = connectOverSsh(ns, "10.42.0.2:2222", "root", "insecurepassword")
+		if err == ErrRestart {
+			continue
+		} else if err != nil {
+			return err
+		}
+
+		return nil
 	}
+}
 
-	// for {
-	// 	time.Sleep(1 * time.Hour)
-	// }
+var (
+	storageSize = flag.Int("storage-size", 64, "the size of the VM storage in megabytes")
+	image       = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
+	configFile  = flag.String("config", "", "passes a custom config. this overrides all other flags.")
+	debug       = flag.Bool("debug", false, "redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup")
+)
 
-	return nil
+func tinyRangeMain() error {
+	flag.Parse()
+
+	if *configFile != "" {
+		f, err := os.Open(*configFile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		var cfg config.TinyRangeConfig
+
+		if strings.HasSuffix(f.Name(), ".json") {
+
+			dec := json.NewDecoder(f)
+
+			if err := dec.Decode(&cfg); err != nil {
+				return err
+			}
+		} else if strings.HasSuffix(f.Name(), ".yml") {
+			dec := yaml.NewDecoder(f)
+
+			if err := dec.Decode(&cfg); err != nil {
+				return err
+			}
+		}
+
+		return runWithConfig(cfg, *debug)
+	} else {
+		return runWithConfig(config.TinyRangeConfig{
+			HypervisorScript: "hv/qemu/qemu.star",
+			KernelFilename:   "local/vmlinux_x86_64",
+			RootFsFragments: []config.Fragment{
+				{LocalFile: &config.LocalFileFragment{HostFilename: "build/init_x86_64", GuestFilename: "/init", Executable: true}},
+				{FileContents: &config.FileContentsFragment{Contents: _INIT_SCRIPT, GuestFilename: "/init.star"}},
+				{OCIImage: &config.OCIImageFragment{ImageName: *image}},
+			},
+			StorageSize: *storageSize,
+		}, *debug)
+	}
 }
 
 func main() {

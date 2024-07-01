@@ -267,6 +267,12 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 		return nil, fmt.Errorf("failed to set promiscuous mode: %s", err)
 	}
 
+	// Enable spoofing on the nic so we can get addresses for the internet
+	// sites the guest reaches out to.
+	if err := ns.nStack.SetSpoofing(nicId, true); err != nil {
+		return nil, fmt.Errorf("failed to set spoofing mode: %s", err)
+	}
+
 	send, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
 	if err != nil {
 		return nil, err
@@ -352,8 +358,7 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 
 			_, err := nic.udpConn.Write(pktBytes)
 			if err != nil {
-				slog.Error("failed to write packet to guest", "err", err)
-				return
+				slog.Debug("failed to write packet to guest", "err", err)
 			}
 
 			pkt.DecRef()
@@ -383,11 +388,6 @@ func (ns *NetStack) OpenPacketCapture(w io.Writer) error {
 func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 	id := r.ID()
 
-	loc := &net.TCPAddr{
-		IP:   net.IP(id.LocalAddress.AsSlice()),
-		Port: int(id.LocalPort),
-	}
-
 	var wq waiter.Queue
 
 	ep, ipErr := r.CreateEndpoint(&wq)
@@ -404,6 +404,18 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 
 	go func() {
 		defer conn.Close()
+
+		loc := &net.TCPAddr{
+			IP:   net.IP(id.LocalAddress.AsSlice()),
+			Port: int(id.LocalPort),
+		}
+
+		// Proxy connections to 10.42.0.100 to localhost.
+		if id.LocalAddress.As4() == [4]byte{10, 42, 0, 100} {
+			loc.IP = net.IPv4(127, 0, 0, 1)
+		}
+
+		slog.Debug("dialing remote host", "addr", loc.String())
 
 		outbound, err := net.DialTCP("tcp", nil, loc)
 		if err != nil {

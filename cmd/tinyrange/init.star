@@ -1,9 +1,15 @@
+def ssh_connect(ctx):
+    if "ssh_command" in args:
+        return ctx.run(args["ssh_command"])
+    else:
+        return ctx.run(["/bin/login", "-f", "root"])
+
 def main():
     network_interface_up("lo")
     network_interface_up("eth0")
     network_interface_configure("eth0", ip = "10.42.0.2/16", router = "10.42.0.1")
 
-    print(fetch_http("http://1.1.1.1"))
+    # print(fetch_http("http://1.1.1.1"))
 
     # Set the hostname.
     set_hostname("login")
@@ -27,6 +33,6 @@ def main():
     path_ensure("/etc")
     file_write("/etc/resolv.conf", "nameserver 10.42.0.1\n")
 
-    run_ssh_server()
+    run_ssh_server(ssh_connect)
 
     # run("/bin/login", "-f", "root")

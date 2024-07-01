@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sync"
 
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"go.starlark.net/starlark"
@@ -32,12 +33,14 @@ type VirtualMachine struct {
 	kernel    string
 	initrd    string
 	diskImage string
-	ns        *netstack.NetStack
 	nic       *netstack.NetworkInterface
 	cmd       *exec.Cmd
+	mtx       sync.Mutex
 }
 
 func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bool) error {
+	vm.mtx.Lock()
+
 	vm.cmd = exec.Command(exe.command, exe.args...)
 
 	if bindOutput {
@@ -46,22 +49,22 @@ func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bo
 		vm.cmd.Stdin = os.Stdin
 	}
 
+	vm.mtx.Unlock()
+
 	return vm.cmd.Run()
 }
 
 func (vm *VirtualMachine) Shutdown() error {
+	vm.mtx.Lock()
+	defer vm.mtx.Unlock()
+
 	if vm.cmd != nil {
 		return vm.cmd.Process.Kill()
 	}
 	return nil
 }
 
-func (vm *VirtualMachine) Run(bindOutput bool) error {
-	nic, err := vm.ns.AttachNetworkInterface()
-	if err != nil {
-		return err
-	}
-
+func (vm *VirtualMachine) Run(nic *netstack.NetworkInterface, bindOutput bool) error {
 	vm.nic = nic
 
 	ret, err := starlark.Call(
@@ -202,11 +205,9 @@ func (factory *VirtualMachineFactory) Create(
 	kernel string,
 	initrd string,
 	diskImage string,
-	ns *netstack.NetStack,
 ) (*VirtualMachine, error) {
 	return &VirtualMachine{
 		factory:   factory,
-		ns:        ns,
 		kernel:    kernel,
 		initrd:    initrd,
 		diskImage: diskImage,
