@@ -1,7 +1,9 @@
 package vm
 
 import (
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"sync"
@@ -40,6 +42,8 @@ type VirtualMachine struct {
 
 func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bool) error {
 	vm.mtx.Lock()
+
+	slog.Info("running hypervisor", "command", exe.command, "args", exe.args)
 
 	vm.cmd = exec.Command(exe.command, exe.args...)
 
@@ -175,6 +179,25 @@ func (factory *VirtualMachineFactory) load(filename string) error {
 			command: command,
 			args:    arguments,
 		}, nil
+	})
+
+	globals["error"] = starlark.NewBuiltin("error", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			message string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"message", &message,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, errors.New(message)
 	})
 
 	declared, err := starlark.ExecFileOptions(&syntax.FileOptions{

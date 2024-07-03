@@ -128,7 +128,7 @@ func (builder *ContainerBuilder) Load(db *PackageDatabase) error {
 	return nil
 }
 
-func (builder *ContainerBuilder) Plan(packages []common.PackageQuery, tags common.TagList) (*InstallationPlan, error) {
+func (builder *ContainerBuilder) Plan(packages []common.PackageQuery, tags common.TagList) (common.InstallationPlan, error) {
 	plan := &InstallationPlan{installedNames: make(map[string]string), Tags: tags}
 
 	for _, pkg := range packages {
@@ -169,7 +169,7 @@ func (builder *ContainerBuilder) Plan(packages []common.PackageQuery, tags commo
 		directives = append(directives, dir)
 	}
 
-	plan.Directives = directives
+	plan.SetDirectives(directives)
 
 	return plan, nil
 }
@@ -194,8 +194,9 @@ func (*ContainerBuilder) Truth() starlark.Bool { return starlark.True }
 func (*ContainerBuilder) Freeze()              {}
 
 var (
-	_ starlark.Value    = &ContainerBuilder{}
-	_ starlark.HasAttrs = &ContainerBuilder{}
+	_ starlark.Value          = &ContainerBuilder{}
+	_ starlark.HasAttrs       = &ContainerBuilder{}
+	_ common.ContainerBuilder = &ContainerBuilder{}
 )
 
 func NewContainerBuilder(

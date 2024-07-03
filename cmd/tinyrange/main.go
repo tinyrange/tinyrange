@@ -88,6 +88,8 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 
 	vmem := vm.NewVirtualMemory(fsSize, 4096)
 
+	start := time.Now()
+
 	fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
 	if err != nil {
 		return err
@@ -192,6 +194,9 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 			return fmt.Errorf("unknown fragment kind")
 		}
 	}
+
+	slog.Info("built filesystem", "took", time.Since(start))
+	start = time.Now()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -354,7 +359,7 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 		}()
 	}
 
-	slog.Info("Starting virtual machine.")
+	slog.Info("starting virtual machine", "took", time.Since(start))
 
 	go func() {
 		if err := virtualMachine.Run(nic, debug); err != nil {
@@ -367,8 +372,6 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 
 	// Start a loop so SSH can be restarted when requested by the user.
 	for {
-		time.Sleep(100 * time.Millisecond)
-
 		err = connectOverSsh(ns, "10.42.0.2:2222", "root", "insecurepassword")
 		if err == ErrRestart {
 			continue

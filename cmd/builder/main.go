@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/anmitsu/go-shlex"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -100,7 +101,8 @@ type BuilderScript struct {
 func runScript(script BuilderScript) error {
 	switch script.Kind {
 	case "trigger_on":
-		slog.Info("trigger_on", "exec", script.Exec)
+		start := time.Now()
+
 		for _, trigger := range script.Triggers {
 			if ok, _ := exists(trigger); !ok {
 				continue
@@ -111,10 +113,19 @@ func runScript(script BuilderScript) error {
 			}
 		}
 
+		slog.Info("trigger_on", "exec", script.Exec, "took", time.Since(start))
+
 		return nil
 	case "execute":
-		slog.Info("run script", "exec", script.Exec)
-		return execCommand([]string{script.Exec})
+		start := time.Now()
+
+		if err := execCommand([]string{script.Exec}); err != nil {
+			return err
+		}
+
+		slog.Info("ran script", "exec", script.Exec, "took", time.Since(start))
+
+		return nil
 	default:
 		return fmt.Errorf("unknown kind: %s", script.Kind)
 	}

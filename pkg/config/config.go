@@ -25,7 +25,13 @@ type ArchiveFragment struct {
 	HostFilename string `json:"host_filename" yaml:"host_filename"`
 }
 
+type RunCommandFragment struct {
+	Command string `json:"command" yaml:"command"`
+}
+
 type Fragment struct {
+	// Not supported by TinyRange directly.
+	RunCommand   *RunCommandFragment   `json:"run_command" yaml:"run_command"`
 	LocalFile    *LocalFileFragment    `json:"local_file" yaml:"local_file"`
 	FileContents *FileContentsFragment `json:"file_contents" yaml:"file_contents"`
 	OCIImage     *OCIImageFragment     `json:"oci_image" yaml:"oci_image"`

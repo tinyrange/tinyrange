@@ -14,6 +14,8 @@ import (
 	"go.starlark.net/starlarkstruct"
 )
 
+var START_TIME = time.Now()
+
 func asDirective(val starlark.Value) (common.Directive, error) {
 	if starDir, ok := val.(*common.StarDirective); ok {
 		return starDir.Directive, nil
@@ -256,6 +258,58 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				}
 
 				return builder.NewBuildVmDefinition(directives, output, storageSize), nil
+			}),
+			"plan": starlark.NewBuiltin("define.plan", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					val starlark.Value
+					err error
+				)
+
+				var (
+					builderName  string
+					searchListIt starlark.Iterable
+					tagListIt    starlark.Iterable
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"builder", &builderName,
+					"packages", &searchListIt,
+					"tags", &tagListIt,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				var search []common.PackageQuery
+
+				{
+					dependencyIter := searchListIt.Iterate()
+					defer dependencyIter.Done()
+
+					for dependencyIter.Next(&val) {
+						dep, ok := val.(common.PackageQuery)
+						if !ok {
+							return nil, fmt.Errorf("could not convert %s to PackageQuery", val.Type())
+						}
+
+						search = append(search, dep)
+					}
+				}
+
+				var tagList []string
+
+				if tagListIt != nil {
+					tagList, err = common.ToStringList(tagListIt)
+					if err != nil {
+						return starlark.None, err
+					}
+				}
+
+				return builder.NewPlanDefinition(builderName, search, tagList), nil
 			}),
 		},
 	}
@@ -610,6 +664,15 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		}
 
 		return starlark.None, errors.New(message)
+	})
+
+	ret["time"] = starlark.NewBuiltin("time", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		return starlark.Float(time.Since(START_TIME).Seconds()), nil
 	})
 
 	return ret

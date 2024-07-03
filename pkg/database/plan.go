@@ -10,10 +10,20 @@ import (
 
 type InstallationPlan struct {
 	Packages   []*common.Package
-	Directives []common.Directive
+	directives []common.Directive
 	Tags       common.TagList
 
 	installedNames map[string]string // map of names and versions.
+}
+
+// SetDirectives implements common.InstallationPlan.
+func (plan *InstallationPlan) SetDirectives(directives []common.Directive) {
+	plan.directives = directives
+}
+
+// Directives implements common.InstallationPlan.
+func (plan *InstallationPlan) Directives() []common.Directive {
+	return plan.directives
 }
 
 // Attr implements starlark.HasAttrs.
@@ -29,7 +39,7 @@ func (plan *InstallationPlan) Attr(name string) (starlark.Value, error) {
 	} else if name == "directives" {
 		var elems []starlark.Value
 
-		for _, directive := range plan.Directives {
+		for _, directive := range plan.directives {
 			if val, ok := directive.(starlark.Value); ok {
 				elems = append(elems, val)
 			} else {
@@ -118,7 +128,7 @@ func (plan *InstallationPlan) Add(builder *ContainerBuilder, query common.Packag
 		}
 	}
 
-	plan.Directives = append(plan.Directives, option.install.Directives...)
+	plan.directives = append(plan.directives, option.install.Directives...)
 
 	return nil
 }
@@ -132,14 +142,15 @@ func (*InstallationPlan) Truth() starlark.Bool { return starlark.True }
 func (*InstallationPlan) Freeze()              {}
 
 var (
-	_ starlark.Value    = &InstallationPlan{}
-	_ starlark.HasAttrs = &InstallationPlan{}
+	_ starlark.Value          = &InstallationPlan{}
+	_ starlark.HasAttrs       = &InstallationPlan{}
+	_ common.InstallationPlan = &InstallationPlan{}
 )
 
-func EmitDockerfile(plan *InstallationPlan) (string, error) {
+func EmitDockerfile(plan common.InstallationPlan) (string, error) {
 	ret := ""
 
-	for _, directive := range plan.Directives {
+	for _, directive := range plan.Directives() {
 		switch directive := directive.(type) {
 		case *builder.FetchOciImageDefinition:
 			ret += fmt.Sprintf("FROM %s\n", directive.FromDirective())

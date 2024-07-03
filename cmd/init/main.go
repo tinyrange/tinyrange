@@ -30,6 +30,8 @@ import (
 	"golang.org/x/term"
 )
 
+var START_TIME = time.Now()
+
 var starlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builtin).CallInternal
 
 func ToStringList(it starlark.Iterable) ([]string, error) {

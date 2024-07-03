@@ -26,11 +26,83 @@ func runTinyRange(exe string, configFilename string) (*exec.Cmd, error) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	slog.Info("executing tinyrange", "args", cmd.Args)
+
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
 
 	return cmd, nil
+}
+
+func directiveToFragments(ctx common.BuildContext, directive common.Directive) ([]config.Fragment, error) {
+	var ret []config.Fragment
+
+	switch directive := directive.(type) {
+	case *FetchOciImageDefinition:
+		res, err := ctx.BuildChild(directive)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := parseJsonFromFile(res, &directive); err != nil {
+			return nil, err
+		}
+
+		for _, archive := range directive.LayerArchives {
+			filename, err := ctx.FilenameFromDigest(archive)
+			if err != nil {
+				return nil, err
+			}
+
+			ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+		}
+	case common.DirectiveRunCommand:
+		ret = append(ret, config.Fragment{RunCommand: &config.RunCommandFragment{Command: string(directive)}})
+	case *StarBuildDefinition:
+		res, err := ctx.BuildChild(directive)
+		if err != nil {
+			return nil, err
+		}
+
+		digest := res.Digest()
+
+		filename, err := ctx.FilenameFromDigest(digest)
+		if err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+	case *ReadArchiveBuildDefinition:
+		res, err := ctx.BuildChild(directive)
+		if err != nil {
+			return nil, err
+		}
+
+		digest := res.Digest()
+
+		filename, err := ctx.FilenameFromDigest(digest)
+		if err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+	case *PlanDefinition:
+		res, err := ctx.BuildChild(directive)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := parseJsonFromFile(res, &directive); err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, directive.Fragments...)
+	default:
+		return nil, fmt.Errorf("BuildVmDefinition.Build: directive type %T unhandled", directive)
+	}
+
+	return ret, nil
 }
 
 type BuildVmDefinition struct {
@@ -109,57 +181,17 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 
 	// Launch child builds for each directive.
 	for _, directive := range def.Directives {
-		switch directive := directive.(type) {
-		case *FetchOciImageDefinition:
-			res, err := ctx.BuildChild(directive)
-			if err != nil {
-				return nil, err
+		frags, err := directiveToFragments(ctx, directive)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, frag := range frags {
+			if frag.RunCommand != nil {
+				builderCfg.Commands = append(builderCfg.Commands, frag.RunCommand.Command)
+			} else {
+				vmCfg.RootFsFragments = append(vmCfg.RootFsFragments, frag)
 			}
-
-			if err := parseJsonFromFile(res, &directive); err != nil {
-				return nil, err
-			}
-
-			for _, archive := range directive.LayerArchives {
-				filename, err := ctx.FilenameFromDigest(archive)
-				if err != nil {
-					return nil, err
-				}
-
-				vmCfg.RootFsFragments = append(vmCfg.RootFsFragments, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
-			}
-		case common.DirectiveRunCommand:
-			builderCfg.Commands = append(builderCfg.Commands, string(directive))
-		case *StarBuildDefinition:
-			res, err := ctx.BuildChild(directive)
-			if err != nil {
-				return nil, err
-			}
-
-			digest := res.Digest()
-
-			filename, err := ctx.FilenameFromDigest(digest)
-			if err != nil {
-				return nil, err
-			}
-
-			vmCfg.RootFsFragments = append(vmCfg.RootFsFragments, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
-		case *ReadArchiveBuildDefinition:
-			res, err := ctx.BuildChild(directive)
-			if err != nil {
-				return nil, err
-			}
-
-			digest := res.Digest()
-
-			filename, err := ctx.FilenameFromDigest(digest)
-			if err != nil {
-				return nil, err
-			}
-
-			vmCfg.RootFsFragments = append(vmCfg.RootFsFragments, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
-		default:
-			return nil, fmt.Errorf("BuildVmDefinition.Build: directive type %T unhandled", directive)
 		}
 	}
 

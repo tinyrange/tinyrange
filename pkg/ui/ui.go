@@ -276,7 +276,7 @@ func (ui *WebFrontend) handleBuilderMakePlan(w http.ResponseWriter, r *http.Requ
 
 	var directives []htm.Group
 
-	for _, directive := range plan.Directives {
+	for _, directive := range plan.Directives() {
 		directives = append(directives, htm.Group{
 			html.Code(html.Textf("%+v", directive)),
 		})

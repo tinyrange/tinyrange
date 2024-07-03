@@ -2,7 +2,9 @@ package database
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/record"
@@ -28,6 +30,8 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 
 	ctx := db.NewBuildContext(parser)
 
+	start := time.Now()
+
 	// Build all the package sources.
 	// This can happen in parallel.
 	for _, source := range parser.Sources {
@@ -43,6 +47,9 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 
 		records = append(records, sourceRecords...)
 	}
+
+	slog.Info("built all package sources", "took", time.Since(start))
+	start = time.Now()
 
 	// For each record in the list call the parser to parse the record into a package.
 	// This can also happen in parallel,
@@ -62,6 +69,8 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 	for _, pkg := range parser.AdditionalPackages {
 		parser.Packages[pkg.Name.Key()] = pkg
 	}
+
+	slog.Info("loaded all packages", "took", time.Since(start))
 
 	return nil
 }

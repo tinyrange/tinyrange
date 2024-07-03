@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -407,16 +408,18 @@ func (db *PackageDatabase) NewName(name string, version string, tags []string) (
 	}, nil
 }
 
-func (db *PackageDatabase) GetBuilder(name string) (*ContainerBuilder, error) {
+func (db *PackageDatabase) GetBuilder(name string) (common.ContainerBuilder, error) {
 	builder, ok := db.ContainerBuilders[name]
 	if !ok {
 		return nil, fmt.Errorf("builder %s not found", name)
 	}
 
 	if !builder.Loaded() {
+		start := time.Now()
 		if err := builder.Load(db); err != nil {
 			return nil, err
 		}
+		slog.Info("loaded", "builder", builder.DisplayName, "took", time.Since(start))
 	}
 
 	return builder, nil
@@ -525,12 +528,6 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 			builder, err := db.GetBuilder(name)
 			if err != nil {
 				return starlark.None, err
-			}
-
-			if !builder.Loaded() {
-				if err := builder.Load(db); err != nil {
-					return starlark.None, err
-				}
 			}
 
 			return builder, nil

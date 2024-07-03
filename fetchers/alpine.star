@@ -269,7 +269,7 @@ def build_alpine_directives(builder, plan):
         return [
             define.fetch_oci_image(
                 image = "library/alpine",
-                version = builder.metadata["version"],
+                tag = builder.metadata["version"],
             ),
         ] + plan.directives
 

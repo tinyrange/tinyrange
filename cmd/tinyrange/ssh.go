@@ -87,20 +87,22 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, pass
 	)
 
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 		defer cancel()
 
 		conn, err = ns.DialInternalContext(ctx, "tcp", address)
 		if err != nil {
-			slog.Warn("failed to connect", "err", err)
-			time.Sleep(100 * time.Millisecond)
+			if !errors.Is(err, context.DeadlineExceeded) {
+				slog.Warn("failed to connect", "err", err)
+			}
 			continue
 		}
 
 		c, chans, reqs, err = ssh.NewClientConn(conn, address, config)
 		if err != nil {
-			slog.Warn("failed to connect", "err", err)
-			time.Sleep(100 * time.Millisecond)
+			if !errors.Is(err, context.DeadlineExceeded) {
+				slog.Warn("failed to connect", "err", err)
+			}
 			continue
 		}
 
