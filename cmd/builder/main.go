@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -13,23 +12,12 @@ import (
 	"time"
 
 	"github.com/anmitsu/go-shlex"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 )
 
-// From: https://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go
-func exists(name string) (bool, error) {
-	_, err := os.Stat(name)
-	if err == nil {
-		return true, nil
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	return false, err
-}
-
 func execCommand(args []string) error {
-	if ok, _ := exists(args[0]); !ok {
+	if ok, _ := common.Exists(args[0]); !ok {
 		return fmt.Errorf("path %s does not exist", args[0])
 	}
 
@@ -104,7 +92,7 @@ func runScript(script BuilderScript) error {
 		start := time.Now()
 
 		for _, trigger := range script.Triggers {
-			if ok, _ := exists(trigger); !ok {
+			if ok, _ := common.Exists(trigger); !ok {
 				continue
 			}
 

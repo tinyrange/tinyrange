@@ -30,10 +30,8 @@ I've completed part 9 and part 10 and I'll edit and publish a separate video for
 # Getting Started
 
 ```sh
-mkdir -p local
-(cd local; wget https://github.com/tinyrange/linux_build/releases/download/linux_x86_6.6.7/vmlinux_x86_64)
 ./build.sh
-./build/tinyrange
+./build/pkg2 -script scripts/tinyrange.star
 ```
 
 # Rebuilding `pkg/filesystem/ext4/ext4_gen.go`

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -55,6 +56,7 @@ var (
 	script     = flag.String("script", "", "load a script rather than providing a interface for the package database")
 	httpAddr   = flag.String("http", "", "if specified run a web frontend listening on this address")
 	fileList   = make(fileListArray)
+	buildDir   = flag.String("builddir", "local/build", "specify the directory that will be used for build files")
 )
 
 func pkg2Main() error {
@@ -70,7 +72,11 @@ func pkg2Main() error {
 		defer pprof.StopCPUProfile()
 	}
 
-	db := database.New()
+	if err := common.Ensure(*buildDir, fs.ModePerm); err != nil {
+		return err
+	}
+
+	db := database.New(*buildDir)
 
 	db.RebuildUserDefinitions = *rebuild
 

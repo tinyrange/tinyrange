@@ -5,7 +5,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -310,18 +309,6 @@ var (
 	_ starlark.HasAttrs = &sshServer{}
 )
 
-// From: https://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go
-func exists(name string) (bool, error) {
-	_, err := os.Stat(name)
-	if err == nil {
-		return true, nil
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	return false, err
-}
-
 type mountOptions struct {
 	Readonly bool
 }
@@ -335,22 +322,6 @@ func mount(kind string, mountName string, mountPoint string, opts mountOptions) 
 	if err != nil {
 		return fmt.Errorf("failed mounting %s(%s) on %s: %v", mountName, kind, mountPoint, err)
 	}
-	return nil
-}
-
-func ensure(path string, mode os.FileMode) error {
-	exists, err := exists(path)
-	if err != nil {
-		return fmt.Errorf("failed to check for path: %v", err)
-	}
-
-	if !exists {
-		err := os.Mkdir(path, mode)
-		if err != nil {
-			return fmt.Errorf("failed to create directory: %v", err)
-		}
-	}
-
 	return nil
 }
 
@@ -414,7 +385,7 @@ func initMain() error {
 
 	var args starlark.Value = starlark.NewDict(0)
 
-	if ok, _ := exists("/init.json"); ok {
+	if ok, _ := common.Exists("/init.json"); ok {
 		contents, err := os.ReadFile("/init.json")
 		if err != nil {
 			return err
@@ -626,7 +597,7 @@ func initMain() error {
 		}
 
 		if ensurePath {
-			err := ensure(mountPoint, os.ModePerm)
+			err := common.Ensure(mountPoint, os.ModePerm)
 
 			if err != nil && !ignoreError {
 				return starlark.None, fmt.Errorf("failed to create mount point: %v", err)
@@ -657,7 +628,7 @@ func initMain() error {
 			return starlark.None, err
 		}
 
-		if err := ensure(path, os.ModePerm); err != nil {
+		if err := common.Ensure(path, os.ModePerm); err != nil {
 			return starlark.None, err
 		}
 

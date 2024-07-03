@@ -60,6 +60,8 @@ type PackageDatabase struct {
 
 	buildStatusMtx sync.Mutex
 	buildStatuses  map[common.BuildDefinition]*common.BuildStatus
+
+	buildDir string
 }
 
 // ShouldRebuildUserDefinitions implements common.PackageDatabase.
@@ -299,7 +301,7 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 
 		return f, nil
 	} else {
-		filename := filepath.Join("local", "build", hash+".bin")
+		filename := filepath.Join(db.buildDir, hash+".bin")
 
 		// Get a child context for the build.
 		child := ctx.ChildContext(def, status, filename+".tmp")
@@ -554,11 +556,12 @@ var (
 	_ common.PackageDatabase = &PackageDatabase{}
 )
 
-func New() *PackageDatabase {
+func New(buildDir string) *PackageDatabase {
 	return &PackageDatabase{
 		ContainerBuilders: make(map[string]*ContainerBuilder),
 		mirrors:           make(map[string][]string),
 		memoryCache:       make(map[string][]byte),
 		buildStatuses:     make(map[common.BuildDefinition]*common.BuildStatus),
+		buildDir:          buildDir,
 	}
 }

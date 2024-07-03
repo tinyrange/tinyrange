@@ -19,6 +19,8 @@ import (
 	"go.starlark.net/starlark"
 )
 
+var KERNEL_URL = "https://github.com/tinyrange/linux_build/releases/download/linux_x86_6.6.7/vmlinux_x86_64"
+
 func runTinyRange(exe string, configFilename string) (*exec.Cmd, error) {
 	cmd := exec.Command(exe, "-config", configFilename)
 
@@ -150,9 +152,19 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		return nil, err
 	}
 
+	kernel, err := ctx.BuildChild(NewFetchHttpBuildDefinition(KERNEL_URL, 0))
+	if err != nil {
+		return nil, err
+	}
+
+	kernelFilename, err := ctx.FilenameFromDigest(kernel.Digest())
+	if err != nil {
+		return nil, err
+	}
+
 	vmCfg.BaseDirectory = wd
 	vmCfg.HypervisorScript = filepath.Join("hv/qemu/qemu.star")
-	vmCfg.KernelFilename = filepath.Join("local/vmlinux_x86_64")
+	vmCfg.KernelFilename = kernelFilename
 	vmCfg.StorageSize = def.StorageSize
 
 	// Hard code the init file and script.
