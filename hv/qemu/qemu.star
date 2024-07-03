@@ -102,7 +102,7 @@ def main(ctx):
     # Set the bios to use qbios.
     args += [
         "-bios",
-        "/home/joshua/dev/projects/tinyrange2/hv/qemu/bios.bin",
+        "hv/qemu/bios.bin",
     ]
 
     return executable(
