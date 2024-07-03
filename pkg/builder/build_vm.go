@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinyrange/tinyrange/pkg/builder/config"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"go.starlark.net/starlark"
 )
 
@@ -131,6 +131,20 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		case common.DirectiveRunCommand:
 			builderCfg.Commands = append(builderCfg.Commands, string(directive))
 		case *StarBuildDefinition:
+			res, err := ctx.BuildChild(directive)
+			if err != nil {
+				return nil, err
+			}
+
+			digest := res.Digest()
+
+			filename, err := ctx.FilenameFromDigest(digest)
+			if err != nil {
+				return nil, err
+			}
+
+			vmCfg.RootFsFragments = append(vmCfg.RootFsFragments, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+		case *ReadArchiveBuildDefinition:
 			res, err := ctx.BuildChild(directive)
 			if err != nil {
 				return nil, err

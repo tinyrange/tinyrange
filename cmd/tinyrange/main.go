@@ -1,20 +1,25 @@
 package main
 
 import (
+	"context"
+	"crypto/rand"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	goFs "io/fs"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 	"github.com/tinyrange/tinyrange/pkg/archive"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
@@ -72,7 +77,7 @@ func (*vmBackend) Sync() error {
 	return nil
 }
 
-func runWithConfig(cfg config.TinyRangeConfig, debug bool) error {
+func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) error {
 	if cfg.StorageSize == 0 {
 		return fmt.Errorf("invalid config")
 	}
@@ -263,7 +268,8 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool) error {
 		mux := http.NewServeMux()
 
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("Hello, World\n"))
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", 4096*1024*1024))
+			io.CopyN(w, rand.Reader, 4096*1024*1024)
 		})
 
 		go func() {
@@ -314,6 +320,40 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool) error {
 		}()
 	}
 
+	// Create forwarder for SSH connection.
+	if forwardSsh {
+		sshListen, err := net.Listen("tcp", "localhost:2222")
+		if err != nil {
+			return err
+		}
+
+		go func() {
+			for {
+				conn, err := sshListen.Accept()
+				if err != nil {
+					slog.Error("failed to accept", "err", err)
+					return
+				}
+
+				go func() {
+					defer conn.Close()
+
+					clientConn, err := ns.DialInternalContext(context.Background(), "tcp", "10.42.0.2:2222")
+					if err != nil {
+						slog.Error("failed to dial vm ssh", "err", err)
+						return
+					}
+					defer clientConn.Close()
+
+					if err := common.Proxy(clientConn, conn, 4096); err != nil {
+						slog.Error("failed to proxy ssh connection", "err", err)
+						return
+					}
+				}()
+			}
+		}()
+	}
+
 	slog.Info("Starting virtual machine.")
 
 	go func() {
@@ -323,8 +363,12 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool) error {
 	}()
 	defer virtualMachine.Shutdown()
 
+	// return nil
+
 	// Start a loop so SSH can be restarted when requested by the user.
 	for {
+		time.Sleep(100 * time.Millisecond)
+
 		err = connectOverSsh(ns, "10.42.0.2:2222", "root", "insecurepassword")
 		if err == ErrRestart {
 			continue
@@ -337,7 +381,7 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool) error {
 }
 
 var (
-	storageSize = flag.Int("storage-size", 64, "the size of the VM storage in megabytes")
+	storageSize = flag.Int("storage-size", 512, "the size of the VM storage in megabytes")
 	image       = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
 	configFile  = flag.String("config", "", "passes a custom config. this overrides all other flags.")
 	debug       = flag.Bool("debug", false, "redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup")
@@ -370,7 +414,7 @@ func tinyRangeMain() error {
 			}
 		}
 
-		return runWithConfig(cfg, *debug)
+		return runWithConfig(cfg, *debug, false)
 	} else {
 		return runWithConfig(config.TinyRangeConfig{
 			HypervisorScript: "hv/qemu/qemu.star",
@@ -381,7 +425,7 @@ func tinyRangeMain() error {
 				{OCIImage: &config.OCIImageFragment{ImageName: *image}},
 			},
 			StorageSize: *storageSize,
-		}, *debug)
+		}, *debug, false)
 	}
 }
 

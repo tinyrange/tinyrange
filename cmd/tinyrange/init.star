@@ -33,6 +33,9 @@ def main():
     path_ensure("/etc")
     file_write("/etc/resolv.conf", "nameserver 10.42.0.1\n")
 
-    run_ssh_server(ssh_connect)
-
-    # run("/bin/login", "-f", "root")
+    if True:
+        run_ssh_server(ssh_connect)
+    elif "ssh_command" in args:
+        run(*args["ssh_command"])
+    else:
+        run("/bin/login", "-f", "root")

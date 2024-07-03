@@ -1,13 +1,12 @@
 load_fetcher("fetchers/alpine.star")
 
 def main(args):
-    builder = db.builder("alpine@3.19")
+    builder = db.builder("alpine@3.20")
 
     package_list = [
         query("busybox"),
         query("busybox-binsh"),
         query("alpine-baselayout"),
-        query("build-base"),
     ]
 
     # Run the virtual machine using TinyRange.
@@ -18,6 +17,7 @@ def main(args):
                 packages = package_list,
                 tags = ["level3"],
             ).directives + [directive.run_command("interactive")],
+            storage_size = 4096,
         ),
         always_rebuild = True,
     )

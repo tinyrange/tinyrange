@@ -214,7 +214,7 @@ func (f *StarDirectory) SetKey(k starlark.Value, v starlark.Value) error {
 	if file, ok := v.(File); ok {
 		return CreateChild(f, name, file)
 	} else if contents, ok := v.(starlark.String); ok {
-		file := NewMemoryFile()
+		file := NewMemoryFile(TypeRegular)
 
 		if err := file.Overwrite([]byte(contents)); err != nil {
 			return err

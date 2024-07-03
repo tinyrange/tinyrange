@@ -297,5 +297,5 @@ def make_alpine_builders(repos):
     return ret
 
 if __name__ == "__main__":
-    for builder in make_alpine_builders(make_alpine_repos(only_latest = False)):
+    for builder in make_alpine_builders(make_alpine_repos(only_latest = True)):
         db.add_container_builder(builder)

@@ -18,7 +18,7 @@ func ReadRecordsFromFile(f filesystem.File) ([]starlark.Value, error) {
 	defer fh.Close()
 
 	scan := bufio.NewScanner(fh)
-	scan.Buffer(make([]byte, 16*1024), 64*1024)
+	scan.Buffer(make([]byte, 16*1024), 256*1024)
 
 	var ret []starlark.Value
 

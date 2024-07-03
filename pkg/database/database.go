@@ -252,7 +252,7 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 		// If this is in memory then check the in-memory cache.
 		if contents, ok := db.memoryCache[hash]; ok {
 			// TODO(joshua): Support needs build for memory cached items.
-			f := filesystem.NewMemoryFile()
+			f := filesystem.NewMemoryFile(filesystem.TypeRegular)
 
 			if err := f.Overwrite(contents); err != nil {
 				return nil, err
@@ -285,7 +285,7 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 		db.memoryCache[hash] = buf.Bytes()
 
 		// Create and return a in-memory file.
-		f := filesystem.NewMemoryFile()
+		f := filesystem.NewMemoryFile(filesystem.TypeRegular)
 
 		if err := f.Overwrite(buf.Bytes()); err != nil {
 			return nil, err

@@ -16,15 +16,18 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/anmitsu/go-shlex"
 	"github.com/creack/pty"
 	"github.com/insomniacslk/dhcp/netboot"
 	"github.com/jsimonetti/rtnetlink/rtnl"
+	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/sys/unix"
+	"golang.org/x/term"
 )
 
 var starlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builtin).CallInternal
@@ -92,8 +95,10 @@ func (s *sshServer) AttrNames() []string {
 }
 
 func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, env []string, resizes <-chan []byte) error {
-	if _, err := starlark.Call(&starlark.Thread{}, s.callable, starlark.Tuple{s}, []starlark.Tuple{}); err != nil {
-		return err
+	if s.callable != nil {
+		if _, err := starlark.Call(&starlark.Thread{}, s.callable, starlark.Tuple{s}, []starlark.Tuple{}); err != nil {
+			return err
+		}
 	}
 
 	shell := exec.Command(s.command[0], s.command[1:]...)
@@ -114,20 +119,22 @@ func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, env []str
 	shellf, err := pty.Start(shell)
 	if err != nil {
 		close()
-		return fmt.Errorf("could not start pty (%s)", err)
+		return fmt.Errorf("could not start pty: %s", err)
 	}
 
 	//dequeue resizes
-	// go func() {
-	// 	for payload := range resizes {
-	// 		w, h := parseDims(payload)
-	// 		_ = SetWinsize(shellf.Fd(), w, h)
-	// 	}
-	// }()
+	go func() {
+		// Discard all resizes.
+		// TODO(joshua): Handle resizes.
+		for range resizes {
+			// w, h := parseDims(payload)
+			// _ = SetWinsize(shellf.Fd(), w, h)
+		}
+	}()
 
 	//pipe session to shell and visa-versa
 	go func() {
-		err := common.Proxy(connection, shellf)
+		err := common.Proxy(shellf, connection, 4096)
 		if err != nil {
 			slog.Warn("proxy failed", "error", err)
 		}
@@ -345,14 +352,62 @@ func ensure(path string, mode os.FileMode) error {
 	return nil
 }
 
+// FdReader is an io.Reader with an Fd function
+type FdReader interface {
+	io.Reader
+	Fd() uintptr
+}
+
+func getFd(reader io.Reader) (fd int, ok bool) {
+	fdthing, ok := reader.(FdReader)
+	if !ok {
+		return 0, false
+	}
+
+	fd = int(fdthing.Fd())
+	return fd, term.IsTerminal(fd)
+}
+
 var (
-	execShell = flag.Bool("shell", false, "start the shell instead of running /init.sh")
+	execShell    = flag.Bool("shell", false, "start the shell instead of running /init.sh")
+	runSshServer = flag.String("ssh", "", "run a ssh server")
+	downloadFile = flag.String("download", "", "download a file from the specified server")
 )
 
 func initMain() error {
 	flag.Parse()
 	if *execShell {
 		return shellMain()
+	}
+
+	if *runSshServer != "" {
+		cmd, err := shlex.Split(*runSshServer, true)
+		if err != nil {
+			return err
+		}
+
+		sshServer := &sshServer{command: cmd}
+
+		return sshServer.run("insecurepassword", nil)
+	}
+
+	if *downloadFile != "" {
+		resp, err := http.Get(*downloadFile)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		pb := progressbar.DefaultBytes(resp.ContentLength)
+
+		out, err := os.Create("out.bin")
+		if err != nil {
+			return err
+		}
+
+		if _, err := io.Copy(io.MultiWriter(pb, out), resp.Body); err != nil {
+			return err
+		}
 	}
 
 	var args starlark.Value = starlark.NewDict(0)

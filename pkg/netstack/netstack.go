@@ -281,10 +281,10 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 	nic.NetSend = send.LocalAddr().String()
 
 	go func() {
-		buf := make([]byte, 1500)
+		buf := make([]byte, 8192)
 
 		for {
-			n, err := send.Read(buf)
+			n, _, err := send.ReadFromUDP(buf)
 			if err != nil {
 				slog.Error("failed to read send socket", "err", err)
 				return
@@ -423,7 +423,7 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 		}
 		defer outbound.Close()
 
-		if err := common.Proxy(outbound, conn); err != nil {
+		if err := common.Proxy(outbound, conn, 1400); err != nil {
 			return
 		}
 	}()

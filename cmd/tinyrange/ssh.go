@@ -154,6 +154,7 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, pass
 				slog.Warn("failed to wait", "error", err)
 			}
 		}
+
 		close <- closeExit
 	}()
 

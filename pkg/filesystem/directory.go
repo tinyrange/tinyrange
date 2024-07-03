@@ -229,7 +229,7 @@ var (
 )
 
 func NewMemoryDirectory() MutableDirectory {
-	f := NewMemoryFile().(*memoryFile)
+	f := NewMemoryFile(TypeDirectory).(*memoryFile)
 	f.mode = fs.ModeDir | fs.FileMode(0755)
 	return &memoryDirectory{
 		memoryFile: f,

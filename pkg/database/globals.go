@@ -548,7 +548,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 			return starlark.None, err
 		}
 
-		f := filesystem.NewMemoryFile()
+		f := filesystem.NewMemoryFile(filesystem.TypeRegular)
 
 		return filesystem.NewStarFile(f, ""), nil
 	})

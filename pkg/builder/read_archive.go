@@ -33,39 +33,58 @@ func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.F
 
 	// slog.Info("info", "name", name, "mode", info.Mode(), "isDir", info.Mode().IsDir(), "size", info.Size())
 
-	// TODO(joshua): Check for symlinks.
-	var linkname = ""
+	var cacheEnt *filesystem.CacheEntry
 
-	if info.Mode().Type() == fs.ModeSymlink {
-		linkname, err = filesystem.GetLinkName(ent)
-		if err != nil {
-			return
+	if cEnt, ok := ent.(*filesystem.CacheEntry); ok {
+		cacheEnt = &filesystem.CacheEntry{
+			COffset:   d.off + 1024,
+			CTypeflag: cEnt.CTypeflag,
+			CName:     name,
+			CLinkname: cEnt.CLinkname,
+			CSize:     int64(info.Size()),
+			CMode:     int64(info.Mode()),
+			CUid:      cEnt.CUid,
+			CGid:      cEnt.CGid,
+			CModTime:  info.ModTime().UnixMicro(),
+			CDevmajor: 0,
+			CDevminor: 0,
 		}
-		typ = filesystem.TypeSymlink
-	} else if info.Mode().IsDir() {
-		typ = filesystem.TypeDirectory
 	} else {
-		typ = filesystem.TypeRegular
+		var linkname = ""
+
+		if info.Mode().Type() == fs.ModeSymlink {
+			linkname, err = filesystem.GetLinkName(ent)
+			if err != nil {
+				return
+			}
+			typ = filesystem.TypeSymlink
+		} else if info.Mode().IsDir() {
+			typ = filesystem.TypeDirectory
+		} else {
+			typ = filesystem.TypeRegular
+		}
+
+		uid, gid, err := filesystem.GetUidAndGid(ent)
+		if err != nil {
+			return -1, err
+		}
+
+		cacheEnt = &filesystem.CacheEntry{
+			COffset:   d.off + 1024,
+			CTypeflag: typ,
+			CName:     name,
+			CLinkname: linkname,
+			CSize:     int64(info.Size()),
+			CMode:     int64(info.Mode()),
+			CUid:      uid,
+			CGid:      gid,
+			CModTime:  info.ModTime().UnixMicro(),
+			CDevmajor: 0,
+			CDevminor: 0,
+		}
 	}
 
-	uid, gid, err := filesystem.GetUidAndGid(ent)
-	if err != nil {
-		return
-	}
-
-	cacheEnt := &filesystem.CacheEntry{
-		COffset:   d.off + 1024,
-		CTypeflag: typ,
-		CName:     name,
-		CLinkname: linkname,
-		CSize:     int64(info.Size()),
-		CMode:     int64(info.Mode()),
-		CUid:      uid,
-		CGid:      gid,
-		CModTime:  info.ModTime().UnixMicro(),
-		CDevmajor: 0,
-		CDevminor: 0,
-	}
+	// slog.Info("archive", "ent", cacheEnt)
 
 	bytes, err := json.Marshal(&cacheEnt)
 	if err != nil {
@@ -92,6 +111,12 @@ func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.F
 }
 
 func (d *directoryToArchiveBuildResult) writeFileTo(w io.Writer, ent filesystem.File, name string) (n int64, err error) {
+	if cEnt, ok := ent.(*filesystem.CacheEntry); ok {
+		if cEnt.CTypeflag != filesystem.TypeRegular {
+			return d.writeEntry(w, ent, name)
+		}
+	}
+
 	n, err = d.writeEntry(w, ent, name)
 	if err != nil {
 		return

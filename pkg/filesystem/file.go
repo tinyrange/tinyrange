@@ -165,6 +165,9 @@ func (e *CacheEntry) Sys() any {
 
 // Open implements Entry.
 func (e *CacheEntry) Open() (FileHandle, error) {
+	if e.CTypeflag != TypeRegular {
+		return nil, fmt.Errorf("file is not a regular file: %s", e.CTypeflag.String())
+	}
 	return NewNopCloserFileHandle(io.NewSectionReader(e.underlyingFile, e.COffset, e.CSize)), nil
 }
 
@@ -216,6 +219,7 @@ func NewLocalFile(filename string) File {
 }
 
 type memoryFile struct {
+	kind     FileType
 	mTime    time.Time
 	mode     fs.FileMode
 	uid      int
@@ -301,7 +305,7 @@ var (
 	_ MutableFile = &memoryFile{}
 )
 
-func NewMemoryFile() MutableFile {
+func NewMemoryFile(kind FileType) MutableFile {
 	return &memoryFile{
 		mode:  fs.FileMode(0755),
 		mTime: time.Now(),

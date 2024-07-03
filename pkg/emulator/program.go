@@ -70,5 +70,5 @@ var (
 )
 
 func NewStarProgram(name string, entry starlark.Callable) (starlark.Value, error) {
-	return &starProgram{name: name, callable: entry, File: filesystem.NewMemoryFile()}, nil
+	return &starProgram{name: name, callable: entry, File: filesystem.NewMemoryFile(filesystem.TypeRegular)}, nil
 }
