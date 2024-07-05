@@ -9,15 +9,56 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
 type PlanDefinition struct {
-	builder string
-	search  []common.PackageQuery
-	tagList common.TagList
+	Builder string
+	Search  []common.PackageQuery
+	TagList common.TagList
 
 	Fragments []config.Fragment
+}
+
+// Attr implements starlark.HasAttrs.
+func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
+	if name == "filesystem" {
+		return starlark.NewBuiltin("PlanDefinition.filesystem", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			dir := filesystem.NewMemoryDirectory()
+
+			for _, frag := range def.Fragments {
+				if frag.Archive != nil {
+					ark, err := filesystem.ReadArchiveFromFile(
+						filesystem.NewLocalFile(frag.Archive.HostFilename),
+					)
+					if err != nil {
+						return starlark.None, err
+					}
+
+					if err := filesystem.ExtractArchive(ark, dir); err != nil {
+						return starlark.None, err
+					}
+				} else {
+					return starlark.None, fmt.Errorf("unimplemented fragment type: %+v", frag)
+				}
+			}
+
+			return filesystem.NewStarDirectory(dir, ""), nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (def *PlanDefinition) AttrNames() []string {
+	return []string{"filesystem"}
 }
 
 // WriteTo implements common.BuildResult.
@@ -33,12 +74,12 @@ func (def *PlanDefinition) WriteTo(w io.Writer) (n int64, err error) {
 
 // Build implements common.BuildDefinition.
 func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	builder, err := ctx.Database().GetBuilder(def.builder)
+	builder, err := ctx.Database().GetBuilder(def.Builder)
 	if err != nil {
 		return nil, err
 	}
 
-	plan, err := builder.Plan(def.search, def.tagList)
+	plan, err := builder.Plan(def.Search, def.TagList)
 	if err != nil {
 		return nil, err
 	}
@@ -68,9 +109,9 @@ func (def *PlanDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Ti
 func (def *PlanDefinition) Tag() string {
 	return strings.Join([]string{
 		"PlanDefinition",
-		def.builder,
-		fmt.Sprintf("%+v", def.search),
-		def.tagList.String(),
+		def.Builder,
+		fmt.Sprintf("%+v", def.Search),
+		def.TagList.String(),
 	}, "_")
 }
 
@@ -84,14 +125,15 @@ func (*PlanDefinition) Freeze()              {}
 
 var (
 	_ starlark.Value         = &PlanDefinition{}
+	_ starlark.HasAttrs      = &PlanDefinition{}
 	_ common.BuildDefinition = &PlanDefinition{}
 	_ common.BuildResult     = &PlanDefinition{}
 )
 
 func NewPlanDefinition(builder string, search []common.PackageQuery, tagList common.TagList) *PlanDefinition {
 	return &PlanDefinition{
-		builder: builder,
-		search:  search,
-		tagList: tagList,
+		Builder: builder,
+		Search:  search,
+		TagList: tagList,
 	}
 }

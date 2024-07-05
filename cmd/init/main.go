@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -21,6 +22,7 @@ import (
 	"github.com/jsimonetti/rtnetlink/rtnl"
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"go.starlark.net/lib/json"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -660,6 +662,30 @@ func initMain() error {
 		return starlark.None, nil
 	})
 
+	globals["file_read"] = starlark.NewBuiltin("file_read", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			path string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"path", &path,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+
+		return starlark.String(contents), nil
+	})
+
 	globals["file_write"] = starlark.NewBuiltin("file_write", func(
 		thread *starlark.Thread,
 		fn *starlark.Builtin,
@@ -679,6 +705,98 @@ func initMain() error {
 		}
 
 		if err := os.WriteFile(path, []byte(contents), os.ModePerm); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
+	globals["insmod"] = starlark.NewBuiltin("insmod", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			contents string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"contents", &contents,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := unix.InitModule([]byte(contents), ""); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
+	globals["chroot"] = starlark.NewBuiltin("chroot", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			filename string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"filename", &filename,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := unix.Chroot(filename); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
+	globals["chdir"] = starlark.NewBuiltin("chdir", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			filename string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"filename", &filename,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := unix.Chdir(filename); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
+	globals["exec"] = starlark.NewBuiltin("exec", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			filename string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"filename", &filename,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := unix.Exec(filename, []string{filename}, os.Environ()); err != nil {
 			return starlark.None, err
 		}
 
@@ -710,6 +828,37 @@ func initMain() error {
 
 		return starlark.None, nil
 	})
+
+	globals["json"] = json.Module
+
+	var uname unix.Utsname
+
+	if err := unix.Uname(&uname); err != nil {
+		return err
+	}
+
+	unameDict := starlark.NewDict(8)
+
+	unameDict.SetKey(starlark.String("domainname"), starlark.String(
+		bytes.Trim(uname.Domainname[:], "\x00"),
+	))
+	unameDict.SetKey(starlark.String("machine"), starlark.String(
+		bytes.Trim(uname.Machine[:], "\x00"),
+	))
+	unameDict.SetKey(starlark.String("nodename"), starlark.String(
+		bytes.Trim(uname.Nodename[:], "\x00"),
+	))
+	unameDict.SetKey(starlark.String("release"), starlark.String(
+		bytes.Trim(uname.Release[:], "\x00"),
+	))
+	unameDict.SetKey(starlark.String("sysname"), starlark.String(
+		bytes.Trim(uname.Sysname[:], "\x00"),
+	))
+	unameDict.SetKey(starlark.String("version"), starlark.String(
+		bytes.Trim(uname.Version[:], "\x00"),
+	))
+
+	globals["uname"] = unameDict
 
 	thread := &starlark.Thread{Name: "init"}
 

@@ -163,6 +163,16 @@ def parse_alpine_packages(ctx, ent):
                 ],
                 dependencies = deps,
             ),
+            installer(
+                tags = ["download"],
+                directives = [
+                    define.build(
+                        apk_download,
+                        ent["P"],
+                        download_archive,
+                    ),
+                ],
+            ),
         ],
         aliases = [parse_alpine_alias(provides) for provides in ent["p"].split(" ")] if "p" in ent else [],
         raw = ent,
@@ -297,5 +307,5 @@ def make_alpine_builders(repos):
     return ret
 
 if __name__ == "__main__":
-    for builder in make_alpine_builders(make_alpine_repos(only_latest = True)):
+    for builder in make_alpine_builders(make_alpine_repos(only_latest = False)):
         db.add_container_builder(builder)

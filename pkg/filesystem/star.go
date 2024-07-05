@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"compress/gzip"
 	"fmt"
 	"io"
 	"io/fs"
@@ -48,6 +49,45 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			}
 
 			return NewStarArchive(ark, f.Name), nil
+		}), nil
+	} else if name == "read_compressed" {
+		return starlark.NewBuiltin("File.read_compressed", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				kind string
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"kind", &kind,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			fh, err := f.Open()
+			if err != nil {
+				return starlark.None, err
+			}
+			defer fh.Close()
+
+			if kind == ".gz" {
+				r, err := gzip.NewReader(fh)
+				if err != nil {
+					return starlark.None, err
+				}
+
+				contents, err := io.ReadAll(r)
+				if err != nil {
+					return starlark.None, err
+				}
+
+				return starlark.String(contents), nil
+			} else {
+				return starlark.None, fmt.Errorf("read_compressed does not support kind: %s", kind)
+			}
 		}), nil
 	} else if name == "name" {
 		return starlark.String(f.Name), nil

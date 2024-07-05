@@ -33,6 +33,14 @@ func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinitio
 		}
 
 		return filesystem.NewStarArchive(ark, argDef.Tag()), nil
+	case *PlanDefinition:
+		var plan *PlanDefinition
+
+		if err := parseJsonFromFile(result, &plan); err != nil {
+			return nil, err
+		}
+
+		return plan, nil
 	case *FetchHttpBuildDefinition:
 		return filesystem.NewStarFile(result, argDef.Tag()), nil
 	case *StarBuildDefinition:
@@ -143,6 +151,13 @@ func (def *StarBuildDefinition) Build(ctx common.BuildContext) (common.BuildResu
 
 	if result, ok := res.(common.BuildResult); ok {
 		return result, nil
+	} else if f, ok := res.(filesystem.File); ok {
+		fh, err := f.Open()
+		if err != nil {
+			return nil, err
+		}
+
+		return &FileDefinition{f: f, fh: fh}, nil
 	} else {
 		return nil, fmt.Errorf("could not convert %s to BuildResult", res.Type())
 	}
