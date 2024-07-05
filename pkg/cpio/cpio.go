@@ -1,16 +1,16 @@
 package cpio
 
 import (
-	"archive/tar"
 	"cmp"
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"path"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 )
 
 const trailerName = "TRAILER!!!"
@@ -365,26 +365,35 @@ func (fs *Filesystem) openPath(p string) (*directory, string, error) {
 	panic("unreachable")
 }
 
-func (fs *Filesystem) AddFromTar(hdr *tar.Header, contents []byte) error {
-	cleanedName := path.Clean(hdr.Name)
+func (fs *Filesystem) AddFromEntry(hdr filesystem.Entry) error {
+	cleanedName := path.Clean(hdr.Name())
 
 	var ent entry
 
-	info := hdr.FileInfo()
-
-	switch hdr.Typeflag {
-	case tar.TypeReg:
+	switch hdr.Typeflag() {
+	case filesystem.TypeRegular:
 		parent, name, err := fs.openPath(cleanedName)
 		if err != nil {
 			return err
 		}
 
 		f := parent.create(name)
+
+		fh, err := hdr.Open()
+		if err != nil {
+			return err
+		}
+		defer fh.Close()
+
+		contents, err := io.ReadAll(fh)
+		if err != nil {
+			return err
+		}
 
 		f.content = contents
 
 		ent = f
-	case tar.TypeSymlink:
+	case filesystem.TypeSymlink:
 		parent, name, err := fs.openPath(cleanedName)
 		if err != nil {
 			return err
@@ -392,10 +401,10 @@ func (fs *Filesystem) AddFromTar(hdr *tar.Header, contents []byte) error {
 
 		f := parent.create(name)
 
-		f.makeSymlink(hdr.Linkname)
+		f.makeSymlink(hdr.Linkname())
 
 		ent = f
-	case tar.TypeDir:
+	case filesystem.TypeDirectory:
 		parent, name, err := fs.openPath(cleanedName)
 		if err != nil {
 			return err
@@ -407,27 +416,21 @@ func (fs *Filesystem) AddFromTar(hdr *tar.Header, contents []byte) error {
 			ent = fs.root
 		}
 	default:
-		return fmt.Errorf("Filesystem.AddFromTar: Typeflag not implemented: %d", hdr.Typeflag)
+		return fmt.Errorf("Filesystem.AddFromEntry: Typeflag not implemented: %s", hdr.Typeflag())
 	}
 
-	ent.Chmod(info.Mode())
-	ent.Chown(hdr.Uid, hdr.Gid)
-	ent.Chtimes(hdr.ModTime)
+	ent.Chmod(hdr.Mode())
+	ent.Chown(hdr.Uid(), hdr.Gid())
+	ent.Chtimes(hdr.ModTime())
 
 	return nil
 }
 
-func (fs *Filesystem) WriteCpio(filename string) error {
-	out, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
+func (fs *Filesystem) WriteTo(out io.Writer) (n int64, err error) {
 	writer := createCpioWriter(out)
 
 	if err := fs.root.Write(fs.root, writer, ""); err != nil {
-		return err
+		return 0, err
 	}
 
 	trailer := &file{
@@ -439,14 +442,14 @@ func (fs *Filesystem) WriteCpio(filename string) error {
 	}
 
 	if err := trailer.Write(trailer, writer, ""); err != nil {
-		return err
+		return 0, err
 	}
 
 	if _, err := out.Write(make([]byte, 4096)); err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
+	return 0, nil
 }
 
 func New() *Filesystem {

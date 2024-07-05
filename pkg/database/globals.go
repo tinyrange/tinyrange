@@ -3,6 +3,8 @@ package database
 import (
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/builder"
@@ -21,6 +23,8 @@ func asDirective(val starlark.Value) (common.Directive, error) {
 		return starDir.Directive, nil
 	} else if directive, ok := val.(common.Directive); ok {
 		return directive, nil
+	} else if file, ok := val.(filesystem.File); ok {
+		return builder.NewFileDefinition(file), nil
 	} else {
 		return nil, fmt.Errorf("could not convert %s to Directive", val.Type())
 	}
@@ -231,14 +235,64 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				var (
 					directiveList starlark.Iterable
+					initramfs     starlark.Value
 					output        string
 					storageSize   int
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-					"directives", &directiveList,
+					"directives?", &directiveList,
+					"initramfs?", &initramfs,
 					"output?", &output,
 					"storage_size?", &storageSize,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				var directives []common.Directive
+
+				if directiveList != nil {
+					directiveIter := directiveList.Iterate()
+					defer directiveIter.Done()
+
+					for directiveIter.Next(&val) {
+						dir, err := asDirective(val)
+						if err != nil {
+							return nil, err
+						}
+
+						directives = append(directives, dir)
+					}
+				}
+
+				var initramfsDef common.BuildDefinition
+
+				if initramfs != nil {
+					if f, ok := initramfs.(common.BuildDefinition); ok {
+						initramfsDef = f
+					} else {
+						return starlark.None, fmt.Errorf("could not convert %s to File", initramfs.Type())
+					}
+				}
+
+				return builder.NewBuildVmDefinition(directives, initramfsDef, output, storageSize), nil
+			}),
+			"build_fs": starlark.NewBuiltin("define.build_fs", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var val starlark.Value
+
+				var (
+					directiveList starlark.Iterable
+					kind          string
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"directives", &directiveList,
+					"kind", &kind,
 				); err != nil {
 					return starlark.None, err
 				}
@@ -257,7 +311,29 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					directives = append(directives, dir)
 				}
 
-				return builder.NewBuildVmDefinition(directives, output, storageSize), nil
+				return builder.NewBuildFsDefinition(directives, kind), nil
+			}),
+			"archive": starlark.NewBuiltin("define.archive", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					dir starlark.Value
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"dir", &dir,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				if dir, ok := dir.(filesystem.Directory); ok {
+					return builder.NewCreateArchiveDefinition(dir), nil
+				} else {
+					return starlark.None, fmt.Errorf("could not convert %s to Directory")
+				}
 			}),
 			"plan": starlark.NewBuiltin("define.plan", func(
 				thread *starlark.Thread,
@@ -591,12 +667,14 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
 		var (
-			contents   string
+			contents   starlark.Value
+			name       string
 			executable bool
 		)
 
 		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 			"contents", &contents,
+			"name?", &name,
 			"executable?", &executable,
 		); err != nil {
 			return starlark.None, err
@@ -604,7 +682,32 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 		f := filesystem.NewMemoryFile(filesystem.TypeRegular)
 
-		return filesystem.NewStarFile(f, ""), nil
+		if str, ok := contents.(starlark.String); ok {
+			f.Overwrite([]byte(str))
+		} else if file, ok := contents.(filesystem.File); ok {
+			fh, err := file.Open()
+			if err != nil {
+				return starlark.None, err
+			}
+			defer fh.Close()
+
+			contents, err := io.ReadAll(fh)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			f.Overwrite(contents)
+		} else {
+			return starlark.None, fmt.Errorf("could not convert %s to string", contents.Type())
+		}
+
+		if executable {
+			if err := f.Chmod(fs.FileMode(0755)); err != nil {
+				return starlark.None, err
+			}
+		}
+
+		return filesystem.NewStarFile(f, name), nil
 	})
 
 	ret["emulator"] = starlark.NewBuiltin("emulator", func(

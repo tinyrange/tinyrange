@@ -57,6 +57,10 @@ type TinyRangeConfig struct {
 }
 
 func (cfg TinyRangeConfig) Resolve(filename string) string {
+	if filename == "" {
+		return ""
+	}
+
 	if strings.HasPrefix(filename, "/") {
 		return filename
 	}

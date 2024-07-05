@@ -32,6 +32,10 @@ def main(ctx):
             "-device",
             "virtconsole,chardev=charconsole0,id=console0",
         ]
+        kernel_cmdline += [
+            "earlyprintk=hvc0",
+            "console=hvc0",
+        ]
     else:
         args += [
             "-serial",
@@ -63,12 +67,21 @@ def main(ctx):
         "file={},if=virtio,readonly=off,format=raw".format(ctx.disk_image),
     ]
 
-    # Set the root device and the init executable. Make the root device read/write.
-    kernel_cmdline += [
-        "init=/init",
-        "root=/dev/vda",
-        "rw",
-    ]
+    # Set the init executable.
+    kernel_cmdline.append("init=/init")
+
+    if ctx.initrd != "":
+        # Add the initramfs. It's responseable for loading the filesystem.
+        args += [
+            "-initrd",
+            ctx.initrd,
+        ]
+    else:
+        # Set the root device. Make the root device read/write.
+        kernel_cmdline += [
+            "root=/dev/vda",
+            "rw",
+        ]
 
     # Trust the random number generator on the host CPU.
     kernel_cmdline.append("random.trust_cpu=on")

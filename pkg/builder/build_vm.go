@@ -89,6 +89,43 @@ func directiveToFragments(ctx common.BuildContext, directive common.Directive) (
 		}
 
 		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+	case *CreateArchiveDefinition:
+		res, err := ctx.BuildChild(directive)
+		if err != nil {
+			return nil, err
+		}
+
+		digest := res.Digest()
+
+		filename, err := ctx.FilenameFromDigest(digest)
+		if err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+	case *FileDefinition:
+		res, err := ctx.BuildChild(directive)
+		if err != nil {
+			return nil, err
+		}
+
+		digest := res.Digest()
+
+		filename, err := ctx.FilenameFromDigest(digest)
+		if err != nil {
+			return nil, err
+		}
+
+		stat, err := directive.f.Stat()
+		if err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, config.Fragment{LocalFile: &config.LocalFileFragment{
+			HostFilename:  filename,
+			GuestFilename: stat.Name(),
+			Executable:    stat.Mode().Perm()&0111 != 0,
+		}})
 	case *PlanDefinition:
 		res, err := ctx.BuildChild(directive)
 		if err != nil {
@@ -110,6 +147,7 @@ func directiveToFragments(ctx common.BuildContext, directive common.Directive) (
 type BuildVmDefinition struct {
 	// TOOD(joshua): Allow customizing the kernel, hypervisor, and startup script.
 	Directives  []common.Directive
+	InitRamFs   common.BuildDefinition
 	OutputFile  string
 	StorageSize int
 
@@ -167,25 +205,45 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	vmCfg.KernelFilename = kernelFilename
 	vmCfg.StorageSize = def.StorageSize
 
-	// Hard code the init file and script.
+	if def.InitRamFs != nil {
+		// bypass the default init logic.
+		// The user code is expected to call /builder some how.
+
+		initRamFs, err := ctx.BuildChild(def.InitRamFs)
+		if err != nil {
+			return nil, err
+		}
+
+		initRamFsFilename, err := ctx.FilenameFromDigest(initRamFs.Digest())
+		if err != nil {
+			return nil, err
+		}
+
+		vmCfg.InitFilesystemFilename = initRamFsFilename
+	} else {
+		// Hard code the init file and script.
+		vmCfg.RootFsFragments = append(vmCfg.RootFsFragments,
+			config.Fragment{LocalFile: &config.LocalFileFragment{
+				HostFilename:  filepath.Join("build/init_x86_64"),
+				GuestFilename: "/init",
+				Executable:    true,
+			}},
+			config.Fragment{LocalFile: &config.LocalFileFragment{
+				HostFilename:  filepath.Join("cmd/tinyrange/init.star"),
+				GuestFilename: "/init.star",
+			}},
+			// Use init.json to set /builder as the SSH command.
+			config.Fragment{FileContents: &config.FileContentsFragment{
+				Contents:      []byte("{\"ssh_command\": [\"/builder\"]}"),
+				GuestFilename: "/init.json",
+			}},
+		)
+	}
+
 	vmCfg.RootFsFragments = append(vmCfg.RootFsFragments,
-		config.Fragment{LocalFile: &config.LocalFileFragment{
-			HostFilename:  filepath.Join("build/init_x86_64"),
-			GuestFilename: "/init",
-			Executable:    true,
-		}},
-		config.Fragment{LocalFile: &config.LocalFileFragment{
-			HostFilename:  filepath.Join("cmd/tinyrange/init.star"),
-			GuestFilename: "/init.star",
-		}},
-		// Use init.json to set /builder as the SSH command.
-		config.Fragment{FileContents: &config.FileContentsFragment{
-			Contents:      []byte("{\"ssh_command\": [\"/builder\"]}"),
-			GuestFilename: "/init.json",
-		}},
 		// Send the local builder executable.
 		config.Fragment{LocalFile: &config.LocalFileFragment{
-			HostFilename:  "build/builder",
+			HostFilename:  "build/builder_x86_64",
 			GuestFilename: "/builder",
 			Executable:    true,
 		}},
@@ -289,6 +347,10 @@ func (def *BuildVmDefinition) Tag() string {
 
 	out = append(out, def.OutputFile)
 
+	if def.InitRamFs != nil {
+		out = append(out, def.InitRamFs.Tag())
+	}
+
 	return strings.Join(out, "_")
 }
 
@@ -306,9 +368,14 @@ var (
 	_ common.BuildResult     = &BuildVmDefinition{}
 )
 
-func NewBuildVmDefinition(dir []common.Directive, output string, storageSize int) *BuildVmDefinition {
+func NewBuildVmDefinition(dir []common.Directive, initramfs common.BuildDefinition, output string, storageSize int) *BuildVmDefinition {
 	if storageSize == 0 {
 		storageSize = 1024
 	}
-	return &BuildVmDefinition{Directives: dir, OutputFile: output, StorageSize: storageSize}
+	return &BuildVmDefinition{
+		Directives:  dir,
+		InitRamFs:   initramfs,
+		OutputFile:  output,
+		StorageSize: storageSize,
+	}
 }

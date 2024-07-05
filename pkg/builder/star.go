@@ -26,6 +26,13 @@ func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinitio
 		}
 
 		return filesystem.NewStarArchive(ark, argDef.Tag()), nil
+	case *CreateArchiveDefinition:
+		ark, err := filesystem.ReadArchiveFromFile(result)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		return filesystem.NewStarArchive(ark, argDef.Tag()), nil
 	case *FetchHttpBuildDefinition:
 		return filesystem.NewStarFile(result, argDef.Tag()), nil
 	case *StarBuildDefinition:
@@ -33,6 +40,8 @@ func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinitio
 	case *DecompressFileBuildDefinition:
 		return filesystem.NewStarFile(result, argDef.Tag()), nil
 	case *BuildVmDefinition:
+		return filesystem.NewStarFile(result, argDef.Tag()), nil
+	case *BuildFsDefinition:
 		return filesystem.NewStarFile(result, argDef.Tag()), nil
 	case *FetchOciImageDefinition:
 		if err := parseJsonFromFile(result, &arg); err != nil {
