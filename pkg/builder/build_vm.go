@@ -137,6 +137,29 @@ func directiveToFragments(ctx common.BuildContext, directive common.Directive) (
 		}
 
 		ret = append(ret, directive.Fragments...)
+	case common.DirectiveArchive:
+		res, err := ctx.BuildChild(directive.Definition)
+		if err != nil {
+			return nil, err
+		}
+
+		digest := res.Digest()
+
+		filename, err := ctx.FilenameFromDigest(digest)
+		if err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{
+			HostFilename: filename,
+			Target:       directive.Target,
+		}})
+	case common.DirectiveAddFile:
+		ret = append(ret, config.Fragment{FileContents: &config.FileContentsFragment{
+			GuestFilename: directive.Filename,
+			Contents:      directive.Contents,
+			Executable:    directive.Executable,
+		}})
 	default:
 		return nil, fmt.Errorf("BuildVmDefinition.Build: directive type %T unhandled", directive)
 	}
@@ -147,20 +170,27 @@ func directiveToFragments(ctx common.BuildContext, directive common.Directive) (
 type BuildVmDefinition struct {
 	// TOOD(joshua): Allow customizing the kernel, hypervisor, and startup script.
 	Directives  []common.Directive
+	Kernel      common.BuildDefinition
 	InitRamFs   common.BuildDefinition
 	OutputFile  string
 	StorageSize int
+	Interaction string
 
-	mux    *http.ServeMux
-	server *http.Server
-	cmd    *exec.Cmd
-	out    io.WriteCloser
+	mux       *http.ServeMux
+	server    *http.Server
+	cmd       *exec.Cmd
+	out       io.WriteCloser
+	gotOutput bool
 }
 
 // WriteTo implements common.BuildResult.
 func (def *BuildVmDefinition) WriteTo(w io.Writer) (n int64, err error) {
 	if err := def.cmd.Wait(); err != nil {
 		return 0, err
+	}
+
+	if !def.gotOutput && def.OutputFile != "" {
+		return 0, fmt.Errorf("VM did not write any output")
 	}
 
 	def.server.Shutdown(context.Background())
@@ -190,7 +220,12 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		return nil, err
 	}
 
-	kernel, err := ctx.BuildChild(NewFetchHttpBuildDefinition(KERNEL_URL, 0))
+	kernelDef := def.Kernel
+	if kernelDef == nil {
+		kernelDef = NewFetchHttpBuildDefinition(KERNEL_URL, 0)
+	}
+
+	kernel, err := ctx.BuildChild(kernelDef)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +238,10 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	vmCfg.BaseDirectory = wd
 	vmCfg.HypervisorScript = filepath.Join("hv/qemu/qemu.star")
 	vmCfg.KernelFilename = kernelFilename
+	vmCfg.CPUCores = 1
+	vmCfg.MemoryMB = 1024
 	vmCfg.StorageSize = def.StorageSize
+	vmCfg.Interaction = def.Interaction
 
 	if def.InitRamFs != nil {
 		// bypass the default init logic.
@@ -290,6 +328,8 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	def.out = out
 
 	def.mux.HandleFunc("/upload_output", func(w http.ResponseWriter, r *http.Request) {
+		def.gotOutput = true
+
 		_, err := io.Copy(def.out, r.Body)
 		if err != nil {
 			slog.Error("error writing output from VM", "err", err)
@@ -346,6 +386,7 @@ func (def *BuildVmDefinition) Tag() string {
 	}
 
 	out = append(out, def.OutputFile)
+	out = append(out, def.Interaction)
 
 	if def.InitRamFs != nil {
 		out = append(out, def.InitRamFs.Tag())
@@ -368,14 +409,23 @@ var (
 	_ common.BuildResult     = &BuildVmDefinition{}
 )
 
-func NewBuildVmDefinition(dir []common.Directive, initramfs common.BuildDefinition, output string, storageSize int) *BuildVmDefinition {
+func NewBuildVmDefinition(
+	dir []common.Directive,
+	kernel common.BuildDefinition,
+	initramfs common.BuildDefinition,
+	output string,
+	storageSize int,
+	interaction string,
+) *BuildVmDefinition {
 	if storageSize == 0 {
 		storageSize = 1024
 	}
 	return &BuildVmDefinition{
 		Directives:  dir,
+		Kernel:      kernel,
 		InitRamFs:   initramfs,
 		OutputFile:  output,
 		StorageSize: storageSize,
+		Interaction: interaction,
 	}
 }

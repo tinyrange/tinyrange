@@ -235,16 +235,20 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				var (
 					directiveList starlark.Iterable
+					kernel        starlark.Value
 					initramfs     starlark.Value
 					output        string
 					storageSize   int
+					interaction   string
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"directives?", &directiveList,
+					"kernel?", &kernel,
 					"initramfs?", &initramfs,
 					"output?", &output,
 					"storage_size?", &storageSize,
+					"interaction", &interaction,
 				); err != nil {
 					return starlark.None, err
 				}
@@ -271,11 +275,28 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					if f, ok := initramfs.(common.BuildDefinition); ok {
 						initramfsDef = f
 					} else {
-						return starlark.None, fmt.Errorf("could not convert %s to File", initramfs.Type())
+						return starlark.None, fmt.Errorf("could not convert %s to BuildDefinition", initramfs.Type())
 					}
 				}
 
-				return builder.NewBuildVmDefinition(directives, initramfsDef, output, storageSize), nil
+				var kernelDef common.BuildDefinition
+
+				if kernel != nil {
+					if f, ok := kernel.(common.BuildDefinition); ok {
+						kernelDef = f
+					} else {
+						return starlark.None, fmt.Errorf("could not convert %s to BuildDefinition", initramfs.Type())
+					}
+				}
+
+				return builder.NewBuildVmDefinition(
+					directives,
+					kernelDef,
+					initramfsDef,
+					output,
+					storageSize,
+					interaction,
+				), nil
 			}),
 			"build_fs": starlark.NewBuiltin("define.build_fs", func(
 				thread *starlark.Thread,
@@ -329,10 +350,10 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				if dir, ok := dir.(filesystem.Directory); ok {
-					return builder.NewCreateArchiveDefinition(dir), nil
+				if v, ok := dir.(filesystem.Directory); ok {
+					return builder.NewCreateArchiveDefinition(v), nil
 				} else {
-					return starlark.None, fmt.Errorf("could not convert %s to Directory")
+					return starlark.None, fmt.Errorf("could not convert %s to Directory", dir.Type())
 				}
 			}),
 			"plan": starlark.NewBuiltin("define.plan", func(
@@ -410,6 +431,70 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				}
 
 				return &common.StarDirective{Directive: common.DirectiveRunCommand(command)}, nil
+			}),
+			"archive": starlark.NewBuiltin("directive.archive", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					ark    starlark.Value
+					target string
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"ark", &ark,
+					"target?", &target,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				if def, ok := ark.(common.BuildDefinition); ok {
+					return &common.StarDirective{Directive: common.DirectiveArchive{
+						Definition: def,
+						Target:     target,
+					}}, nil
+				} else {
+					return starlark.None, fmt.Errorf("could not convert %s to BuildDefinition", ark.Type())
+				}
+			}),
+			"add_file": starlark.NewBuiltin("directive.add_file", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					filename   string
+					file       *filesystem.StarFile
+					executable bool
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"filename", &filename,
+					"file", &file,
+					"executable?", &executable,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				fh, err := file.Open()
+				if err != nil {
+					return starlark.None, err
+				}
+				defer fh.Close()
+
+				contents, err := io.ReadAll(fh)
+				if err != nil {
+					return starlark.None, err
+				}
+
+				return &common.StarDirective{Directive: common.DirectiveAddFile{
+					Filename:   filename,
+					Contents:   contents,
+					Executable: executable,
+				}}, nil
 			}),
 		},
 	}

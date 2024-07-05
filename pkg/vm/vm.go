@@ -32,6 +32,8 @@ var (
 
 type VirtualMachine struct {
 	factory   *VirtualMachineFactory
+	cpuCores  int
+	memoryMb  int
 	kernel    string
 	initrd    string
 	diskImage string
@@ -90,7 +92,11 @@ func (vm *VirtualMachine) Run(nic *netstack.NetworkInterface, bindOutput bool) e
 
 // Attr implements starlark.HasAttrs.
 func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
-	if name == "kernel" {
+	if name == "cpu_cores" {
+		return starlark.MakeInt(vm.cpuCores), nil
+	} else if name == "memory_mb" {
+		return starlark.MakeInt(vm.memoryMb), nil
+	} else if name == "kernel" {
 		return starlark.String(vm.kernel), nil
 	} else if name == "initrd" {
 		return starlark.String(vm.initrd), nil
@@ -225,12 +231,16 @@ func (factory *VirtualMachineFactory) load(filename string) error {
 }
 
 func (factory *VirtualMachineFactory) Create(
+	cpuCores int,
+	memoryMb int,
 	kernel string,
 	initrd string,
 	diskImage string,
 ) (*VirtualMachine, error) {
 	return &VirtualMachine{
 		factory:   factory,
+		cpuCores:  cpuCores,
+		memoryMb:  memoryMb,
 		kernel:    kernel,
 		initrd:    initrd,
 		diskImage: diskImage,

@@ -23,6 +23,7 @@ type OCIImageFragment struct {
 
 type ArchiveFragment struct {
 	HostFilename string `json:"host_filename" yaml:"host_filename"`
+	Target       string `json:"target" yaml:"target"`
 }
 
 type RunCommandFragment struct {
@@ -52,6 +53,12 @@ type TinyRangeConfig struct {
 	RootFsFragments []Fragment `json:"rootfs_fragments" yaml:"rootfs_fragments"`
 	// The size of the rootfs in megabytes.
 	StorageSize int `json:"storage_size" yaml:"storage_size"`
+	// The way the user will interact with the virtual machine (options: [ssh, serial], default: ssh).
+	Interaction string `json:"interaction" yaml:"interaction"`
+	// The number of CPU cores to allocate to the virtual machine.
+	CPUCores int `json:"cpu_cores" yaml:"cpu_cores"`
+	// The amount of memory to allocate to the virtual machine.
+	MemoryMB int `json:"memory_mb" yaml:"memory_mb"`
 	// Config parameters to pass to the hypervisor.
 	HypervisorConfig map[string]string `json:"hypervisor_config" yaml:"hypervisor_config"`
 }

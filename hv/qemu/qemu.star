@@ -1,6 +1,4 @@
 CFG_ACCELERATE = True
-CFG_CPU_CORES = 4
-CFG_MEMORY_MB = 1024
 CFG_USE_VIRTIO_CONSOLE = True
 
 def main(ctx):
@@ -46,13 +44,13 @@ def main(ctx):
     # Set the number of CPU cores.
     args += [
         "-smp",
-        "{}".format(CFG_CPU_CORES),
+        "{}".format(ctx.cpu_cores),
     ]
 
     # Set the amount of memory.
     args += [
         "-m",
-        "{}m".format(CFG_MEMORY_MB),
+        "{}m".format(ctx.memory_mb),
     ]
 
     # Disable the default panic handler and change reboot behavior.

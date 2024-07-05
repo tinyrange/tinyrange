@@ -36,9 +36,17 @@ func (i *initRamFsBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 			}
 
 			for _, ent := range ents {
-				if err := writer.AddFromEntry(ent); err != nil {
+				if err := writer.AddFromEntry(frag.Archive.Target, ent); err != nil {
 					return 0, err
 				}
+			}
+		} else if frag.FileContents != nil {
+			c := frag.FileContents
+
+			filename := strings.TrimPrefix(c.GuestFilename, "/")
+
+			if err := writer.AddSimpleFile(filename, c.Contents, c.Executable); err != nil {
+				return 0, fmt.Errorf("failed to add simple file: %s", c.GuestFilename)
 			}
 		} else {
 			return 0, fmt.Errorf("unhandled fragment type: %+v", frag)

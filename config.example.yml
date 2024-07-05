@@ -1,14 +1,16 @@
 ---
 hypervisor_script: hv/qemu/qemu.star
 kernel_filename: local/vmlinux_x86_64
+cpu_cores: 1
+memory_mb: 1
 rootfs_fragments:
-    - local_file:
-          host_filename: build/init_x86_64
-          guest_filename: /init
-          executable: true
-    - local_file:
-          host_filename: cmd/tinyrange/init.star
-          guest_filename: /init.star
-    - oci_image:
-          image_name: library/alpine:latest
+      - local_file:
+              host_filename: build/init_x86_64
+              guest_filename: /init
+              executable: true
+      - local_file:
+              host_filename: cmd/tinyrange/init.star
+              guest_filename: /init.star
+      - oci_image:
+              image_name: library/alpine:latest
 storage_size: 1024

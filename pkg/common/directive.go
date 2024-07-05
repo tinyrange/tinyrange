@@ -22,8 +22,33 @@ func (d DirectiveRunCommand) Tag() string {
 	return fmt.Sprintf("RunCommand_%s", strings.ReplaceAll(string(d), " ", "_"))
 }
 
+type DirectiveAddFile struct {
+	Filename   string
+	Contents   []byte
+	Executable bool
+}
+
+// Tag implements Directive.
+func (d DirectiveAddFile) Tag() string {
+	sum := GetSha256Hash(d.Contents)
+
+	return fmt.Sprintf("AddFile_%s_%s_%+v", d.Filename, sum, d.Executable)
+}
+
+type DirectiveArchive struct {
+	Definition BuildDefinition
+	Target     string
+}
+
+// Tag implements Directive.
+func (d DirectiveArchive) Tag() string {
+	return fmt.Sprintf("DirArchive_%s_%s", d.Definition.Tag(), d.Target)
+}
+
 var (
 	_ Directive = DirectiveRunCommand("")
+	_ Directive = DirectiveAddFile{}
+	_ Directive = DirectiveArchive{}
 )
 
 type StarDirective struct {

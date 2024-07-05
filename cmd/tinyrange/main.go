@@ -78,11 +78,16 @@ func (*vmBackend) Sync() error {
 }
 
 func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) error {
-	if cfg.StorageSize == 0 {
+	if cfg.StorageSize == 0 || cfg.CPUCores == 0 || cfg.MemoryMB == 0 {
 		return fmt.Errorf("invalid config")
 	}
 
 	slog.Info("starting TinyRange")
+
+	interaction := cfg.Interaction
+	if interaction == "" {
+		interaction = "ssh"
+	}
 
 	fsSize := int64(cfg.StorageSize * 1024 * 1024)
 
@@ -144,7 +149,7 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 			}
 
 			for _, ent := range entries {
-				name := "/" + ent.CName
+				name := ark.Target + "/" + ent.CName
 
 				if fs.Exists(name) {
 					continue
@@ -250,6 +255,8 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 	}
 
 	virtualMachine, err := factory.Create(
+		cfg.CPUCores,
+		cfg.MemoryMB,
 		cfg.Resolve(cfg.KernelFilename),
 		cfg.Resolve(cfg.InitFilesystemFilename),
 		"nbd://"+listener.Addr().String(),
@@ -361,25 +368,36 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 
 	slog.Info("starting virtual machine", "took", time.Since(start))
 
-	go func() {
-		if err := virtualMachine.Run(nic, debug); err != nil {
+	if interaction == "ssh" {
+		go func() {
+			if err := virtualMachine.Run(nic, debug); err != nil {
+				slog.Error("failed to run virtual machine", "err", err)
+			}
+		}()
+		defer virtualMachine.Shutdown()
+
+		// return nil
+
+		// Start a loop so SSH can be restarted when requested by the user.
+		for {
+			err = connectOverSsh(ns, "10.42.0.2:2222", "root", "insecurepassword")
+			if err == ErrRestart {
+				continue
+			} else if err != nil {
+				return err
+			}
+
+			return nil
+		}
+	} else if interaction == "serial" {
+		if err := virtualMachine.Run(nic, true); err != nil {
 			slog.Error("failed to run virtual machine", "err", err)
 		}
-	}()
-	defer virtualMachine.Shutdown()
-
-	// return nil
-
-	// Start a loop so SSH can be restarted when requested by the user.
-	for {
-		err = connectOverSsh(ns, "10.42.0.2:2222", "root", "insecurepassword")
-		if err == ErrRestart {
-			continue
-		} else if err != nil {
-			return err
-		}
+		defer virtualMachine.Shutdown()
 
 		return nil
+	} else {
+		return fmt.Errorf("unknown interaction: %s", interaction)
 	}
 }
 
@@ -422,12 +440,15 @@ func tinyRangeMain() error {
 		return runWithConfig(config.TinyRangeConfig{
 			HypervisorScript: "hv/qemu/qemu.star",
 			KernelFilename:   "local/vmlinux_x86_64",
+			CPUCores:         1,
+			MemoryMB:         1024,
 			RootFsFragments: []config.Fragment{
 				{LocalFile: &config.LocalFileFragment{HostFilename: "build/init_x86_64", GuestFilename: "/init", Executable: true}},
 				{FileContents: &config.FileContentsFragment{Contents: _INIT_SCRIPT, GuestFilename: "/init.star"}},
 				{OCIImage: &config.OCIImageFragment{ImageName: *image}},
 			},
 			StorageSize: *storageSize,
+			Interaction: "ssh",
 		}, *debug, false)
 	}
 }
