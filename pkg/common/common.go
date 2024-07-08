@@ -5,11 +5,17 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
+
+const TINYRANGE_NAME = "tinyrange"
 
 var StarlarkJsonEncode = starlarkjson.Module.Members["encode"].(*starlark.Builtin).CallInternal
 var StarlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builtin).CallInternal
@@ -52,17 +58,81 @@ func Exists(name string) (bool, error) {
 }
 
 func Ensure(path string, mode os.FileMode) error {
-	exists, err := Exists(path)
+	err := os.MkdirAll(path, mode)
 	if err != nil {
-		return fmt.Errorf("failed to check for path: %v", err)
-	}
-
-	if !exists {
-		err := os.Mkdir(path, mode)
-		if err != nil {
-			return fmt.Errorf("failed to create directory: %v", err)
-		}
+		return fmt.Errorf("failed to create directory: %v", err)
 	}
 
 	return nil
 }
+
+type CPUArchitecture string
+
+const (
+	ArchX8664 CPUArchitecture = "x86_64"
+)
+
+func (arch CPUArchitecture) IsNative() bool {
+	switch runtime.GOARCH {
+	case "amd64":
+		return arch == ArchX8664
+	default:
+		panic("unknown architecture: " + arch)
+	}
+}
+
+func getExeDirectory() (string, error) {
+	exePath, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Dir(exePath), nil
+}
+
+func GetAdjacentExecutable(name string) (string, error) {
+	exeDir, err := getExeDirectory()
+	if err != nil {
+		return "", err
+	}
+
+	localPath := filepath.Join(exeDir, name)
+
+	if ok, _ := Exists(localPath); ok {
+		return localPath, nil
+	}
+
+	return exec.LookPath(name)
+}
+
+func GetTinyRangeExecutable() (string, error) {
+	// TODO(joshua): Don't assume that the TinyRange executable is always called tinyrange.
+	// Maybe allow setting it with a environment variable?
+	return GetAdjacentExecutable(TINYRANGE_NAME)
+}
+
+func GetDefaultBuildDir() string {
+	// Look for the tinyrange.portable file first.
+	exeDir, err := getExeDirectory()
+	if err != nil {
+		slog.Warn("Could not get executable directory. Builds will default to the current directory under build.", "err", err)
+		return "build"
+	}
+
+	// If that exists then put the build dir next to our current executables.
+	if ok, _ := Exists(filepath.Join(exeDir, "tinyrange.portable")); ok {
+		return filepath.Join(exeDir, "build")
+	}
+
+	// Otherwise find the user cache directory...
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		slog.Warn("Could not get executable directory. Builds will default to the current directory under build.", "err", err)
+		return "build"
+	}
+
+	// and create a build directory under that.
+	return filepath.Join(cache, "tinyrange", "build")
+}
+
+const REPO_PATH = ""

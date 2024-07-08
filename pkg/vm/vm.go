@@ -1,13 +1,19 @@
 package vm
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -139,6 +145,7 @@ var (
 )
 
 type VirtualMachineFactory struct {
+	buildDir string
 	callable starlark.Callable
 }
 
@@ -206,6 +213,88 @@ func (factory *VirtualMachineFactory) load(filename string) error {
 		return starlark.None, errors.New(message)
 	})
 
+	globals["find_command"] = starlark.NewBuiltin("find_command", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			command string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"command", &command,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		exec, err := exec.LookPath(command)
+		if err == nil {
+			return starlark.String(exec), nil
+		} else {
+			return starlark.None, nil
+		}
+	})
+
+	globals["find_local"] = starlark.NewBuiltin("find_local", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			file string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"file", &file,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.String(filepath.Join(filepath.Dir(filename), file)), nil
+	})
+
+	globals["write_file_to_build"] = starlark.NewBuiltin("write_file_to_build", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			contents string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"contents", &contents,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		contents = strings.ReplaceAll(contents, "\n", "")
+		contents = strings.ReplaceAll(contents, " ", "")
+
+		dec := base64.NewDecoder(base64.StdEncoding, bytes.NewReader([]byte(contents)))
+
+		contentsBytes, err := io.ReadAll(dec)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		hash := common.GetSha256Hash(contentsBytes)
+
+		path := filepath.Join(factory.buildDir, hash+".bin")
+
+		if ok, _ := common.Exists(path); !ok {
+			if err := os.WriteFile(path, contentsBytes, os.ModePerm); err != nil {
+				return starlark.None, err
+			}
+		}
+
+		return starlark.String(path), nil
+	})
+
 	declared, err := starlark.ExecFileOptions(&syntax.FileOptions{
 		Set:             true,
 		While:           true,
@@ -247,8 +336,10 @@ func (factory *VirtualMachineFactory) Create(
 	}, nil
 }
 
-func LoadVirtualMachineFactory(filename string) (*VirtualMachineFactory, error) {
-	factory := &VirtualMachineFactory{}
+func LoadVirtualMachineFactory(buildDir string, filename string) (*VirtualMachineFactory, error) {
+	factory := &VirtualMachineFactory{
+		buildDir: buildDir,
+	}
 
 	if err := factory.load(filename); err != nil {
 		return nil, err

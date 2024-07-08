@@ -277,8 +277,10 @@ def build_alpine_directives(builder, plan):
                 plan.directives,
             ),
         ] + plan.directives + [
-            directive.run_command("/builder -runScripts /.pkg/scripts.json"),
+            directive.run_command("/init -run-scripts /.pkg/scripts.json"),
         ]
+    elif plan.tags.contains("download"):
+        return plan.directives
     else:
         # If we are level1 or level2 then just make sure we have the normal base image.
         return [

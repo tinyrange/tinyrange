@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 )
@@ -576,31 +578,34 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 			}
 
 			if name == "init" {
-				if arch == "x86_64" {
-					return filesystem.NewStarFile(filesystem.NewLocalFile("build/init_x86_64"), "init_x86_64"), nil
+				if common.CPUArchitecture(arch).IsNative() {
+					f := filesystem.NewMemoryFile(filesystem.TypeRegular)
+					f.Overwrite(initExec.INIT_EXECUTABLE)
+					return filesystem.NewStarFile(f, "init"), nil
 				} else {
-					return starlark.None, fmt.Errorf("unknown architecture for init: %s", arch)
+					return starlark.None, fmt.Errorf("invalid architecture for init: %s", arch)
 				}
 			} else if name == "tinyrange" {
-				if arch == "x86_64" {
-					return filesystem.NewStarFile(filesystem.NewLocalFile("build/tinyrange"), "tinyrange_x86_64"), nil
+				// Assume that the user wants a Linux executable.
+				if common.CPUArchitecture(arch).IsNative() && runtime.GOOS == "linux" {
+					local, err := common.GetTinyRangeExecutable()
+					if err != nil {
+						return nil, err
+					}
+
+					return filesystem.NewStarFile(filesystem.NewLocalFile(local), "tinyrange"), nil
 				} else {
-					return starlark.None, fmt.Errorf("unknown architecture for tinyrange: %s", arch)
+					return starlark.None, fmt.Errorf("invalid architecture for tinyrange: %s", arch)
 				}
-			} else if name == "qemu.star" {
-				if arch == "x86_64" {
-					return filesystem.NewStarFile(filesystem.NewLocalFile("hv/qemu/qemu.star"), "hv/qemu/qemu.star"), nil
-				} else {
-					return starlark.None, fmt.Errorf("unknown architecture for qemu.star: %s", arch)
+			} else if name == "tinyrange_qemu.star" {
+				local, err := common.GetAdjacentExecutable("tinyrange_qemu.star")
+				if err != nil {
+					return nil, err
 				}
-			} else if name == "qemu/bios.bin" {
-				if arch == "x86_64" {
-					return filesystem.NewStarFile(filesystem.NewLocalFile("hv/qemu/bios.bin"), "hv/qemu/bios.bin"), nil
-				} else {
-					return starlark.None, fmt.Errorf("unknown architecture for qemu/bios.bin: %s", arch)
-				}
+
+				return filesystem.NewStarFile(filesystem.NewLocalFile(local), "tinyrange_qemu.star"), nil
 			} else {
-				return starlark.None, fmt.Errorf("unknown builtin executable: %s", arch)
+				return starlark.None, fmt.Errorf("unknown builtin executable: %s", name)
 			}
 		}), nil
 	} else {

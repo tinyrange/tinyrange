@@ -52,11 +52,11 @@ var (
 	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 	memprofile = flag.String("memprofile", "", "write memory profile to this file")
 	rebuild    = flag.Bool("rebuild", false, "rebuild all starlark-defined build definitions")
-	noParallel = flag.Bool("noparallel", false, "disable parallel initialization of container builders")
+	noParallel = flag.Bool("no-parallel", false, "disable parallel initialization of container builders")
 	script     = flag.String("script", "", "load a script rather than providing a interface for the package database")
 	httpAddr   = flag.String("http", "", "if specified run a web frontend listening on this address")
 	fileList   = make(fileListArray)
-	buildDir   = flag.String("builddir", "local/build", "specify the directory that will be used for build files")
+	buildDir   = flag.String("build-dir", common.GetDefaultBuildDir(), "specify the directory that will be used for build files")
 	buildDef   = flag.String("build", "", "build a single definition defined somewhere in a loaded file")
 )
 

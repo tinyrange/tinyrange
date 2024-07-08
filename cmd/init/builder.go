@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -31,7 +30,7 @@ func execCommand(args []string) error {
 }
 
 func runCommand(script string) error {
-	if strings.HasPrefix(script, "/builder") || strings.HasPrefix(script, "/init") {
+	if strings.HasPrefix(script, "/init") {
 		tokens, err := shlex.Split(script, true)
 		if err != nil {
 			return err
@@ -140,38 +139,4 @@ func builderRunScripts(filename string) error {
 	}
 
 	return nil
-}
-
-var (
-	runScripts = flag.String("runScripts", "", "run a JSON file of scripts rather than /builder.json")
-)
-
-func builderMain() error {
-	flag.Parse()
-
-	if *runScripts != "" {
-		return builderRunScripts(*runScripts)
-	}
-
-	f, err := os.Open("/builder.json")
-	if err != nil {
-		return err
-	}
-
-	dec := json.NewDecoder(f)
-
-	var cfg config.BuilderConfig
-
-	if err := dec.Decode(&cfg); err != nil {
-		return err
-	}
-
-	return runWithConfig(cfg)
-}
-
-func main() {
-	if err := builderMain(); err != nil {
-		slog.Error("fatal", "err", err)
-		os.Exit(1)
-	}
 }

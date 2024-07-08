@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	goFs "io/fs"
 	"log/slog"
 	"net"
@@ -25,15 +25,13 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
+	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	virtualMachine "github.com/tinyrange/tinyrange/pkg/vm"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"github.com/tinyrange/vm"
 	"gopkg.in/yaml.v3"
 )
-
-//go:embed init.star
-var _INIT_SCRIPT []byte
 
 type vmBackend struct {
 	vm *vm.VirtualMemory
@@ -79,7 +77,7 @@ func (*vmBackend) Sync() error {
 	return nil
 }
 
-func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) error {
+func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forwardSsh bool) error {
 	if cfg.StorageSize == 0 || cfg.CPUCores == 0 || cfg.MemoryMB == 0 {
 		return fmt.Errorf("invalid config")
 	}
@@ -148,6 +146,30 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 				if err := fs.Chmod(fileContents.GuestFilename, goFs.FileMode(0755)); err != nil {
 					return err
 				}
+			}
+		} else if builtin := frag.Builtin; builtin != nil {
+			dirName := path.Dir(builtin.GuestFilename)
+
+			if !fs.Exists(dirName) {
+				if err := fs.Mkdir(dirName, true); err != nil {
+					return err
+				}
+			}
+
+			if builtin.Name == "init" {
+				if err := fs.CreateFile(builtin.GuestFilename, vm.RawRegion(initExec.INIT_EXECUTABLE)); err != nil {
+					return err
+				}
+
+				if err := fs.Chmod(builtin.GuestFilename, goFs.FileMode(0755)); err != nil {
+					return err
+				}
+			} else if builtin.Name == "init.star" {
+				if err := fs.CreateFile(builtin.GuestFilename, vm.RawRegion(initExec.INIT_SCRIPT)); err != nil {
+					return err
+				}
+			} else {
+				return fmt.Errorf("unknown builtin: %s", builtin.Name)
 			}
 		} else if ark := frag.Archive; ark != nil {
 			fh, err := os.Open(cfg.Resolve(ark.HostFilename))
@@ -261,7 +283,7 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 
 	// ns.OpenPacketCapture(out)
 
-	factory, err := virtualMachine.LoadVirtualMachineFactory(cfg.Resolve(cfg.HypervisorScript))
+	factory, err := virtualMachine.LoadVirtualMachineFactory(buildDir, cfg.Resolve(cfg.HypervisorScript))
 	if err != nil {
 		return err
 	}
@@ -432,8 +454,8 @@ func runWithCommandLineConfig(buildDir string, rebuild bool, image string, execC
 	db := database.New(buildDir)
 
 	fragments := []config.Fragment{
-		{LocalFile: &config.LocalFileFragment{HostFilename: "build/init_x86_64", GuestFilename: "/init", Executable: true}},
-		{FileContents: &config.FileContentsFragment{Contents: _INIT_SCRIPT, GuestFilename: "/init.star"}},
+		{Builtin: &config.BuiltinFragment{Name: "init", GuestFilename: "/init"}},
+		{Builtin: &config.BuiltinFragment{Name: "init.star", GuestFilename: "/init.star"}},
 	}
 
 	{
@@ -495,8 +517,13 @@ func runWithCommandLineConfig(buildDir string, rebuild bool, image string, execC
 		}
 	}
 
-	return runWithConfig(config.TinyRangeConfig{
-		HypervisorScript: "hv/qemu/qemu.star",
+	hypervisorScript, err := common.GetAdjacentExecutable("tinyrange_qemu.star")
+	if err != nil {
+		return err
+	}
+
+	return runWithConfig(buildDir, config.TinyRangeConfig{
+		HypervisorScript: hypervisorScript,
 		KernelFilename:   kernelFilename,
 		CPUCores:         cpuCores,
 		MemoryMB:         memoryMb,
@@ -513,13 +540,17 @@ var (
 	image       = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
 	configFile  = flag.String("config", "", "passes a custom config. this overrides all other flags.")
 	debug       = flag.Bool("debug", false, "redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup")
-	buildDir    = flag.String("build-dir", "local/build", "the directory to build definitions to")
+	buildDir    = flag.String("build-dir", common.GetDefaultBuildDir(), "the directory to build definitions to")
 	rebuild     = flag.Bool("rebuild", false, "always rebuild the kernel and image definitions")
 	execCommand = flag.String("exec", "", "if set then run a command rather than creating a login shell")
 )
 
 func tinyRangeMain() error {
 	flag.Parse()
+
+	if err := common.Ensure(*buildDir, fs.ModePerm); err != nil {
+		return err
+	}
 
 	if *configFile != "" {
 		f, err := os.Open(*configFile)
@@ -545,7 +576,7 @@ func tinyRangeMain() error {
 			}
 		}
 
-		return runWithConfig(cfg, *debug, false)
+		return runWithConfig(*buildDir, cfg, *debug, false)
 	} else {
 		return runWithCommandLineConfig(*buildDir, *rebuild, *image, *execCommand, *cpuCores, *memoryMb, *storageSize)
 	}

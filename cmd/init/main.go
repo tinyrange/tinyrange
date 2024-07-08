@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -22,7 +23,7 @@ import (
 	"github.com/jsimonetti/rtnetlink/rtnl"
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"go.starlark.net/lib/json"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -347,6 +348,8 @@ var (
 	execShell    = flag.Bool("shell", false, "start the shell instead of running /init.sh")
 	runSshServer = flag.String("ssh", "", "run a ssh server")
 	downloadFile = flag.String("download", "", "download a file from the specified server")
+	runScripts   = flag.String("run-scripts", "", "run a JSON file of scripts")
+	runConfig    = flag.String("run-config", "", "run a JSON file with a given builder config")
 )
 
 func initMain() error {
@@ -383,6 +386,35 @@ func initMain() error {
 		if _, err := io.Copy(io.MultiWriter(pb, out), resp.Body); err != nil {
 			return err
 		}
+	}
+
+	if *runScripts != "" {
+		return builderRunScripts(*runScripts)
+	}
+
+	if *runConfig != "" {
+		f, err := os.Open(*runConfig)
+		if err != nil {
+			return err
+		}
+
+		dec := json.NewDecoder(f)
+
+		var cfg config.BuilderConfig
+
+		if err := dec.Decode(&cfg); err != nil {
+			return err
+		}
+
+		return runWithConfig(cfg)
+	}
+
+	if os.Getuid() != 0 {
+		return fmt.Errorf("/init will not run as any user besides root")
+	}
+
+	if os.Getpid() != 1 {
+		return fmt.Errorf("/init will not execute as PIDs not equal to 1")
 	}
 
 	var args starlark.Value = starlark.NewDict(0)
@@ -829,7 +861,7 @@ func initMain() error {
 		return starlark.None, nil
 	})
 
-	globals["json"] = json.Module
+	globals["json"] = starlarkjson.Module
 
 	var uname unix.Utsname
 

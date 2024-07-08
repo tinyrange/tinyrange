@@ -96,10 +96,8 @@ tinyrange_plan = define.plan(
 tinyrange_base_directives = [
     tinyrange_plan,
     vm_modfs,
-    directive.add_file("/root/build/tinyrange", db.get_builtin_executable("tinyrange", "x86_64")),
-    directive.add_file("/root/build/init_x86_64", db.get_builtin_executable("init", "x86_64")),
-    directive.add_file("/root/hv/qemu/qemu.star", db.get_builtin_executable("qemu.star", "x86_64")),
-    directive.add_file("/root/hv/qemu/bios.bin", db.get_builtin_executable("qemu/bios.bin", "x86_64")),
+    directive.add_file("/root/tinyrange", db.get_builtin_executable("tinyrange", "x86_64")),
+    directive.add_file("/root/tinyrange_qemu.star", db.get_builtin_executable("tinyrange_qemu.star", "x86_64")),
     directive.run_command("modprobe kvm_amd || modprobe kvm_intel"),
     directive.run_command("mkdir -p /root/local/build"),
 ]
@@ -131,8 +129,8 @@ bench_startup_podman = define.build_vm(
 
 bench_startup_tinyrange = define.build_vm(
     directives = tinyrange_base_directives + [
-        directive.run_command("source /etc/profile; cd /root; build/tinyrange -exec 'whoami'"),
-        directive.run_command("source /etc/profile; cd /root; hyperfine --export-json /result.json \"build/tinyrange -exec 'whoami'\""),
+        directive.run_command("source /etc/profile; cd /root; ./tinyrange -exec 'whoami'"),
+        directive.run_command("source /etc/profile; cd /root; hyperfine --export-json /result.json \"./tinyrange -exec 'whoami'\""),
     ],
     output = "/result.json",
     **vm_params
