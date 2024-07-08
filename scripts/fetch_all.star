@@ -1,4 +1,4 @@
-load_fetcher("fetchers/alpine.star")
+load_fetcher("//fetchers/alpine.star")
 
 def main(args):
     for pkg in db.builder("alpine@3.20").packages:

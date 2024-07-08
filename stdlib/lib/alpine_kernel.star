@@ -1,4 +1,4 @@
-load_fetcher("fetchers/alpine.star")
+load_fetcher("//fetchers/alpine.star")
 
 INIT_STAR = """
 def main():
@@ -140,6 +140,3 @@ vm_320 = define.build_vm(
     ],
     # interaction = "serial",
 )
-
-def main(args):
-    db.build(vm_320, always_rebuild = True)

@@ -1,4 +1,4 @@
-load_fetcher("fetchers/arch.star")
+load_fetcher("//fetchers/arch.star")
 
 def main(args):
     builder = db.builder("archlinux")

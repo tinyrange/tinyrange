@@ -1,6 +1,6 @@
-load("scripts/alpine_kernel.star", "alpine_initramfs", "alpine_kernel", "alpine_kernel_fs", "alpine_modules_fs")
+load("//lib/alpine_kernel.star", "alpine_initramfs", "alpine_kernel", "alpine_kernel_fs", "alpine_modules_fs")
 
-# load_fetcher("fetchers/alpine.star")
+# load_fetcher("//fetchers/alpine.star")
 
 kernel_fs_320 = alpine_kernel_fs("3.20")
 

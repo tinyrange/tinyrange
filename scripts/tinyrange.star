@@ -1,4 +1,4 @@
-load_fetcher("fetchers/alpine.star")
+load_fetcher("//fetchers/alpine.star")
 
 def main(args):
     directives = [

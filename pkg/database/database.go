@@ -3,6 +3,7 @@ package database
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
+	"github.com/tinyrange/tinyrange/stdlib"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 )
@@ -73,20 +75,42 @@ func (db *PackageDatabase) ShouldRebuildUserDefinitions() bool {
 	return db.RebuildUserDefinitions
 }
 
+func (db *PackageDatabase) getFileContents(name string) (string, error) {
+	if strings.HasPrefix(name, "//") {
+		f, err := stdlib.STDLIB.Open(strings.TrimPrefix(name, "//"))
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+
+		contents, err := io.ReadAll(f)
+		if err != nil {
+			return "", err
+		}
+
+		return string(contents), nil
+	}
+
+	contents, err := os.ReadFile(name)
+	if err != nil {
+		return "", err
+	}
+
+	return string(contents), nil
+}
+
 func (db *PackageDatabase) newThread(name string) *starlark.Thread {
 	return &starlark.Thread{
 		Name: name,
 		Load: func(thread *starlark.Thread, module string) (starlark.StringDict, error) {
 			globals := db.getGlobals(module)
 
-			filename := filepath.Join("", module)
+			contents, err := db.getFileContents(module)
+			if err != nil {
+				return nil, err
+			}
 
-			ret, err := starlark.ExecFileOptions(&syntax.FileOptions{
-				TopLevelControl: true,
-				Recursion:       true,
-				Set:             true,
-				GlobalReassign:  true,
-			}, thread, filename, nil, globals)
+			ret, err := starlark.ExecFileOptions(db.getFileOptions(), thread, module, contents, globals)
 			if err != nil {
 				if sErr, ok := err.(*starlark.EvalError); ok {
 					slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
@@ -156,7 +180,12 @@ func (db *PackageDatabase) LoadFile(filename string) error {
 	globals := db.getGlobals("__main__")
 
 	// Execute the file.
-	defs, err := starlark.ExecFileOptions(db.getFileOptions(), thread, filename, nil, globals)
+	contents, err := db.getFileContents(filename)
+	if err != nil {
+		return err
+	}
+
+	defs, err := starlark.ExecFileOptions(db.getFileOptions(), thread, filename, contents, globals)
 	if err != nil {
 		return err
 	}
@@ -174,7 +203,12 @@ func (db *PackageDatabase) RunScript(filename string, files map[string]filesyste
 	globals := db.getGlobals("__main__")
 
 	// Execute the script.
-	decls, err := starlark.ExecFileOptions(db.getFileOptions(), thread, filename, nil, globals)
+	contents, err := db.getFileContents(filename)
+	if err != nil {
+		return err
+	}
+
+	decls, err := starlark.ExecFileOptions(db.getFileOptions(), thread, filename, contents, globals)
 	if err != nil {
 		return err
 	}

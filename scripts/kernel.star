@@ -1,4 +1,4 @@
-load_fetcher("fetchers/alpine.star")
+load_fetcher("//fetchers/alpine.star")
 
 VERSION = "6.9.8"
 
