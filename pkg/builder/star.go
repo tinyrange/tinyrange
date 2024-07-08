@@ -36,7 +36,7 @@ func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinitio
 	case *PlanDefinition:
 		var plan *PlanDefinition
 
-		if err := parseJsonFromFile(result, &plan); err != nil {
+		if err := ParseJsonFromFile(result, &plan); err != nil {
 			return nil, err
 		}
 
@@ -52,7 +52,7 @@ func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinitio
 	case *BuildFsDefinition:
 		return filesystem.NewStarFile(result, argDef.Tag()), nil
 	case *FetchOciImageDefinition:
-		if err := parseJsonFromFile(result, &arg); err != nil {
+		if err := ParseJsonFromFile(result, &arg); err != nil {
 			return nil, err
 		}
 

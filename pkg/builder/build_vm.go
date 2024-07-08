@@ -19,7 +19,7 @@ import (
 	"go.starlark.net/starlark"
 )
 
-var KERNEL_URL = "https://github.com/tinyrange/linux_build/releases/download/linux_x86_6.6.7/vmlinux_x86_64"
+var OFFICIAL_KERNEL_URL = "https://github.com/tinyrange/linux_build/releases/download/linux_x86_6.6.7/vmlinux_x86_64"
 
 func runTinyRange(exe string, configFilename string) (*exec.Cmd, error) {
 	cmd := exec.Command(exe, "-config", configFilename)
@@ -47,7 +47,7 @@ func directiveToFragments(ctx common.BuildContext, directive common.Directive) (
 			return nil, err
 		}
 
-		if err := parseJsonFromFile(res, &directive); err != nil {
+		if err := ParseJsonFromFile(res, &directive); err != nil {
 			return nil, err
 		}
 
@@ -132,7 +132,7 @@ func directiveToFragments(ctx common.BuildContext, directive common.Directive) (
 			return nil, err
 		}
 
-		if err := parseJsonFromFile(res, &directive); err != nil {
+		if err := ParseJsonFromFile(res, &directive); err != nil {
 			return nil, err
 		}
 
@@ -244,7 +244,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 
 	kernelDef := def.Kernel
 	if kernelDef == nil {
-		kernelDef = NewFetchHttpBuildDefinition(KERNEL_URL, 0)
+		kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL, 0)
 	}
 
 	kernel, err := ctx.BuildChild(kernelDef)

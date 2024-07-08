@@ -20,7 +20,7 @@ const (
 	DEFAULT_REGISTRY = "https://registry-1.docker.io/v2"
 )
 
-func parseJsonFromFile(f filesystem.File, out any) error {
+func ParseJsonFromFile(f filesystem.File, out any) error {
 	fh, err := f.Open()
 	if err != nil {
 		return err
@@ -285,7 +285,7 @@ func (def *FetchOciImageDefinition) buildFromIndex(ctx common.BuildContext, regC
 	}
 
 	var manifest oci.ImageManifest
-	if err := parseJsonFromFile(manifestFile, &manifest); err != nil {
+	if err := ParseJsonFromFile(manifestFile, &manifest); err != nil {
 		return nil, err
 	}
 
@@ -310,7 +310,7 @@ func (def *FetchOciImageDefinition) Build(ctx common.BuildContext) (common.Build
 	}
 
 	var index oci.ImageIndexV2
-	if err := parseJsonFromFile(indexFile, &index); err != nil {
+	if err := ParseJsonFromFile(indexFile, &index); err != nil {
 		return nil, err
 	}
 
@@ -325,7 +325,7 @@ func (def *FetchOciImageDefinition) Build(ctx common.BuildContext) (common.Build
 		}
 
 		var index1 oci.ImageIndexV1
-		if err := parseJsonFromFile(indexFile, &index1); err != nil {
+		if err := ParseJsonFromFile(indexFile, &index1); err != nil {
 			return nil, err
 		}
 

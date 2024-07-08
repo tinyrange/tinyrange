@@ -1,5 +1,5 @@
 CFG_ACCELERATE = True
-CFG_USE_VIRTIO_CONSOLE = False
+CFG_USE_VIRTIO_CONSOLE = True
 
 def main(ctx):
     args = []

@@ -17,10 +17,6 @@ type FileContentsFragment struct {
 	Executable    bool   `json:"executable" yaml:"executable"`
 }
 
-type OCIImageFragment struct {
-	ImageName string `json:"image_name" yaml:"image_name"`
-}
-
 type ArchiveFragment struct {
 	HostFilename string `json:"host_filename" yaml:"host_filename"`
 	Target       string `json:"target" yaml:"target"`
@@ -35,7 +31,6 @@ type Fragment struct {
 	RunCommand   *RunCommandFragment   `json:"run_command" yaml:"run_command"`
 	LocalFile    *LocalFileFragment    `json:"local_file" yaml:"local_file"`
 	FileContents *FileContentsFragment `json:"file_contents" yaml:"file_contents"`
-	OCIImage     *OCIImageFragment     `json:"oci_image" yaml:"oci_image"`
 	Archive      *ArchiveFragment      `json:"archive" yaml:"archive"`
 }
 

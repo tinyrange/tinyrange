@@ -20,11 +20,12 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/tinyrange/tinyrange/pkg/archive"
+	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
-	"github.com/tinyrange/tinyrange/pkg/oci"
 	virtualMachine "github.com/tinyrange/tinyrange/pkg/vm"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"github.com/tinyrange/vm"
@@ -147,12 +148,6 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 				if err := fs.Chmod(fileContents.GuestFilename, goFs.FileMode(0755)); err != nil {
 					return err
 				}
-			}
-		} else if ociImage := frag.OCIImage; ociImage != nil {
-			ociDl := oci.NewDownloader()
-
-			if err := ociDl.ExtractOciImage(fs, ociImage.ImageName); err != nil {
-				return err
 			}
 		} else if ark := frag.Archive; ark != nil {
 			fh, err := os.Open(cfg.Resolve(ark.HostFilename))
@@ -418,11 +413,109 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 	}
 }
 
+func parseOciImageName(name string) *builder.FetchOciImageDefinition {
+	name, tag, ok := strings.Cut(name, ":")
+
+	if !ok {
+		tag = "latest"
+	}
+
+	return builder.NewFetchOCIImageDefinition(
+		builder.DEFAULT_REGISTRY,
+		name,
+		tag,
+		"amd64",
+	)
+}
+
+func runWithCommandLineConfig(buildDir string, rebuild bool, image string, execCommand string, cpuCores int, memoryMb int, storageSize int) error {
+	db := database.New(buildDir)
+
+	fragments := []config.Fragment{
+		{LocalFile: &config.LocalFileFragment{HostFilename: "build/init_x86_64", GuestFilename: "/init", Executable: true}},
+		{FileContents: &config.FileContentsFragment{Contents: _INIT_SCRIPT, GuestFilename: "/init.star"}},
+	}
+
+	{
+		def := parseOciImageName(image)
+
+		ctx := db.NewBuildContext(def)
+
+		res, err := db.Build(ctx, def, common.BuildOptions{
+			AlwaysRebuild: rebuild,
+		})
+		if err != nil {
+			return err
+		}
+
+		if err := builder.ParseJsonFromFile(res, &def); err != nil {
+			return err
+		}
+
+		for _, hash := range def.LayerArchives {
+			filename, err := ctx.FilenameFromDigest(hash)
+			if err != nil {
+				return err
+			}
+
+			fragments = append(fragments, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+		}
+	}
+
+	if execCommand != "" {
+		initJson, err := json.Marshal(&struct {
+			SSHCommand []string `json:"ssh_command"`
+		}{
+			SSHCommand: []string{"/bin/sh", "-c", execCommand},
+		})
+		if err != nil {
+			return err
+		}
+
+		fragments = append(fragments, config.Fragment{FileContents: &config.FileContentsFragment{GuestFilename: "/init.json", Contents: initJson}})
+	}
+
+	kernelFilename := ""
+
+	{
+		def := builder.NewFetchHttpBuildDefinition(builder.OFFICIAL_KERNEL_URL, 0)
+
+		ctx := db.NewBuildContext(def)
+
+		res, err := db.Build(ctx, def, common.BuildOptions{
+			AlwaysRebuild: rebuild,
+		})
+		if err != nil {
+			return err
+		}
+
+		kernelFilename, err = ctx.FilenameFromDigest(res.Digest())
+		if err != nil {
+			return err
+		}
+	}
+
+	return runWithConfig(config.TinyRangeConfig{
+		HypervisorScript: "hv/qemu/qemu.star",
+		KernelFilename:   kernelFilename,
+		CPUCores:         cpuCores,
+		MemoryMB:         memoryMb,
+		RootFsFragments:  fragments,
+		StorageSize:      storageSize,
+		Interaction:      "ssh",
+	}, *debug, false)
+}
+
 var (
+	cpuCores    = flag.Int("cpu-cores", 1, "set the number of cpu cores in the VM")
+	memoryMb    = flag.Int("memory", 1024, "set the number of megabytes of RAM in the VM")
 	storageSize = flag.Int("storage-size", 512, "the size of the VM storage in megabytes")
 	image       = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
 	configFile  = flag.String("config", "", "passes a custom config. this overrides all other flags.")
 	debug       = flag.Bool("debug", false, "redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup")
+	buildDir    = flag.String("build-dir", "local/build", "the directory to build definitions to")
+	rebuild     = flag.Bool("rebuild", false, "always rebuild the kernel and image definitions")
+	execCommand = flag.String("exec", "", "if set then run a command rather than creating a login shell")
 )
 
 func tinyRangeMain() error {
@@ -454,19 +547,7 @@ func tinyRangeMain() error {
 
 		return runWithConfig(cfg, *debug, false)
 	} else {
-		return runWithConfig(config.TinyRangeConfig{
-			HypervisorScript: "hv/qemu/qemu.star",
-			KernelFilename:   "local/vmlinux_x86_64",
-			CPUCores:         1,
-			MemoryMB:         1024,
-			RootFsFragments: []config.Fragment{
-				{LocalFile: &config.LocalFileFragment{HostFilename: "build/init_x86_64", GuestFilename: "/init", Executable: true}},
-				{FileContents: &config.FileContentsFragment{Contents: _INIT_SCRIPT, GuestFilename: "/init.star"}},
-				{OCIImage: &config.OCIImageFragment{ImageName: *image}},
-			},
-			StorageSize: *storageSize,
-			Interaction: "ssh",
-		}, *debug, false)
+		return runWithCommandLineConfig(*buildDir, *rebuild, *image, *execCommand, *cpuCores, *memoryMb, *storageSize)
 	}
 }
 

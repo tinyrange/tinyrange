@@ -581,6 +581,24 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 				} else {
 					return starlark.None, fmt.Errorf("unknown architecture for init: %s", arch)
 				}
+			} else if name == "tinyrange" {
+				if arch == "x86_64" {
+					return filesystem.NewStarFile(filesystem.NewLocalFile("build/tinyrange"), "tinyrange_x86_64"), nil
+				} else {
+					return starlark.None, fmt.Errorf("unknown architecture for tinyrange: %s", arch)
+				}
+			} else if name == "qemu.star" {
+				if arch == "x86_64" {
+					return filesystem.NewStarFile(filesystem.NewLocalFile("hv/qemu/qemu.star"), "hv/qemu/qemu.star"), nil
+				} else {
+					return starlark.None, fmt.Errorf("unknown architecture for qemu.star: %s", arch)
+				}
+			} else if name == "qemu/bios.bin" {
+				if arch == "x86_64" {
+					return filesystem.NewStarFile(filesystem.NewLocalFile("hv/qemu/bios.bin"), "hv/qemu/bios.bin"), nil
+				} else {
+					return starlark.None, fmt.Errorf("unknown architecture for qemu/bios.bin: %s", arch)
+				}
 			} else {
 				return starlark.None, fmt.Errorf("unknown builtin executable: %s", arch)
 			}

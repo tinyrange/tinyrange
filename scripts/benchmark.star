@@ -78,6 +78,37 @@ podman_test_vm = define.build_vm(
     **vm_params
 )
 
+# TinyRange Configuration
+
+tinyrange_plan = define.plan(
+    builder = "alpine@3.20",
+    packages = [
+        query("busybox"),
+        query("busybox-binsh"),
+        query("alpine-baselayout"),
+        query("qemu-system-x86_64"),
+        query("hyperfine"),
+        query("ca-certificates"),
+    ],
+    tags = ["level3"],
+)
+
+tinyrange_base_directives = [
+    tinyrange_plan,
+    vm_modfs,
+    directive.add_file("/root/build/tinyrange", db.get_builtin_executable("tinyrange", "x86_64")),
+    directive.add_file("/root/build/init_x86_64", db.get_builtin_executable("init", "x86_64")),
+    directive.add_file("/root/hv/qemu/qemu.star", db.get_builtin_executable("qemu.star", "x86_64")),
+    directive.add_file("/root/hv/qemu/bios.bin", db.get_builtin_executable("qemu/bios.bin", "x86_64")),
+    directive.run_command("modprobe kvm_amd || modprobe kvm_intel"),
+    directive.run_command("mkdir -p /root/local/build"),
+]
+
+tinyrange_test_vm = define.build_vm(
+    directives = tinyrange_base_directives + [directive.run_command("interactive")],
+    **vm_params
+)
+
 # Startup Time Benchmark.
 
 bench_startup_docker = define.build_vm(
@@ -93,6 +124,15 @@ bench_startup_podman = define.build_vm(
     directives = podman_base_directives + [
         directive.run_command("source /etc/profile; podman run -it alpine whoami"),
         directive.run_command("source /etc/profile; hyperfine --export-json /result.json \"podman run -i alpine whoami\""),
+    ],
+    output = "/result.json",
+    **vm_params
+)
+
+bench_startup_tinyrange = define.build_vm(
+    directives = tinyrange_base_directives + [
+        directive.run_command("source /etc/profile; cd /root; build/tinyrange -exec 'whoami'"),
+        directive.run_command("source /etc/profile; cd /root; hyperfine --export-json /result.json \"build/tinyrange -exec 'whoami'\""),
     ],
     output = "/result.json",
     **vm_params
