@@ -76,15 +76,18 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 }
 
 func (parser *PackageCollection) Query(query common.PackageQuery) ([]*common.Package, error) {
-	var ret []*common.Package
+	var directs []*common.Package
+	var aliases []*common.Package
 
 	for _, pkg := range parser.Packages {
-		if pkg.Matches(query) {
-			ret = append(ret, pkg)
+		if pkg.Name.Matches(query) {
+			directs = append(directs, pkg)
+		} else if pkg.Matches(query) {
+			aliases = append(aliases, pkg)
 		}
 	}
 
-	return ret, nil
+	return append(directs, aliases...), nil
 }
 
 func (def *PackageCollection) String() string { return strings.Join(def.Name, "_") }

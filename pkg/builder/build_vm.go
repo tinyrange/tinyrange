@@ -155,11 +155,31 @@ func directiveToFragments(ctx common.BuildContext, directive common.Directive) (
 			Target:       directive.Target,
 		}})
 	case common.DirectiveAddFile:
-		ret = append(ret, config.Fragment{FileContents: &config.FileContentsFragment{
-			GuestFilename: directive.Filename,
-			Contents:      directive.Contents,
-			Executable:    directive.Executable,
-		}})
+		if directive.Definition != nil {
+			res, err := ctx.BuildChild(directive.Definition)
+			if err != nil {
+				return nil, err
+			}
+
+			digest := res.Digest()
+
+			filename, err := ctx.FilenameFromDigest(digest)
+			if err != nil {
+				return nil, err
+			}
+
+			ret = append(ret, config.Fragment{LocalFile: &config.LocalFileFragment{
+				GuestFilename: directive.Filename,
+				HostFilename:  filename,
+				Executable:    directive.Executable,
+			}})
+		} else {
+			ret = append(ret, config.Fragment{FileContents: &config.FileContentsFragment{
+				GuestFilename: directive.Filename,
+				Contents:      directive.Contents,
+				Executable:    directive.Executable,
+			}})
+		}
 	default:
 		return nil, fmt.Errorf("BuildVmDefinition.Build: directive type %T unhandled", directive)
 	}
@@ -173,6 +193,8 @@ type BuildVmDefinition struct {
 	Kernel      common.BuildDefinition
 	InitRamFs   common.BuildDefinition
 	OutputFile  string
+	CpuCores    int
+	MemoryMB    int
 	StorageSize int
 	Interaction string
 
@@ -238,8 +260,8 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	vmCfg.BaseDirectory = wd
 	vmCfg.HypervisorScript = filepath.Join("hv/qemu/qemu.star")
 	vmCfg.KernelFilename = kernelFilename
-	vmCfg.CPUCores = 1
-	vmCfg.MemoryMB = 1024
+	vmCfg.CPUCores = def.CpuCores
+	vmCfg.MemoryMB = def.MemoryMB
 	vmCfg.StorageSize = def.StorageSize
 	vmCfg.Interaction = def.Interaction
 
@@ -411,17 +433,27 @@ func NewBuildVmDefinition(
 	kernel common.BuildDefinition,
 	initramfs common.BuildDefinition,
 	output string,
+	cpuCores int,
+	memoryMb int,
 	storageSize int,
 	interaction string,
 ) *BuildVmDefinition {
 	if storageSize == 0 {
 		storageSize = 1024
 	}
+	if cpuCores == 0 {
+		cpuCores = 1
+	}
+	if memoryMb == 0 {
+		memoryMb = 1024
+	}
 	return &BuildVmDefinition{
 		Directives:  dir,
 		Kernel:      kernel,
 		InitRamFs:   initramfs,
 		OutputFile:  output,
+		CpuCores:    cpuCores,
+		MemoryMB:    memoryMb,
 		StorageSize: storageSize,
 		Interaction: interaction,
 	}

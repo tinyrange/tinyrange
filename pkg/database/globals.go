@@ -39,6 +39,29 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 	ret["db"] = db
 
+	ret["load_fetcher"] = starlark.NewBuiltin("load_fetcher", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			filename string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"filename", &filename,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := db.LoadFile(filename); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
 	ret["define"] = &starlarkstruct.Module{
 		Name: "define",
 		Members: starlark.StringDict{
@@ -238,6 +261,8 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					kernel        starlark.Value
 					initramfs     starlark.Value
 					output        string
+					cpuCores      int
+					memoryMb      int
 					storageSize   int
 					interaction   string
 				)
@@ -247,6 +272,8 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					"kernel?", &kernel,
 					"initramfs?", &initramfs,
 					"output?", &output,
+					"cpu_cores", &cpuCores,
+					"memory_mb", &memoryMb,
 					"storage_size?", &storageSize,
 					"interaction", &interaction,
 				); err != nil {
@@ -294,6 +321,8 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					kernelDef,
 					initramfsDef,
 					output,
+					cpuCores,
+					memoryMb,
 					storageSize,
 					interaction,
 				), nil
@@ -467,34 +496,44 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 			) (starlark.Value, error) {
 				var (
 					filename   string
-					file       *filesystem.StarFile
+					val        starlark.Value
 					executable bool
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"filename", &filename,
-					"file", &file,
+					"file", &val,
 					"executable?", &executable,
 				); err != nil {
 					return starlark.None, err
 				}
 
-				fh, err := file.Open()
-				if err != nil {
-					return starlark.None, err
-				}
-				defer fh.Close()
+				if file, ok := val.(*filesystem.StarFile); ok {
+					fh, err := file.Open()
+					if err != nil {
+						return starlark.None, err
+					}
+					defer fh.Close()
 
-				contents, err := io.ReadAll(fh)
-				if err != nil {
-					return starlark.None, err
-				}
+					contents, err := io.ReadAll(fh)
+					if err != nil {
+						return starlark.None, err
+					}
 
-				return &common.StarDirective{Directive: common.DirectiveAddFile{
-					Filename:   filename,
-					Contents:   contents,
-					Executable: executable,
-				}}, nil
+					return &common.StarDirective{Directive: common.DirectiveAddFile{
+						Filename:   filename,
+						Contents:   contents,
+						Executable: executable,
+					}}, nil
+				} else if def, ok := val.(common.BuildDefinition); ok {
+					return &common.StarDirective{Directive: common.DirectiveAddFile{
+						Filename:   filename,
+						Definition: def,
+						Executable: executable,
+					}}, nil
+				} else {
+					return starlark.None, fmt.Errorf("could not convert %s to File", val.Type())
+				}
 			}),
 		},
 	}

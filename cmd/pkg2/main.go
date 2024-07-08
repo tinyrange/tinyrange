@@ -57,6 +57,7 @@ var (
 	httpAddr   = flag.String("http", "", "if specified run a web frontend listening on this address")
 	fileList   = make(fileListArray)
 	buildDir   = flag.String("builddir", "local/build", "specify the directory that will be used for build files")
+	buildDef   = flag.String("build", "", "build a single definition defined somewhere in a loaded file")
 )
 
 func pkg2Main() error {
@@ -90,6 +91,20 @@ func pkg2Main() error {
 		if err := db.RunScript(*script, fileList); err != nil {
 			return err
 		}
+	} else if *buildDef != "" {
+		res, err := db.BuildByName(*buildDef)
+		if err != nil {
+			return err
+		}
+
+		ctx := db.NewBuildContext(nil)
+
+		filename, err := ctx.FilenameFromDigest(res.Digest())
+		if err != nil {
+			return err
+		}
+
+		slog.Info("result", "filename", filename)
 	} else {
 		if *test {
 			start := time.Now()

@@ -15,6 +15,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/xi2/xz"
 	"go.starlark.net/starlark"
 )
 
@@ -400,6 +401,13 @@ func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.Buil
 			}
 
 			kind = strings.TrimSuffix(kind, ".zst")
+		} else if strings.HasSuffix(kind, ".xz") {
+			reader, err = xz.NewReader(fh, xz.DefaultDictMax)
+			if err != nil {
+				return nil, err
+			}
+
+			kind = strings.TrimSuffix(kind, ".xz")
 		} else {
 			reader = fh
 		}

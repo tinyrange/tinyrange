@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -112,6 +113,14 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 				return err
 			}
 
+			dirName := path.Dir(localFile.GuestFilename)
+
+			if !fs.Exists(dirName) {
+				if err := fs.Mkdir(dirName, true); err != nil {
+					return err
+				}
+			}
+
 			if err := fs.CreateFile(localFile.GuestFilename, region); err != nil {
 				return err
 			}
@@ -122,6 +131,14 @@ func runWithConfig(cfg config.TinyRangeConfig, debug bool, forwardSsh bool) erro
 				}
 			}
 		} else if fileContents := frag.FileContents; fileContents != nil {
+			dirName := path.Dir(fileContents.GuestFilename)
+
+			if !fs.Exists(dirName) {
+				if err := fs.Mkdir(dirName, true); err != nil {
+					return err
+				}
+			}
+
 			if err := fs.CreateFile(fileContents.GuestFilename, vm.RawRegion(fileContents.Contents)); err != nil {
 				return err
 			}

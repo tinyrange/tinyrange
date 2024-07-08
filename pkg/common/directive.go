@@ -24,15 +24,20 @@ func (d DirectiveRunCommand) Tag() string {
 
 type DirectiveAddFile struct {
 	Filename   string
+	Definition BuildDefinition
 	Contents   []byte
 	Executable bool
 }
 
 // Tag implements Directive.
 func (d DirectiveAddFile) Tag() string {
-	sum := GetSha256Hash(d.Contents)
+	if d.Definition != nil {
+		return fmt.Sprintf("AddFile_%s_%s_%+v", d.Filename, d.Definition.Tag(), d.Executable)
+	} else {
+		sum := GetSha256Hash(d.Contents)
 
-	return fmt.Sprintf("AddFile_%s_%s_%+v", d.Filename, sum, d.Executable)
+		return fmt.Sprintf("AddFile_%s_%s_%+v", d.Filename, sum, d.Executable)
+	}
 }
 
 type DirectiveArchive struct {

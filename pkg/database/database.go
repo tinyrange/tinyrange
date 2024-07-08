@@ -61,6 +61,8 @@ type PackageDatabase struct {
 	buildStatusMtx sync.Mutex
 	buildStatuses  map[common.BuildDefinition]*common.BuildStatus
 
+	defs map[string]starlark.Value
+
 	buildDir string
 }
 
@@ -70,7 +72,29 @@ func (db *PackageDatabase) ShouldRebuildUserDefinitions() bool {
 }
 
 func (db *PackageDatabase) newThread(name string) *starlark.Thread {
-	return &starlark.Thread{Name: name}
+	return &starlark.Thread{
+		Name: name,
+		Load: func(thread *starlark.Thread, module string) (starlark.StringDict, error) {
+			globals := db.getGlobals(module)
+
+			filename := filepath.Join("", module)
+
+			ret, err := starlark.ExecFileOptions(&syntax.FileOptions{
+				TopLevelControl: true,
+				Recursion:       true,
+				Set:             true,
+				GlobalReassign:  true,
+			}, thread, filename, nil, globals)
+			if err != nil {
+				if sErr, ok := err.(*starlark.EvalError); ok {
+					slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+				}
+				return nil, err
+			}
+
+			return ret, nil
+		},
+	}
 }
 
 func (db *PackageDatabase) getFileOptions() *syntax.FileOptions {
@@ -130,8 +154,13 @@ func (db *PackageDatabase) LoadFile(filename string) error {
 	globals := db.getGlobals("__main__")
 
 	// Execute the file.
-	if _, err := starlark.ExecFileOptions(db.getFileOptions(), thread, filename, nil, globals); err != nil {
+	defs, err := starlark.ExecFileOptions(db.getFileOptions(), thread, filename, nil, globals)
+	if err != nil {
 		return err
+	}
+
+	for k, v := range defs {
+		db.defs[k] = v
 	}
 
 	return nil
@@ -141,29 +170,6 @@ func (db *PackageDatabase) RunScript(filename string, files map[string]filesyste
 	thread := db.newThread(filename)
 
 	globals := db.getGlobals("__main__")
-
-	globals["load_fetcher"] = starlark.NewBuiltin("load_fetcher", func(
-		thread *starlark.Thread,
-		fn *starlark.Builtin,
-		args starlark.Tuple,
-		kwargs []starlark.Tuple,
-	) (starlark.Value, error) {
-		var (
-			filename string
-		)
-
-		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-			"filename", &filename,
-		); err != nil {
-			return starlark.None, err
-		}
-
-		if err := db.LoadFile(filename); err != nil {
-			return starlark.None, err
-		}
-
-		return starlark.None, nil
-	})
 
 	// Execute the script.
 	decls, err := starlark.ExecFileOptions(db.getFileOptions(), thread, filename, nil, globals)
@@ -427,6 +433,22 @@ func (db *PackageDatabase) GetBuilder(name string) (common.ContainerBuilder, err
 	return builder, nil
 }
 
+func (db *PackageDatabase) BuildByName(name string) (filesystem.File, error) {
+	def, ok := db.defs[name]
+	if !ok {
+		return nil, fmt.Errorf("name %s not found", name)
+	}
+
+	buildDef, ok := def.(common.BuildDefinition)
+	if !ok {
+		return nil, fmt.Errorf("value %s is not a BuildDefinition", def.Type())
+	}
+
+	return db.Build(db.NewBuildContext(buildDef), buildDef, common.BuildOptions{
+		AlwaysRebuild: true,
+	})
+}
+
 // Attr implements starlark.HasAttrs.
 func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 	if name == "add_mirror" {
@@ -534,6 +556,35 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 
 			return builder, nil
 		}), nil
+	} else if name == "get_builtin_executable" {
+		return starlark.NewBuiltin("Database.get_builtin_executable", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				name string
+				arch string
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"name", &name,
+				"arch", &arch,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if name == "init" {
+				if arch == "x86_64" {
+					return filesystem.NewStarFile(filesystem.NewLocalFile("build/init_x86_64"), "init_x86_64"), nil
+				} else {
+					return starlark.None, fmt.Errorf("unknown architecture for init: %s", arch)
+				}
+			} else {
+				return starlark.None, fmt.Errorf("unknown builtin executable: %s", arch)
+			}
+		}), nil
 	} else {
 		return nil, nil
 	}
@@ -563,5 +614,6 @@ func New(buildDir string) *PackageDatabase {
 		memoryCache:       make(map[string][]byte),
 		buildStatuses:     make(map[common.BuildDefinition]*common.BuildStatus),
 		buildDir:          buildDir,
+		defs:              map[string]starlark.Value{},
 	}
 }

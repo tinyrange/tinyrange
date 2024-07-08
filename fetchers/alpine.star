@@ -64,6 +64,9 @@ def split_alpine_name(q):
     return n, v
 
 def parse_alpine_query(q):
+    if q.startswith("!"):
+        return None
+
     n, v = split_alpine_name(q)
 
     return query(n + ":" + v)
@@ -124,6 +127,8 @@ def apk_download(ctx, name, fs):
 
 def parse_alpine_packages(ctx, ent):
     deps = [parse_alpine_query(dep) for dep in ent["D"].split(" ")] if "D" in ent else []
+
+    deps = [dep for dep in deps if dep != None]
 
     download_archive = define.read_archive(
         define.fetch_http(
