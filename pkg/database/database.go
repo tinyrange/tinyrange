@@ -469,7 +469,7 @@ func (db *PackageDatabase) GetBuilder(name string) (common.ContainerBuilder, err
 	return builder, nil
 }
 
-func (db *PackageDatabase) BuildByName(name string) (filesystem.File, error) {
+func (db *PackageDatabase) BuildByName(name string, opts common.BuildOptions) (filesystem.File, error) {
 	def, ok := db.defs[name]
 	if !ok {
 		return nil, fmt.Errorf("name %s not found", name)
@@ -480,9 +480,7 @@ func (db *PackageDatabase) BuildByName(name string) (filesystem.File, error) {
 		return nil, fmt.Errorf("value %s is not a BuildDefinition", def.Type())
 	}
 
-	return db.Build(db.NewBuildContext(buildDef), buildDef, common.BuildOptions{
-		AlwaysRebuild: true,
-	})
+	return db.Build(db.NewBuildContext(buildDef), buildDef, opts)
 }
 
 // Attr implements starlark.HasAttrs.

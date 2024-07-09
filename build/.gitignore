@@ -1,0 +1,4 @@
+*
+!.gitignore
+!tinyrange_qemu.star
+!tinyrange.portable

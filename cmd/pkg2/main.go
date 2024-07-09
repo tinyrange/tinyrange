@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -45,19 +46,20 @@ func (i fileListArray) Set(value string) error {
 }
 
 var (
-	makeList   = flag.String("make", "", "make a container from a list of packages")
-	builder    = flag.String("builder", "", "specify a builder to use for making containers")
-	buildTags  = flag.String("tags", "level1", "specify a list of tags to build the container with")
-	test       = flag.Bool("test", false, "load all container builders")
-	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
-	memprofile = flag.String("memprofile", "", "write memory profile to this file")
-	rebuild    = flag.Bool("rebuild", false, "rebuild all starlark-defined build definitions")
-	noParallel = flag.Bool("no-parallel", false, "disable parallel initialization of container builders")
-	script     = flag.String("script", "", "load a script rather than providing a interface for the package database")
-	httpAddr   = flag.String("http", "", "if specified run a web frontend listening on this address")
-	fileList   = make(fileListArray)
-	buildDir   = flag.String("build-dir", common.GetDefaultBuildDir(), "specify the directory that will be used for build files")
-	buildDef   = flag.String("build", "", "build a single definition defined somewhere in a loaded file")
+	makeList    = flag.String("make", "", "make a container from a list of packages")
+	builder     = flag.String("builder", "", "specify a builder to use for making containers")
+	buildTags   = flag.String("tags", "level1", "specify a list of tags to build the container with")
+	test        = flag.Bool("test", false, "load all container builders")
+	cpuprofile  = flag.String("cpuprofile", "", "write cpu profile to file")
+	memprofile  = flag.String("memprofile", "", "write memory profile to this file")
+	rebuild     = flag.Bool("rebuild", false, "rebuild all starlark-defined build definitions")
+	noParallel  = flag.Bool("no-parallel", false, "disable parallel initialization of container builders")
+	script      = flag.String("script", "", "load a script rather than providing a interface for the package database")
+	httpAddr    = flag.String("http", "", "if specified run a web frontend listening on this address")
+	fileList    = make(fileListArray)
+	buildDir    = flag.String("build-dir", common.GetDefaultBuildDir(), "specify the directory that will be used for build files")
+	buildDef    = flag.String("build", "", "build a single definition defined somewhere in a loaded file")
+	buildOutput = flag.String("o", "", "copy the build output to this path")
 )
 
 func pkg2Main() error {
@@ -92,19 +94,38 @@ func pkg2Main() error {
 			return err
 		}
 	} else if *buildDef != "" {
-		res, err := db.BuildByName(*buildDef)
+		res, err := db.BuildByName(*buildDef, common.BuildOptions{
+			AlwaysRebuild: *rebuild,
+		})
 		if err != nil {
 			return err
 		}
 
-		ctx := db.NewBuildContext(nil)
+		if *buildOutput != "" {
+			out, err := os.Create(*buildOutput)
+			if err != nil {
+				return err
+			}
+			defer out.Close()
 
-		filename, err := ctx.FilenameFromDigest(res.Digest())
-		if err != nil {
-			return err
+			fh, err := res.Open()
+			if err != nil {
+				return err
+			}
+
+			if _, err := io.Copy(out, fh); err != nil {
+				return err
+			}
+		} else {
+			ctx := db.NewBuildContext(nil)
+
+			filename, err := ctx.FilenameFromDigest(res.Digest())
+			if err != nil {
+				return err
+			}
+
+			slog.Info("result", "filename", filename)
 		}
-
-		slog.Info("result", "filename", filename)
 	} else {
 		if *test {
 			start := time.Now()
