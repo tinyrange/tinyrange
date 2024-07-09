@@ -90,7 +90,7 @@ func pkg2Main() error {
 	}
 
 	if *script != "" {
-		if err := db.RunScript(*script, fileList); err != nil {
+		if err := db.RunScript(*script, fileList, *buildOutput); err != nil {
 			return err
 		}
 	} else if *buildDef != "" {

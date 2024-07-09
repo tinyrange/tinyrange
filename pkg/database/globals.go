@@ -14,6 +14,7 @@ import (
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+	"golang.org/x/exp/rand"
 )
 
 var START_TIME = time.Now()
@@ -731,6 +732,61 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		}
 
 		return q, nil
+	})
+
+	ret["shuffle"] = starlark.NewBuiltin("shuffle", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			values starlark.Iterable
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"values", &values,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		it := values.Iterate()
+		defer it.Done()
+
+		var valueList []starlark.Value
+		var val starlark.Value
+
+		for it.Next(&val) {
+			valueList = append(valueList, val)
+		}
+
+		for i := range valueList {
+			j := rand.Intn(i + 1)
+			valueList[i], valueList[j] = valueList[j], valueList[i]
+		}
+
+		return starlark.NewList(valueList), nil
+	})
+
+	ret["sleep"] = starlark.NewBuiltin("sleep", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			dur int64
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"dur", &dur,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		time.Sleep(time.Duration(dur))
+
+		return starlark.None, nil
 	})
 
 	ret["duration"] = starlark.NewBuiltin("duration", func(

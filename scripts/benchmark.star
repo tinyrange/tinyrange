@@ -14,6 +14,12 @@ vm_params = {
 
 vm_modfs = alpine_modules_fs(kernel_fs_320)
 
+def make_vm(directives):
+    return define.build_vm(
+        directives = directives + [directive.run_command("interactive")],
+        **vm_params
+    )
+
 # Docker Configuration
 
 docker_plan = define.plan(
@@ -42,10 +48,7 @@ docker_base_directives = [
     directive.run_command("while (! docker version > /dev/null 2>&1); do\nsleep 0.1\ndone"),
 ]
 
-docker_test_vm = define.build_vm(
-    directives = docker_base_directives + [directive.run_command("interactive")],
-    **vm_params
-)
+docker_test_vm = make_vm(docker_base_directives)
 
 # Podman Configuration
 
@@ -73,10 +76,7 @@ podman_base_directives = [
     directive.run_command("service podman start"),
 ]
 
-podman_test_vm = define.build_vm(
-    directives = podman_base_directives + [directive.run_command("interactive")],
-    **vm_params
-)
+podman_test_vm = make_vm(podman_base_directives)
 
 # TinyRange Configuration
 
@@ -102,36 +102,56 @@ tinyrange_base_directives = [
     directive.run_command("mkdir -p /root/local/build"),
 ]
 
-tinyrange_test_vm = define.build_vm(
-    directives = tinyrange_base_directives + [directive.run_command("interactive")],
-    **vm_params
-)
+tinyrange_test_vm = make_vm(tinyrange_base_directives)
 
 # Startup Time Benchmark.
 
 bench_startup_docker = define.build_vm(
     directives = docker_base_directives + [
         directive.run_command("docker run -it alpine whoami"),
-        directive.run_command("hyperfine --export-markdown /result.md \"docker run -i alpine whoami\""),
+        directive.run_command("hyperfine --export-json /result.json \"docker run -i alpine whoami\""),
     ],
-    output = "/result.md",
+    output = "/result.json",
     **vm_params
 )
 
 bench_startup_podman = define.build_vm(
     directives = podman_base_directives + [
         directive.run_command("source /etc/profile; podman run -it alpine whoami"),
-        directive.run_command("source /etc/profile; hyperfine --export-markdown /result.md \"podman run -i alpine whoami\""),
+        directive.run_command("source /etc/profile; hyperfine --export-json /result.json \"podman run -i alpine whoami\""),
     ],
-    output = "/result.md",
+    output = "/result.json",
     **vm_params
 )
 
 bench_startup_tinyrange = define.build_vm(
     directives = tinyrange_base_directives + [
         directive.run_command("source /etc/profile; cd /root; ./tinyrange -exec 'whoami'"),
-        directive.run_command("source /etc/profile; cd /root; hyperfine --export-markdown /result.md \"./tinyrange -exec 'whoami'\""),
+        directive.run_command("source /etc/profile; cd /root; hyperfine --export-json /result.json \"./tinyrange -exec 'whoami'\""),
     ],
-    output = "/result.md",
+    output = "/result.json",
     **vm_params
 )
+
+# bench_startup = define.group(
+#     bench_startup_docker,
+#     bench_startup_podman,
+#     bench_startup_tinyrange,
+# )
+
+def main(args):
+    output = args.output()
+
+    arr = []
+    arr += [bench_startup_docker] * 100
+    arr += [bench_startup_podman] * 100
+    arr += [bench_startup_tinyrange] * 100
+
+    arr = shuffle(arr)
+
+    for bench in arr:
+        res = db.build(bench, always_rebuild = True)
+        out = json.decode(res.read())
+        print(out)
+        output.write("\t".join([str(time()), json.encode(out)]) + "\n")
+        # sleep(duration("1m"))

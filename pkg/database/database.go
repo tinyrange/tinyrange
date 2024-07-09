@@ -23,8 +23,89 @@ import (
 	"go.starlark.net/syntax"
 )
 
+type outputFile struct {
+	f io.Writer
+}
+
+// Attr implements starlark.HasAttrs.
+func (o *outputFile) Attr(name string) (starlark.Value, error) {
+	if name == "write" {
+		return starlark.NewBuiltin("OutputFile.write", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				contents string
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"contents", &contents,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if _, err := fmt.Fprintf(o.f, "%s", contents); err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.None, nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (o *outputFile) AttrNames() []string {
+	return []string{"write"}
+}
+
+func (*outputFile) String() string        { return "OutputFile" }
+func (*outputFile) Type() string          { return "OutputFile" }
+func (*outputFile) Hash() (uint32, error) { return 0, fmt.Errorf("OutputFile is not hashable") }
+func (*outputFile) Truth() starlark.Bool  { return starlark.True }
+func (*outputFile) Freeze()               {}
+
+var (
+	_ starlark.Value    = &outputFile{}
+	_ starlark.HasAttrs = &outputFile{}
+)
+
 type scriptArguments struct {
-	args map[string]starlark.Value
+	args           map[string]starlark.Value
+	outputFilename string
+}
+
+// Attr implements starlark.HasAttrs.
+func (s *scriptArguments) Attr(name string) (starlark.Value, error) {
+	if name == "output" {
+		return starlark.NewBuiltin("Arguments.output", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			if s.outputFilename == "" {
+				return starlark.None, fmt.Errorf("no output file specified. please specify one using the -o flag")
+			}
+
+			f, err := os.Create(s.outputFilename)
+			if err != nil {
+				return starlark.None, nil
+			}
+
+			return &outputFile{f: f}, nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (s *scriptArguments) AttrNames() []string {
+	return []string{"output"}
 }
 
 // Get implements starlark.Mapping.
@@ -49,8 +130,9 @@ func (*scriptArguments) Truth() starlark.Bool  { return starlark.True }
 func (*scriptArguments) Freeze()               {}
 
 var (
-	_ starlark.Value   = &scriptArguments{}
-	_ starlark.Mapping = &scriptArguments{}
+	_ starlark.Value    = &scriptArguments{}
+	_ starlark.Mapping  = &scriptArguments{}
+	_ starlark.HasAttrs = &scriptArguments{}
 )
 
 type PackageDatabase struct {
@@ -197,7 +279,7 @@ func (db *PackageDatabase) LoadFile(filename string) error {
 	return nil
 }
 
-func (db *PackageDatabase) RunScript(filename string, files map[string]filesystem.File) error {
+func (db *PackageDatabase) RunScript(filename string, files map[string]filesystem.File, outputFilename string) error {
 	thread := db.newThread(filename)
 
 	globals := db.getGlobals("__main__")
@@ -213,7 +295,7 @@ func (db *PackageDatabase) RunScript(filename string, files map[string]filesyste
 		return err
 	}
 
-	args := &scriptArguments{args: make(map[string]starlark.Value)}
+	args := &scriptArguments{args: make(map[string]starlark.Value), outputFilename: outputFilename}
 
 	for k, v := range files {
 		args.args[k] = filesystem.NewStarFile(v, k)
