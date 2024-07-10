@@ -29,5 +29,8 @@ jobs:
           path: |
             build/tinyrange
             build/pkg2
-            build/tinyrange_qemu.star
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64-qemu
+          path: build/tinyrange_qemu.star
