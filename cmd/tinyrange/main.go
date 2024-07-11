@@ -28,6 +28,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
+	_ "github.com/tinyrange/tinyrange/pkg/platform"
 	virtualMachine "github.com/tinyrange/tinyrange/pkg/vm"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"github.com/tinyrange/vm"

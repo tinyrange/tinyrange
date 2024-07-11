@@ -13,6 +13,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/buildinfo"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	_ "github.com/tinyrange/tinyrange/pkg/platform"
 )
 
 var HYPERVISOR_SCRIPTS = []string{
@@ -139,7 +140,7 @@ func InstallerMain(tinyRangeBinary []byte, pkg2Binary []byte) error {
 					return err
 				}
 
-				response = strings.TrimSuffix(response, "\n")
+				response = strings.TrimRight(response, "\n\r")
 
 				i, err := strconv.ParseInt(response, 10, 64)
 				if err != nil {
@@ -164,7 +165,7 @@ func InstallerMain(tinyRangeBinary []byte, pkg2Binary []byte) error {
 				return err
 			}
 
-			response = strings.TrimSuffix(response, "\n")
+			response = strings.TrimRight(response, "\n\r")
 
 			if response == "y" || response == "yes" {
 				break
@@ -177,6 +178,10 @@ func InstallerMain(tinyRangeBinary []byte, pkg2Binary []byte) error {
 
 		fmt.Printf("Installing TinyRange to \"%s\".\n", *target)
 		fmt.Printf("Using Hypervisor script \"%s\".\n", *hypervisor)
+	}
+
+	if err := os.MkdirAll(*target, os.ModePerm); err != nil {
+		return err
 	}
 
 	// Install the hypervisor first.

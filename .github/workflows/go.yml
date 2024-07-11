@@ -21,19 +21,19 @@ jobs:
           go-version: "1.22.2"
 
       - name: Build
-        run: go run build.go
+        run: |
+          go run ./build.go -os linux -arch amd64
+          go run ./build.go -os windows -arch amd64
 
       - uses: actions/upload-artifact@v4
         with:
-          name: tinyrange-linux-x86_64
-          path: |
-            build/tinyrange
-            build/pkg2
+          name: tinyrange_installer_linux_amd64
+          path: build/tinyrange_installer_linux_amd64
 
       - uses: actions/upload-artifact@v4
         with:
-          name: tinyrange_installer-linux-x86_64
-          path: build/tinyrange_installer
+          name: tinyrange_installer_windows_amd64
+          path: build/cross-windows-amd64/tinyrange_installer_windows_amd64.exe
 
       - uses: actions/upload-artifact@v4
         with:

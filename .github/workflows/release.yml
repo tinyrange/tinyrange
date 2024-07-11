@@ -18,7 +18,8 @@ jobs:
 
       - name: Build Releases
         run: |
-          go run ./build.go
+          go run ./build.go -os linux -arch amd64
+          go run ./build.go -os windows -arch amd64
 
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -27,3 +28,4 @@ jobs:
           files: |
             build/tinyrange_installer_linux_amd64
             build/tinyrange_qemu.star
+            build/cross-windows-amd64/tinyrange_installer_windows_amd64.exe

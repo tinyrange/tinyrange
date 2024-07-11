@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -66,6 +67,14 @@ func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bo
 	return vm.cmd.Run()
 }
 
+func (vm *VirtualMachine) Accelerate() bool {
+	if runtime.GOOS == "windows" {
+		return false
+	} else {
+		return true
+	}
+}
+
 func (vm *VirtualMachine) Shutdown() error {
 	vm.mtx.Lock()
 	defer vm.mtx.Unlock()
@@ -114,6 +123,12 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 		return starlark.String(vm.nic.NetRecv), nil
 	} else if name == "mac_address" {
 		return starlark.String(vm.nic.MacAddress), nil
+	} else if name == "accelerate" {
+		if vm.Accelerate() {
+			return starlark.True, nil
+		} else {
+			return starlark.False, nil
+		}
 	} else {
 		return nil, nil
 	}

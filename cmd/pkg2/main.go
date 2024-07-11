@@ -16,6 +16,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	_ "github.com/tinyrange/tinyrange/pkg/platform"
 	"github.com/tinyrange/tinyrange/pkg/ui"
 )
 
@@ -69,7 +70,7 @@ func pkg2Main() error {
 	flag.Parse()
 
 	if *printVersion {
-		fmt.Printf("TinyRange pkg2 version: %s\nThe University of Queensland", buildinfo.VERSION)
+		fmt.Printf("TinyRange pkg2 version: %s\nThe University of Queensland\n", buildinfo.VERSION)
 		return nil
 	}
 

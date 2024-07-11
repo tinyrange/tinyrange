@@ -7,7 +7,6 @@ As a result of being a derived work of QEMU and QBoot I'm releasing this file
 under the GNU General Public License, version 2.
 """
 
-CFG_ACCELERATE = True
 CFG_USE_VIRTIO_CONSOLE = True
 
 # This is the raw data of bios.bin built from QBoot.
@@ -1169,11 +1168,15 @@ def main(ctx):
     kernel_cmdline = []
 
     # If acceleration is enabled then enable kvm and pass the host CPU info.
-    if CFG_ACCELERATE:
+    if ctx.accelerate:
         args += ["-enable-kvm", "-cpu", "host"]
 
     # Set the command name.
     command_name = find_command("qemu-system-x86_64")
+    if command_name == None:
+        command_name = find_local("qemu-system-x86_64")
+        if command_name == None:
+            return error("QEMU not found.")
 
     # Add basic flags to disable GUI display, remove defaults, and prevent reboots.
     args += [
