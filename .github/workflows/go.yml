@@ -25,12 +25,12 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-x86_64
+          name: tinyrange-linux-x86_64
           path: |
             build/tinyrange
             build/pkg2
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-x86_64-qemu
+          name: tinyrange_qemu.star
           path: build/tinyrange_qemu.star
