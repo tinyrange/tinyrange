@@ -216,7 +216,7 @@ func buildPkg2ForTarget(buildDir string, buildOs string, buildArch string) (stri
 }
 
 func buildInstallerForTarget(buildDir string, targetName string, buildOs string, buildArch string) (string, error) {
-	outputFilename := getTarget(buildDir, buildOs, "tinyrange_installer")
+	outputFilename := getTarget(buildDir, buildOs, fmt.Sprintf("tinyrange_installer_%s_%s", buildOs, buildArch))
 
 	args := []string{
 		"build",
