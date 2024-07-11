@@ -32,5 +32,10 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
+          name: tinyrange_installer-linux-x86_64
+          path: build/tinyrange_installer
+
+      - uses: actions/upload-artifact@v4
+        with:
           name: tinyrange_qemu.star
           path: build/tinyrange_qemu.star

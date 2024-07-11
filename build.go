@@ -96,12 +96,10 @@ func NewArchive(w io.Writer, prefix string) *ZipArchive {
 }
 
 var (
-	buildOs    = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
-	buildArch  = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
-	buildDir   = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
-	releaseDir = flag.String("releaseDir", "release/", "Specify the directory to put releases in.")
-	debug      = flag.Bool("debug", false, "Print executed commands.")
-	release    = flag.Bool("release", false, "Generate a release package for the built operating system (supports Windows).")
+	buildOs   = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
+	buildArch = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
+	buildDir  = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
+	debug     = flag.Bool("debug", false, "Print executed commands.")
 )
 
 func buildInitForTarget(buildArch string) error {
@@ -217,74 +215,79 @@ func buildPkg2ForTarget(buildDir string, buildOs string, buildArch string) (stri
 	return outputFilename, nil
 }
 
-func buildReleaseForTarget(releaseDir string, buildDir string, buildOs string, buildArch string) (string, error) {
-	err := os.MkdirAll(releaseDir, os.ModePerm)
-	if err != nil {
-		return "", err
+func buildInstallerForTarget(buildDir string, targetName string, buildOs string, buildArch string) (string, error) {
+	outputFilename := getTarget(buildDir, buildOs, "tinyrange_installer")
+
+	args := []string{
+		"build",
+		"-o", outputFilename,
 	}
 
-	releaseFilename := filepath.Join(releaseDir, fmt.Sprintf("tinyrange_%s_%s.zip", buildOs, buildArch))
-
-	releaseArchive, err := os.Create(releaseFilename)
-	if err != nil {
-		return "", err
-	}
-	defer releaseArchive.Close()
-
-	archive := NewArchive(releaseArchive, "tinyrange/")
-	defer archive.Close()
-
-	if err := buildInitForTarget(buildArch); err != nil {
-		log.Fatal(err)
-	}
-
-	filename, err := buildTinyRangeForTarget(filepath.Join(buildDir, buildOs), buildOs, buildArch)
-	if err != nil {
-		return "", err
-	}
-
-	if buildOs == "windows" {
-		if err := archive.CopyFile(filename, "tinyrange.exe"); err != nil {
-			return "", err
-		}
+	if targetName != "" {
+		args = append(args, fmt.Sprintf("github.com/tinyrange/tinyrange/build/%s", targetName))
 	} else {
-		if err := archive.CopyFile(filename, "tinyrange"); err != nil {
-			return "", err
-		}
+		args = append(args, "github.com/tinyrange/tinyrange/build")
 	}
 
-	filename, err = buildPkg2ForTarget(filepath.Join(buildDir, buildOs), buildOs, buildArch)
+	cmd := exec.Command("go", args...)
+
+	cmd.Env = cmd.Environ()
+
+	cmd.Env = append(cmd.Env, "GOOS="+buildOs)
+	cmd.Env = append(cmd.Env, "GOARCH="+buildArch)
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if *debug {
+		log.Printf("executing %v", cmd.Args)
+	}
+
+	log.Printf("Build Installer for target: %s/%s", buildOs, buildArch)
+	err := cmd.Run()
 	if err != nil {
 		return "", err
 	}
 
-	if buildOs == "windows" {
-		if err := archive.CopyFile(filename, "pkg2.exe"); err != nil {
-			return "", err
-		}
-	} else {
-		if err := archive.CopyFile(filename, "pkg2"); err != nil {
-			return "", err
-		}
+	return outputFilename, nil
+}
+
+func getTargetDir(buildDir string, targetOs string, targetArch string) (string, string, error) {
+	if targetOs == runtime.GOOS && targetArch == runtime.GOARCH {
+		return buildDir, "", nil
 	}
 
-	// Create tinyrange.portable.
-	if err := archive.WriteFile("tinyrange.portable", []byte("")); err != nil {
-		return "", err
+	targetName := fmt.Sprintf("cross-%s-%s", targetOs, targetArch)
+
+	newDir := filepath.Join(buildDir, targetName)
+
+	err := os.MkdirAll(newDir, os.ModePerm)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create directory: %v", err)
 	}
 
-	// Copy the tinyrange_qemu.star file.
-	if err := archive.CopyFile(filepath.Join(buildDir, "tinyrange_qemu.star"), "tinyrange_qemu.star"); err != nil {
-		return "", err
+	return newDir, targetName, nil
+}
+
+func copyFile(source string, target string) error {
+	in, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
 	}
 
-	// if buildOs == "windows" {
-	// 	if err := archive.CopyDirectory("release/tinyQemu/", "qemu/"); err != nil {
-	// 		return "", err
-	// 	}
-	// }
-
-	return releaseFilename, nil
+	return nil
 }
 
 func main() {
@@ -294,28 +297,45 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if *release {
-		log.Printf("Building Release for %s", *buildOs)
-		releaseFilename, err := buildReleaseForTarget(*releaseDir, *buildDir, *buildOs, *buildArch)
-		if err != nil {
-			log.Fatal(err)
-		}
+	log.Printf("Build init")
+	if err := buildInitForTarget(*buildArch); err != nil {
+		log.Fatal(err)
+	}
 
-		log.Printf("Built release archive to: %s", releaseFilename)
-	} else {
-		log.Printf("Build init")
-		if err := buildInitForTarget(*buildArch); err != nil {
-			log.Fatal(err)
+	target, targetName, err := getTargetDir(*buildDir, *buildOs, *buildArch)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if targetName != "" {
+		if *buildOs == "windows" {
+			if err := copyFile(
+				filepath.Join(*buildDir, "installer_windows.go"),
+				filepath.Join(target, "installer.go"),
+			); err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			if err := copyFile(
+				filepath.Join(*buildDir, "installer.go"),
+				filepath.Join(target, "installer.go"),
+			); err != nil {
+				log.Fatal(err)
+			}
 		}
+	}
 
-		log.Printf("Build Pkg2")
-		if _, err := buildPkg2ForTarget(*buildDir, *buildOs, *buildArch); err != nil {
-			log.Fatal(err)
-		}
+	log.Printf("Build Pkg2")
+	if _, err := buildPkg2ForTarget(target, *buildOs, *buildArch); err != nil {
+		log.Fatal(err)
+	}
 
-		log.Printf("Build TinyRange")
-		if _, err := buildTinyRangeForTarget(*buildDir, *buildOs, *buildArch); err != nil {
-			log.Fatal(err)
-		}
+	log.Printf("Build TinyRange")
+	if _, err := buildTinyRangeForTarget(target, *buildOs, *buildArch); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("Build Installer")
+	if _, err := buildInstallerForTarget(target, targetName, *buildOs, *buildArch); err != nil {
+		log.Fatal(err)
 	}
 }
