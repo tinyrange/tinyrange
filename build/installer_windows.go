@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build windows
 
 package main
 
@@ -10,10 +10,10 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/installer"
 )
 
-//go:embed pkg2
+//go:embed pkg2.exe
 var PKG2_BINARY []byte
 
-//go:embed tinyrange
+//go:embed tinyrange.exe
 var TINYRANGE_BINARY []byte
 
 func main() {
