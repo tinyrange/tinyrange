@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tinyrange/tinyrange/pkg/buildinfo"
 	"github.com/tinyrange/tinyrange/pkg/common"
 )
 
@@ -68,7 +69,7 @@ var (
 func InstallerMain(tinyRangeBinary []byte, pkg2Binary []byte) error {
 	flag.Parse()
 
-	fmt.Println("=== TinyRange Installer ===")
+	fmt.Printf("=== TinyRange %s Installer ===\n", buildinfo.VERSION)
 
 	// Figure out what directory we will write to.
 	if *target == "" {

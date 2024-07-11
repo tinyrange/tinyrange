@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tinyrange/tinyrange/pkg/buildinfo"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -46,25 +47,31 @@ func (i fileListArray) Set(value string) error {
 }
 
 var (
-	makeList    = flag.String("make", "", "make a container from a list of packages")
-	builder     = flag.String("builder", "", "specify a builder to use for making containers")
-	buildTags   = flag.String("tags", "level1", "specify a list of tags to build the container with")
-	test        = flag.Bool("test", false, "load all container builders")
-	cpuprofile  = flag.String("cpuprofile", "", "write cpu profile to file")
-	memprofile  = flag.String("memprofile", "", "write memory profile to this file")
-	rebuild     = flag.Bool("rebuild", false, "rebuild all starlark-defined build definitions")
-	noParallel  = flag.Bool("no-parallel", false, "disable parallel initialization of container builders")
-	script      = flag.String("script", "", "load a script rather than providing a interface for the package database")
-	httpAddr    = flag.String("http", "", "if specified run a web frontend listening on this address")
-	fileList    = make(fileListArray)
-	buildDir    = flag.String("build-dir", common.GetDefaultBuildDir(), "specify the directory that will be used for build files")
-	buildDef    = flag.String("build", "", "build a single definition defined somewhere in a loaded file")
-	buildOutput = flag.String("o", "", "copy the build output to this path")
+	makeList     = flag.String("make", "", "make a container from a list of packages")
+	builder      = flag.String("builder", "", "specify a builder to use for making containers")
+	buildTags    = flag.String("tags", "level1", "specify a list of tags to build the container with")
+	test         = flag.Bool("test", false, "load all container builders")
+	cpuprofile   = flag.String("cpuprofile", "", "write cpu profile to file")
+	memprofile   = flag.String("memprofile", "", "write memory profile to this file")
+	rebuild      = flag.Bool("rebuild", false, "rebuild all starlark-defined build definitions")
+	noParallel   = flag.Bool("no-parallel", false, "disable parallel initialization of container builders")
+	script       = flag.String("script", "", "load a script rather than providing a interface for the package database")
+	httpAddr     = flag.String("http", "", "if specified run a web frontend listening on this address")
+	fileList     = make(fileListArray)
+	buildDir     = flag.String("build-dir", common.GetDefaultBuildDir(), "specify the directory that will be used for build files")
+	buildDef     = flag.String("build", "", "build a single definition defined somewhere in a loaded file")
+	buildOutput  = flag.String("o", "", "copy the build output to this path")
+	printVersion = flag.Bool("version", false, "print the version information")
 )
 
 func pkg2Main() error {
 	flag.Var(&fileList, "file", "specify files that will be accessible to scripts")
 	flag.Parse()
+
+	if *printVersion {
+		fmt.Printf("TinyRange pkg2 version: %s\nThe University of Queensland", buildinfo.VERSION)
+		return nil
+	}
 
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
@@ -74,6 +81,8 @@ func pkg2Main() error {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
+
+	slog.Info("TinyRange pkg2", "version", buildinfo.VERSION)
 
 	if err := common.Ensure(*buildDir, fs.ModePerm); err != nil {
 		return err

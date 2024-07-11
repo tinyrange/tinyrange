@@ -4,6 +4,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 type ZipArchive struct {
@@ -290,10 +292,53 @@ func copyFile(source string, target string) error {
 	return nil
 }
 
+func generateRev() error {
+	out := exec.Command("git", "describe", "--tags", "--dirty")
+
+	buf := new(bytes.Buffer)
+
+	out.Stdout = buf
+	out.Stderr = os.Stderr
+	out.Stdin = os.Stdin
+
+	if *debug {
+		log.Printf("executing %v", out.Args)
+	}
+
+	err := out.Run()
+	if err != nil {
+		log.Printf("git describe --tags failed. Writing fallback")
+
+		err := os.WriteFile("pkg/buildinfo/commit.txt", []byte("nongit"), os.ModePerm)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	f, err := os.Create("pkg/buildinfo/commit.txt")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = fmt.Fprintf(f, "%s", strings.Trim(buf.String(), "\n\r"))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func main() {
 	flag.Parse()
 
 	if err := os.Setenv("CGO_ENABLED", "0"); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := generateRev(); err != nil {
 		log.Fatal(err)
 	}
 

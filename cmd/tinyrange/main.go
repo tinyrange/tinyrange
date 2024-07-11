@@ -21,6 +21,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/builder"
+	"github.com/tinyrange/tinyrange/pkg/buildinfo"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/database"
@@ -82,7 +83,7 @@ func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forw
 		return fmt.Errorf("invalid config")
 	}
 
-	slog.Info("starting TinyRange")
+	slog.Info("TinyRange", "version", buildinfo.VERSION)
 
 	interaction := cfg.Interaction
 	if interaction == "" {
@@ -534,19 +535,25 @@ func runWithCommandLineConfig(buildDir string, rebuild bool, image string, execC
 }
 
 var (
-	cpuCores    = flag.Int("cpu-cores", 1, "set the number of cpu cores in the VM")
-	memoryMb    = flag.Int("memory", 1024, "set the number of megabytes of RAM in the VM")
-	storageSize = flag.Int("storage-size", 512, "the size of the VM storage in megabytes")
-	image       = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
-	configFile  = flag.String("config", "", "passes a custom config. this overrides all other flags.")
-	debug       = flag.Bool("debug", false, "redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup")
-	buildDir    = flag.String("build-dir", common.GetDefaultBuildDir(), "the directory to build definitions to")
-	rebuild     = flag.Bool("rebuild", false, "always rebuild the kernel and image definitions")
-	execCommand = flag.String("exec", "", "if set then run a command rather than creating a login shell")
+	cpuCores     = flag.Int("cpu-cores", 1, "set the number of cpu cores in the VM")
+	memoryMb     = flag.Int("memory", 1024, "set the number of megabytes of RAM in the VM")
+	storageSize  = flag.Int("storage-size", 512, "the size of the VM storage in megabytes")
+	image        = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
+	configFile   = flag.String("config", "", "passes a custom config. this overrides all other flags.")
+	debug        = flag.Bool("debug", false, "redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup")
+	buildDir     = flag.String("build-dir", common.GetDefaultBuildDir(), "the directory to build definitions to")
+	rebuild      = flag.Bool("rebuild", false, "always rebuild the kernel and image definitions")
+	execCommand  = flag.String("exec", "", "if set then run a command rather than creating a login shell")
+	printVersion = flag.Bool("version", false, "print the version information")
 )
 
 func tinyRangeMain() error {
 	flag.Parse()
+
+	if *printVersion {
+		fmt.Printf("TinyRange version: %s\nThe University of Queensland\n", buildinfo.VERSION)
+		return nil
+	}
 
 	if err := common.Ensure(*buildDir, fs.ModePerm); err != nil {
 		return err
