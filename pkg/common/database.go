@@ -22,11 +22,13 @@ type ContainerBuilder interface {
 	starlark.Value
 
 	Plan(packages []PackageQuery, tags TagList) (InstallationPlan, error)
+	Search(pkg PackageQuery) ([]*Package, error)
 }
 
 type PackageDatabase interface {
 	starlark.Value
 
+	GetBuildDir() string
 	Build(ctx BuildContext, def BuildDefinition, opts BuildOptions) (filesystem.File, error)
 	UrlsFor(url string) ([]string, error)
 	HttpClient() (*http.Client, error)

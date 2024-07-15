@@ -132,11 +132,9 @@ func (b *BuildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
 		return true, nil
 	}
 
-	// TODO(joshua): This code should be merged with the Build method.
-
 	hash := common.GetSha256Hash([]byte(def.Tag()))
 
-	filename := filepath.Join("local", "build", hash+".bin")
+	filename := filepath.Join(b.database.GetBuildDir(), hash+".bin")
 
 	// Get a child context for the build.
 	child := b.ChildContext(def, b.status, filename+".tmp")

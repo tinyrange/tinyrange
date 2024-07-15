@@ -8,8 +8,10 @@ import (
 )
 
 type PackageQuery struct {
-	Name    string
-	Version string
+	MatchDirect      bool
+	Name             string
+	MatchPartialName bool
+	Version          string
 }
 
 func (q PackageQuery) String() string      { return fmt.Sprintf("%s:%s", q.Name, q.Version) }
@@ -46,9 +48,17 @@ func (name PackageName) Query() PackageQuery {
 }
 
 func (name PackageName) Matches(query PackageQuery) bool {
+	if query.MatchPartialName && query.Name == "" {
+		return true
+	}
+
 	if query.Name != "" {
-		if name.Name != query.Name {
-			return false
+		if query.MatchPartialName {
+			return strings.Contains(name.Name, query.Name)
+		} else {
+			if name.Name != query.Name {
+				return false
+			}
 		}
 	}
 
@@ -174,6 +184,10 @@ func (pkg *Package) AttrNames() []string {
 func (pkg *Package) Matches(query PackageQuery) bool {
 	if pkg.Name.Matches(query) {
 		return true
+	}
+
+	if query.MatchDirect {
+		return false
 	}
 
 	for _, alias := range pkg.Aliases {

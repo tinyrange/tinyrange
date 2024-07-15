@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/tinyrange/tinyrange/filesystem/fat16"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/fat16"
 	"github.com/tinyrange/vm"
 )
 

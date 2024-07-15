@@ -152,6 +152,11 @@ type PackageDatabase struct {
 	buildDir string
 }
 
+// GetBuildDir implements common.PackageDatabase.
+func (db *PackageDatabase) GetBuildDir() string {
+	return db.buildDir
+}
+
 // ShouldRebuildUserDefinitions implements common.PackageDatabase.
 func (db *PackageDatabase) ShouldRebuildUserDefinitions() bool {
 	return db.RebuildUserDefinitions
@@ -563,6 +568,18 @@ func (db *PackageDatabase) BuildByName(name string, opts common.BuildOptions) (f
 	}
 
 	return db.Build(db.NewBuildContext(buildDef), buildDef, opts)
+}
+
+func (db *PackageDatabase) LoadBuiltinBuilders() error {
+	for _, builder := range []string{
+		"//fetchers/alpine.star",
+	} {
+		if err := db.LoadFile(builder); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Attr implements starlark.HasAttrs.
