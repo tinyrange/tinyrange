@@ -168,7 +168,7 @@ func pkg2Main() error {
 
 				tags := strings.Split((*buildTags), ",")
 
-				plan, err := builder.Plan(queries, common.TagList(tags))
+				plan, err := builder.Plan(queries, common.TagList(tags), common.PlanOptions{})
 				if err != nil {
 					return err
 				}

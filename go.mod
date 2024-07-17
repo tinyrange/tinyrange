@@ -4,6 +4,9 @@ go 1.22.2
 
 require (
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
+	github.com/basgys/goxml2json v1.1.0
+	github.com/cavaliergopher/cpio v1.0.1
+	github.com/cavaliergopher/rpm v1.2.0
 	github.com/creack/pty v1.1.21
 	github.com/google/gopacket v1.1.19
 	github.com/google/uuid v1.6.0
@@ -29,6 +32,7 @@ require (
 )
 
 require (
+	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -70,7 +71,7 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 		parser.Packages[pkg.Name.Key()] = pkg
 	}
 
-	slog.Info("loaded all packages", "took", time.Since(start))
+	slog.Info("loaded all packages", "count", len(records), "took", time.Since(start))
 
 	return nil
 }
@@ -86,6 +87,14 @@ func (parser *PackageCollection) Query(query common.PackageQuery) ([]*common.Pac
 			aliases = append(aliases, pkg)
 		}
 	}
+
+	slices.SortFunc(directs, func(a *common.Package, b *common.Package) int {
+		return strings.Compare(a.Name.String(), b.Name.String())
+	})
+
+	slices.SortFunc(aliases, func(a *common.Package, b *common.Package) int {
+		return strings.Compare(a.Name.String(), b.Name.String())
+	})
 
 	return append(directs, aliases...), nil
 }

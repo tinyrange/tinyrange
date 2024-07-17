@@ -110,6 +110,16 @@ const (
 	Feature_ro_compat_RO_COMPAT_PROJECT       Feature_ro_compat = 0b10000000000000
 )
 
+func resolveRelative(wd string, target string) (string, error) {
+	if strings.HasPrefix(target, ".") {
+		return "", fmt.Errorf("resolveRelative(%+v, %+v) not implemented", wd, target)
+	} else if strings.HasPrefix(target, "/") {
+		return target, nil
+	} else {
+		return path.Join(path.Dir(wd), target), nil
+	}
+}
+
 type Directory interface {
 	String() string
 	AddEntry(child *InodeWrapper, name string) error
@@ -752,6 +762,7 @@ type InodeWrapper struct {
 	node       *Inode
 	extentTree ExtentTree
 	dir        Directory
+	linkTarget string
 }
 
 const (
@@ -925,6 +936,8 @@ func (i *InodeWrapper) addContents(contents vm.MemoryRegion, symlink bool) error
 		}
 
 		i.node.SetNSize(uint64(contents.Size()))
+
+		i.linkTarget = string(contents.(vm.RawRegion))
 	} else {
 		blocks := roundUpDiv(int(contents.Size()), int(i.fs.sb.blockSize()))
 
@@ -1289,16 +1302,47 @@ func (fs *Ext4Filesystem) root() (*InodeWrapper, error) {
 	return fs.inodes[2], nil
 }
 
-func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool) (*InodeWrapper, error) {
+func (fs *Ext4Filesystem) resolveSymlink(node *InodeWrapper, name string) (*InodeWrapper, error) {
+	if node.Mode().Type() == goFs.ModeSymlink {
+		target := node.linkTarget
+
+		newTarget, err := resolveRelative(path.Dir(name), target)
+		if err != nil {
+			return nil, err
+		}
+
+		newNode, err := fs.getNode(newTarget, false, false, false)
+		if err != nil {
+			return nil, err
+		}
+
+		return newNode, nil
+	}
+
+	return node, nil
+}
+
+func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool, resolveSymlinks bool) (*InodeWrapper, error) {
 	filename = strings.TrimSuffix(filename, "/")
 
 	if inode, ok := fs.inodeCache[filename]; ok {
-		return inode, nil
+		if resolveSymlinks {
+			return fs.resolveSymlink(inode, filename)
+		} else {
+			return inode, nil
+		}
 	}
 
 	parentName := path.Dir(filename)
 
 	if parent, ok := fs.inodeCache[parentName]; ok {
+		// Unconditionally resolve symlinks here.
+		var err error
+		parent, err = fs.resolveSymlink(parent, parentName)
+		if err != nil {
+			return nil, err
+		}
+
 		child, err := parent.getChild(path.Base(filename))
 		if err == os.ErrNotExist && mkdir {
 			token := path.Base(filename)
@@ -1326,7 +1370,11 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool) (*Ino
 
 		fs.inodeCache[filename] = child
 
-		return child, nil
+		if resolveSymlinks {
+			return fs.resolveSymlink(child, filename)
+		} else {
+			return child, nil
+		}
 	}
 
 	tokens := strings.Split(filename, "/")
@@ -1377,14 +1425,18 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool) (*Ino
 
 	fs.inodeCache[filename] = currentNode
 
-	return currentNode, nil
+	if resolveSymlinks {
+		return fs.resolveSymlink(currentNode, filename)
+	} else {
+		return currentNode, nil
+	}
 }
 
 func (fs *Ext4Filesystem) Mkdir(filename string, all bool) error {
 	parentName := path.Dir(filename)
 	newDirName := path.Base(filename)
 
-	node, err := fs.getNode(parentName, false, all)
+	node, err := fs.getNode(parentName, false, all, false)
 	if err != nil {
 		return err
 	}
@@ -1408,13 +1460,13 @@ func (fs *Ext4Filesystem) Mkdir(filename string, all bool) error {
 }
 
 func (fs *Ext4Filesystem) CreateFile(filename string, content vm.MemoryRegion) error {
-	node, err := fs.getNode(path.Dir(filename), false, false)
+	node, err := fs.getNode(path.Dir(filename), false, false, true)
 	if err != nil {
 		return err
 	}
 
 	if !node.Mode().IsDir() {
-		return goFs.ErrInvalid
+		return fmt.Errorf("parent is not a directory: %s", node.Mode().Type())
 	}
 
 	f, err := fs.allocateInode()
@@ -1438,7 +1490,7 @@ func (fs *Ext4Filesystem) Link(filename string, target string) error {
 		return fmt.Errorf("hard links must use absolute paths")
 	}
 
-	node, err := fs.getNode(path.Dir(filename), false, false)
+	node, err := fs.getNode(path.Dir(filename), false, false, true)
 	if err != nil {
 		return err
 	}
@@ -1447,7 +1499,7 @@ func (fs *Ext4Filesystem) Link(filename string, target string) error {
 		return goFs.ErrInvalid
 	}
 
-	targetNode, err := fs.getNode(target, false, false)
+	targetNode, err := fs.getNode(target, false, false, false)
 	if err != nil {
 		return err
 	}
@@ -1460,7 +1512,7 @@ func (fs *Ext4Filesystem) Link(filename string, target string) error {
 }
 
 func (fs *Ext4Filesystem) Symlink(filename string, target string) error {
-	node, err := fs.getNode(path.Dir(filename), false, false)
+	node, err := fs.getNode(path.Dir(filename), false, false, true)
 	if err != nil {
 		return err
 	}
@@ -1486,12 +1538,12 @@ func (fs *Ext4Filesystem) Symlink(filename string, target string) error {
 }
 
 func (fs *Ext4Filesystem) Exists(filename string) bool {
-	_, err := fs.getNode(filename, false, false)
+	_, err := fs.getNode(filename, false, false, false)
 	return err == nil
 }
 
 func (fs *Ext4Filesystem) Chmod(filename string, mode goFs.FileMode) error {
-	node, err := fs.getNode(filename, false, false)
+	node, err := fs.getNode(filename, false, false, false)
 	if err != nil {
 		return err
 	}
@@ -1500,7 +1552,7 @@ func (fs *Ext4Filesystem) Chmod(filename string, mode goFs.FileMode) error {
 }
 
 func (fs *Ext4Filesystem) Chown(filename string, uid uint16, gid uint16) error {
-	node, err := fs.getNode(filename, false, false)
+	node, err := fs.getNode(filename, false, false, false)
 	if err != nil {
 		return err
 	}
@@ -1509,7 +1561,7 @@ func (fs *Ext4Filesystem) Chown(filename string, uid uint16, gid uint16) error {
 }
 
 func (fs *Ext4Filesystem) Chtimes(filename string, mod time.Time) error {
-	node, err := fs.getNode(filename, false, false)
+	node, err := fs.getNode(filename, false, false, false)
 	if err != nil {
 		return err
 	}
@@ -1553,7 +1605,7 @@ func (fs *Ext4Filesystem) mapRawExtent(region vm.MemoryRegion, extent *Extent) e
 }
 
 func (fs *Ext4Filesystem) DumpDebug(filename string) {
-	ent, err := fs.getNode(filename, true, false)
+	ent, err := fs.getNode(filename, true, false, false)
 	if err != nil {
 		slog.Error("file does not exist", "filename", filename)
 		return

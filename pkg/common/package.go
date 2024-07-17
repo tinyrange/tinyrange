@@ -14,6 +14,10 @@ type PackageQuery struct {
 	Version          string
 }
 
+func (q PackageQuery) Equals(n PackageName) bool {
+	return q.Name == n.Name && q.Version == n.Version
+}
+
 func (q PackageQuery) String() string      { return fmt.Sprintf("%s:%s", q.Name, q.Version) }
 func (PackageQuery) Type() string          { return "PackageQuery" }
 func (PackageQuery) Hash() (uint32, error) { return 0, fmt.Errorf("PackageQuery is not hashable") }

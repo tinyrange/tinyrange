@@ -33,11 +33,11 @@ type BuiltinFragment struct {
 
 type Fragment struct {
 	// Not supported by TinyRange directly.
-	RunCommand   *RunCommandFragment   `json:"run_command" yaml:"run_command"`
-	LocalFile    *LocalFileFragment    `json:"local_file" yaml:"local_file"`
-	FileContents *FileContentsFragment `json:"file_contents" yaml:"file_contents"`
-	Archive      *ArchiveFragment      `json:"archive" yaml:"archive"`
-	Builtin      *BuiltinFragment      `json:"builtin" yaml:"builtin"`
+	RunCommand   *RunCommandFragment   `json:"run_command,omitempty" yaml:"run_command"`
+	LocalFile    *LocalFileFragment    `json:"local_file,omitempty" yaml:"local_file"`
+	FileContents *FileContentsFragment `json:"file_contents,omitempty" yaml:"file_contents"`
+	Archive      *ArchiveFragment      `json:"archive,omitempty" yaml:"archive"`
+	Builtin      *BuiltinFragment      `json:"builtin,omitempty" yaml:"builtin"`
 }
 
 // A config file that can be passed to TinyRange to configure and execute a virtual machine.

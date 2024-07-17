@@ -17,6 +17,7 @@ type PlanDefinition struct {
 	Builder string
 	Search  []common.PackageQuery
 	TagList common.TagList
+	Debug   bool
 
 	Fragments []config.Fragment
 }
@@ -79,9 +80,23 @@ func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, e
 		return nil, err
 	}
 
-	plan, err := builder.Plan(def.Search, def.TagList)
+	plan, err := builder.Plan(def.Search, def.TagList, common.PlanOptions{
+		Debug: def.Debug,
+	})
 	if err != nil {
 		return nil, err
+	}
+
+	if err := plan.WriteTree(); err != nil {
+		return nil, err
+	}
+
+	if def.Debug {
+		if err := plan.WriteTree(); err != nil {
+			return nil, err
+		}
+
+		return def, nil
 	}
 
 	for _, dir := range plan.Directives() {
@@ -112,6 +127,7 @@ func (def *PlanDefinition) Tag() string {
 		def.Builder,
 		fmt.Sprintf("%+v", def.Search),
 		def.TagList.String(),
+		fmt.Sprintf("%v", def.Debug),
 	}, "_")
 }
 

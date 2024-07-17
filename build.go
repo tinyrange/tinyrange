@@ -217,6 +217,40 @@ func buildPkg2ForTarget(buildDir string, buildOs string, buildArch string) (stri
 	return outputFilename, nil
 }
 
+func buildTinyRange2ForTarget(buildDir string, buildOs string, buildArch string) (string, error) {
+	outputFilename := getTarget(buildDir, buildOs, "tinyrange2")
+
+	args := []string{
+		"build",
+		"-o", outputFilename,
+	}
+
+	args = append(args, "github.com/tinyrange/tinyrange/cmd/tinyrange2")
+
+	cmd := exec.Command("go", args...)
+
+	cmd.Env = cmd.Environ()
+
+	cmd.Env = append(cmd.Env, "GOOS="+buildOs)
+	cmd.Env = append(cmd.Env, "GOARCH="+buildArch)
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if *debug {
+		log.Printf("executing %v", cmd.Args)
+	}
+
+	log.Printf("Build TinyRange2 for target: %s/%s", buildOs, buildArch)
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+
+	return outputFilename, nil
+}
+
 func buildInstallerForTarget(buildDir string, targetName string, buildOs string, buildArch string) (string, error) {
 	outputFilename := getTarget(buildDir, buildOs, fmt.Sprintf("tinyrange_installer_%s_%s", buildOs, buildArch))
 
@@ -342,7 +376,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("Build init")
 	if err := buildInitForTarget(*buildArch); err != nil {
 		log.Fatal(err)
 	}
@@ -369,17 +402,18 @@ func main() {
 		}
 	}
 
-	log.Printf("Build Pkg2")
 	if _, err := buildPkg2ForTarget(target, *buildOs, *buildArch); err != nil {
 		log.Fatal(err)
 	}
 
-	log.Printf("Build TinyRange")
 	if _, err := buildTinyRangeForTarget(target, *buildOs, *buildArch); err != nil {
 		log.Fatal(err)
 	}
 
-	log.Printf("Build Installer")
+	if _, err := buildTinyRange2ForTarget(target, *buildOs, *buildArch); err != nil {
+		log.Fatal(err)
+	}
+
 	if _, err := buildInstallerForTarget(target, targetName, *buildOs, *buildArch); err != nil {
 		log.Fatal(err)
 	}

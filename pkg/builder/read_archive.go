@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cavaliergopher/cpio"
 	"github.com/klauspost/compress/zstd"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -113,6 +114,10 @@ func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.F
 }
 
 func (d *directoryToArchiveBuildResult) writeFileTo(w io.Writer, ent filesystem.File, name string) (n int64, err error) {
+	if starEnt, ok := ent.(*filesystem.StarFile); ok {
+		ent = starEnt.File
+	}
+
 	if cEnt, ok := ent.(*filesystem.CacheEntry); ok {
 		if cEnt.CTypeflag != filesystem.TypeRegular {
 			return d.writeEntry(w, ent, name)
@@ -155,14 +160,14 @@ func (d *directoryToArchiveBuildResult) writeDirTo(w io.Writer, ent filesystem.D
 		if dir, ok := ent.File.(filesystem.Directory); ok {
 			childN, err := d.writeDirTo(w, dir, path.Join(name, ent.Name))
 			if err != nil {
-				return n + childN, err
+				return n + childN, fmt.Errorf("failed to write directory %s: %s", ent.Name, err)
 			}
 
 			n += childN
 		} else {
 			childN, err := d.writeFileTo(w, ent.File, path.Join(name, ent.Name))
 			if err != nil {
-				return n + childN, err
+				return n + childN, fmt.Errorf("failed to write file %s: %s", ent.Name, err)
 			}
 
 			n += childN
@@ -341,6 +346,84 @@ var (
 	_ common.BuildResult = &tarToArchiveBuildResult{}
 )
 
+type cpioToArchiveBuildResult struct {
+	r *cpio.Reader
+}
+
+// WriteTo implements common.BuildResult.
+func (c *cpioToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
+	for {
+		hdr, err := c.r.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return -1, err
+		}
+
+		fileInfo := hdr.FileInfo()
+
+		var typeFlag = filesystem.TypeRegular
+
+		typ := hdr.Mode &^ cpio.ModePerm
+
+		switch true {
+		case typ&cpio.TypeReg != 0:
+			// pass
+		case typ&cpio.TypeDir != 0:
+			typeFlag = filesystem.TypeDirectory
+		case typ&cpio.TypeSymlink != 0:
+			typeFlag = filesystem.TypeSymlink
+		default:
+			return -1, fmt.Errorf("unknown type flag: %d", typ)
+		}
+
+		ent := &filesystem.CacheEntry{
+			COffset:   n + 1024,
+			CTypeflag: typeFlag,
+			CName:     hdr.Name,
+			CLinkname: hdr.Linkname,
+			CSize:     hdr.Size,
+			CMode:     int64(fileInfo.Mode()),
+			CUid:      hdr.Uid,
+			CGid:      hdr.Guid,
+			CModTime:  hdr.ModTime.UnixMicro(),
+		}
+
+		bytes, err := json.Marshal(&ent)
+		if err != nil {
+			return -1, err
+		}
+
+		if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
+			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
+		} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
+			tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
+			copy(tmp, bytes)
+			bytes = tmp
+		}
+
+		childN, err := w.Write(bytes)
+		if err != nil {
+			return -1, err
+		}
+
+		n += int64(childN)
+
+		childN64, err := io.CopyN(w, c.r, hdr.Size)
+		if err != nil {
+			return -1, err
+		}
+
+		n += childN64
+	}
+
+	return
+}
+
+var (
+	_ common.BuildResult = &cpioToArchiveBuildResult{}
+)
+
 type ReadArchiveBuildDefinition struct {
 	Base common.BuildDefinition
 	Kind string
@@ -416,6 +499,8 @@ func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.Buil
 
 		if strings.HasSuffix(kind, ".tar") {
 			return &tarToArchiveBuildResult{r: tar.NewReader(reader)}, nil
+		} else if strings.HasSuffix(kind, ".cpio") {
+			return &cpioToArchiveBuildResult{r: cpio.NewReader(reader)}, nil
 		} else {
 			return nil, fmt.Errorf("ReadArchive with unknown kind: %s", r.Kind)
 		}

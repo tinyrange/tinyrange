@@ -79,7 +79,7 @@ func (*vmBackend) Sync() error {
 	return nil
 }
 
-func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forwardSsh bool) error {
+func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forwardSsh bool, exportFilesystem string) error {
 	if cfg.StorageSize == 0 || cfg.CPUCores == 0 || cfg.MemoryMB == 0 {
 		return fmt.Errorf("invalid config")
 	}
@@ -99,31 +99,31 @@ func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forw
 
 	fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create ext4 filesystem: %w", err)
 	}
 
 	for _, frag := range cfg.RootFsFragments {
 		if localFile := frag.LocalFile; localFile != nil {
 			file, err := os.Open(cfg.Resolve(localFile.HostFilename))
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to load local file: %w", err)
 			}
 
 			region, err := vm.NewFileRegion(file)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to create file region: %w", err)
 			}
 
 			dirName := path.Dir(localFile.GuestFilename)
 
 			if !fs.Exists(dirName) {
 				if err := fs.Mkdir(dirName, true); err != nil {
-					return err
+					return fmt.Errorf("failed to mkdir %s: %w", dirName, err)
 				}
 			}
 
 			if err := fs.CreateFile(localFile.GuestFilename, region); err != nil {
-				return err
+				return fmt.Errorf("failed to create file %s: %w", localFile.GuestFilename, err)
 			}
 
 			if localFile.Executable {
@@ -176,12 +176,12 @@ func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forw
 		} else if ark := frag.Archive; ark != nil {
 			fh, err := os.Open(cfg.Resolve(ark.HostFilename))
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to open archive: %w", err)
 			}
 
 			entries, err := archive.ReadArchiveFromFile(fh)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to read archive: %w", err)
 			}
 
 			for _, ent := range entries {
@@ -193,42 +193,46 @@ func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forw
 
 				switch ent.CTypeflag {
 				case archive.TypeDirectory:
+					// slog.Info("directory", "name", name)
 					name = strings.TrimSuffix(name, "/")
 					if err := fs.Mkdir(name, true); err != nil {
-						return err
+						return fmt.Errorf("failed to mkdir in guest: %w", err)
 					}
 				case archive.TypeSymlink:
+					// slog.Info("symlink", "name", name)
 					if err := fs.Symlink(name, ent.CLinkname); err != nil {
-						return err
+						return fmt.Errorf("failed to symlink in guest: %w", err)
 					}
 				case archive.TypeLink:
+					// slog.Info("link", "name", name)
 					if err := fs.Link(name, "/"+ent.CLinkname); err != nil {
-						return err
+						return fmt.Errorf("failed to link in guest: %w", err)
 					}
 				case archive.TypeRegular:
+					// slog.Info("reg", "name", name)
 					f, err := ent.Open()
 					if err != nil {
-						return err
+						return fmt.Errorf("failed to open file for guest: %w", err)
 					}
 
 					region, err := vm.NewFileRegion(f)
 					if err != nil {
-						return err
+						return fmt.Errorf("failed to make region for guest: %w", err)
 					}
 
 					if err := fs.CreateFile(name, region); err != nil {
-						return err
+						return fmt.Errorf("failed to create file in guest %s: %w", name, err)
 					}
 				default:
 					return fmt.Errorf("unimplemented entry type: %s", ent.CTypeflag)
 				}
 
 				if err := fs.Chown(name, uint16(ent.CUid), uint16(ent.CGid)); err != nil {
-					return err
+					return fmt.Errorf("failed to chown in guest: %w", err)
 				}
 
 				if err := fs.Chmod(name, goFs.FileMode(ent.CMode)); err != nil {
-					return err
+					return fmt.Errorf("failed to chmod in guest: %w", err)
 				}
 			}
 		} else {
@@ -237,6 +241,21 @@ func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forw
 	}
 
 	slog.Info("built filesystem", "took", time.Since(start))
+
+	if exportFilesystem != "" {
+		out, err := os.Create(exportFilesystem)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+
+		if _, err := io.Copy(out, io.NewSectionReader(vmem, 0, fsSize)); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
 	start = time.Now()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -287,7 +306,7 @@ func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forw
 
 	factory, err := virtualMachine.LoadVirtualMachineFactory(buildDir, cfg.Resolve(cfg.HypervisorScript))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load virtual machine factory: %w", err)
 	}
 
 	virtualMachine, err := factory.Create(
@@ -298,19 +317,19 @@ func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forw
 		"nbd://"+listener.Addr().String(),
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to make virtual machine: %w", err)
 	}
 
 	nic, err := ns.AttachNetworkInterface()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to attach network interface: %w", err)
 	}
 
 	// Create internal HTTP server.
 	{
 		listen, err := ns.ListenInternal("tcp", ":80")
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to listen internal: %w", err)
 		}
 
 		mux := http.NewServeMux()
@@ -350,7 +369,7 @@ func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forw
 
 		packetConn, err := ns.ListenPacketInternal("udp", ":53")
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to listen internal (dns): %w", err)
 		}
 
 		dnsServer.server = &dns.Server{
@@ -420,7 +439,7 @@ func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forw
 			if err == ErrRestart {
 				continue
 			} else if err != nil {
-				return err
+				return fmt.Errorf("failed to connect over ssh: %w", err)
 			}
 
 			return nil
@@ -532,20 +551,21 @@ func runWithCommandLineConfig(buildDir string, rebuild bool, image string, execC
 		RootFsFragments:  fragments,
 		StorageSize:      storageSize,
 		Interaction:      "ssh",
-	}, *debug, false)
+	}, *debug, false, "")
 }
 
 var (
-	cpuCores     = flag.Int("cpu-cores", 1, "set the number of cpu cores in the VM")
-	memoryMb     = flag.Int("memory", 1024, "set the number of megabytes of RAM in the VM")
-	storageSize  = flag.Int("storage-size", 512, "the size of the VM storage in megabytes")
-	image        = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
-	configFile   = flag.String("config", "", "passes a custom config. this overrides all other flags.")
-	debug        = flag.Bool("debug", false, "redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup")
-	buildDir     = flag.String("build-dir", common.GetDefaultBuildDir(), "the directory to build definitions to")
-	rebuild      = flag.Bool("rebuild", false, "always rebuild the kernel and image definitions")
-	execCommand  = flag.String("exec", "", "if set then run a command rather than creating a login shell")
-	printVersion = flag.Bool("version", false, "print the version information")
+	cpuCores         = flag.Int("cpu-cores", 1, "set the number of cpu cores in the VM")
+	memoryMb         = flag.Int("memory", 1024, "set the number of megabytes of RAM in the VM")
+	storageSize      = flag.Int("storage-size", 512, "the size of the VM storage in megabytes")
+	image            = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
+	configFile       = flag.String("config", "", "passes a custom config. this overrides all other flags.")
+	debug            = flag.Bool("debug", false, "redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup")
+	buildDir         = flag.String("build-dir", common.GetDefaultBuildDir(), "the directory to build definitions to")
+	rebuild          = flag.Bool("rebuild", false, "always rebuild the kernel and image definitions")
+	execCommand      = flag.String("exec", "", "if set then run a command rather than creating a login shell")
+	printVersion     = flag.Bool("version", false, "print the version information")
+	exportFilesystem = flag.String("export-filesystem", "", "write the filesystem to the host filesystem")
 )
 
 func tinyRangeMain() error {
@@ -557,7 +577,7 @@ func tinyRangeMain() error {
 	}
 
 	if err := common.Ensure(*buildDir, fs.ModePerm); err != nil {
-		return err
+		return fmt.Errorf("failed to create build dir: %w", err)
 	}
 
 	if *configFile != "" {
@@ -584,7 +604,7 @@ func tinyRangeMain() error {
 			}
 		}
 
-		return runWithConfig(*buildDir, cfg, *debug, false)
+		return runWithConfig(*buildDir, cfg, *debug, false, *exportFilesystem)
 	} else {
 		return runWithCommandLineConfig(*buildDir, *rebuild, *image, *execCommand, *cpuCores, *memoryMb, *storageSize)
 	}

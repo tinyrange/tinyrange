@@ -57,6 +57,8 @@ def split_alpine_name(q):
         v = ">" + v
     elif "=" in q:
         n, _, v = q.partition("=")
+    elif "~" in q:
+        n, _, v = q.partition("~")
     else:
         n = q
 

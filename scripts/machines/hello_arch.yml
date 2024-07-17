@@ -1,0 +1,10 @@
+directives:
+  - plan:
+      builder: archlinux
+      packages:
+        - "bash:"
+        - "gcc:"
+        - "coreutils:"
+      tags:
+        - level3
+  - run_command: /bin/bash

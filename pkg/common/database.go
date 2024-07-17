@@ -11,17 +11,22 @@ type BuildOptions struct {
 	AlwaysRebuild bool
 }
 
+type PlanOptions struct {
+	Debug bool
+}
+
 type InstallationPlan interface {
 	starlark.Value
 
 	Directives() []Directive
 	SetDirectives(directives []Directive)
+	WriteTree() error
 }
 
 type ContainerBuilder interface {
 	starlark.Value
 
-	Plan(packages []PackageQuery, tags TagList) (InstallationPlan, error)
+	Plan(packages []PackageQuery, tags TagList, opts PlanOptions) (InstallationPlan, error)
 	Search(pkg PackageQuery) ([]*Package, error)
 }
 

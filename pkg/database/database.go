@@ -573,6 +573,9 @@ func (db *PackageDatabase) BuildByName(name string, opts common.BuildOptions) (f
 func (db *PackageDatabase) LoadBuiltinBuilders() error {
 	for _, builder := range []string{
 		"//fetchers/alpine.star",
+		"//fetchers/rpm.star",
+		"//fetchers/debian.star",
+		"//fetchers/arch.star",
 	} {
 		if err := db.LoadFile(builder); err != nil {
 			return err

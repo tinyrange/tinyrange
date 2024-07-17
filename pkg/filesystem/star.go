@@ -6,9 +6,14 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"strings"
 
+	xj "github.com/basgys/goxml2json"
+	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
+
+var starlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builtin).CallInternal
 
 type StarFile struct {
 	File
@@ -73,7 +78,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			}
 			defer fh.Close()
 
-			if kind == ".gz" {
+			if strings.HasSuffix(kind, ".gz") {
 				r, err := gzip.NewReader(fh)
 				if err != nil {
 					return starlark.None, err
@@ -88,6 +93,59 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			} else {
 				return starlark.None, fmt.Errorf("read_compressed does not support kind: %s", kind)
 			}
+		}), nil
+	} else if name == "read_xml" {
+		return starlark.NewBuiltin("File.read_xml", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			fh, err := f.Open()
+			if err != nil {
+				return starlark.None, err
+			}
+			defer fh.Close()
+
+			json, err := xj.Convert(fh)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return starlarkJsonDecode(
+				thread,
+				starlark.Tuple{starlark.String(json.String())},
+				[]starlark.Tuple{},
+			)
+		}), nil
+	} else if name == "read_rpm_xml" {
+		return starlark.NewBuiltin("File.read_rpm_xml", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			fh, err := f.Open()
+			if err != nil {
+				return starlark.None, err
+			}
+			defer fh.Close()
+
+			return rpmReadXml(fh)
+		}), nil
+	} else if name == "read_rpm" {
+		return starlark.NewBuiltin("File.read_rpm", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			fh, err := f.Open()
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return parseRpm(fh)
 		}), nil
 	} else if name == "name" {
 		return starlark.String(f.Name), nil

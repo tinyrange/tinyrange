@@ -70,7 +70,7 @@ func (builder *ContainerBuilder) Attr(name string) (starlark.Value, error) {
 				}
 			}
 
-			plan, err := builder.Plan(search, tagList)
+			plan, err := builder.Plan(search, tagList, common.PlanOptions{})
 			if err != nil {
 				return nil, err
 			}
@@ -128,19 +128,30 @@ func (builder *ContainerBuilder) Load(db *PackageDatabase) error {
 	return nil
 }
 
-func (builder *ContainerBuilder) Plan(packages []common.PackageQuery, tags common.TagList) (common.InstallationPlan, error) {
-	plan := &InstallationPlan{installedNames: make(map[string]string), Tags: tags}
+func (builder *ContainerBuilder) Plan(packages []common.PackageQuery, tags common.TagList, opts common.PlanOptions) (common.InstallationPlan, error) {
+	plan := NewInstallationPlan(tags, opts)
 
+	// Add all the requested packages.
 	for _, pkg := range packages {
-		if err := plan.Add(builder, pkg, tags); err != nil {
+		if err := plan.Add(builder, pkg); err != nil {
 			return nil, err
 		}
+	}
+
+	// If we are in debugging mode then skip making the plan.
+	if opts.Debug {
+		return plan, nil
 	}
 
 	// Call the plan callback.
 	thread := &starlark.Thread{}
 
-	ret, err := starlark.Call(thread, builder.PlanCallback, starlark.Tuple{builder, plan}, []starlark.Tuple{})
+	ret, err := starlark.Call(
+		thread,
+		builder.PlanCallback,
+		starlark.Tuple{builder, plan},
+		[]starlark.Tuple{},
+	)
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
 			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
