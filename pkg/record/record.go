@@ -4,13 +4,20 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
+type Value interface {
+	tagValue()
+}
+
 func ReadRecordsFromFile(f filesystem.File) ([]starlark.Value, error) {
+	slog.Info("ReadRecordsFromFile", "filename", f.Digest().Hash)
+
 	fh, err := f.Open()
 	if err != nil {
 		return nil, err
