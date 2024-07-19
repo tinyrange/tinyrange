@@ -1,11 +1,14 @@
 package record
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"go.starlark.net/starlark"
 )
 
@@ -27,7 +30,7 @@ const (
 )
 
 type RecordWriter2 struct {
-	writer    io.Writer
+	writer    io.WriteCloser
 	recordBuf []byte
 }
 
@@ -173,6 +176,8 @@ func (w *RecordWriter2) writeTo(val starlark.Value, off int) (int, error) {
 				return 0, err
 			}
 
+			localLen += len(keyStr)
+
 			value, _, err := val.Get(key)
 			if err != nil {
 				return 0, err
@@ -229,7 +234,7 @@ func (w *RecordWriter2) writeTo(val starlark.Value, off int) (int, error) {
 	}
 }
 
-func (w *RecordWriter2) WriteValue(val starlark.Value) error {
+func (w *RecordWriter2) Emit(val starlark.Value) error {
 	len, err := w.writeTo(val, 0)
 	if err != nil {
 		return err
@@ -242,7 +247,61 @@ func (w *RecordWriter2) WriteValue(val starlark.Value) error {
 	return nil
 }
 
-func NewWriter2(w io.Writer) *RecordWriter2 {
+// WriteTo implements BuildResult.
+func (r *RecordWriter2) WriteTo(w io.Writer) (n int64, err error) {
+	return 0, r.writer.Close()
+}
+
+// Attr implements starlark.HasAttrs.
+func (r *RecordWriter2) Attr(name string) (starlark.Value, error) {
+	if name == "emit" {
+		return starlark.NewBuiltin("RecordWriter.emit", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				val starlark.Value
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"val", &val,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if err := r.Emit(val); err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.None, nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (r *RecordWriter2) AttrNames() []string {
+	return []string{"emit"}
+}
+
+func (*RecordWriter2) String() string { return "RecordWriter" }
+func (*RecordWriter2) Type() string   { return "RecordWriter" }
+func (*RecordWriter2) Hash() (uint32, error) {
+	return 0, fmt.Errorf("RecordWriter is not hashable")
+}
+func (*RecordWriter2) Truth() starlark.Bool { return starlark.True }
+func (*RecordWriter2) Freeze()              {}
+
+var (
+	_ starlark.Value     = &RecordWriter2{}
+	_ starlark.HasAttrs  = &RecordWriter2{}
+	_ common.BuildResult = &RecordWriter2{}
+)
+
+func NewWriter2(w io.WriteCloser) *RecordWriter2 {
 	return &RecordWriter2{
 		writer:    w,
 		recordBuf: make([]byte, 4*1024*1024),
@@ -257,24 +316,146 @@ type record struct {
 	rest     []byte // only filled when needed
 }
 
+func (r *record) toStarlarkValue(off int64) (starlark.Value, error) {
+	var buf [5]byte
+
+	kind, length, err := r.readRecord(buf, off)
+	if err != nil {
+		return starlark.None, err
+	}
+
+	if kind == _RECORD_INVALID || kind > _RECORD_LAST {
+		return starlark.None, fmt.Errorf("invalid read")
+	}
+
+	_ = length
+
+	switch kind {
+	case _RECORD_NONE:
+		return starlark.None, nil
+	case _RECORD_DICT:
+		val, err := r.readU32(buf, off+int64(HEADER_SIZE))
+		if err != nil {
+			return starlark.None, err
+		}
+
+		return &recordDict{rec: r, off: off, len: int(val)}, nil
+	case _RECORD_ENTRY:
+		return starlark.None, fmt.Errorf("attempt to convert entry to Value")
+	case _RECORD_LIST:
+		val, err := r.readU32(buf, off+int64(HEADER_SIZE))
+		if err != nil {
+			return starlark.None, err
+		}
+
+		return &recordList{rec: r, off: off, len: int(val)}, nil
+	case _RECORD_STRING:
+		data := make([]byte, length-uint32(HEADER_SIZE))
+		if _, err := r.ReadAt(data, off+int64(HEADER_SIZE)); err != nil {
+			return starlark.None, fmt.Errorf("could not read: %+v", err)
+		}
+
+		return starlark.String(data), nil
+	default:
+		return starlark.None, fmt.Errorf("toStarlarkValue unimplemented: %d", kind)
+	}
+}
+
+func (r *record) readRest() error {
+	// Read the rest of the data from the underlying file.
+	if r.rest == nil {
+		r.rest = make([]byte, r.totalLen-len(r.data))
+		if _, err := r.r.ReadAt(r.rest, r.off+int64(len(r.data))); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *record) compare(p []byte, off int64) (bool, error) {
+	if off > int64(r.totalLen) {
+		return false, io.EOF
+	}
+
+	if int(off) < len(r.data) {
+		// Some of the request can be fulfilled with the first fragment.
+		fragLength := min(len(p), len(r.data)-int(off))
+
+		if !bytes.Equal(p[:fragLength], r.data[off:off+int64(fragLength)]) {
+			return false, nil
+		}
+
+		// Make sure we don't check data we've already checked.
+		p = p[fragLength:]
+		off += int64(fragLength)
+
+		// Have we checked everything.
+		if len(p) <= 0 {
+			return true, nil
+		}
+	}
+
+	if err := r.readRest(); err != nil {
+		return false, err
+	}
+
+	return bytes.Equal(p, r.rest[int(off)-len(r.data):int(off)-len(r.data)+len(p)]), nil
+}
+
 // ReadAt implements io.ReaderAt.
 func (r *record) ReadAt(p []byte, off int64) (n int, err error) {
+	if off > int64(r.totalLen) {
+		return 0, io.EOF
+	}
+
 	if int(off) < len(r.data) {
 		// We can partially or completely fill the read with our already cached data.
 		n = copy(p, r.data[off:])
+
+		// Check to see if we can return now.
+		if int(off)+len(p) < len(r.data) {
+			return
+		}
+
+		// Make sure we don't reread data.
+		off += int64(n)
 	}
 
-	if r.rest == nil {
-		r.rest = make([]byte, r.totalLen-len(r.data))
-		if _, err := r.ReadAt(r.rest, r.off+int64(len(r.data))); err != nil {
-			return 0, err
-		}
+	if err := r.readRest(); err != nil {
+		return 0, err
 	}
+
+	// slog.Info("read rest", "off1", off, "len", len(r.data), "off2", int(off)-len(r.data))
 
 	// The rest of the data comes from the data we pulled into memory in r.rest.
 	n += copy(p[n:], r.rest[int(off)-len(r.data):])
 
 	return
+}
+
+func (r *record) readU32(buf [5]byte, off int64) (uint32, error) {
+	if _, err := r.ReadAt(buf[:4], off); err != nil {
+		return 0, err
+	}
+
+	return endian.Uint32(buf[:4]), nil
+}
+
+// (type, totalLength, error)
+func (r *record) readRecord(buf [5]byte, off int64) (recordType, uint32, error) {
+	// slog.Info("readRecord", "off", off)
+	// get the header.
+
+	if _, err := r.ReadAt(buf[:5], off); err != nil {
+		return _RECORD_INVALID, 0, err
+	}
+
+	// Get the fields and validate the record.
+	length := endian.Uint32(buf[0:4])
+	kind := recordType(buf[4])
+
+	return kind, length, nil
 }
 
 func (r *record) kind() recordType {
@@ -288,6 +469,78 @@ var (
 type recordDict struct {
 	rec *record
 	off int64
+	len int
+}
+
+// Get implements starlark.Mapping.
+func (r *recordDict) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
+	key, ok := starlark.AsString(k)
+	if !ok {
+		return starlark.None, false, fmt.Errorf("could not convert %s to string", k.Type())
+	}
+
+	var buf [5]byte
+
+	var off int64 = r.off + int64(HEADER_SIZE+4)
+
+	for i := 0; i < r.len; i++ {
+		// get next value
+		kind, length, err := r.rec.readRecord(buf, off)
+		if err != nil {
+			return starlark.None, false, err
+		}
+
+		// slog.Info("read", "len", length)
+
+		if kind != _RECORD_ENTRY {
+			return starlark.None, false, fmt.Errorf("record is not a entry: %d", kind)
+		}
+
+		// get string length
+		// strLen, err := r.rec.readU32(buf, off+int64(HEADER_SIZE))
+		// if err != nil {
+		// 	return starlark.None, false, err
+		// }
+
+		ok, err := r.rec.compare([]byte(key), off+int64(HEADER_SIZE)+4)
+		if err != nil {
+			return starlark.None, false, err
+		}
+
+		if ok {
+			// get string length
+			strLen, err := r.rec.readU32(buf, off+int64(HEADER_SIZE))
+			if err != nil {
+				return starlark.None, false, err
+			}
+
+			// Convert the record to a starlark value.
+			val, err := r.rec.toStarlarkValue(off + int64(HEADER_SIZE) + 4 + int64(strLen))
+			if err != nil {
+				return starlark.None, false, err
+			}
+			return val, true, nil
+		}
+
+		// str := make([]byte, strLen)
+		// if _, err := r.rec.ReadAt(str, off+int64(HEADER_SIZE)+4); err != nil {
+		// 	return starlark.None, false, err
+		// }
+
+		// // check the key
+		// // slog.Info("check key", "str", string(str), "key", key)
+		// if string(str) == key {
+		// 	val, err := r.rec.toStarlarkValue(off + int64(HEADER_SIZE) + 4 + int64(len(str)))
+		// 	if err != nil {
+		// 		return starlark.None, false, err
+		// 	}
+		// 	return val, true, nil
+		// }
+
+		off += int64(length)
+	}
+
+	return starlark.None, false, nil
 }
 
 func (*recordDict) String() string        { return "recordDict" }
@@ -297,7 +550,89 @@ func (*recordDict) Truth() starlark.Bool  { return starlark.True }
 func (*recordDict) Freeze()               {}
 
 var (
-	_ starlark.Value = &recordDict{}
+	_ starlark.Value   = &recordDict{}
+	_ starlark.Mapping = &recordDict{}
+)
+
+type recordListIterator struct {
+	rec *record
+	off int64
+	i   int
+	len int
+}
+
+// Done implements starlark.Iterator.
+func (r *recordListIterator) Done() {
+	r.i = r.len
+}
+
+// Next implements starlark.Iterator.
+func (r *recordListIterator) Next(p *starlark.Value) bool {
+	if r.i == r.len {
+		return false
+	}
+
+	var buf [5]byte
+
+	_, len, err := r.rec.readRecord(buf, r.off)
+	if err != nil {
+		slog.Warn("error iterating", "err", err)
+		return false
+	}
+
+	val, err := r.rec.toStarlarkValue(r.off)
+	if err != nil {
+		slog.Warn("error iterating", "err", err)
+		return false
+	}
+
+	r.off += int64(len)
+	r.i += 1
+
+	*p = val
+
+	return true
+}
+
+var (
+	_ starlark.Iterator = &recordListIterator{}
+)
+
+type recordList struct {
+	rec *record
+	off int64
+	len int
+}
+
+// Iterate implements starlark.Iterable.
+func (r *recordList) Iterate() starlark.Iterator {
+	return &recordListIterator{
+		rec: r.rec,
+		off: r.off + int64(HEADER_SIZE) + 4,
+		len: r.Len(),
+	}
+}
+
+// Index implements starlark.Indexable.
+func (r *recordList) Index(i int) starlark.Value {
+	panic("unimplemented")
+}
+
+// Len implements starlark.Indexable.
+func (r *recordList) Len() int {
+	return r.len
+}
+
+func (*recordList) String() string        { return "recordList" }
+func (*recordList) Type() string          { return "recordList" }
+func (*recordList) Hash() (uint32, error) { return 0, fmt.Errorf("recordList is not hashable") }
+func (*recordList) Truth() starlark.Bool  { return starlark.True }
+func (*recordList) Freeze()               {}
+
+var (
+	_ starlark.Value     = &recordList{}
+	_ starlark.Iterable  = &recordList{}
+	_ starlark.Indexable = &recordList{}
 )
 
 type RecordReader2 struct {
@@ -340,12 +675,7 @@ func (r *RecordReader2) ReadValue() (starlark.Value, error) {
 	case err := <-r.err:
 		return nil, err
 	case record := <-r.records:
-		switch record.kind() {
-		case _RECORD_DICT:
-			return &recordDict{rec: record, off: 0}, nil
-		default:
-			return nil, fmt.Errorf("unimplemented top level record: %d", record.kind())
-		}
+		return record.toStarlarkValue(0)
 	}
 }
 

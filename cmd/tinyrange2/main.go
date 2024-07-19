@@ -10,8 +10,11 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/database"
 )
 
-var rootBuildDir string
-var rootRebuild bool
+var (
+	rootBuildDir   string
+	rootRebuild    bool
+	rootCpuProfile string
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "tinyrange",
@@ -36,6 +39,7 @@ func newDb() (*database.PackageDatabase, error) {
 func init() {
 	rootCmd.PersistentFlags().StringVar(&rootBuildDir, "buildDir", common.GetDefaultBuildDir(), "specify the directory for built definitions and temporary files")
 	rootCmd.PersistentFlags().BoolVar(&rootRebuild, "rebuild", false, "should user package definitions be rebuilt even if we already have built them previously")
+	rootCmd.PersistentFlags().StringVar(&rootCpuProfile, "cpuprofile", "", "write cpu profile to file")
 }
 
 func main() {

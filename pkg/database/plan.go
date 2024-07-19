@@ -171,14 +171,16 @@ func (plan *InstallationPlan) add(builder *ContainerBuilder, query common.Packag
 	var options []installOption
 
 	for _, result := range results {
-		for _, installer := range result.Installers {
-			if installer.Tags.Matches(plan.tags) {
-				options = append(options, installOption{
-					pkg:     result,
-					install: installer,
-				})
-			}
+		installer, err := builder.Packages.InstallerFor(result, plan.tags)
+		if err != nil {
+			ret.Error = fmt.Errorf("failed to get installer for %s", result.Name)
+			return
 		}
+
+		options = append(options, installOption{
+			pkg:     result,
+			install: installer,
+		})
 	}
 
 	ret.Options = options

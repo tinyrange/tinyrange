@@ -21,7 +21,6 @@ type BuildContext struct {
 
 	filename  string
 	output    io.WriteCloser
-	packages  []*common.Package
 	inMemory  bool
 	hasCached bool
 }
@@ -72,11 +71,6 @@ func (b *BuildContext) IsInMemory() bool {
 // SetInMemory implements common.BuildContext.
 func (b *BuildContext) SetInMemory() {
 	b.inMemory = true
-}
-
-// Packages implements common.BuildContext.
-func (b *BuildContext) Packages() []*common.Package {
-	return b.packages
 }
 
 // Database implements common.BuildContext.
@@ -167,7 +161,7 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 				return nil, err
 			}
 
-			return record.NewWriter(f), nil
+			return record.NewWriter2(f), nil
 		}), nil
 	} else if name == "archive" {
 		return starlark.NewBuiltin("BuildContext.archive", func(
@@ -187,27 +181,6 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 			}
 
 			return &directoryToArchiveBuildResult{dir: dir}, nil
-		}), nil
-	} else if name == "add_package" {
-		return starlark.NewBuiltin("BuildContext.add_package", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				pkg *common.Package
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"pkg", &pkg,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			b.packages = append(b.packages, pkg)
-
-			return starlark.None, nil
 		}), nil
 	} else if name == "build" {
 		return starlark.NewBuiltin("BuildContext.build", func(

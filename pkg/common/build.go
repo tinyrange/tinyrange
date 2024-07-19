@@ -31,7 +31,6 @@ type BuildContext interface {
 	NeedsBuild(def BuildDefinition) (bool, error)
 	Call(callable starlark.Callable, args ...starlark.Value) (starlark.Value, error)
 	ChildContext(source BuildSource, status *BuildStatus, filename string) BuildContext
-	Packages() []*Package
 	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
 	FilenameFromDigest(digest *filesystem.FileDigest) (string, error)
 }

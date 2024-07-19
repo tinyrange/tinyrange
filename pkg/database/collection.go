@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"slices"
 	"strings"
@@ -13,12 +14,77 @@ import (
 )
 
 type PackageCollection struct {
-	Name               []string
-	Parser             starlark.Callable
-	Sources            []common.BuildDefinition
-	AdditionalPackages []*common.Package
+	Name    []string
+	Parser  starlark.Callable
+	Install starlark.Callable
+	Sources []common.BuildDefinition
 
 	Packages map[string]*common.Package
+}
+
+func (parser *PackageCollection) addPackage(pkg *common.Package) error {
+	parser.Packages[pkg.Name.String()] = pkg
+
+	return nil
+}
+
+// Attr implements starlark.HasAttrs.
+func (parser *PackageCollection) Attr(name string) (starlark.Value, error) {
+	if name == "add_package" {
+		return starlark.NewBuiltin("PackageCollection.add_package", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var val starlark.Value
+
+			var (
+				name      common.PackageName
+				aliasList starlark.Iterable
+				raw       starlark.Value
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"name", &name,
+				"aliases?", &aliasList,
+				"raw?", &raw,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			var aliases []common.PackageName
+
+			if aliasList != nil {
+				iter := aliasList.Iterate()
+				defer iter.Done()
+
+				for iter.Next(&val) {
+					alias, ok := val.(common.PackageName)
+					if !ok {
+						return nil, fmt.Errorf("could not convert %s to PackageName", val.Type())
+					}
+
+					aliases = append(aliases, alias)
+				}
+			}
+
+			pkg := common.NewPackage(name, aliases, raw)
+
+			if err := parser.addPackage(pkg); err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.None, nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (parser *PackageCollection) AttrNames() []string {
+	return []string{"add_package"}
 }
 
 // Tag implements BuildSource.
@@ -41,34 +107,33 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 			return err
 		}
 
-		sourceRecords, err := record.ReadRecordsFromFile(built)
+		fh, err := built.Open()
 		if err != nil {
 			return err
 		}
 
-		records = append(records, sourceRecords...)
+		reader := record.NewReader2(fh)
+
+		for {
+			record, err := reader.ReadValue()
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				return err
+			}
+
+			records = append(records, record)
+		}
 	}
 
 	slog.Info("built all package sources", "took", time.Since(start))
 	start = time.Now()
 
-	// For each record in the list call the parser to parse the record into a package.
-	// This can also happen in parallel,
-	for _, record := range records {
-		child := ctx.ChildContext(parser, nil, "")
+	child := ctx.ChildContext(parser, nil, "")
 
-		_, err := child.Call(parser.Parser, record)
-		if err != nil {
-			return err
-		}
-
-		for _, pkg := range child.Packages() {
-			parser.Packages[pkg.Name.Key()] = pkg
-		}
-	}
-
-	for _, pkg := range parser.AdditionalPackages {
-		parser.Packages[pkg.Name.Key()] = pkg
+	_, err := child.Call(parser.Parser, parser, starlark.NewList(records))
+	if err != nil {
+		return err
 	}
 
 	slog.Info("loaded all packages", "count", len(records), "took", time.Since(start))
@@ -99,6 +164,26 @@ func (parser *PackageCollection) Query(query common.PackageQuery) ([]*common.Pac
 	return append(directs, aliases...), nil
 }
 
+func (parser *PackageCollection) InstallerFor(pkg *common.Package, tags common.TagList) (*common.Installer, error) {
+	thread := &starlark.Thread{Name: pkg.Name.String()}
+
+	ret, err := starlark.Call(thread, parser.Install, starlark.Tuple{pkg, tags}, []starlark.Tuple{})
+	if err != nil {
+		if sErr, ok := err.(*starlark.EvalError); ok {
+			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+		}
+
+		return nil, err
+	}
+
+	install, ok := ret.(*common.Installer)
+	if !ok {
+		return nil, fmt.Errorf("could not convert %s to installer", ret.Type())
+	}
+
+	return install, nil
+}
+
 func (def *PackageCollection) String() string { return strings.Join(def.Name, "_") }
 func (*PackageCollection) Type() string       { return "PackageCollection" }
 func (*PackageCollection) Hash() (uint32, error) {
@@ -109,15 +194,21 @@ func (*PackageCollection) Freeze()              {}
 
 var (
 	_ starlark.Value     = &PackageCollection{}
+	_ starlark.HasAttrs  = &PackageCollection{}
 	_ common.BuildSource = &PackageCollection{}
 )
 
-func NewPackageCollection(name string, f starlark.Callable, sources []common.BuildDefinition, additionalPackages []*common.Package) (*PackageCollection, error) {
+func NewPackageCollection(
+	name string,
+	parser starlark.Callable,
+	install starlark.Callable,
+	sources []common.BuildDefinition,
+) (*PackageCollection, error) {
 	return &PackageCollection{
-		Name:               []string{name, f.Name()},
-		Parser:             f,
-		Sources:            sources,
-		AdditionalPackages: additionalPackages,
-		Packages:           make(map[string]*common.Package),
+		Name:     []string{name, parser.Name(), install.Name()},
+		Parser:   parser,
+		Install:  install,
+		Sources:  sources,
+		Packages: make(map[string]*common.Package),
 	}, nil
 }

@@ -3,25 +3,37 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime/pprof"
 
 	"github.com/spf13/cobra"
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 )
 
-var loginBuilder string
-var loginCpuCores int
-var loginMemorySize int
-var loginStorageSize int
-var loginExec string
-var loginLoadConfig string
-var loginSaveConfig string
-var loginPlanDebug bool
+var (
+	loginBuilder     string
+	loginCpuCores    int
+	loginMemorySize  int
+	loginStorageSize int
+	loginExec        string
+	loginLoadConfig  string
+	loginSaveConfig  string
+	loginPlanDebug   bool
+)
 
 var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Start a virtual machine with a builder and a list of packages",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if rootCpuProfile != "" {
+			f, err := os.Create(rootCpuProfile)
+			if err != nil {
+				return err
+			}
+			pprof.StartCPUProfile(f)
+			defer pprof.StopCPUProfile()
+		}
+
 		db, err := newDb()
 		if err != nil {
 			return err

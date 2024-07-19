@@ -135,46 +135,15 @@ func NewInstaller(tagList TagList, directives []Directive, dependencies []Packag
 }
 
 type Package struct {
-	Name       PackageName
-	Installers []*Installer
-	Aliases    []PackageName
-	Raw        string
+	Name    PackageName
+	Aliases []PackageName
+	Raw     starlark.Value
 }
 
 // Attr implements starlark.HasAttrs.
 func (pkg *Package) Attr(name string) (starlark.Value, error) {
-	if name == "installer_for" {
-		return starlark.NewBuiltin("Package.installer_for", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				tags starlark.Iterable
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"tags", &tags,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			tagList, err := ToStringList(tags)
-			if err != nil {
-				return starlark.None, err
-			}
-
-			var ret []starlark.Value
-
-			for _, installer := range pkg.Installers {
-				if installer.Tags.Matches(tagList) {
-					ret = append(ret, installer)
-				}
-			}
-
-			return starlark.NewList(ret), nil
-		}), nil
+	if name == "raw" {
+		return pkg.Raw, nil
 	} else {
 		return nil, nil
 	}
@@ -182,7 +151,7 @@ func (pkg *Package) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (pkg *Package) AttrNames() []string {
-	return []string{"installer_for"}
+	return []string{"raw"}
 }
 
 func (pkg *Package) Matches(query PackageQuery) bool {
@@ -214,6 +183,6 @@ var (
 	_ starlark.HasAttrs = &Package{}
 )
 
-func NewPackage(name PackageName, installers []*Installer, aliases []PackageName, raw string) *Package {
-	return &Package{Name: name, Installers: installers, Aliases: aliases, Raw: raw}
+func NewPackage(name PackageName, aliases []PackageName, raw starlark.Value) *Package {
+	return &Package{Name: name, Aliases: aliases, Raw: raw}
 }

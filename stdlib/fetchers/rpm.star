@@ -103,7 +103,16 @@ def convert_rpm_package(ctx, name, contents):
     else:
         return error("payload compression not implemented: " + rpm.payload_compression)
 
-def parse_rpm_package(ctx, ent):
+def get_rpm_installer(pkg, tags):
+    ent = pkg.raw
+
+    if tags.contains("level1"):
+        return installer(
+            directives = [
+                directive.run_command("dnf install -y {}".format(ent["Name"])),
+            ],
+        )
+
     deps = []
 
     if ent["Format"]["Requires"]["Entry"] != None:
@@ -111,53 +120,56 @@ def parse_rpm_package(ctx, ent):
 
     deps = [f for f in deps if f != None]
 
-    aliases = []
+    if tags.contains("level2"):
+        return installer(
+            directives = [
+                directive.run_command("dnf install -y {}".format(ent["Name"])),
+            ],
+            dependencies = deps,
+        )
+    elif tags.contains("level3"):
+        return installer(
+            directives = [
+                define.build(
+                    convert_rpm_package,
+                    ent["Name"],
+                    define.fetch_http(ent["BaseUrl"] + ent["Location"]["Href"]),
+                ),
+            ],
+            dependencies = deps,
+        )
+    else:
+        return None
 
-    if ent["Format"]["Provides"]["Entry"] != None:
-        aliases = aliases + [parse_rpm_name(provide) for provide in ent["Format"]["Provides"]["Entry"]]
+def parse_rpm_package(ctx, collection, packages):
+    for ent in packages:
+        aliases = []
 
-    if ent["Format"]["File"] != None:
-        aliases = aliases + [
-            name(name = file["Text"], version = ent["Version"]["Ver"])
-            for file in ent["Format"]["File"]
-        ]
+        pkg_name = ent["Name"]
+        pkg_version = ent["Version"]["Ver"]
 
-    aliases = [f for f in aliases if f != None]
+        if ent["Format"]["Provides"]["Entry"] != None:
+            aliases = aliases + [
+                parse_rpm_name(provide)
+                for provide in ent["Format"]["Provides"]["Entry"]
+            ]
 
-    ctx.add_package(package(
-        name = name(
-            name = ent["Name"],
-            version = ent["Version"]["Ver"],
-        ),
-        installers = [
-            installer(
-                tags = ["level1"],
-                directives = [
-                    directive.run_command("dnf install -y {}".format(ent["Name"])),
-                ],
+        if ent["Format"]["File"] != None:
+            aliases = aliases + [
+                name(name = file["Text"], version = pkg_version)
+                for file in ent["Format"]["File"]
+            ]
+
+        aliases = [f for f in aliases if f != None]
+
+        collection.add_package(
+            name = name(
+                name = pkg_name,
+                version = pkg_version,
             ),
-            installer(
-                tags = ["level2"],
-                directives = [
-                    directive.run_command("dnf install -y {}".format(ent["Name"])),
-                ],
-                dependencies = deps,
-            ),
-            installer(
-                tags = ["level3"],
-                directives = [
-                    define.build(
-                        convert_rpm_package,
-                        ent["Name"],
-                        define.fetch_http(ent["BaseUrl"] + ent["Location"]["Href"]),
-                    ),
-                ],
-                dependencies = deps,
-            ),
-        ],
-        aliases = aliases,
-        raw = ent,
-    ))
+            aliases = aliases,
+            raw = ent,
+        )
 
 def build_rpm_install_layer(ctx, directives):
     ret = filesystem()
@@ -214,6 +226,7 @@ if __name__ == "__main__":
                 display_name = "Fedora Linux {}".format(version),
                 packages = define.package_collection(
                     parse_rpm_package,
+                    get_rpm_installer,
                     define.build(
                         parse_rpm_database,
                         "mirror://fedora/releases/40/Everything/x86_64/os/",

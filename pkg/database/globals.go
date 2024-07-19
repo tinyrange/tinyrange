@@ -83,24 +83,23 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				args starlark.Tuple,
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
-				var (
-					additionalPackagesIt starlark.Iterable
-				)
-
 				parser, ok := args[0].(starlark.Callable)
 				if !ok {
 					return starlark.None, fmt.Errorf("could not convert %s to Callable", args[0].Type())
 				}
 
-				if err := starlark.UnpackArgs(fn.Name(), starlark.Tuple{}, kwargs,
-					"additional_packages?", &additionalPackagesIt,
-				); err != nil {
+				install, ok := args[1].(starlark.Callable)
+				if !ok {
+					return starlark.None, fmt.Errorf("could not convert %s to Callable", args[1].Type())
+				}
+
+				if err := starlark.UnpackArgs(fn.Name(), starlark.Tuple{}, kwargs); err != nil {
 					return starlark.None, err
 				}
 
 				var defs []common.BuildDefinition
 
-				for _, arg := range args[1:] {
+				for _, arg := range args[2:] {
 					def, ok := arg.(common.BuildDefinition)
 					if !ok {
 						return starlark.None, fmt.Errorf("could not convert %s to BuildDefinition", arg.Type())
@@ -109,25 +108,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					defs = append(defs, def)
 				}
 
-				var additionalPackages []*common.Package
-
-				if additionalPackagesIt != nil {
-					var val starlark.Value
-
-					dependencyIter := additionalPackagesIt.Iterate()
-					defer dependencyIter.Done()
-
-					for dependencyIter.Next(&val) {
-						dep, ok := val.(*common.Package)
-						if !ok {
-							return nil, fmt.Errorf("could not convert %s to Package", val.Type())
-						}
-
-						additionalPackages = append(additionalPackages, dep)
-					}
-				}
-
-				return NewPackageCollection(thread.Name, parser, defs, additionalPackages)
+				return NewPackageCollection(thread.Name, parser, install, defs)
 			}),
 			"container_builder": starlark.NewBuiltin("define.container_builder", func(
 				thread *starlark.Thread,
@@ -616,37 +597,20 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		var val starlark.Value
 
 		var (
-			name           common.PackageName
-			installersList starlark.Iterable
-			aliasList      starlark.Iterable
-			raw            starlark.Value
+			name      common.PackageName
+			aliasList starlark.Iterable
+			raw       starlark.Value
 		)
 
 		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 			"name", &name,
-			"installers", &installersList,
 			"aliases?", &aliasList,
 			"raw?", &raw,
 		); err != nil {
 			return starlark.None, err
 		}
 
-		var installers []*common.Installer
 		var aliases []common.PackageName
-
-		{
-			iter := installersList.Iterate()
-			defer iter.Done()
-
-			for iter.Next(&val) {
-				installer, ok := val.(*common.Installer)
-				if !ok {
-					return nil, fmt.Errorf("could not convert %s to Installer", val.Type())
-				}
-
-				installers = append(installers, installer)
-			}
-		}
 
 		if aliasList != nil {
 			iter := aliasList.Iterate()
@@ -662,18 +626,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 			}
 		}
 
-		rawString := ""
-
-		if raw != nil {
-			formattedRaw, err := common.StarlarkJsonEncode(nil, starlark.Tuple{raw}, []starlark.Tuple{})
-			if err != nil {
-				return nil, err
-			}
-
-			rawString = string(formattedRaw.(starlark.String))
-		}
-
-		return common.NewPackage(name, installers, aliases, rawString), nil
+		return common.NewPackage(name, aliases, raw), nil
 	})
 
 	ret["name"] = starlark.NewBuiltin("name", func(

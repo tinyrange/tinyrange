@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -322,59 +320,59 @@ func (ui *WebFrontend) handleBuilderPackageDetail(w http.ResponseWriter, r *http
 		return
 	}
 
-	var installers htm.Group
+	// var installers htm.Group
 
-	for _, installer := range pkg.Installers {
-		var depends []htm.Group
+	// for _, installer := range pkg.Installers {
+	// 	var depends []htm.Group
 
-		for _, depend := range installer.Dependencies {
-			params := make(url.Values)
+	// 	for _, depend := range installer.Dependencies {
+	// 		params := make(url.Values)
 
-			params.Add("name", depend.String())
+	// 		params.Add("name", depend.String())
 
-			depends = append(depends, htm.Group{
-				html.Link(fmt.Sprintf("/builder/%s?%s", name, params.Encode()), html.Textf("%+v", depend.String())),
-			})
-		}
+	// 		depends = append(depends, htm.Group{
+	// 			html.Link(fmt.Sprintf("/builder/%s?%s", name, params.Encode()), html.Textf("%+v", depend.String())),
+	// 		})
+	// 	}
 
-		var directives []htm.Group
+	// 	var directives []htm.Group
 
-		for _, directive := range installer.Directives {
-			directives = append(directives, htm.Group{
-				html.Code(html.Textf("%+v", directive)),
-			})
-		}
+	// 	for _, directive := range installer.Directives {
+	// 		directives = append(directives, htm.Group{
+	// 			html.Code(html.Textf("%+v", directive)),
+	// 		})
+	// 	}
 
-		installers = append(installers, bootstrap.Card(
-			html.H5(html.Textf("Tags: %+v", installer.Tags)),
-			html.H6(html.Textf("Depends")),
-			bootstrap.Table(htm.Group{html.Textf("Name")}, depends),
-			html.H6(html.Textf("Directives")),
-			bootstrap.Table(htm.Group{}, directives),
-		))
-	}
+	// 	installers = append(installers, bootstrap.Card(
+	// 		html.H5(html.Textf("Tags: %+v", installer.Tags)),
+	// 		html.H6(html.Textf("Depends")),
+	// 		bootstrap.Table(htm.Group{html.Textf("Name")}, depends),
+	// 		html.H6(html.Textf("Directives")),
+	// 		bootstrap.Table(htm.Group{}, directives),
+	// 	))
+	// }
 
-	buf := new(bytes.Buffer)
+	// buf := new(bytes.Buffer)
 
-	if pkg.Raw != "" {
-		if err := json.Indent(buf, []byte(pkg.Raw), "", "  "); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
+	// if pkg.Raw != "" {
+	// 	if err := json.Indent(buf, []byte(pkg.Raw), "", "  "); err != nil {
+	// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// 		return
+	// 	}
+	// }
 
 	if err := htm.Render(r.Context(), w, ui.pageTemplate(
 		"Package Metadata Database",
 		html.H1(html.Text("Builder: "), html.Link(fmt.Sprintf("/builder/%s", name), html.Textf("%s", builder.DisplayName))),
 		bootstrap.Card(bootstrap.CardTitle(pkg.Name.String())),
-		bootstrap.Card(
-			bootstrap.CardTitle("Installers"),
-			installers,
-		),
-		bootstrap.Card(
-			bootstrap.CardTitle("Raw"),
-			html.Code(html.Pre(html.Textf("%s", buf.String()))),
-		),
+		// bootstrap.Card(
+		// 	bootstrap.CardTitle("Installers"),
+		// 	installers,
+		// ),
+		// bootstrap.Card(
+		// 	bootstrap.CardTitle("Raw"),
+		// 	html.Code(html.Pre(html.Textf("%s", buf.String()))),
+		// ),
 	)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
