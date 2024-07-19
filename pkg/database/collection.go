@@ -19,11 +19,18 @@ type PackageCollection struct {
 	Install starlark.Callable
 	Sources []common.BuildDefinition
 
-	Packages map[string]*common.Package
+	RawPackages map[string]*common.Package
+	Packages    map[string][]*common.Package
 }
 
 func (parser *PackageCollection) addPackage(pkg *common.Package) error {
-	parser.Packages[pkg.Name.String()] = pkg
+	parser.RawPackages[pkg.Name.Key()] = pkg
+
+	parser.Packages[pkg.Name.Name] = append(parser.Packages[pkg.Name.Name], pkg)
+
+	for _, alias := range pkg.Aliases {
+		parser.Packages[alias.Name] = append(parser.Packages[alias.Name], pkg)
+	}
 
 	return nil
 }
@@ -145,11 +152,26 @@ func (parser *PackageCollection) Query(query common.PackageQuery) ([]*common.Pac
 	var directs []*common.Package
 	var aliases []*common.Package
 
-	for _, pkg := range parser.Packages {
-		if pkg.Name.Matches(query) {
-			directs = append(directs, pkg)
-		} else if pkg.Matches(query) {
-			aliases = append(aliases, pkg)
+	if query.MatchPartialName {
+		for _, pkg := range parser.RawPackages {
+			if pkg.Name.Matches(query) {
+				directs = append(directs, pkg)
+			} else if pkg.Matches(query) {
+				aliases = append(aliases, pkg)
+			}
+		}
+	} else {
+		opts, ok := parser.Packages[query.Name]
+		if !ok {
+			return nil, nil
+		}
+
+		for _, pkg := range opts {
+			if pkg.Name.Matches(query) {
+				directs = append(directs, pkg)
+			} else if pkg.Matches(query) {
+				aliases = append(aliases, pkg)
+			}
 		}
 	}
 
@@ -205,10 +227,11 @@ func NewPackageCollection(
 	sources []common.BuildDefinition,
 ) (*PackageCollection, error) {
 	return &PackageCollection{
-		Name:     []string{name, parser.Name(), install.Name()},
-		Parser:   parser,
-		Install:  install,
-		Sources:  sources,
-		Packages: make(map[string]*common.Package),
+		Name:        []string{name, parser.Name(), install.Name()},
+		Parser:      parser,
+		Install:     install,
+		Sources:     sources,
+		Packages:    make(map[string][]*common.Package),
+		RawPackages: make(map[string]*common.Package),
 	}, nil
 }

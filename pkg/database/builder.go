@@ -79,7 +79,7 @@ func (builder *ContainerBuilder) Attr(name string) (starlark.Value, error) {
 		}), nil
 	} else if name == "packages" {
 		packages := make(map[string]*common.Package)
-		for _, pkg := range builder.Packages.Packages {
+		for _, pkg := range builder.Packages.RawPackages {
 			packages[pkg.Name.Key()] = pkg
 		}
 
@@ -190,7 +190,7 @@ func (builder *ContainerBuilder) Search(pkg common.PackageQuery) ([]*common.Pack
 }
 
 func (builder *ContainerBuilder) Get(key string) (*common.Package, bool) {
-	pkg, ok := builder.Packages.Packages[key]
+	pkg, ok := builder.Packages.RawPackages[key]
 	return pkg, ok
 }
 
