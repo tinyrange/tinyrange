@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -21,9 +23,14 @@ type PackageCollection struct {
 
 	RawPackages map[string]*common.Package
 	Packages    map[string][]*common.Package
+
+	pkgMtx sync.Mutex
 }
 
 func (parser *PackageCollection) addPackage(pkg *common.Package) error {
+	parser.pkgMtx.Lock()
+	defer parser.pkgMtx.Unlock()
+
 	parser.RawPackages[pkg.Name.Key()] = pkg
 
 	parser.Packages[pkg.Name.Name] = append(parser.Packages[pkg.Name.Name], pkg)
@@ -136,16 +143,43 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 	slog.Info("built all package sources", "took", time.Since(start))
 	start = time.Now()
 
-	child := ctx.ChildContext(parser, nil, "")
+	wg := sync.WaitGroup{}
 
-	_, err := child.Call(parser.Parser, parser, starlark.NewList(records))
-	if err != nil {
-		return err
+	// This doesn't scale partially well but 4 threads gives roughly a 2x speed improvement.
+	groupCount := min(runtime.NumCPU(), 4)
+	groupSize := len(records) / groupCount
+
+	done := make(chan bool)
+	errors := make(chan error)
+
+	for i := 0; i < len(records); i += groupSize {
+		wg.Add(1)
+
+		go func(records []starlark.Value) {
+			defer wg.Done()
+
+			child := ctx.ChildContext(parser, nil, "")
+
+			_, err := child.Call(parser.Parser, parser, starlark.NewList(records))
+			if err != nil {
+				errors <- err
+			}
+		}(records[i:min(len(records), i+groupSize)])
 	}
 
-	slog.Info("loaded all packages", "count", len(records), "took", time.Since(start))
+	go func() {
+		wg.Wait()
+		done <- true
+	}()
 
-	return nil
+	select {
+	case err := <-errors:
+		return err
+	case <-done:
+		slog.Info("loaded all packages", "count", len(records), "took", time.Since(start))
+
+		return nil
+	}
 }
 
 func (parser *PackageCollection) Query(query common.PackageQuery) ([]*common.Package, error) {

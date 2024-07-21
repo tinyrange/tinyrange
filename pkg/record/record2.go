@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log/slog"
 	"math"
@@ -13,6 +14,14 @@ import (
 )
 
 var endian = binary.LittleEndian
+
+func hashKey(k string) uint32 {
+	h := fnv.New32()
+
+	h.Write([]byte(k))
+
+	return h.Sum32()
+}
 
 type recordType byte
 
@@ -146,11 +155,17 @@ func (w *RecordWriter2) writeTo(val starlark.Value, off int) (int, error) {
 	case *starlark.Dict:
 		// dict is stored as a series of tuples with a set of items.
 		// it starts with the number of items (stored as uint32).
+		// then it has a hash of the name followed bu the offset of the name.
 		listLen := 0
 		if err := w.writeU32(uint32(val.Len()), off+HEADER_SIZE+listLen); err != nil {
 			return 0, err
 		}
 		listLen += 4
+
+		count := val.Len()
+		tableOffset := off + HEADER_SIZE + listLen
+
+		listLen += count * 8
 
 		it := val.Iterate()
 		defer it.Done()
@@ -161,6 +176,18 @@ func (w *RecordWriter2) writeTo(val starlark.Value, off int) (int, error) {
 			if !ok {
 				return 0, fmt.Errorf("could not convert %s to string", key.Type())
 			}
+
+			keyHash := hashKey(keyStr)
+
+			if err := w.writeU32(uint32(keyHash), tableOffset); err != nil {
+				return 0, err
+			}
+
+			if err := w.writeU32(uint32(listLen), tableOffset+4); err != nil {
+				return 0, err
+			}
+
+			tableOffset += 8
 
 			entStart := off + HEADER_SIZE + listLen
 
@@ -316,6 +343,44 @@ type record struct {
 	rest     []byte // only filled when needed
 }
 
+func (r *record) recordToString(off int64, length uint32) (starlark.Value, error) {
+	data := make([]byte, length-uint32(HEADER_SIZE))
+
+	if _, err := r.ReadAt(data, off+int64(HEADER_SIZE)); err != nil {
+		return starlark.None, fmt.Errorf("could not read: %+v", err)
+	}
+
+	return starlark.String(data), nil
+}
+
+func (r *record) recordToList(off int64) (starlark.Value, error) {
+	var buf [5]byte
+
+	val, err := r.readU32(buf, off+int64(HEADER_SIZE))
+	if err != nil {
+		return starlark.None, err
+	}
+
+	return &recordList{rec: r, off: off, len: int(val)}, nil
+}
+
+func (r *record) recordToDict(off int64) (starlark.Value, error) {
+	var buf [5]byte
+
+	itemCount, err := r.readU32(buf, off+int64(HEADER_SIZE))
+	if err != nil {
+		return starlark.None, err
+	}
+
+	itemIndex := make([]byte, itemCount*8)
+
+	if _, err := r.ReadAt(itemIndex, off+int64(HEADER_SIZE)+4); err != nil {
+		return starlark.None, err
+	}
+
+	return &recordDict{rec: r, off: off, len: int(itemCount), itemIndex: itemIndex}, nil
+}
+
 func (r *record) toStarlarkValue(off int64) (starlark.Value, error) {
 	var buf [5]byte
 
@@ -334,28 +399,13 @@ func (r *record) toStarlarkValue(off int64) (starlark.Value, error) {
 	case _RECORD_NONE:
 		return starlark.None, nil
 	case _RECORD_DICT:
-		val, err := r.readU32(buf, off+int64(HEADER_SIZE))
-		if err != nil {
-			return starlark.None, err
-		}
-
-		return &recordDict{rec: r, off: off, len: int(val)}, nil
+		return r.recordToDict(off)
 	case _RECORD_ENTRY:
 		return starlark.None, fmt.Errorf("attempt to convert entry to Value")
 	case _RECORD_LIST:
-		val, err := r.readU32(buf, off+int64(HEADER_SIZE))
-		if err != nil {
-			return starlark.None, err
-		}
-
-		return &recordList{rec: r, off: off, len: int(val)}, nil
+		return r.recordToList(off)
 	case _RECORD_STRING:
-		data := make([]byte, length-uint32(HEADER_SIZE))
-		if _, err := r.ReadAt(data, off+int64(HEADER_SIZE)); err != nil {
-			return starlark.None, fmt.Errorf("could not read: %+v", err)
-		}
-
-		return starlark.String(data), nil
+		return r.recordToString(off, length)
 	default:
 		return starlark.None, fmt.Errorf("toStarlarkValue unimplemented: %d", kind)
 	}
@@ -467,9 +517,10 @@ var (
 )
 
 type recordDict struct {
-	rec *record
-	off int64
-	len int
+	rec       *record
+	off       int64
+	len       int
+	itemIndex []byte
 }
 
 // Get implements starlark.Mapping.
@@ -479,28 +530,26 @@ func (r *recordDict) Get(k starlark.Value) (v starlark.Value, found bool, err er
 		return starlark.None, false, fmt.Errorf("could not convert %s to string", k.Type())
 	}
 
+	keyHash := hashKey(key)
+
 	var buf [5]byte
 
-	var off int64 = r.off + int64(HEADER_SIZE+4)
-
 	for i := 0; i < r.len; i++ {
-		// get next value
-		kind, length, err := r.rec.readRecord(buf, off)
+		if keyHash != endian.Uint32(r.itemIndex[i*8:i*8+4]) {
+			// The hash of the name doesn't match so we can safely skip it.
+			continue
+		}
+
+		off := r.off + int64(HEADER_SIZE) + int64(endian.Uint32(r.itemIndex[i*8+4:i*8+8]))
+
+		kind, _, err := r.rec.readRecord(buf, off)
 		if err != nil {
 			return starlark.None, false, err
 		}
 
-		// slog.Info("read", "len", length)
-
 		if kind != _RECORD_ENTRY {
 			return starlark.None, false, fmt.Errorf("record is not a entry: %d", kind)
 		}
-
-		// get string length
-		// strLen, err := r.rec.readU32(buf, off+int64(HEADER_SIZE))
-		// if err != nil {
-		// 	return starlark.None, false, err
-		// }
 
 		ok, err := r.rec.compare([]byte(key), off+int64(HEADER_SIZE)+4)
 		if err != nil {
@@ -521,23 +570,6 @@ func (r *recordDict) Get(k starlark.Value) (v starlark.Value, found bool, err er
 			}
 			return val, true, nil
 		}
-
-		// str := make([]byte, strLen)
-		// if _, err := r.rec.ReadAt(str, off+int64(HEADER_SIZE)+4); err != nil {
-		// 	return starlark.None, false, err
-		// }
-
-		// // check the key
-		// // slog.Info("check key", "str", string(str), "key", key)
-		// if string(str) == key {
-		// 	val, err := r.rec.toStarlarkValue(off + int64(HEADER_SIZE) + 4 + int64(len(str)))
-		// 	if err != nil {
-		// 		return starlark.None, false, err
-		// 	}
-		// 	return val, true, nil
-		// }
-
-		off += int64(length)
 	}
 
 	return starlark.None, false, nil
