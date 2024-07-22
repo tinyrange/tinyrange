@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"runtime/pprof"
 
@@ -55,13 +56,15 @@ var loginCmd = &cobra.Command{
 
 			def, err := builder.UnmarshalDefinition(f)
 			if err != nil {
-				return err
+				slog.Error("fatal", "err", err)
+				os.Exit(1)
 			}
 
 			if _, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{
 				AlwaysRebuild: true,
 			}); err != nil {
-				return err
+				slog.Error("fatal", "err", err)
+				os.Exit(1)
 			}
 
 			return nil
@@ -91,7 +94,8 @@ var loginCmd = &cobra.Command{
 				if _, err := db.Build(db.NewBuildContext(planDirective), planDirective, common.BuildOptions{
 					AlwaysRebuild: true,
 				}); err != nil {
-					return err
+					slog.Error("fatal", "err", err)
+					os.Exit(1)
 				}
 
 				return nil
@@ -129,7 +133,8 @@ var loginCmd = &cobra.Command{
 				if _, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{
 					AlwaysRebuild: true,
 				}); err != nil {
-					return err
+					slog.Error("fatal", "err", err)
+					os.Exit(1)
 				}
 
 				return nil

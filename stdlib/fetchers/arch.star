@@ -74,48 +74,63 @@ def convert_arch_package(ctx, fs, name):
 
     return ctx.archive(ret)
 
-def parse_arch_package(ctx, ent):
-    deps = [parse_arch_query(q) for q in ent["depends"].splitlines()] if "depends" in ent else []
+def get_arch_installer(pkg, tags):
+    ent = pkg.raw
 
-    ctx.add_package(package(
-        name = name(
-            name = ent["name"],
-            version = ent["version"],
-        ),
-        installers = [
-            installer(
-                tags = ["level1"],
-                directives = [
-                    directive.run_command("pacman -Sy --noconfirm {}".format(ent["name"])),
-                ],
-            ),
-            installer(
-                tags = ["level2"],
-                directives = [
-                    directive.run_command("pacman -Sy --noconfirm {}".format(ent["name"])),
-                ],
-                dependencies = deps,
-            ),
-            installer(
-                tags = ["level3"],
-                directives = [
-                    define.build(
-                        convert_arch_package,
-                        define.read_archive(
-                            define.fetch_http(
-                                ent["url_base"] + "/" + ent["filename"],
-                            ),
-                            ".tar.zst",
+    if tags.contains("level1"):
+        return installer(
+            directives = [
+                directive.run_command("pacman -Sy --noconfirm {}".format(ent["name"])),
+            ],
+        )
+
+    deps = [
+        parse_arch_query(q)
+        for q in ent["depends"].splitlines()
+    ] if "depends" in ent else []
+
+    if tags.contains("level2"):
+        return installer(
+            directives = [
+                directive.run_command("pacman -Sy --noconfirm {}".format(ent["name"])),
+            ],
+            dependencies = deps,
+        )
+    elif tags.contains("level3"):
+        return installer(
+            tags = ["level3"],
+            directives = [
+                define.build(
+                    convert_arch_package,
+                    define.read_archive(
+                        define.fetch_http(
+                            ent["url_base"] + "/" + ent["filename"],
                         ),
-                        ent["name"],
+                        ".tar.zst",
                     ),
-                ],
-                dependencies = deps,
+                    ent["name"],
+                ),
+            ],
+            dependencies = deps,
+        )
+    else:
+        return None
+
+def parse_arch_package(ctx, collection, packages):
+    for ent in packages:
+        aliases = [
+            parse_arch_alias(k)
+            for k in ent["provides"].splitlines()
+        ] if "provides" in ent else []
+
+        collection.add_package(
+            name = name(
+                name = ent["name"],
+                version = ent["version"],
             ),
-        ],
-        aliases = [parse_arch_alias(k) for k in ent["provides"].splitlines()] if "provides" in ent else [],
-        raw = ent,
-    ))
+            aliases = aliases,
+            raw = ent,
+        )
 
 def build_arch_directives(builder, plan):
     if plan.tags.contains("level3"):
@@ -133,6 +148,7 @@ if __name__ == "__main__":
             display_name = "Arch Linux",
             packages = define.package_collection(
                 parse_arch_package,
+                get_arch_installer,
                 *[define.build(
                     parse_arch_database,
                     define.read_archive(

@@ -127,10 +127,28 @@ def apk_download(ctx, name, fs):
 
     return ctx.archive(ret)
 
-def parse_alpine_packages(ctx, ent):
+def get_alpine_installer(pkg, tags):
+    ent = pkg.raw
+
+    if tags.contains("level1"):
+        return installer(
+            # This is a basic package defintion that just uses apk to install the package.
+            directives = [
+                directive.run_command("apk add {}".format(ent["P"])),
+            ],
+        )
+
     deps = [parse_alpine_query(dep) for dep in ent["D"].split(" ")] if "D" in ent else []
 
     deps = [dep for dep in deps if dep != None]
+
+    if tags.contains("level2"):
+        return installer(
+            directives = [
+                directive.run_command("apk add {}".format(ent["P"])),
+            ],
+            dependencies = deps,
+        )
 
     download_archive = define.read_archive(
         define.fetch_http(
@@ -139,51 +157,43 @@ def parse_alpine_packages(ctx, ent):
         ".tar.gz",
     )
 
-    ctx.add_package(package(
-        name = name(
-            name = ent["P"].replace(":", "_"),
-            version = ent["V"],
-        ),
-        installers = [
-            installer(
-                tags = ["level1"],
-                # This is a basic package defintion that just uses apk to install the package.
-                directives = [
-                    directive.run_command("apk add {}".format(ent["P"])),
-                ],
+    if tags.contains("level3"):
+        return installer(
+            directives = [
+                define.build(
+                    apk_download,
+                    ent["P"],
+                    download_archive,
+                ),
+            ],
+            dependencies = deps,
+        )
+    elif tags.contains("download"):
+        return installer(
+            directives = [
+                define.build(
+                    apk_download,
+                    ent["P"],
+                    download_archive,
+                ),
+            ],
+        )
+    else:
+        return None
+
+def parse_alpine_packages(ctx, collection, packages):
+    for ent in packages:
+        collection.add_package(
+            name = name(
+                name = ent["P"].replace(":", "_"),
+                version = ent["V"],
             ),
-            installer(
-                tags = ["level2"],
-                directives = [
-                    directive.run_command("apk add {}".format(ent["P"])),
-                ],
-                dependencies = deps,
-            ),
-            installer(
-                tags = ["level3"],
-                directives = [
-                    define.build(
-                        apk_download,
-                        ent["P"],
-                        download_archive,
-                    ),
-                ],
-                dependencies = deps,
-            ),
-            installer(
-                tags = ["download"],
-                directives = [
-                    define.build(
-                        apk_download,
-                        ent["P"],
-                        download_archive,
-                    ),
-                ],
-            ),
-        ],
-        aliases = [parse_alpine_alias(provides) for provides in ent["p"].split(" ")] if "p" in ent else [],
-        raw = ent,
-    ))
+            aliases = [
+                parse_alpine_alias(provides)
+                for provides in ent["p"].split(" ")
+            ] if "p" in ent else [],
+            raw = ent,
+        )
 
 def make_alpine_repos(only_latest = True):
     alpine_repos = {}
@@ -222,6 +232,7 @@ def make_alpine_repos(only_latest = True):
         # Define a package collection containing all the repos.
         alpine_repos[version] = define.package_collection(
             parse_alpine_packages,
+            get_alpine_installer,
             *repos
         )
 
