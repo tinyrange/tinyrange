@@ -3,23 +3,37 @@ package builder
 import (
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
-type FileDefinition struct {
-	f filesystem.File
-
-	fh filesystem.FileHandle
+type copyFileBuildResult struct {
+	fh common.FileHandle
 }
 
 // WriteTo implements common.BuildResult.
-func (def *FileDefinition) WriteTo(w io.Writer) (n int64, err error) {
+func (def *copyFileBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 	return io.Copy(w, def.fh)
+}
+
+var (
+	_ common.BuildResult = &copyFileBuildResult{}
+)
+
+type FileDefinition struct {
+	f common.File
+}
+
+// Create implements common.BuildDefinition.
+func (def *FileDefinition) Create(params common.BuildDefinitionParameters) common.BuildDefinition {
+	panic("unimplemented")
+}
+
+// Params implements common.BuildDefinition.
+func (def *FileDefinition) Params() common.BuildDefinitionParameters {
+	panic("unimplemented")
 }
 
 // Build implements common.BuildDefinition.
@@ -29,9 +43,7 @@ func (def *FileDefinition) Build(ctx common.BuildContext) (common.BuildResult, e
 		return nil, err
 	}
 
-	def.fh = fh
-
-	return def, nil
+	return &copyFileBuildResult{fh: fh}, nil
 }
 
 // NeedsBuild implements common.BuildDefinition.
@@ -44,17 +56,7 @@ func (def *FileDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Ti
 	return info.ModTime().After(cacheTime), nil
 }
 
-// Tag implements common.BuildDefinition.
-func (def *FileDefinition) Tag() string {
-	info, err := def.f.Stat()
-	if err != nil {
-		return "<unknown>"
-	}
-
-	return strings.Join([]string{info.Name()}, "_")
-}
-
-func (def *FileDefinition) String() string { return def.Tag() }
+func (def *FileDefinition) String() string { return "FileDefinition" }
 func (*FileDefinition) Type() string       { return "FileDefinition" }
 func (*FileDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("FileDefinition is not hashable")
@@ -65,9 +67,8 @@ func (*FileDefinition) Freeze()              {}
 var (
 	_ starlark.Value         = &FileDefinition{}
 	_ common.BuildDefinition = &FileDefinition{}
-	_ common.BuildResult     = &FileDefinition{}
 )
 
-func NewFileDefinition(f filesystem.File) *FileDefinition {
+func NewFileDefinition(f common.File) *FileDefinition {
 	return &FileDefinition{f: f}
 }

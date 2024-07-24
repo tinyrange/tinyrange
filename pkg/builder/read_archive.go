@@ -13,33 +13,33 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blakesmith/ar"
 	"github.com/cavaliergopher/cpio"
 	"github.com/klauspost/compress/zstd"
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/xi2/xz"
 	"go.starlark.net/starlark"
 )
 
 type directoryToArchiveBuildResult struct {
-	dir filesystem.Directory
+	dir common.Directory
 	off int64
 }
 
-func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.File, name string) (n int64, err error) {
+func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent common.File, name string) (n int64, err error) {
 	info, err := ent.Stat()
 	if err != nil {
 		return
 	}
 
-	var typ filesystem.FileType
+	var typ common.FileType
 
 	// slog.Info("info", "name", name, "mode", info.Mode(), "isDir", info.Mode().IsDir(), "size", info.Size())
 
-	var cacheEnt *filesystem.CacheEntry
+	var cacheEnt *common.CacheEntry
 
-	if cEnt, ok := ent.(*filesystem.CacheEntry); ok {
-		cacheEnt = &filesystem.CacheEntry{
+	if cEnt, ok := ent.(*common.CacheEntry); ok {
+		cacheEnt = &common.CacheEntry{
 			COffset:   d.off + 1024,
 			CTypeflag: cEnt.CTypeflag,
 			CName:     name,
@@ -56,23 +56,23 @@ func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.F
 		var linkname = ""
 
 		if info.Mode().Type() == fs.ModeSymlink {
-			linkname, err = filesystem.GetLinkName(ent)
+			linkname, err = common.GetLinkName(ent)
 			if err != nil {
 				return
 			}
-			typ = filesystem.TypeSymlink
+			typ = common.TypeSymlink
 		} else if info.Mode().IsDir() {
-			typ = filesystem.TypeDirectory
+			typ = common.TypeDirectory
 		} else {
-			typ = filesystem.TypeRegular
+			typ = common.TypeRegular
 		}
 
-		uid, gid, err := filesystem.GetUidAndGid(ent)
+		uid, gid, err := common.GetUidAndGid(ent)
 		if err != nil {
 			return -1, err
 		}
 
-		cacheEnt = &filesystem.CacheEntry{
+		cacheEnt = &common.CacheEntry{
 			COffset:   d.off + 1024,
 			CTypeflag: typ,
 			CName:     name,
@@ -94,10 +94,10 @@ func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.F
 		return -1, err
 	}
 
-	if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
-		return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
-	} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
-		tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
+	if len(bytes) > common.CACHE_ENTRY_SIZE {
+		return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), common.CACHE_ENTRY_SIZE)
+	} else if len(bytes) < common.CACHE_ENTRY_SIZE {
+		tmp := make([]byte, common.CACHE_ENTRY_SIZE)
 		copy(tmp, bytes)
 		bytes = tmp
 	}
@@ -113,13 +113,13 @@ func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.F
 	return
 }
 
-func (d *directoryToArchiveBuildResult) writeFileTo(w io.Writer, ent filesystem.File, name string) (n int64, err error) {
-	if starEnt, ok := ent.(*filesystem.StarFile); ok {
+func (d *directoryToArchiveBuildResult) writeFileTo(w io.Writer, ent common.File, name string) (n int64, err error) {
+	if starEnt, ok := ent.(*common.StarFile); ok {
 		ent = starEnt.File
 	}
 
-	if cEnt, ok := ent.(*filesystem.CacheEntry); ok {
-		if cEnt.CTypeflag != filesystem.TypeRegular {
+	if cEnt, ok := ent.(*common.CacheEntry); ok {
+		if cEnt.CTypeflag != common.TypeRegular {
 			return d.writeEntry(w, ent, name)
 		}
 	}
@@ -145,7 +145,7 @@ func (d *directoryToArchiveBuildResult) writeFileTo(w io.Writer, ent filesystem.
 	return
 }
 
-func (d *directoryToArchiveBuildResult) writeDirTo(w io.Writer, ent filesystem.Directory, name string) (n int64, err error) {
+func (d *directoryToArchiveBuildResult) writeDirTo(w io.Writer, ent common.Directory, name string) (n int64, err error) {
 	n, err = d.writeEntry(w, ent, name)
 	if err != nil {
 		return
@@ -157,7 +157,7 @@ func (d *directoryToArchiveBuildResult) writeDirTo(w io.Writer, ent filesystem.D
 	}
 
 	for _, ent := range ents {
-		if dir, ok := ent.File.(filesystem.Directory); ok {
+		if dir, ok := ent.File.(common.Directory); ok {
 			childN, err := d.writeDirTo(w, dir, path.Join(name, ent.Name))
 			if err != nil {
 				return n + childN, fmt.Errorf("failed to write directory %s: %s", ent.Name, err)
@@ -202,15 +202,15 @@ type zipToArchiveBuildResult struct {
 // WriteTo implements common.BuildResult.
 func (z *zipToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 	for _, file := range z.r.File {
-		var typ filesystem.FileType
+		var typ common.FileType
 
 		if file.Mode().IsDir() {
-			typ = filesystem.TypeDirectory
+			typ = common.TypeDirectory
 		} else {
-			typ = filesystem.TypeRegular
+			typ = common.TypeRegular
 		}
 
-		ent := &filesystem.CacheEntry{
+		ent := &common.CacheEntry{
 			COffset:   n + 1024,
 			CTypeflag: typ,
 			CName:     file.Name,
@@ -229,10 +229,10 @@ func (z *zipToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 			return -1, err
 		}
 
-		if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
-			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
-		} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
-			tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
+		if len(bytes) > common.CACHE_ENTRY_SIZE {
+			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), common.CACHE_ENTRY_SIZE)
+		} else if len(bytes) < common.CACHE_ENTRY_SIZE {
+			tmp := make([]byte, common.CACHE_ENTRY_SIZE)
 			copy(tmp, bytes)
 			bytes = tmp
 		}
@@ -280,24 +280,24 @@ func (r *tarToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 
 		info := hdr.FileInfo()
 
-		var typeFlag = filesystem.TypeRegular
+		var typeFlag = common.TypeRegular
 
 		switch hdr.Typeflag {
 		case tar.TypeReg:
 			// pass
 		case tar.TypeDir:
-			typeFlag = filesystem.TypeDirectory
+			typeFlag = common.TypeDirectory
 		case tar.TypeSymlink:
-			typeFlag = filesystem.TypeSymlink
+			typeFlag = common.TypeSymlink
 		case tar.TypeLink:
-			typeFlag = filesystem.TypeLink
+			typeFlag = common.TypeLink
 		case tar.TypeXGlobalHeader:
 			continue
 		default:
 			return -1, fmt.Errorf("unknown type flag: %d", hdr.Typeflag)
 		}
 
-		ent := &filesystem.CacheEntry{
+		ent := &common.CacheEntry{
 			COffset:   n + 1024,
 			CTypeflag: typeFlag,
 			CName:     hdr.Name,
@@ -316,10 +316,10 @@ func (r *tarToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 			return -1, err
 		}
 
-		if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
-			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
-		} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
-			tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
+		if len(bytes) > common.CACHE_ENTRY_SIZE {
+			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), common.CACHE_ENTRY_SIZE)
+		} else if len(bytes) < common.CACHE_ENTRY_SIZE {
+			tmp := make([]byte, common.CACHE_ENTRY_SIZE)
 			copy(tmp, bytes)
 			bytes = tmp
 		}
@@ -362,7 +362,7 @@ func (c *cpioToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 
 		fileInfo := hdr.FileInfo()
 
-		var typeFlag = filesystem.TypeRegular
+		var typeFlag = common.TypeRegular
 
 		typ := hdr.Mode &^ cpio.ModePerm
 
@@ -370,14 +370,14 @@ func (c *cpioToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 		case typ&cpio.TypeReg != 0:
 			// pass
 		case typ&cpio.TypeDir != 0:
-			typeFlag = filesystem.TypeDirectory
+			typeFlag = common.TypeDirectory
 		case typ&cpio.TypeSymlink != 0:
-			typeFlag = filesystem.TypeSymlink
+			typeFlag = common.TypeSymlink
 		default:
 			return -1, fmt.Errorf("unknown type flag: %d", typ)
 		}
 
-		ent := &filesystem.CacheEntry{
+		ent := &common.CacheEntry{
 			COffset:   n + 1024,
 			CTypeflag: typeFlag,
 			CName:     hdr.Name,
@@ -394,10 +394,10 @@ func (c *cpioToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 			return -1, err
 		}
 
-		if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
-			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
-		} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
-			tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
+		if len(bytes) > common.CACHE_ENTRY_SIZE {
+			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), common.CACHE_ENTRY_SIZE)
+		} else if len(bytes) < common.CACHE_ENTRY_SIZE {
+			tmp := make([]byte, common.CACHE_ENTRY_SIZE)
 			copy(tmp, bytes)
 			bytes = tmp
 		}
@@ -424,9 +424,81 @@ var (
 	_ common.BuildResult = &cpioToArchiveBuildResult{}
 )
 
+type arToArchiveBuildResult struct {
+	r *ar.Reader
+}
+
+// WriteTo implements common.BuildResult.
+func (c *arToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
+	for {
+		hdr, err := c.r.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return -1, err
+		}
+
+		var typeFlag = common.TypeRegular
+
+		ent := &common.CacheEntry{
+			COffset:   n + 1024,
+			CTypeflag: typeFlag,
+			CName:     hdr.Name,
+			CSize:     hdr.Size,
+			CMode:     hdr.Mode,
+			CUid:      hdr.Uid,
+			CGid:      hdr.Gid,
+			CModTime:  hdr.ModTime.UnixMicro(),
+		}
+
+		bytes, err := json.Marshal(&ent)
+		if err != nil {
+			return -1, err
+		}
+
+		if len(bytes) > common.CACHE_ENTRY_SIZE {
+			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), common.CACHE_ENTRY_SIZE)
+		} else if len(bytes) < common.CACHE_ENTRY_SIZE {
+			tmp := make([]byte, common.CACHE_ENTRY_SIZE)
+			copy(tmp, bytes)
+			bytes = tmp
+		}
+
+		childN, err := w.Write(bytes)
+		if err != nil {
+			return -1, err
+		}
+
+		n += int64(childN)
+
+		childN64, err := io.CopyN(w, c.r, hdr.Size)
+		if err != nil {
+			return -1, err
+		}
+
+		n += childN64
+	}
+
+	return
+}
+
+var (
+	_ common.BuildResult = &arToArchiveBuildResult{}
+)
+
 type ReadArchiveBuildDefinition struct {
 	Base common.BuildDefinition
 	Kind string
+}
+
+// Create implements common.BuildDefinition.
+func (r *ReadArchiveBuildDefinition) Create(params common.BuildDefinitionParameters) common.BuildDefinition {
+	panic("unimplemented")
+}
+
+// Params implements common.BuildDefinition.
+func (r *ReadArchiveBuildDefinition) Params() common.BuildDefinitionParameters {
+	panic("unimplemented")
 }
 
 // NeedsBuild implements BuildDefinition.
@@ -501,19 +573,16 @@ func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.Buil
 			return &tarToArchiveBuildResult{r: tar.NewReader(reader)}, nil
 		} else if strings.HasSuffix(kind, ".cpio") {
 			return &cpioToArchiveBuildResult{r: cpio.NewReader(reader)}, nil
+		} else if strings.HasPrefix(kind, ".ar") {
+			return &arToArchiveBuildResult{r: ar.NewReader(reader)}, nil
 		} else {
 			return nil, fmt.Errorf("ReadArchive with unknown kind: %s", r.Kind)
 		}
 	}
 }
 
-// Tag implements BuildDefinition.
-func (r *ReadArchiveBuildDefinition) Tag() string {
-	return strings.Join([]string{"ReadArchive", r.Base.Tag(), r.Kind}, "_")
-}
-
-func (def *ReadArchiveBuildDefinition) String() string { return def.Tag() }
-func (*ReadArchiveBuildDefinition) Type() string       { return "FetchHttpBuildDefinition" }
+func (def *ReadArchiveBuildDefinition) String() string { return "ReadArchiveBuildDefinition" }
+func (*ReadArchiveBuildDefinition) Type() string       { return "ReadArchiveBuildDefinition" }
 func (*ReadArchiveBuildDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("FetchHttpBuildDefinition is not hashable")
 }

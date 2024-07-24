@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/common"
 )
 
 const trailerName = "TRAILER!!!"
@@ -386,13 +386,13 @@ func (fs *Filesystem) AddSimpleFile(filename string, contents []byte, executable
 	return nil
 }
 
-func (fs *Filesystem) AddFromEntry(prefix string, hdr filesystem.Entry) error {
+func (fs *Filesystem) AddFromEntry(prefix string, hdr common.Entry) error {
 	cleanedName := strings.TrimPrefix(path.Clean(path.Join(prefix, hdr.Name())), "/")
 
 	var ent entry
 
 	switch hdr.Typeflag() {
-	case filesystem.TypeRegular:
+	case common.TypeRegular:
 		parent, name, err := fs.openPath(cleanedName, true)
 		if err != nil {
 			return err
@@ -414,7 +414,7 @@ func (fs *Filesystem) AddFromEntry(prefix string, hdr filesystem.Entry) error {
 		f.content = contents
 
 		ent = f
-	case filesystem.TypeSymlink:
+	case common.TypeSymlink:
 		parent, name, err := fs.openPath(cleanedName, true)
 		if err != nil {
 			return err
@@ -425,7 +425,7 @@ func (fs *Filesystem) AddFromEntry(prefix string, hdr filesystem.Entry) error {
 		f.makeSymlink(hdr.Linkname())
 
 		ent = f
-	case filesystem.TypeDirectory:
+	case common.TypeDirectory:
 		parent, name, err := fs.openPath(cleanedName, true)
 		if err != nil {
 			return err

@@ -4,11 +4,11 @@ import (
 	"io"
 	"io/fs"
 
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/common"
 )
 
 type Emulator interface {
-	AddFile(name string, f filesystem.File) error
+	AddFile(name string, f common.File) error
 }
 
 type Process interface {
@@ -30,7 +30,7 @@ type Process interface {
 }
 
 type Program interface {
-	filesystem.File
+	common.File
 	Name() string
 	Run(proc Process, argv []string) error
 }

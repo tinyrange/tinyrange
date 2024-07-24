@@ -9,8 +9,8 @@ import (
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	"github.com/tetratelabs/wazero/sys"
+	fsCommon "github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/emulator/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 )
 
 type deferredOpen struct {
@@ -73,7 +73,7 @@ var (
 )
 
 type wasmProgram struct {
-	filesystem.File
+	fsCommon.File
 }
 
 // Name implements common.Program.
@@ -133,6 +133,6 @@ func (w *wasmProgram) Run(proc common.Process, argv []string) error {
 	return nil
 }
 
-func NewWasmProgram(f filesystem.File) common.Program {
+func NewWasmProgram(f fsCommon.File) common.Program {
 	return &wasmProgram{File: f}
 }

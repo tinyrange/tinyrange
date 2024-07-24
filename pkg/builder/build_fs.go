@@ -9,7 +9,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/cpio"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
@@ -23,9 +22,9 @@ func (i *initRamFsBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 
 	for _, frag := range i.frags {
 		if frag.Archive != nil {
-			f := filesystem.NewLocalFile(frag.Archive.HostFilename)
+			f := common.NewLocalFile(frag.Archive.HostFilename)
 
-			ark, err := filesystem.ReadArchiveFromFile(f)
+			ark, err := common.ReadArchiveFromFile(f)
 			if err != nil {
 				return 0, err
 			}
@@ -67,6 +66,16 @@ type BuildFsDefinition struct {
 	frags []config.Fragment
 }
 
+// Create implements common.BuildDefinition.
+func (def *BuildFsDefinition) Create(params common.BuildDefinitionParameters) common.BuildDefinition {
+	panic("unimplemented")
+}
+
+// Params implements common.BuildDefinition.
+func (def *BuildFsDefinition) Params() common.BuildDefinitionParameters {
+	panic("unimplemented")
+}
+
 // Build implements common.BuildDefinition.
 func (def *BuildFsDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	// Launch child builds for each directive.
@@ -102,20 +111,7 @@ func (def *BuildFsDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time
 	return false, nil
 }
 
-// Tag implements common.BuildDefinition.
-func (def *BuildFsDefinition) Tag() string {
-	out := []string{"BuildFs"}
-
-	for _, dir := range def.Directives {
-		out = append(out, dir.Tag())
-	}
-
-	out = append(out, def.Kind)
-
-	return strings.Join(out, "_")
-}
-
-func (def *BuildFsDefinition) String() string { return def.Tag() }
+func (def *BuildFsDefinition) String() string { return "BuildFsDefinition" }
 func (*BuildFsDefinition) Type() string       { return "BuildFsDefinition" }
 func (*BuildFsDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("BuildFsDefinition is not hashable")

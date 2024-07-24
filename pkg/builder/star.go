@@ -3,36 +3,44 @@ package builder
 import (
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
 type StarBuildDefinition struct {
-	Name        []string
-	Builder     starlark.Callable
-	BuilderArgs starlark.Tuple
+	Name      []string
+	builder   starlark.Callable
+	Arguments starlark.Tuple
 }
 
-func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinition, result filesystem.File) (starlark.Value, error) {
+// Create implements common.BuildDefinition.
+func (def *StarBuildDefinition) Create(params common.BuildDefinitionParameters) common.BuildDefinition {
+	panic("unimplemented")
+}
+
+// Params implements common.BuildDefinition.
+func (def *StarBuildDefinition) Params() common.BuildDefinitionParameters {
+	panic("unimplemented")
+}
+
+func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinition, result common.File) (starlark.Value, error) {
 	switch arg := argDef.(type) {
 	case *ReadArchiveBuildDefinition:
-		ark, err := filesystem.ReadArchiveFromFile(result)
+		ark, err := common.ReadArchiveFromFile(result)
 		if err != nil {
 			return starlark.None, err
 		}
 
-		return filesystem.NewStarArchive(ark, argDef.Tag()), nil
+		return common.NewStarArchive(ark, argDef.Type()), nil
 	case *CreateArchiveDefinition:
-		ark, err := filesystem.ReadArchiveFromFile(result)
+		ark, err := common.ReadArchiveFromFile(result)
 		if err != nil {
 			return starlark.None, err
 		}
 
-		return filesystem.NewStarArchive(ark, argDef.Tag()), nil
+		return common.NewStarArchive(ark, argDef.Type()), nil
 	case *PlanDefinition:
 		var plan *PlanDefinition
 
@@ -42,21 +50,21 @@ func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinitio
 
 		return plan, nil
 	case *FetchHttpBuildDefinition:
-		return filesystem.NewStarFile(result, argDef.Tag()), nil
+		return common.NewStarFile(result, argDef.Type()), nil
 	case *StarBuildDefinition:
-		return filesystem.NewStarFile(result, argDef.Tag()), nil
-	case *DecompressFileBuildDefinition:
-		return filesystem.NewStarFile(result, argDef.Tag()), nil
+		return common.NewStarFile(result, argDef.Type()), nil
+	case *DecompressFileDefinition:
+		return common.NewStarFile(result, argDef.Type()), nil
 	case *BuildVmDefinition:
-		return filesystem.NewStarFile(result, argDef.Tag()), nil
+		return common.NewStarFile(result, argDef.Type()), nil
 	case *BuildFsDefinition:
-		return filesystem.NewStarFile(result, argDef.Tag()), nil
+		return common.NewStarFile(result, argDef.Type()), nil
 	case *FetchOciImageDefinition:
 		if err := ParseJsonFromFile(result, &arg); err != nil {
 			return nil, err
 		}
 
-		fs := filesystem.NewMemoryDirectory()
+		fs := common.NewMemoryDirectory()
 
 		for _, layer := range arg.LayerArchives {
 			layerFile, err := ctx.FileFromDigest(layer)
@@ -64,17 +72,17 @@ func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinitio
 				return nil, err
 			}
 
-			ark, err := filesystem.ReadArchiveFromFile(layerFile)
+			ark, err := common.ReadArchiveFromFile(layerFile)
 			if err != nil {
 				return starlark.None, err
 			}
 
-			if err := filesystem.ExtractArchive(ark, fs); err != nil {
+			if err := common.ExtractArchive(ark, fs); err != nil {
 				return starlark.None, err
 			}
 		}
 
-		return filesystem.NewStarDirectory(fs, ""), nil
+		return common.NewStarDirectory(fs, ""), nil
 	default:
 		return starlark.None, fmt.Errorf("BuildResultToStarlark not implemented for: %T %+v", arg, arg)
 	}
@@ -86,7 +94,7 @@ func (def *StarBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime ti
 		return true, nil
 	}
 
-	for _, arg := range def.BuilderArgs {
+	for _, arg := range def.Arguments {
 		if argDef, ok := arg.(common.BuildDefinition); ok {
 			needsBuild, err := ctx.NeedsBuild(argDef)
 			if err != nil {
@@ -103,31 +111,9 @@ func (def *StarBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime ti
 	return false, nil
 }
 
-// Tag implements BuildSource.
-func (def *StarBuildDefinition) Tag() string {
-	var parts []string
-
-	parts = append(parts, def.Name...)
-
-	for _, arg := range def.BuilderArgs {
-		if src, ok := arg.(common.BuildSource); ok {
-			parts = append(parts, src.Tag())
-		} else if lst, ok := arg.(*starlark.List); ok {
-			parts = append(parts, fmt.Sprintf("%+v", lst))
-		} else if str, ok := starlark.AsString(arg); ok {
-			parts = append(parts, str)
-		} else {
-			slog.Warn("could not convert to string", "type", arg.Type())
-			continue
-		}
-	}
-
-	return strings.Join(parts, "_")
-}
-
 func (def *StarBuildDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	var args starlark.Tuple
-	for _, arg := range def.BuilderArgs {
+	for _, arg := range def.Arguments {
 		if argDef, ok := arg.(common.BuildDefinition); ok {
 			res, err := ctx.BuildChild(argDef)
 			if err != nil {
@@ -145,36 +131,36 @@ func (def *StarBuildDefinition) Build(ctx common.BuildContext) (common.BuildResu
 		}
 	}
 
-	res, err := ctx.Call(def.Builder, args...)
+	res, err := ctx.Call(def.builder, args...)
 	if err != nil {
 		return nil, err
 	}
 
 	if result, ok := res.(common.BuildResult); ok {
 		return result, nil
-	} else if f, ok := res.(filesystem.File); ok {
+	} else if f, ok := res.(common.File); ok {
 		fh, err := f.Open()
 		if err != nil {
 			return nil, err
 		}
 
-		return &FileDefinition{f: f, fh: fh}, nil
+		// Just using the build result part of it.
+		return &copyFileBuildResult{fh: fh}, nil
 	} else {
 		return nil, fmt.Errorf("could not convert %s to BuildResult", res.Type())
 	}
 }
 
-func (def *StarBuildDefinition) String() string { return def.Tag() }
-func (*StarBuildDefinition) Type() string       { return "BuildDefinition" }
+func (def *StarBuildDefinition) String() string { return "StarBuildDefinition" }
+func (*StarBuildDefinition) Type() string       { return "StarBuildDefinition" }
 func (*StarBuildDefinition) Hash() (uint32, error) {
-	return 0, fmt.Errorf("BuildDefinition is not hashable")
+	return 0, fmt.Errorf("StarBuildDefinition is not hashable")
 }
 func (*StarBuildDefinition) Truth() starlark.Bool { return starlark.True }
 func (*StarBuildDefinition) Freeze()              {}
 
 var (
 	_ starlark.Value         = &StarBuildDefinition{}
-	_ common.BuildSource     = &StarBuildDefinition{}
 	_ common.BuildDefinition = &StarBuildDefinition{}
 )
 
@@ -185,8 +171,8 @@ func NewStarBuildDefinition(name string, builder starlark.Value, args starlark.T
 	}
 
 	return &StarBuildDefinition{
-		Name:        []string{name, f.Name()},
-		Builder:     f,
-		BuilderArgs: args,
+		Name:      []string{name, f.Name()},
+		builder:   f,
+		Arguments: args,
 	}, nil
 }

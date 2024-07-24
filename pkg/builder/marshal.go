@@ -74,7 +74,7 @@ func MarshalDefinition(w io.Writer, def common.BuildDefinition) error {
 	case *BuildVmDefinition:
 		objVm := serializedBuildVm{}
 
-		for _, dir := range def.Directives {
+		for _, dir := range def.params.Directives {
 			switch dir := dir.(type) {
 			case *PlanDefinition:
 				directive := serializedPlan{

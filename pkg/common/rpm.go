@@ -1,4 +1,4 @@
-package filesystem
+package common
 
 import (
 	"encoding/json"

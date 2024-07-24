@@ -27,6 +27,16 @@ type PackageCollection struct {
 	pkgMtx sync.Mutex
 }
 
+// Build implements common.BuildDefinition.
+func (parser *PackageCollection) Build(ctx common.BuildContext) (common.BuildResult, error) {
+	panic("unimplemented")
+}
+
+// NeedsBuild implements common.BuildDefinition.
+func (parser *PackageCollection) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+	panic("unimplemented")
+}
+
 func (parser *PackageCollection) addPackage(pkg *common.Package) error {
 	parser.pkgMtx.Lock()
 	defer parser.pkgMtx.Unlock()
@@ -249,9 +259,9 @@ func (*PackageCollection) Truth() starlark.Bool { return starlark.True }
 func (*PackageCollection) Freeze()              {}
 
 var (
-	_ starlark.Value     = &PackageCollection{}
-	_ starlark.HasAttrs  = &PackageCollection{}
-	_ common.BuildSource = &PackageCollection{}
+	_ starlark.Value         = &PackageCollection{}
+	_ starlark.HasAttrs      = &PackageCollection{}
+	_ common.BuildDefinition = &PackageCollection{}
 )
 
 func NewPackageCollection(

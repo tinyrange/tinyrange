@@ -7,12 +7,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/builder/oci"
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
@@ -20,7 +18,7 @@ const (
 	DEFAULT_REGISTRY = "https://registry-1.docker.io/v2"
 )
 
-func ParseJsonFromFile(f filesystem.File, out any) error {
+func ParseJsonFromFile(f common.File, out any) error {
 	fh, err := f.Open()
 	if err != nil {
 		return err
@@ -114,6 +112,21 @@ type registryRequestDefinition struct {
 	accept     []string
 }
 
+// Create implements common.BuildDefinition.
+func (r *registryRequestDefinition) Create(params common.BuildDefinitionParameters) common.BuildDefinition {
+	panic("unimplemented")
+}
+
+// Params implements common.BuildDefinition.
+func (r *registryRequestDefinition) Params() common.BuildDefinitionParameters {
+	panic("unimplemented")
+}
+
+// Type implements common.BuildDefinition.
+func (r *registryRequestDefinition) Type() string {
+	return "registryRequestDefinition"
+}
+
 // Build implements common.BuildDefinition.
 func (r *registryRequestDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	req, err := r.ctx.makeRequest("GET", r.ctx.registry+r.url)
@@ -155,13 +168,6 @@ func (r *registryRequestDefinition) NeedsBuild(ctx common.BuildContext, cacheTim
 	}
 }
 
-// Tag implements common.BuildDefinition.
-func (r *registryRequestDefinition) Tag() string {
-	tag := []string{"ociRegistryRequest", r.ctx.registry, r.url}
-	tag = append(tag, r.accept...)
-	return strings.Join(tag, "_")
-}
-
 var (
 	_ common.BuildDefinition = &registryRequestDefinition{}
 )
@@ -172,7 +178,20 @@ type FetchOciImageDefinition struct {
 	tag          string
 	architecture string
 
-	LayerArchives []*filesystem.FileDigest
+	LayerArchives []*common.FileDigest
+}
+
+// TagMarshallableObject implements common.Directive.
+func (def *FetchOciImageDefinition) TagMarshallableObject() { panic("unimplemented") }
+
+// Create implements common.BuildDefinition.
+func (def *FetchOciImageDefinition) Create(params common.BuildDefinitionParameters) common.BuildDefinition {
+	panic("unimplemented")
+}
+
+// Params implements common.BuildDefinition.
+func (def *FetchOciImageDefinition) Params() common.BuildDefinitionParameters {
+	panic("unimplemented")
 }
 
 // tagDirective implements common.Directive.
@@ -344,13 +363,6 @@ func (def *FetchOciImageDefinition) NeedsBuild(ctx common.BuildContext, cacheTim
 	return ctx.NeedsBuild(def.indexDef(&ociRegistryContext{registry: def.registry}))
 }
 
-// Tag implements common.BuildDefinition.
-func (def *FetchOciImageDefinition) Tag() string {
-	tag := []string{"fetchOciImage", def.registry, def.image, def.tag, def.architecture}
-
-	return strings.Join(tag, "_")
-}
-
 // WriteTo implements common.BuildResult.
 func (def *FetchOciImageDefinition) WriteTo(w io.Writer) (n int64, err error) {
 	buf := new(bytes.Buffer)
@@ -364,7 +376,7 @@ func (def *FetchOciImageDefinition) WriteTo(w io.Writer) (n int64, err error) {
 	return io.Copy(w, buf)
 }
 
-func (def *FetchOciImageDefinition) String() string { return def.Tag() }
+func (def *FetchOciImageDefinition) String() string { return "FetchOciImageDefinition" }
 func (*FetchOciImageDefinition) Type() string       { return "FetchOciImageDefinition" }
 func (*FetchOciImageDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("fetchOciImageDefinition is not hashable")

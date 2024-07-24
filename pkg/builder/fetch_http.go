@@ -25,6 +25,16 @@ type FetchHttpBuildDefinition struct {
 	resp            *http.Response
 }
 
+// Create implements common.BuildDefinition.
+func (f *FetchHttpBuildDefinition) Create(params common.BuildDefinitionParameters) common.BuildDefinition {
+	panic("unimplemented")
+}
+
+// Params implements common.BuildDefinition.
+func (f *FetchHttpBuildDefinition) Params() common.BuildDefinitionParameters {
+	panic("unimplemented")
+}
+
 // NeedsBuild implements BuildDefinition.
 func (f *FetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
 	if f.ExpireTime != 0 {
@@ -119,12 +129,7 @@ func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext) (common.BuildR
 	return nil, fmt.Errorf("unable to find options to fetch %s", f.Url)
 }
 
-// Tag implements BuildDefinition.
-func (f *FetchHttpBuildDefinition) Tag() string {
-	return f.Url
-}
-
-func (def *FetchHttpBuildDefinition) String() string { return def.Tag() }
+func (def *FetchHttpBuildDefinition) String() string { return "FetchHttpBuildDefinition" }
 func (*FetchHttpBuildDefinition) Type() string       { return "FetchHttpBuildDefinition" }
 func (*FetchHttpBuildDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("FetchHttpBuildDefinition is not hashable")

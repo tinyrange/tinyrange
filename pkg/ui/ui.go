@@ -37,7 +37,7 @@ func (ui *WebFrontend) renderBuildStatus(defs ...common.BuildDefinition) (htm.Fr
 		}
 
 		ret = append(ret, bootstrap.Card(
-			html.Div(html.Code(html.Textf("%s", status.Tag))),
+			html.Div(html.Code(html.Textf("%T", def))),
 			html.Div(html.Textf("%s", status.Status)),
 			children,
 		))

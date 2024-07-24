@@ -71,27 +71,29 @@ var (
 	_ Definition = &TestDef{}
 )
 
-var definitionCache = make(map[string]Definition)
+type serializedDefinition struct {
+	TypeName string
+	Params   map[string]json.RawMessage
+}
 
-func hashDefinition(d Definition) (string, error) {
-	val, err := marshalDefinition(d)
+type definitionDatabase struct {
+	cache map[string]Definition
+}
+
+func (db *definitionDatabase) hashDefinition(d Definition) (string, error) {
+	val, err := db.marshalDefinition(d)
 	if err != nil {
 		return "", err
 	}
 
 	hash := getSha256Hash(val)
 
-	definitionCache[hash] = d
+	db.cache[hash] = d
 
 	return hash, nil
 }
 
-type serializedDefinition struct {
-	TypeName string
-	Params   map[string]json.RawMessage
-}
-
-func marshalParameters(params Parameters) (map[string]json.RawMessage, error) {
+func (db *definitionDatabase) marshalParameters(params Parameters) (map[string]json.RawMessage, error) {
 	ret := make(map[string]json.RawMessage)
 
 	val := reflect.ValueOf(params)
@@ -124,7 +126,7 @@ func marshalParameters(params Parameters) (map[string]json.RawMessage, error) {
 
 			switch val := val.(type) {
 			case Definition:
-				hash, err := hashDefinition(val)
+				hash, err := db.hashDefinition(val)
 				if err != nil {
 					return nil, err
 				}
@@ -161,7 +163,7 @@ func marshalParameters(params Parameters) (map[string]json.RawMessage, error) {
 	return ret, nil
 }
 
-func marshalDefinition(d Definition) ([]byte, error) {
+func (db *definitionDatabase) marshalDefinition(d Definition) ([]byte, error) {
 	serialized := &serializedDefinition{
 		TypeName: d.Type(),
 	}
@@ -169,7 +171,7 @@ func marshalDefinition(d Definition) ([]byte, error) {
 	params := d.Params()
 
 	var err error
-	serialized.Params, err = marshalParameters(params)
+	serialized.Params, err = db.marshalParameters(params)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +179,7 @@ func marshalDefinition(d Definition) ([]byte, error) {
 	return json.Marshal(serialized)
 }
 
-func unmarshalParameters(params Parameters, input map[string]json.RawMessage) (Parameters, error) {
+func (db *definitionDatabase) unmarshalParameters(params Parameters, input map[string]json.RawMessage) (Parameters, error) {
 	typ := reflect.TypeOf(params)
 	ret := reflect.New(typ)
 	val := ret.Elem()
@@ -193,7 +195,7 @@ func unmarshalParameters(params Parameters, input map[string]json.RawMessage) (P
 				return err
 			}
 
-			def, err := unmarshalPointer(ptr)
+			def, err := db.unmarshalPointer(ptr)
 			if err != nil {
 				return err
 			}
@@ -268,7 +270,7 @@ func unmarshalParameters(params Parameters, input map[string]json.RawMessage) (P
 	return ret.Interface().(Parameters), nil
 }
 
-func unmarshalDefinition(input io.Reader) (Definition, error) {
+func (db *definitionDatabase) unmarshalDefinition(input io.Reader) (Definition, error) {
 	var def serializedDefinition
 
 	dec := json.NewDecoder(input)
@@ -282,7 +284,7 @@ func unmarshalDefinition(input io.Reader) (Definition, error) {
 		return nil, fmt.Errorf("factory for type %s not found", def.TypeName)
 	}
 
-	params, err := unmarshalParameters(fac.Params(), def.Params)
+	params, err := db.unmarshalParameters(fac.Params(), def.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -290,8 +292,8 @@ func unmarshalDefinition(input io.Reader) (Definition, error) {
 	return fac.Create(params), nil
 }
 
-func unmarshalPointer(ptr DefinitionPointer) (Definition, error) {
-	val, ok := definitionCache[ptr.Hash]
+func (db *definitionDatabase) unmarshalPointer(ptr DefinitionPointer) (Definition, error) {
+	val, ok := db.cache[ptr.Hash]
 	if !ok {
 		return nil, fmt.Errorf("could not find definitionCache entry for %s", ptr.Hash)
 	}
@@ -302,18 +304,20 @@ func unmarshalPointer(ptr DefinitionPointer) (Definition, error) {
 func main() {
 	registerType(&TestDef{})
 
+	db := &definitionDatabase{cache: make(map[string]Definition)}
+
 	t1 := &TestDef{params: TestParameters{Array1: []string{"Hello, World"}}}
 
 	t2 := &TestDef{params: TestParameters{Recurse: t1, Array1: []string{"hello2"}, Array2: []Definition{t1}}}
 
-	val, err := marshalDefinition(t2)
+	val, err := db.marshalDefinition(t2)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	slog.Info("", "val", string(val))
 
-	t3, err := unmarshalDefinition(bytes.NewBuffer(val))
+	t3, err := db.unmarshalDefinition(bytes.NewBuffer(val))
 	if err != nil {
 		log.Fatal(err)
 	}

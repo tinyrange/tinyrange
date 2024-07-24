@@ -4,12 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
@@ -22,6 +20,16 @@ type PlanDefinition struct {
 	Fragments []config.Fragment
 }
 
+// Create implements common.BuildDefinition.
+func (def *PlanDefinition) Create(params common.BuildDefinitionParameters) common.BuildDefinition {
+	panic("unimplemented")
+}
+
+// Params implements common.BuildDefinition.
+func (def *PlanDefinition) Params() common.BuildDefinitionParameters {
+	panic("unimplemented")
+}
+
 // Attr implements starlark.HasAttrs.
 func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 	if name == "filesystem" {
@@ -31,18 +39,18 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
-			dir := filesystem.NewMemoryDirectory()
+			dir := common.NewMemoryDirectory()
 
 			for _, frag := range def.Fragments {
 				if frag.Archive != nil {
-					ark, err := filesystem.ReadArchiveFromFile(
-						filesystem.NewLocalFile(frag.Archive.HostFilename),
+					ark, err := common.ReadArchiveFromFile(
+						common.NewLocalFile(frag.Archive.HostFilename),
 					)
 					if err != nil {
 						return starlark.None, err
 					}
 
-					if err := filesystem.ExtractArchive(ark, dir); err != nil {
+					if err := common.ExtractArchive(ark, dir); err != nil {
 						return starlark.None, err
 					}
 				} else {
@@ -50,7 +58,7 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 				}
 			}
 
-			return filesystem.NewStarDirectory(dir, ""), nil
+			return common.NewStarDirectory(dir, ""), nil
 		}), nil
 	} else {
 		return nil, nil
@@ -92,10 +100,6 @@ func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, e
 	}
 
 	if def.Debug {
-		if err := plan.WriteTree(); err != nil {
-			return nil, err
-		}
-
 		return def, nil
 	}
 
@@ -120,18 +124,7 @@ func (def *PlanDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Ti
 	return false, nil
 }
 
-// Tag implements common.BuildDefinition.
-func (def *PlanDefinition) Tag() string {
-	return strings.Join([]string{
-		"PlanDefinition",
-		def.Builder,
-		fmt.Sprintf("%+v", def.Search),
-		def.TagList.String(),
-		fmt.Sprintf("%v", def.Debug),
-	}, "_")
-}
-
-func (def *PlanDefinition) String() string { return def.Tag() }
+func (def *PlanDefinition) String() string { return "PlanDefinition" }
 func (*PlanDefinition) Type() string       { return "PlanDefinition" }
 func (*PlanDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("PlanDefinition is not hashable")

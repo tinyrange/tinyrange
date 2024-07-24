@@ -3,7 +3,6 @@ package common
 import (
 	"net/http"
 
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
@@ -34,9 +33,10 @@ type PackageDatabase interface {
 	starlark.Value
 
 	GetBuildDir() string
-	Build(ctx BuildContext, def BuildDefinition, opts BuildOptions) (filesystem.File, error)
+	Build(ctx BuildContext, def BuildDefinition, opts BuildOptions) (File, error)
 	UrlsFor(url string) ([]string, error)
 	HttpClient() (*http.Client, error)
 	ShouldRebuildUserDefinitions() bool
 	GetBuilder(name string) (ContainerBuilder, error)
+	HashDefinition(def BuildDefinition) string
 }

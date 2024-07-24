@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
+	fsCommon "github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/emulator/common"
 	"github.com/tinyrange/tinyrange/pkg/emulator/programs"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
@@ -58,7 +58,7 @@ func (proc *process) Open(filename string) (io.ReadCloser, error) {
 		joined = path.Join(proc.cwd, filename)
 	}
 
-	ent, err := filesystem.OpenPath(proc.emu.root, joined)
+	ent, err := fsCommon.OpenPath(proc.emu.root, joined)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (proc *process) Stat(filename string) (fs.FileInfo, error) {
 		joined = path.Join(proc.cwd, filename)
 	}
 
-	ent, err := filesystem.OpenPath(proc.emu.root, joined)
+	ent, err := fsCommon.OpenPath(proc.emu.root, joined)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ var (
 )
 
 type Emulator struct {
-	root filesystem.Directory
+	root fsCommon.Directory
 
 	processes map[int]*process
 
@@ -167,13 +167,13 @@ type Emulator struct {
 }
 
 // AddFile implements common.Emulator.
-func (emu *Emulator) AddFile(name string, f filesystem.File) error {
-	return filesystem.CreateChild(emu.root, name, f)
+func (emu *Emulator) AddFile(name string, f fsCommon.File) error {
+	return fsCommon.CreateChild(emu.root, name, f)
 }
 
-func (emu *Emulator) findPath(proc *process, arg0 string) (filesystem.File, error) {
+func (emu *Emulator) findPath(proc *process, arg0 string) (fsCommon.File, error) {
 	// first check if the file literally exists.
-	f, err := filesystem.OpenPath(emu.root, arg0)
+	f, err := fsCommon.OpenPath(emu.root, arg0)
 	if err == nil {
 		return f.File, nil
 	} else if err != fs.ErrNotExist {
@@ -183,7 +183,7 @@ func (emu *Emulator) findPath(proc *process, arg0 string) (filesystem.File, erro
 	// second check if the file exists under the current working directory.
 	search := path.Join(proc.cwd, arg0)
 	slog.Info("findPath", "search", search, "arg0", arg0)
-	f, err = filesystem.OpenPath(emu.root, search)
+	f, err = fsCommon.OpenPath(emu.root, search)
 	if err == nil {
 		return f.File, nil
 	} else if err != fs.ErrNotExist {
@@ -202,7 +202,7 @@ func (emu *Emulator) findPath(proc *process, arg0 string) (filesystem.File, erro
 
 		slog.Info("findPath", "search", search)
 
-		f, err = filesystem.OpenPath(emu.root, search)
+		f, err = fsCommon.OpenPath(emu.root, search)
 		if err == nil {
 			return f.File, nil
 		} else if err != fs.ErrNotExist {
@@ -345,6 +345,6 @@ var (
 	_ common.Emulator   = &Emulator{}
 )
 
-func New(fs filesystem.Directory) *Emulator {
+func New(fs fsCommon.Directory) *Emulator {
 	return &Emulator{root: fs, processes: make(map[int]*process)}
 }

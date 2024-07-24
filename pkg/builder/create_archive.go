@@ -5,12 +5,21 @@ import (
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
 type CreateArchiveDefinition struct {
-	Dir filesystem.Directory
+	Dir common.Directory
+}
+
+// Create implements common.BuildDefinition.
+func (def *CreateArchiveDefinition) Create(params common.BuildDefinitionParameters) common.BuildDefinition {
+	panic("unimplemented")
+}
+
+// Params implements common.BuildDefinition.
+func (def *CreateArchiveDefinition) Params() common.BuildDefinitionParameters {
+	panic("unimplemented")
 }
 
 // Build implements common.BuildDefinition.
@@ -28,13 +37,7 @@ func (def *CreateArchiveDefinition) NeedsBuild(ctx common.BuildContext, cacheTim
 	return false, nil
 }
 
-// Tag implements common.BuildDefinition.
-func (def *CreateArchiveDefinition) Tag() string {
-	// TODO(joshua): This needs to be better implemented.
-	return fmt.Sprintf("CreateArchive_%+v", def.Dir)
-}
-
-func (def *CreateArchiveDefinition) String() string { return def.Tag() }
+func (def *CreateArchiveDefinition) String() string { return "CreateArchiveDefinition" }
 func (*CreateArchiveDefinition) Type() string       { return "CreateArchiveDefinition" }
 func (*CreateArchiveDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("CreateArchiveDefinition is not hashable")
@@ -47,6 +50,6 @@ var (
 	_ common.BuildDefinition = &CreateArchiveDefinition{}
 )
 
-func NewCreateArchiveDefinition(dir filesystem.Directory) *CreateArchiveDefinition {
+func NewCreateArchiveDefinition(dir common.Directory) *CreateArchiveDefinition {
 	return &CreateArchiveDefinition{Dir: dir}
 }

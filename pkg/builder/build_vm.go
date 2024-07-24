@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -187,15 +186,7 @@ func directiveToFragments(ctx common.BuildContext, directive common.Directive) (
 }
 
 type BuildVmDefinition struct {
-	// TOOD(joshua): Allow customizing the kernel, hypervisor, and startup script.
-	Directives  []common.Directive
-	Kernel      common.BuildDefinition
-	InitRamFs   common.BuildDefinition
-	OutputFile  string
-	CpuCores    int
-	MemoryMB    int
-	StorageSize int
-	Interaction string
+	params BuildVmParameters
 
 	mux       *http.ServeMux
 	server    *http.Server
@@ -204,13 +195,23 @@ type BuildVmDefinition struct {
 	gotOutput bool
 }
 
+// Create implements common.BuildDefinition.
+func (def *BuildVmDefinition) Create(params common.BuildDefinitionParameters) common.BuildDefinition {
+	return &BuildVmDefinition{params: *params.(*BuildVmParameters)}
+}
+
+// Params implements common.BuildDefinition.
+func (def *BuildVmDefinition) Params() common.BuildDefinitionParameters {
+	return def.params
+}
+
 // WriteTo implements common.BuildResult.
 func (def *BuildVmDefinition) WriteTo(w io.Writer) (n int64, err error) {
 	if err := def.cmd.Wait(); err != nil {
 		return 0, err
 	}
 
-	if !def.gotOutput && def.OutputFile != "" {
+	if !def.gotOutput && def.params.OutputFile != "" {
 		return 0, fmt.Errorf("VM did not write any output")
 	}
 
@@ -225,7 +226,7 @@ func (def *BuildVmDefinition) WriteTo(w io.Writer) (n int64, err error) {
 func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	builderCfg := config.BuilderConfig{}
 
-	builderCfg.OutputFilename = def.OutputFile
+	builderCfg.OutputFilename = def.params.OutputFile
 
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
@@ -241,7 +242,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		return nil, err
 	}
 
-	kernelDef := def.Kernel
+	kernelDef := def.params.Kernel
 	if kernelDef == nil {
 		kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL, 0)
 	}
@@ -264,16 +265,16 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	vmCfg.BaseDirectory = wd
 	vmCfg.HypervisorScript = hvScript
 	vmCfg.KernelFilename = kernelFilename
-	vmCfg.CPUCores = def.CpuCores
-	vmCfg.MemoryMB = def.MemoryMB
-	vmCfg.StorageSize = def.StorageSize
-	vmCfg.Interaction = def.Interaction
+	vmCfg.CPUCores = def.params.CpuCores
+	vmCfg.MemoryMB = def.params.MemoryMB
+	vmCfg.StorageSize = def.params.StorageSize
+	vmCfg.Interaction = def.params.Interaction
 
-	if def.InitRamFs != nil {
+	if def.params.InitRamFs != nil {
 		// bypass the default init logic.
 		// The user code is expected to call `/init -run-config /builder.json` some how.
 
-		initRamFs, err := ctx.BuildChild(def.InitRamFs)
+		initRamFs, err := ctx.BuildChild(def.params.InitRamFs)
 		if err != nil {
 			return nil, err
 		}
@@ -298,7 +299,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	)
 
 	// Launch child builds for each directive.
-	for _, directive := range def.Directives {
+	for _, directive := range def.params.Directives {
 		frags, err := directiveToFragments(ctx, directive)
 		if err != nil {
 			return nil, err
@@ -392,25 +393,7 @@ func (def *BuildVmDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time
 	return false, nil
 }
 
-// Tag implements common.BuildDefinition.
-func (def *BuildVmDefinition) Tag() string {
-	out := []string{"BuildVm"}
-
-	for _, dir := range def.Directives {
-		out = append(out, dir.Tag())
-	}
-
-	out = append(out, def.OutputFile)
-	out = append(out, def.Interaction)
-
-	if def.InitRamFs != nil {
-		out = append(out, def.InitRamFs.Tag())
-	}
-
-	return strings.Join(out, "_")
-}
-
-func (def *BuildVmDefinition) String() string { return def.Tag() }
+func (def *BuildVmDefinition) String() string { return "BuildVmDefinition" }
 func (*BuildVmDefinition) Type() string       { return "BuildVmDefinition" }
 func (*BuildVmDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("BuildVmDefinition is not hashable")
@@ -444,13 +427,15 @@ func NewBuildVmDefinition(
 		memoryMb = 1024
 	}
 	return &BuildVmDefinition{
-		Directives:  dir,
-		Kernel:      kernel,
-		InitRamFs:   initramfs,
-		OutputFile:  output,
-		CpuCores:    cpuCores,
-		MemoryMB:    memoryMb,
-		StorageSize: storageSize,
-		Interaction: interaction,
+		params: BuildVmParameters{
+			Directives:  dir,
+			Kernel:      kernel,
+			InitRamFs:   initramfs,
+			OutputFile:  output,
+			CpuCores:    cpuCores,
+			MemoryMB:    memoryMb,
+			StorageSize: storageSize,
+			Interaction: interaction,
+		},
 	}
 }

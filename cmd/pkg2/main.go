@@ -15,12 +15,11 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/buildinfo"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	_ "github.com/tinyrange/tinyrange/pkg/platform"
 	"github.com/tinyrange/tinyrange/pkg/ui"
 )
 
-type fileListArray map[string]filesystem.File
+type fileListArray map[string]common.File
 
 // String implements flag.Value.
 func (i fileListArray) String() string {
@@ -35,13 +34,13 @@ func (i fileListArray) String() string {
 
 func (i fileListArray) Set(value string) error {
 	if k, v, ok := strings.Cut(value, "="); ok {
-		i[k] = filesystem.NewLocalFile(v)
+		i[k] = common.NewLocalFile(v)
 
 		return nil
 	} else {
 		base := filepath.Base(value)
 
-		i[base] = filesystem.NewLocalFile(value)
+		i[base] = common.NewLocalFile(value)
 
 		return nil
 	}

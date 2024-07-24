@@ -8,13 +8,12 @@ import (
 	"path/filepath"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/record"
 	"go.starlark.net/starlark"
 )
 
 type BuildContext struct {
-	Source   common.BuildSource
+	BuildDef common.BuildDefinition
 	database common.PackageDatabase
 	parent   *BuildContext
 	status   *common.BuildStatus
@@ -50,14 +49,14 @@ func (b *BuildContext) CreateFile(name string) (string, io.WriteCloser, error) {
 }
 
 // FilenameFromDigest implements common.BuildContext.
-func (b *BuildContext) FilenameFromDigest(digest *filesystem.FileDigest) (string, error) {
+func (b *BuildContext) FilenameFromDigest(digest *common.FileDigest) (string, error) {
 	return digest.Hash, nil
 }
 
 // FileFromDigest implements common.BuildContext.
-func (b *BuildContext) FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error) {
+func (b *BuildContext) FileFromDigest(digest *common.FileDigest) (common.File, error) {
 	if digest.Hash != "" {
-		return &filesystem.LocalFile{Filename: digest.Hash}, nil
+		return &common.LocalFile{Filename: digest.Hash}, nil
 	}
 
 	return nil, fmt.Errorf("could not convert digest to hash")
@@ -78,13 +77,17 @@ func (b *BuildContext) Database() common.PackageDatabase {
 	return b.database
 }
 
-func (b *BuildContext) ChildContext(source common.BuildSource, status *common.BuildStatus, filename string) common.BuildContext {
+func (b *BuildContext) ChildContext(
+	source common.BuildDefinition,
+	status *common.BuildStatus,
+	filename string,
+) common.BuildContext {
 	return &BuildContext{
 		parent:   b,
 		filename: filename,
 		output:   nil,
 		status:   status,
-		Source:   source,
+		BuildDef: source,
 		database: b.database,
 		inMemory: b.inMemory,
 	}
@@ -113,7 +116,7 @@ func (b *BuildContext) HasCreatedOutput() bool {
 	return b.output != nil
 }
 
-func (b *BuildContext) BuildChild(def common.BuildDefinition) (filesystem.File, error) {
+func (b *BuildContext) BuildChild(def common.BuildDefinition) (common.File, error) {
 	if b.status != nil {
 		b.status.Children = append(b.status.Children, def)
 	}
@@ -126,7 +129,7 @@ func (b *BuildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
 		return true, nil
 	}
 
-	hash := common.GetSha256Hash([]byte(def.Tag()))
+	hash := b.Database().HashDefinition(def)
 
 	filename := filepath.Join(b.database.GetBuildDir(), hash+".bin")
 
@@ -171,7 +174,7 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				dir *filesystem.StarDirectory
+				dir *common.StarDirectory
 			)
 
 			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
@@ -225,7 +228,7 @@ func (b *BuildContext) AttrNames() []string {
 }
 
 func (ctx *BuildContext) newThread() *starlark.Thread {
-	return &starlark.Thread{Name: ctx.Source.Tag()}
+	return &starlark.Thread{Name: "buildContext"}
 }
 
 func (ctx *BuildContext) Call(target starlark.Callable, args ...starlark.Value) (starlark.Value, error) {
@@ -252,6 +255,6 @@ var (
 	_ common.BuildContext = &BuildContext{}
 )
 
-func NewBuildContext(source common.BuildSource, db common.PackageDatabase) *BuildContext {
-	return &BuildContext{Source: source, database: db}
+func NewBuildContext(buildDef common.BuildDefinition, db common.PackageDatabase) *BuildContext {
+	return &BuildContext{BuildDef: buildDef, database: db}
 }

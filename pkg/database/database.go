@@ -2,6 +2,7 @@ package database
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/stdlib"
 	"go.starlark.net/starlark"
@@ -284,7 +284,7 @@ func (db *PackageDatabase) LoadFile(filename string) error {
 	return nil
 }
 
-func (db *PackageDatabase) RunScript(filename string, files map[string]filesystem.File, outputFilename string) error {
+func (db *PackageDatabase) RunScript(filename string, files map[string]common.File, outputFilename string) error {
 	thread := db.newThread(filename)
 
 	globals := db.getGlobals("__main__")
@@ -303,7 +303,7 @@ func (db *PackageDatabase) RunScript(filename string, files map[string]filesyste
 	args := &scriptArguments{args: make(map[string]starlark.Value), outputFilename: outputFilename}
 
 	for k, v := range files {
-		args.args[k] = filesystem.NewStarFile(v, k)
+		args.args[k] = common.NewStarFile(v, k)
 	}
 
 	// Call the main function.
@@ -363,8 +363,8 @@ func (db *PackageDatabase) LoadAll(parallel bool) error {
 	}
 }
 
-func (db *PackageDatabase) NewBuildContext(source common.BuildSource) common.BuildContext {
-	return builder.NewBuildContext(source, db)
+func (db *PackageDatabase) NewBuildContext(buildDef common.BuildDefinition) common.BuildContext {
+	return builder.NewBuildContext(buildDef, db)
 }
 
 func (db *PackageDatabase) updateBuildStatus(def common.BuildDefinition, status *common.BuildStatus) {
@@ -374,17 +374,48 @@ func (db *PackageDatabase) updateBuildStatus(def common.BuildDefinition, status 
 	db.buildStatuses[def] = status
 }
 
-func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (filesystem.File, error) {
+func (db *PackageDatabase) hashDefinition(def common.BuildDefinition) (string, error) {
 	tag := def.Tag()
 	hash := common.GetSha256Hash([]byte(tag))
 
-	status := &common.BuildStatus{Tag: tag}
+	return hash, nil
+}
+
+func (db *PackageDatabase) writeBuildDefinition(filename string, def common.BuildDefinition) error {
+	out, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	enc := json.NewEncoder(out)
+
+	serialized := &common.SerializedBuildDefinition{
+		Version:    common.CURRENT_SERIALIZED_BUILD_DEFINITION_VERSION,
+		Type:       def.Type(),
+		Definition: def,
+	}
+
+	if err := enc.Encode(serialized); err != nil {
+		return fmt.Errorf("failed to encode build definition %T: %+v", def, err)
+	}
+
+	return nil
+}
+
+func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (common.File, error) {
+	hash, err := db.hashDefinition(def)
+	if err != nil {
+		return nil, err
+	}
+
+	status := &common.BuildStatus{}
 
 	if ctx.IsInMemory() {
 		// If this is in memory then check the in-memory cache.
 		if contents, ok := db.memoryCache[hash]; ok {
 			// TODO(joshua): Support needs build for memory cached items.
-			f := filesystem.NewMemoryFile(filesystem.TypeRegular)
+			f := common.NewMemoryFile(common.TypeRegular)
 
 			if err := f.Overwrite(contents); err != nil {
 				return nil, err
@@ -417,7 +448,7 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 		db.memoryCache[hash] = buf.Bytes()
 
 		// Create and return a in-memory file.
-		f := filesystem.NewMemoryFile(filesystem.TypeRegular)
+		f := common.NewMemoryFile(common.TypeRegular)
 
 		if err := f.Overwrite(buf.Bytes()); err != nil {
 			return nil, err
@@ -430,14 +461,20 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 
 		return f, nil
 	} else {
-		filename := filepath.Join(db.buildDir, hash+".bin")
+		definitionFilename := filepath.Join(db.buildDir, hash+".def")
+		outputFilename := filepath.Join(db.buildDir, hash+".bin")
+
+		// Write the build definition to the common.
+		if err := db.writeBuildDefinition(definitionFilename, def); err != nil {
+			return nil, err
+		}
 
 		// Get a child context for the build.
-		child := ctx.ChildContext(def, status, filename+".tmp")
+		child := ctx.ChildContext(def, status, outputFilename+".tmp")
 
 		if !opts.AlwaysRebuild {
 			// Check if the file already exists. If it does then return it.
-			if info, err := os.Stat(filename); err == nil {
+			if info, err := os.Stat(outputFilename); err == nil {
 				// If the file has already been created then check if a rebuild is needed.
 				needsRebuild, err := def.NeedsBuild(child, info.ModTime())
 				if err != nil {
@@ -451,7 +488,7 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 					// Write the build status.
 					db.updateBuildStatus(def, status)
 
-					return &filesystem.LocalFile{Filename: filename}, nil
+					return &common.LocalFile{Filename: outputFilename}, nil
 				}
 
 				child.SetHasCached()
@@ -477,13 +514,13 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 			// Write the build status.
 			db.updateBuildStatus(def, status)
 
-			return &filesystem.LocalFile{Filename: filename}, nil
+			return &common.LocalFile{Filename: outputFilename}, nil
 		}
 
 		// If the build has already been written then don't write it again.
 		if !child.HasCreatedOutput() {
 			// Once the build is complete then write it to disk.
-			outFile, err := os.Create(filename + ".tmp")
+			outFile, err := os.Create(outputFilename + ".tmp")
 			if err != nil {
 				return nil, err
 			}
@@ -491,25 +528,25 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 			// Write the build result to disk. If any of these steps fail then remove the temporary file.
 			if _, err := result.WriteTo(outFile); err != nil {
 				outFile.Close()
-				os.Remove(filename + ".tmp")
+				os.Remove(outputFilename + ".tmp")
 				return nil, err
 			}
 
 			if err := outFile.Close(); err != nil {
-				os.Remove(filename + ".tmp")
+				os.Remove(outputFilename + ".tmp")
 				return nil, err
 			}
 		} else {
 			// Let the result close the file on it's own.
 			if _, err := result.WriteTo(nil); err != nil {
-				os.Remove(filename + ".tmp")
+				os.Remove(outputFilename + ".tmp")
 				return nil, err
 			}
 		}
 
 		// Finally rename the temporary file to the final filename.
-		if err := os.Rename(filename+".tmp", filename); err != nil {
-			os.Remove(filename + ".tmp")
+		if err := os.Rename(outputFilename+".tmp", outputFilename); err != nil {
+			os.Remove(outputFilename + ".tmp")
 			return nil, err
 		}
 
@@ -519,7 +556,7 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 		db.updateBuildStatus(def, status)
 
 		// Return the file.
-		return &filesystem.LocalFile{Filename: filename}, nil
+		return &common.LocalFile{Filename: outputFilename}, nil
 	}
 }
 
@@ -556,7 +593,7 @@ func (db *PackageDatabase) GetBuilder(name string) (common.ContainerBuilder, err
 	return builder, nil
 }
 
-func (db *PackageDatabase) BuildByName(name string, opts common.BuildOptions) (filesystem.File, error) {
+func (db *PackageDatabase) BuildByName(name string, opts common.BuildOptions) (common.File, error) {
 	def, ok := db.defs[name]
 	if !ok {
 		return nil, fmt.Errorf("name %s not found", name)
@@ -574,7 +611,7 @@ func (db *PackageDatabase) LoadBuiltinBuilders() error {
 	for _, builder := range []string{
 		"//fetchers/alpine.star",
 		"//fetchers/rpm.star",
-		// "//fetchers/debian.star",
+		"//fetchers/debian.star",
 		"//fetchers/arch.star",
 	} {
 		if err := db.LoadFile(builder); err != nil {
@@ -713,9 +750,9 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 
 			if name == "init" {
 				if common.CPUArchitecture(arch).IsNative() {
-					f := filesystem.NewMemoryFile(filesystem.TypeRegular)
+					f := common.NewMemoryFile(common.TypeRegular)
 					f.Overwrite(initExec.INIT_EXECUTABLE)
-					return filesystem.NewStarFile(f, "init"), nil
+					return common.NewStarFile(f, "init"), nil
 				} else {
 					return starlark.None, fmt.Errorf("invalid architecture for init: %s", arch)
 				}
@@ -727,7 +764,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 						return nil, err
 					}
 
-					return filesystem.NewStarFile(filesystem.NewLocalFile(local), "tinyrange"), nil
+					return common.NewStarFile(common.NewLocalFile(local), "tinyrange"), nil
 				} else {
 					return starlark.None, fmt.Errorf("invalid architecture for tinyrange: %s", arch)
 				}
@@ -737,7 +774,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 					return nil, err
 				}
 
-				return filesystem.NewStarFile(filesystem.NewLocalFile(local), "tinyrange_qemu.star"), nil
+				return common.NewStarFile(common.NewLocalFile(local), "tinyrange_qemu.star"), nil
 			} else {
 				return starlark.None, fmt.Errorf("unknown builtin executable: %s", name)
 			}

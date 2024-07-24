@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	fsCommon "github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/emulator/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
@@ -24,7 +24,7 @@ var (
 )
 
 type starProgram struct {
-	filesystem.File
+	fsCommon.File
 
 	name string
 
@@ -70,5 +70,5 @@ var (
 )
 
 func NewStarProgram(name string, entry starlark.Callable) (starlark.Value, error) {
-	return &starProgram{name: name, callable: entry, File: filesystem.NewMemoryFile(filesystem.TypeRegular)}, nil
+	return &starProgram{name: name, callable: entry, File: fsCommon.NewMemoryFile(fsCommon.TypeRegular)}, nil
 }

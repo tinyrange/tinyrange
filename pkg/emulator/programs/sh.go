@@ -9,8 +9,8 @@ import (
 	"log/slog"
 	"os"
 
+	fsCommon "github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/emulator/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
@@ -58,7 +58,7 @@ const (
 )
 
 type Shell struct {
-	filesystem.File
+	fsCommon.File
 
 	proc common.Process
 }
