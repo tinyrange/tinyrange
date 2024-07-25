@@ -22,6 +22,20 @@ type PlanDefinition struct {
 	Fragments []config.Fragment
 }
 
+// AsFragments implements common.Directive.
+func (def *PlanDefinition) AsFragments(ctx common.BuildContext) ([]config.Fragment, error) {
+	res, err := ctx.BuildChild(def)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ParseJsonFromFile(res, &def); err != nil {
+		return nil, err
+	}
+
+	return def.Fragments, nil
+}
+
 // ToStarlark implements common.BuildDefinition.
 func (def *PlanDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
 	var plan *PlanDefinition
@@ -117,7 +131,7 @@ func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, e
 	}
 
 	for _, dir := range plan.Directives() {
-		frags, err := directiveToFragments(ctx, dir)
+		frags, err := dir.AsFragments(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -161,6 +175,7 @@ var (
 	_ starlark.HasAttrs      = &PlanDefinition{}
 	_ common.BuildDefinition = &PlanDefinition{}
 	_ common.BuildResult     = &PlanDefinition{}
+	_ common.Directive       = &PlanDefinition{}
 )
 
 func NewPlanDefinition(builder string, search []common.PackageQuery, tagList common.TagList) *PlanDefinition {

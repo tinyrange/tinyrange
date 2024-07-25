@@ -16,6 +16,7 @@ import (
 	"github.com/cavaliergopher/cpio"
 	"github.com/klauspost/compress/zstd"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/xi2/xz"
 	"go.starlark.net/starlark"
@@ -429,6 +430,25 @@ type ReadArchiveBuildDefinition struct {
 	Kind string
 }
 
+// AsFragments implements common.Directive.
+func (r *ReadArchiveBuildDefinition) AsFragments(ctx common.BuildContext) ([]config.Fragment, error) {
+	res, err := ctx.BuildChild(r)
+	if err != nil {
+		return nil, err
+	}
+
+	digest := res.Digest()
+
+	filename, err := ctx.FilenameFromDigest(digest)
+	if err != nil {
+		return nil, err
+	}
+
+	return []config.Fragment{
+		config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}},
+	}, nil
+}
+
 // ToStarlark implements common.BuildDefinition.
 func (r *ReadArchiveBuildDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
 	ark, err := filesystem.ReadArchiveFromFile(result)
@@ -533,6 +553,7 @@ func (*ReadArchiveBuildDefinition) Freeze()              {}
 var (
 	_ starlark.Value         = &ReadArchiveBuildDefinition{}
 	_ common.BuildDefinition = &ReadArchiveBuildDefinition{}
+	_ common.Directive       = &ReadArchiveBuildDefinition{}
 )
 
 func NewReadArchiveBuildDefinition(base common.BuildDefinition, kind string) *ReadArchiveBuildDefinition {

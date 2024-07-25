@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
@@ -15,6 +16,25 @@ type StarBuildDefinition struct {
 	Name        []string
 	Builder     starlark.Callable
 	BuilderArgs starlark.Tuple
+}
+
+// AsFragments implements common.Directive.
+func (def *StarBuildDefinition) AsFragments(ctx common.BuildContext) ([]config.Fragment, error) {
+	res, err := ctx.BuildChild(def)
+	if err != nil {
+		return nil, err
+	}
+
+	digest := res.Digest()
+
+	filename, err := ctx.FilenameFromDigest(digest)
+	if err != nil {
+		return nil, err
+	}
+
+	return []config.Fragment{
+		config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}},
+	}, nil
 }
 
 // ToStarlark implements common.BuildDefinition.
@@ -100,7 +120,7 @@ func (def *StarBuildDefinition) Build(ctx common.BuildContext) (common.BuildResu
 			return nil, err
 		}
 
-		return &FileDefinition{f: f, fh: fh}, nil
+		return &copyFileResult{fh: fh}, nil
 	} else {
 		return nil, fmt.Errorf("could not convert %s to BuildResult", res.Type())
 	}
@@ -118,6 +138,7 @@ var (
 	_ starlark.Value         = &StarBuildDefinition{}
 	_ common.BuildSource     = &StarBuildDefinition{}
 	_ common.BuildDefinition = &StarBuildDefinition{}
+	_ common.Directive       = &StarBuildDefinition{}
 )
 
 func NewStarBuildDefinition(name string, builder starlark.Value, args starlark.Tuple) (*StarBuildDefinition, error) {

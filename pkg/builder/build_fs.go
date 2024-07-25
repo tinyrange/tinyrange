@@ -76,7 +76,7 @@ func (def *BuildFsDefinition) ToStarlark(ctx common.BuildContext, result filesys
 func (def *BuildFsDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	// Launch child builds for each directive.
 	for _, directive := range def.Directives {
-		frags, err := directiveToFragments(ctx, directive)
+		frags, err := directive.AsFragments(ctx)
 		if err != nil {
 			return nil, err
 		}

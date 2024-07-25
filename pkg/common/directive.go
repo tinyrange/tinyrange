@@ -4,18 +4,23 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"go.starlark.net/starlark"
 )
 
 type Directive interface {
 	Tag() string
-}
-
-type DirectiveFactory interface {
-	AsDirective() (Directive, error)
+	AsFragments(ctx BuildContext) ([]config.Fragment, error)
 }
 
 type DirectiveRunCommand string
+
+// AsFragments implements Directive.
+func (d DirectiveRunCommand) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+	return []config.Fragment{
+		{RunCommand: &config.RunCommandFragment{Command: string(d)}},
+	}, nil
+}
 
 // Tag implements Directive.
 func (d DirectiveRunCommand) Tag() string {
@@ -27,6 +32,39 @@ type DirectiveAddFile struct {
 	Definition BuildDefinition
 	Contents   []byte
 	Executable bool
+}
+
+// AsFragments implements Directive.
+func (d DirectiveAddFile) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+	if d.Definition != nil {
+		res, err := ctx.BuildChild(d.Definition)
+		if err != nil {
+			return nil, err
+		}
+
+		digest := res.Digest()
+
+		filename, err := ctx.FilenameFromDigest(digest)
+		if err != nil {
+			return nil, err
+		}
+
+		return []config.Fragment{
+			{LocalFile: &config.LocalFileFragment{
+				GuestFilename: d.Filename,
+				HostFilename:  filename,
+				Executable:    d.Executable,
+			}},
+		}, nil
+	} else {
+		return []config.Fragment{
+			{FileContents: &config.FileContentsFragment{
+				GuestFilename: d.Filename,
+				Contents:      d.Contents,
+				Executable:    d.Executable,
+			}},
+		}, nil
+	}
 }
 
 // Tag implements Directive.
@@ -43,6 +81,28 @@ func (d DirectiveAddFile) Tag() string {
 type DirectiveArchive struct {
 	Definition BuildDefinition
 	Target     string
+}
+
+// AsFragments implements Directive.
+func (d DirectiveArchive) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+	res, err := ctx.BuildChild(d.Definition)
+	if err != nil {
+		return nil, err
+	}
+
+	digest := res.Digest()
+
+	filename, err := ctx.FilenameFromDigest(digest)
+	if err != nil {
+		return nil, err
+	}
+
+	return []config.Fragment{
+		{Archive: &config.ArchiveFragment{
+			HostFilename: filename,
+			Target:       d.Target,
+		}},
+	}, nil
 }
 
 // Tag implements Directive.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/builder/oci"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
@@ -180,9 +181,34 @@ type FetchOciImageDefinition struct {
 	LayerArchives []*filesystem.FileDigest
 }
 
+// AsFragments implements common.Directive.
+func (def *FetchOciImageDefinition) AsFragments(ctx common.BuildContext) ([]config.Fragment, error) {
+	res, err := ctx.BuildChild(def)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ParseJsonFromFile(res, &def); err != nil {
+		return nil, err
+	}
+
+	var ret []config.Fragment
+
+	for _, archive := range def.LayerArchives {
+		filename, err := ctx.FilenameFromDigest(archive)
+		if err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+	}
+
+	return ret, nil
+}
+
 // ToStarlark implements common.BuildDefinition.
 func (def *FetchOciImageDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
-	panic("unimplemented")
+	return starlark.None, fmt.Errorf("converting FetchOciImageDefinition to Starlark not supported")
 }
 
 // tagDirective implements common.Directive.
