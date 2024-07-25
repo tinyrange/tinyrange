@@ -27,6 +27,10 @@ Complete documentation is available at https://github.com/tinyrange/tinyrange`, 
 func newDb() (*database.PackageDatabase, error) {
 	db := database.New(rootBuildDir)
 
+	if err := common.Ensure(rootBuildDir, os.ModePerm); err != nil {
+		return nil, err
+	}
+
 	db.RebuildUserDefinitions = rootRebuild
 
 	if err := db.LoadBuiltinBuilders(); err != nil {

@@ -126,9 +126,16 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, pass
 			return fmt.Errorf("failed to make terminal raw: %v", err)
 		}
 		defer func() { _ = term.Restore(fd, state) }()
+
+		if w, h, err := getAndWatchSize(fd, session); err == nil {
+			width, height = w, h
+		}
 	}
 
-	term := "linux"
+	term, ok := os.LookupEnv("TERM")
+	if !ok {
+		term = "linux"
+	}
 
 	if err := session.RequestPty(term, height, width, ssh.TerminalModes{
 		ssh.ECHO:          0,     // disable echoing

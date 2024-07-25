@@ -95,7 +95,7 @@ func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, e
 		Debug: def.Debug,
 	})
 	if err != nil {
-		plan, err = builder.Plan(def.Search, def.TagList, common.PlanOptions{
+		plan, _ = builder.Plan(def.Search, def.TagList, common.PlanOptions{
 			Debug: true,
 		})
 

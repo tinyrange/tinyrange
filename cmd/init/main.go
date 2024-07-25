@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -17,7 +18,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/anmitsu/go-shlex"
 	"github.com/creack/pty"
@@ -55,6 +58,28 @@ func ToStringList(it starlark.Iterable) ([]string, error) {
 	}
 
 	return ret, nil
+}
+
+// parseDims extracts terminal dimensions (width x height) from the provided buffer.
+func parseDims(b []byte) (uint32, uint32) {
+	w := binary.BigEndian.Uint32(b)
+	h := binary.BigEndian.Uint32(b[4:])
+	return w, h
+}
+
+// Winsize stores the Height and Width of a terminal.
+type Winsize struct {
+	Height uint16
+	Width  uint16
+	x      uint16 // unused
+	y      uint16 // unused
+}
+
+// SetWinsize sets the size of the given pty.
+func SetWinsize(fd uintptr, w, h uint32) error {
+	ws := &Winsize{Width: uint16(w), Height: uint16(h)}
+	_, _, err := syscall.Syscall(syscall.SYS_IOCTL, fd, uintptr(syscall.TIOCSWINSZ), uintptr(unsafe.Pointer(ws)))
+	return err
 }
 
 type sshServer struct {
@@ -130,11 +155,9 @@ func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, env []str
 
 	//dequeue resizes
 	go func() {
-		// Discard all resizes.
-		// TODO(joshua): Handle resizes.
-		for range resizes {
-			// w, h := parseDims(payload)
-			// _ = SetWinsize(shellf.Fd(), w, h)
+		for payload := range resizes {
+			w, h := parseDims(payload)
+			_ = SetWinsize(shellf.Fd(), w, h)
 		}
 	}()
 
