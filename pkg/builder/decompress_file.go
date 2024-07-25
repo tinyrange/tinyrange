@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/xi2/xz"
 	"go.starlark.net/starlark"
 )
@@ -16,6 +17,11 @@ type DecompressFileBuildDefinition struct {
 	Kind string
 
 	r io.ReadCloser
+}
+
+// ToStarlark implements common.BuildDefinition.
+func (def *DecompressFileBuildDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	return filesystem.NewStarFile(result, def.Tag()), nil
 }
 
 // NeedsBuild implements BuildDefinition.

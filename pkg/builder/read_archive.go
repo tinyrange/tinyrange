@@ -429,6 +429,16 @@ type ReadArchiveBuildDefinition struct {
 	Kind string
 }
 
+// ToStarlark implements common.BuildDefinition.
+func (r *ReadArchiveBuildDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	ark, err := filesystem.ReadArchiveFromFile(result)
+	if err != nil {
+		return starlark.None, err
+	}
+
+	return filesystem.NewStarArchive(ark, r.Tag()), nil
+}
+
 // NeedsBuild implements BuildDefinition.
 func (r *ReadArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
 	build, err := ctx.NeedsBuild(r.Base)

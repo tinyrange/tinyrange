@@ -15,6 +15,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
@@ -75,20 +76,6 @@ func directiveToFragments(ctx common.BuildContext, directive common.Directive) (
 
 		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
 	case *ReadArchiveBuildDefinition:
-		res, err := ctx.BuildChild(directive)
-		if err != nil {
-			return nil, err
-		}
-
-		digest := res.Digest()
-
-		filename, err := ctx.FilenameFromDigest(digest)
-		if err != nil {
-			return nil, err
-		}
-
-		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
-	case *CreateArchiveDefinition:
 		res, err := ctx.BuildChild(directive)
 		if err != nil {
 			return nil, err
@@ -202,6 +189,11 @@ type BuildVmDefinition struct {
 	cmd       *exec.Cmd
 	out       io.WriteCloser
 	gotOutput bool
+}
+
+// ToStarlark implements common.BuildDefinition.
+func (def *BuildVmDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	return filesystem.NewStarFile(result, def.Tag()), nil
 }
 
 // WriteTo implements common.BuildResult.

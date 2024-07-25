@@ -17,67 +17,9 @@ type StarBuildDefinition struct {
 	BuilderArgs starlark.Tuple
 }
 
-func BuildResultToStarlark(ctx common.BuildContext, argDef common.BuildDefinition, result filesystem.File) (starlark.Value, error) {
-	switch arg := argDef.(type) {
-	case *ReadArchiveBuildDefinition:
-		ark, err := filesystem.ReadArchiveFromFile(result)
-		if err != nil {
-			return starlark.None, err
-		}
-
-		return filesystem.NewStarArchive(ark, argDef.Tag()), nil
-	case *CreateArchiveDefinition:
-		ark, err := filesystem.ReadArchiveFromFile(result)
-		if err != nil {
-			return starlark.None, err
-		}
-
-		return filesystem.NewStarArchive(ark, argDef.Tag()), nil
-	case *PlanDefinition:
-		var plan *PlanDefinition
-
-		if err := ParseJsonFromFile(result, &plan); err != nil {
-			return nil, err
-		}
-
-		return plan, nil
-	case *FetchHttpBuildDefinition:
-		return filesystem.NewStarFile(result, argDef.Tag()), nil
-	case *StarBuildDefinition:
-		return filesystem.NewStarFile(result, argDef.Tag()), nil
-	case *DecompressFileBuildDefinition:
-		return filesystem.NewStarFile(result, argDef.Tag()), nil
-	case *BuildVmDefinition:
-		return filesystem.NewStarFile(result, argDef.Tag()), nil
-	case *BuildFsDefinition:
-		return filesystem.NewStarFile(result, argDef.Tag()), nil
-	case *FetchOciImageDefinition:
-		if err := ParseJsonFromFile(result, &arg); err != nil {
-			return nil, err
-		}
-
-		fs := filesystem.NewMemoryDirectory()
-
-		for _, layer := range arg.LayerArchives {
-			layerFile, err := ctx.FileFromDigest(layer)
-			if err != nil {
-				return nil, err
-			}
-
-			ark, err := filesystem.ReadArchiveFromFile(layerFile)
-			if err != nil {
-				return starlark.None, err
-			}
-
-			if err := filesystem.ExtractArchive(ark, fs); err != nil {
-				return starlark.None, err
-			}
-		}
-
-		return filesystem.NewStarDirectory(fs, ""), nil
-	default:
-		return starlark.None, fmt.Errorf("BuildResultToStarlark not implemented for: %T %+v", arg, arg)
-	}
+// ToStarlark implements common.BuildDefinition.
+func (def *StarBuildDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	return filesystem.NewStarFile(result, def.Tag()), nil
 }
 
 // NeedsBuild implements BuildDefinition.
@@ -134,7 +76,7 @@ func (def *StarBuildDefinition) Build(ctx common.BuildContext) (common.BuildResu
 				return nil, err
 			}
 
-			val, err := BuildResultToStarlark(ctx, argDef, res)
+			val, err := argDef.ToStarlark(ctx, res)
 			if err != nil {
 				return nil, err
 			}

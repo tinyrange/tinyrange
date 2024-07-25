@@ -114,6 +114,11 @@ type registryRequestDefinition struct {
 	accept     []string
 }
 
+// ToStarlark implements common.BuildDefinition.
+func (r *registryRequestDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	panic("unimplemented")
+}
+
 // Build implements common.BuildDefinition.
 func (r *registryRequestDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	req, err := r.ctx.makeRequest("GET", r.ctx.registry+r.url)
@@ -173,6 +178,11 @@ type FetchOciImageDefinition struct {
 	architecture string
 
 	LayerArchives []*filesystem.FileDigest
+}
+
+// ToStarlark implements common.BuildDefinition.
+func (def *FetchOciImageDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	panic("unimplemented")
 }
 
 // tagDirective implements common.Directive.

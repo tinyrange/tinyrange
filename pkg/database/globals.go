@@ -345,28 +345,6 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				return builder.NewBuildFsDefinition(directives, kind), nil
 			}),
-			"archive": starlark.NewBuiltin("define.archive", func(
-				thread *starlark.Thread,
-				fn *starlark.Builtin,
-				args starlark.Tuple,
-				kwargs []starlark.Tuple,
-			) (starlark.Value, error) {
-				var (
-					dir starlark.Value
-				)
-
-				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-					"dir", &dir,
-				); err != nil {
-					return starlark.None, err
-				}
-
-				if v, ok := dir.(filesystem.Directory); ok {
-					return builder.NewCreateArchiveDefinition(v), nil
-				} else {
-					return starlark.None, fmt.Errorf("could not convert %s to Directory", dir.Type())
-				}
-			}),
 			"plan": starlark.NewBuiltin("define.plan", func(
 				thread *starlark.Thread,
 				fn *starlark.Builtin,

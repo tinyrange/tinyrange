@@ -10,6 +10,7 @@ import (
 
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
 
@@ -23,6 +24,11 @@ type FetchHttpBuildDefinition struct {
 	// If this returns false, nil then the request will be redone.
 	responseHandler func(resp *http.Response) (bool, error)
 	resp            *http.Response
+}
+
+// ToStarlark implements common.BuildDefinition.
+func (f *FetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	return filesystem.NewStarFile(result, f.Tag()), nil
 }
 
 // NeedsBuild implements BuildDefinition.

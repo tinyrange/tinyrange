@@ -67,6 +67,11 @@ type BuildFsDefinition struct {
 	frags []config.Fragment
 }
 
+// ToStarlark implements common.BuildDefinition.
+func (def *BuildFsDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	return filesystem.NewStarFile(result, def.Tag()), nil
+}
+
 // Build implements common.BuildDefinition.
 func (def *BuildFsDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	// Launch child builds for each directive.

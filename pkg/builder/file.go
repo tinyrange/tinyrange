@@ -17,6 +17,11 @@ type FileDefinition struct {
 	fh filesystem.FileHandle
 }
 
+// ToStarlark implements common.BuildDefinition.
+func (def *FileDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	return filesystem.NewStarFile(result, def.Tag()), nil
+}
+
 // WriteTo implements common.BuildResult.
 func (def *FileDefinition) WriteTo(w io.Writer) (n int64, err error) {
 	return io.Copy(w, def.fh)

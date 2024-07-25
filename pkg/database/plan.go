@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 
+	"github.com/fatih/color"
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"go.starlark.net/starlark"
@@ -24,16 +25,16 @@ type installationTree struct {
 
 func (t *installationTree) writeTree(prefix string) error {
 	if t.Error != nil {
-		fmt.Printf("%s- [%s]\n", prefix, t.Error)
+		color.Red("%s- [%s]", prefix, t.Error)
 		return nil
 	}
 
 	if t.Installer == nil {
-		fmt.Printf("%s- %s (installed %s)\n", prefix, t.Query, t.Package.Name)
+		color.New(color.Faint).Printf("%s- %s (installed %s)\n", prefix, t.Query, t.Package.Name)
 	} else if t.Query.Equals(t.Package.Name) {
-		fmt.Printf("%s- %s\n", prefix, t.Query)
+		color.Green("%s- %s", prefix, t.Query)
 	} else {
-		fmt.Printf("%s- %s(%s)\n", prefix, t.Package.Name, t.Query)
+		color.Green("%s- %s(%s)", prefix, t.Package.Name, t.Query)
 	}
 
 	for _, depend := range t.Dependencies {

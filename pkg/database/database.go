@@ -666,7 +666,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return builder.BuildResultToStarlark(ctx, def, result)
+			return def.ToStarlark(ctx, result)
 		}), nil
 	} else if name == "builder" {
 		return starlark.NewBuiltin("Database.builder", func(

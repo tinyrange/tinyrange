@@ -212,7 +212,7 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return BuildResultToStarlark(b, buildDef, result)
+			return buildDef.ToStarlark(b, result)
 		}), nil
 	} else {
 		return nil, nil

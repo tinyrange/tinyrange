@@ -22,6 +22,17 @@ type PlanDefinition struct {
 	Fragments []config.Fragment
 }
 
+// ToStarlark implements common.BuildDefinition.
+func (def *PlanDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	var plan *PlanDefinition
+
+	if err := ParseJsonFromFile(result, &plan); err != nil {
+		return nil, err
+	}
+
+	return plan, nil
+}
+
 // Attr implements starlark.HasAttrs.
 func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 	if name == "filesystem" {
@@ -84,6 +95,12 @@ func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, e
 		Debug: def.Debug,
 	})
 	if err != nil {
+		plan, err = builder.Plan(def.Search, def.TagList, common.PlanOptions{
+			Debug: true,
+		})
+
+		plan.WriteTree()
+
 		return nil, err
 	}
 
