@@ -22,16 +22,26 @@ type Parameters interface {
 	TagParameters()
 }
 
+type SerializableValue interface {
+	SerializableType() string
+}
+
 type Definition interface {
-	Type() string
+	SerializableValue
+
 	Create(params Parameters) Definition
 	Params() Parameters
 }
 
-var registeredTypes = make(map[string]Definition)
+var registeredTypes = make(map[string]SerializableValue)
 
-func registerType(typ Definition) {
-	registeredTypes[typ.Type()] = typ
+func registerType(typ SerializableValue) {
+	registeredTypes[typ.SerializableType()] = typ
+}
+
+type SerializedValue struct {
+	TypeName string
+	Values   map[string]json.RawMessage
 }
 
 type DefinitionPointer struct {
@@ -39,10 +49,30 @@ type DefinitionPointer struct {
 	Hash     string
 }
 
+type Mixed interface {
+	SerializableValue
+
+	TagMixed()
+}
+
+type RawValue struct {
+	Value int
+}
+
+// TagMixed implements Mixed.
+func (r RawValue) TagMixed() { panic("unimplemented") }
+
+// Type implements SerializableValue.
+func (r RawValue) SerializableType() string { return "RawValue" }
+
+var (
+	_ Mixed = RawValue{}
+)
+
 type TestParameters struct {
 	Recurse *TestDef
-	Array1  []string
-	Array2  []Definition
+	Value   int
+	Array   []Mixed
 }
 
 // TagParameters implements parameters.
@@ -56,42 +86,48 @@ type TestDef struct {
 	params TestParameters
 }
 
+// TagMixed implements Mixed.
+func (t *TestDef) TagMixed() { panic("unimplemented") }
+
 // Create implements definition.
 func (t *TestDef) Create(params Parameters) Definition {
 	return &TestDef{params: *params.(*TestParameters)}
 }
 
 // Type implements definition.
-func (t *TestDef) Type() string { return "testDef" }
+func (t *TestDef) SerializableType() string { return "testDef" }
 
 // Params implements definition.
 func (t *TestDef) Params() Parameters { return t.params }
 
 var (
 	_ Definition = &TestDef{}
+	_ Mixed      = &TestDef{}
 )
-
-var definitionCache = make(map[string]Definition)
-
-func hashDefinition(d Definition) (string, error) {
-	val, err := marshalDefinition(d)
-	if err != nil {
-		return "", err
-	}
-
-	hash := getSha256Hash(val)
-
-	definitionCache[hash] = d
-
-	return hash, nil
-}
 
 type serializedDefinition struct {
 	TypeName string
 	Params   map[string]json.RawMessage
 }
 
-func marshalParameters(params Parameters) (map[string]json.RawMessage, error) {
+type definitionDatabase struct {
+	cache map[string]Definition
+}
+
+func (db *definitionDatabase) hashDefinition(d Definition) (string, error) {
+	val, err := db.marshalDefinition(d)
+	if err != nil {
+		return "", err
+	}
+
+	hash := getSha256Hash(val)
+
+	db.cache[hash] = d
+
+	return hash, nil
+}
+
+func (db *definitionDatabase) marshalParameters(params Parameters) (map[string]json.RawMessage, error) {
 	ret := make(map[string]json.RawMessage)
 
 	val := reflect.ValueOf(params)
@@ -124,16 +160,45 @@ func marshalParameters(params Parameters) (map[string]json.RawMessage, error) {
 
 			switch val := val.(type) {
 			case Definition:
-				hash, err := hashDefinition(val)
+				hash, err := db.hashDefinition(val)
 				if err != nil {
 					return nil, err
 				}
 
 				return DefinitionPointer{
-					TypeName: val.Type(),
+					TypeName: val.SerializableType(),
 					Hash:     hash,
 				}, nil
+			case SerializableValue:
+				values := make(map[string]json.RawMessage)
+
+				reflectValue := reflect.ValueOf(val)
+				reflectType := reflectValue.Type()
+
+				for i := 0; i < reflectValue.NumField(); i++ {
+					field := reflectValue.Field(i)
+					fieldType := reflectType.Field(i)
+
+					encoded, err := encodeValue(field)
+					if err != nil {
+						return nil, err
+					}
+
+					marshalled, err := json.Marshal(encoded)
+					if err != nil {
+						return nil, err
+					}
+
+					values[fieldType.Name] = marshalled
+				}
+
+				return SerializedValue{
+					TypeName: val.SerializableType(),
+					Values:   values,
+				}, nil
 			case string:
+				return val, nil
+			case int:
 				return val, nil
 			default:
 				return nil, fmt.Errorf("encodeValue not implemented: %T %+v", val, val)
@@ -161,15 +226,15 @@ func marshalParameters(params Parameters) (map[string]json.RawMessage, error) {
 	return ret, nil
 }
 
-func marshalDefinition(d Definition) ([]byte, error) {
+func (db *definitionDatabase) marshalDefinition(d Definition) ([]byte, error) {
 	serialized := &serializedDefinition{
-		TypeName: d.Type(),
+		TypeName: d.SerializableType(),
 	}
 
 	params := d.Params()
 
 	var err error
-	serialized.Params, err = marshalParameters(params)
+	serialized.Params, err = db.marshalParameters(params)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +242,7 @@ func marshalDefinition(d Definition) ([]byte, error) {
 	return json.Marshal(serialized)
 }
 
-func unmarshalParameters(params Parameters, input map[string]json.RawMessage) (Parameters, error) {
+func (db *definitionDatabase) unmarshalObject(params any, input map[string]json.RawMessage) (any, error) {
 	typ := reflect.TypeOf(params)
 	ret := reflect.New(typ)
 	val := ret.Elem()
@@ -193,7 +258,34 @@ func unmarshalParameters(params Parameters, input map[string]json.RawMessage) (P
 				return err
 			}
 
-			def, err := unmarshalPointer(ptr)
+			def, err := db.unmarshalPointer(ptr)
+			if err != nil {
+				return err
+			}
+
+			defVal := reflect.ValueOf(def)
+
+			if !defVal.CanConvert(fieldType) {
+				return fmt.Errorf("can not convert %s to %s", defVal.Type(), fieldType)
+			}
+
+			if !field.CanSet() {
+				return fmt.Errorf("can not set field %s", field)
+			}
+
+			field.Set(defVal.Convert(fieldType))
+
+			return nil
+		} else if fieldType.Implements(reflect.TypeFor[SerializableValue]()) {
+			var ret struct {
+				TypeName string
+			}
+
+			if err := json.Unmarshal(val, &ret); err != nil {
+				return err
+			}
+
+			def, err := db.unmarshalSerializableValue(ret.TypeName, val)
 			if err != nil {
 				return err
 			}
@@ -241,6 +333,16 @@ func unmarshalParameters(params Parameters, input map[string]json.RawMessage) (P
 				field.SetString(ret)
 
 				return nil
+			case reflect.Int:
+				var ret int
+
+				if err := json.Unmarshal(val, &ret); err != nil {
+					return err
+				}
+
+				field.SetInt(int64(ret))
+
+				return nil
 			default:
 				return fmt.Errorf("decodeValue not implemented: %s", fieldType)
 			}
@@ -265,10 +367,19 @@ func unmarshalParameters(params Parameters, input map[string]json.RawMessage) (P
 		}
 	}
 
-	return ret.Interface().(Parameters), nil
+	return ret.Interface(), nil
 }
 
-func unmarshalDefinition(input io.Reader) (Definition, error) {
+func (db *definitionDatabase) unmarshalParameters(params Parameters, input map[string]json.RawMessage) (Parameters, error) {
+	ret, err := db.unmarshalObject(params, input)
+	if err != nil {
+		return nil, err
+	}
+
+	return ret.(Parameters), nil
+}
+
+func (db *definitionDatabase) unmarshalDefinition(input io.Reader) (Definition, error) {
 	var def serializedDefinition
 
 	dec := json.NewDecoder(input)
@@ -277,12 +388,17 @@ func unmarshalDefinition(input io.Reader) (Definition, error) {
 		return nil, err
 	}
 
-	fac, ok := registeredTypes[def.TypeName]
+	val, ok := registeredTypes[def.TypeName]
 	if !ok {
 		return nil, fmt.Errorf("factory for type %s not found", def.TypeName)
 	}
 
-	params, err := unmarshalParameters(fac.Params(), def.Params)
+	fac, ok := val.(Definition)
+	if !ok {
+		return nil, fmt.Errorf("factory for type %s is not a Definition", def.TypeName)
+	}
+
+	params, err := db.unmarshalParameters(fac.Params(), def.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -290,8 +406,8 @@ func unmarshalDefinition(input io.Reader) (Definition, error) {
 	return fac.Create(params), nil
 }
 
-func unmarshalPointer(ptr DefinitionPointer) (Definition, error) {
-	val, ok := definitionCache[ptr.Hash]
+func (db *definitionDatabase) unmarshalPointer(ptr DefinitionPointer) (Definition, error) {
+	val, ok := db.cache[ptr.Hash]
 	if !ok {
 		return nil, fmt.Errorf("could not find definitionCache entry for %s", ptr.Hash)
 	}
@@ -299,24 +415,57 @@ func unmarshalPointer(ptr DefinitionPointer) (Definition, error) {
 	return val, nil
 }
 
+func (db *definitionDatabase) unmarshalSerializableValue(typeName string, val json.RawMessage) (SerializableValue, error) {
+	fac, ok := registeredTypes[typeName]
+	if !ok {
+		return nil, fmt.Errorf("factory for type %s not found", typeName)
+	}
+
+	if _, ok := fac.(Definition); ok {
+		var ptr DefinitionPointer
+
+		if err := json.Unmarshal(val, &ptr); err != nil {
+			return nil, err
+		}
+
+		return db.unmarshalPointer(ptr)
+	} else {
+		var obj SerializedValue
+
+		if err := json.Unmarshal(val, &obj); err != nil {
+			return nil, err
+		}
+
+		ret, err := db.unmarshalObject(fac, obj.Values)
+		if err != nil {
+			return nil, err
+		}
+
+		return ret.(SerializableValue), nil
+	}
+}
+
 func main() {
 	registerType(&TestDef{})
+	registerType(RawValue{})
 
-	t1 := &TestDef{params: TestParameters{Array1: []string{"Hello, World"}}}
+	db := &definitionDatabase{cache: make(map[string]Definition)}
 
-	t2 := &TestDef{params: TestParameters{Recurse: t1, Array1: []string{"hello2"}, Array2: []Definition{t1}}}
+	t1 := &TestDef{params: TestParameters{Value: 10}}
 
-	val, err := marshalDefinition(t2)
+	t2 := &TestDef{params: TestParameters{Recurse: t1, Array: []Mixed{t1, RawValue{Value: 10}}}}
+
+	val, err := db.marshalDefinition(t2)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	slog.Info("", "val", string(val))
 
-	t3, err := unmarshalDefinition(bytes.NewBuffer(val))
+	t3, err := db.unmarshalDefinition(bytes.NewBuffer(val))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	slog.Info("", "t3", t3, "t3.recurse", t3.Params().(TestParameters).Recurse)
+	slog.Info("", "t3", t3, "t3.array[1]", t3.Params().(TestParameters).Array[1])
 }
