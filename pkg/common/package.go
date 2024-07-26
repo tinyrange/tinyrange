@@ -18,14 +18,16 @@ func (q PackageQuery) Equals(n PackageName) bool {
 	return q.Name == n.Name && q.Version == n.Version
 }
 
-func (q PackageQuery) String() string      { return fmt.Sprintf("%s:%s", q.Name, q.Version) }
-func (PackageQuery) Type() string          { return "PackageQuery" }
-func (PackageQuery) Hash() (uint32, error) { return 0, fmt.Errorf("PackageQuery is not hashable") }
-func (PackageQuery) Truth() starlark.Bool  { return starlark.True }
-func (PackageQuery) Freeze()               {}
+func (q PackageQuery) String() string         { return fmt.Sprintf("%s:%s", q.Name, q.Version) }
+func (PackageQuery) Type() string             { return "PackageQuery" }
+func (PackageQuery) Hash() (uint32, error)    { return 0, fmt.Errorf("PackageQuery is not hashable") }
+func (PackageQuery) Truth() starlark.Bool     { return starlark.True }
+func (PackageQuery) Freeze()                  {}
+func (PackageQuery) SerializableType() string { return "PackageQuery" }
 
 var (
-	_ starlark.Value = PackageQuery{}
+	_ starlark.Value    = PackageQuery{}
+	_ SerializableValue = PackageQuery{}
 )
 
 func ParsePackageQuery(s string) (PackageQuery, error) {

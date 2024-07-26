@@ -419,7 +419,9 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				return &common.StarDirective{Directive: common.DirectiveRunCommand(command)}, nil
+				return &common.StarDirective{Directive: common.DirectiveRunCommand{
+					Command: command,
+				}}, nil
 			}),
 			"archive": starlark.NewBuiltin("directive.archive", func(
 				thread *starlark.Thread,

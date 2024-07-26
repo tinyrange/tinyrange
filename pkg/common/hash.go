@@ -118,6 +118,8 @@ func (db *DefinitionDatabase) marshalSerializableValue(params SerializableValue)
 				return val, nil
 			case int:
 				return val, nil
+			case bool:
+				return val, nil
 			default:
 				return nil, fmt.Errorf("encodeValue not implemented: %T %+v", val, val)
 			}

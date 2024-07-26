@@ -149,6 +149,8 @@ type PackageDatabase struct {
 
 	defs map[string]starlark.Value
 
+	defDb *common.DefinitionDatabase
+
 	buildDir string
 }
 
@@ -464,6 +466,15 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 			slog.Info("building", "Tag", def.Tag())
 		}
 
+		defValue, err := db.defDb.MarshalDefinition(def)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal definition: %s", err)
+		}
+
+		if err := os.WriteFile(filepath.Join(db.buildDir, hash+".def"), defValue, os.ModePerm); err != nil {
+			return nil, fmt.Errorf("failed to write definition: %s", err)
+		}
+
 		// If not then trigger the build.
 		result, err := def.Build(child)
 		if err != nil {
@@ -772,5 +783,6 @@ func New(buildDir string) *PackageDatabase {
 		buildStatuses:     make(map[common.BuildDefinition]*common.BuildStatus),
 		buildDir:          buildDir,
 		defs:              map[string]starlark.Value{},
+		defDb:             common.NewDefinitionDatabase(),
 	}
 }

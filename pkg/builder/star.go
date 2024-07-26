@@ -41,7 +41,7 @@ func (def *StarBuildDefinition) AsFragments(ctx common.BuildContext) ([]config.F
 	}
 
 	return []config.Fragment{
-		config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}},
+		{Archive: &config.ArchiveFragment{HostFilename: filename}},
 	}, nil
 }
 

@@ -9,22 +9,28 @@ import (
 )
 
 type Directive interface {
+	SerializableValue
 	Tag() string
 	AsFragments(ctx BuildContext) ([]config.Fragment, error)
 }
 
-type DirectiveRunCommand string
+type DirectiveRunCommand struct {
+	Command string
+}
+
+// SerializableType implements Directive.
+func (d DirectiveRunCommand) SerializableType() string { return "DirectiveRunCommand" }
 
 // AsFragments implements Directive.
 func (d DirectiveRunCommand) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
 	return []config.Fragment{
-		{RunCommand: &config.RunCommandFragment{Command: string(d)}},
+		{RunCommand: &config.RunCommandFragment{Command: string(d.Command)}},
 	}, nil
 }
 
 // Tag implements Directive.
 func (d DirectiveRunCommand) Tag() string {
-	return fmt.Sprintf("RunCommand_%s", strings.ReplaceAll(string(d), " ", "_"))
+	return fmt.Sprintf("RunCommand_%s", strings.ReplaceAll(string(d.Command), " ", "_"))
 }
 
 type DirectiveAddFile struct {
@@ -33,6 +39,9 @@ type DirectiveAddFile struct {
 	Contents   []byte
 	Executable bool
 }
+
+// SerializableType implements Directive.
+func (d DirectiveAddFile) SerializableType() string { return "DirectiveAddFile" }
 
 // AsFragments implements Directive.
 func (d DirectiveAddFile) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
@@ -83,6 +92,9 @@ type DirectiveArchive struct {
 	Target     string
 }
 
+// SerializableType implements Directive.
+func (d DirectiveArchive) SerializableType() string { return "DirectiveArchive" }
+
 // AsFragments implements Directive.
 func (d DirectiveArchive) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(d.Definition)
@@ -111,7 +123,7 @@ func (d DirectiveArchive) Tag() string {
 }
 
 var (
-	_ Directive = DirectiveRunCommand("")
+	_ Directive = DirectiveRunCommand{}
 	_ Directive = DirectiveAddFile{}
 	_ Directive = DirectiveArchive{}
 )

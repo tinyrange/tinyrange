@@ -280,7 +280,7 @@ func EmitDockerfile(plan common.InstallationPlan) (string, error) {
 		case *builder.FetchOciImageDefinition:
 			ret += fmt.Sprintf("FROM %s\n", directive.FromDirective())
 		case common.DirectiveRunCommand:
-			ret += fmt.Sprintf("RUN %s\n", string(directive))
+			ret += fmt.Sprintf("RUN %s\n", directive.Command)
 		default:
 			return "", fmt.Errorf("directive %T not handled for docker", directive)
 		}

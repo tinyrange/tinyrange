@@ -56,7 +56,9 @@ func UnmarshalDefinition(r io.Reader) (common.BuildDefinition, error) {
 
 			directives = append(directives, &PlanDefinition{params: params})
 		} else if dir.RunCommand != nil {
-			directives = append(directives, common.DirectiveRunCommand(*dir.RunCommand))
+			directives = append(directives, common.DirectiveRunCommand{
+				Command: *dir.RunCommand,
+			})
 		} else {
 			return nil, fmt.Errorf("directive not implemented: %+v", dir)
 		}
@@ -91,7 +93,7 @@ func MarshalDefinition(w io.Writer, def common.BuildDefinition) error {
 				})
 			case common.DirectiveRunCommand:
 				objVm.Directives = append(objVm.Directives, serializedDirective{
-					RunCommand: (*string)(&dir),
+					RunCommand: &dir.Command,
 				})
 			default:
 				return fmt.Errorf("MarshalDefinition directive unimplemented: %T %+v", dir, dir)

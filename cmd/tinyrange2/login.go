@@ -90,9 +90,9 @@ var loginCmd = &cobra.Command{
 			dir = append(dir, planDirective)
 
 			if loginExec != "" {
-				dir = append(dir, common.DirectiveRunCommand(loginExec))
+				dir = append(dir, common.DirectiveRunCommand{Command: loginExec})
 			} else {
-				dir = append(dir, common.DirectiveRunCommand("interactive"))
+				dir = append(dir, common.DirectiveRunCommand{Command: "interactive"})
 			}
 
 			def := builder.NewBuildVmDefinition(
