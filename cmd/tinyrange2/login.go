@@ -19,7 +19,6 @@ var (
 	loginExec        string
 	loginLoadConfig  string
 	loginSaveConfig  string
-	loginPlanDebug   bool
 )
 
 var loginCmd = &cobra.Command{
@@ -88,19 +87,6 @@ var loginCmd = &cobra.Command{
 
 			planDirective := builder.NewPlanDefinition(loginBuilder, pkgs, common.TagList{"level3"})
 
-			if loginPlanDebug {
-				planDirective.Debug = true
-
-				if _, err := db.Build(db.NewBuildContext(planDirective), planDirective, common.BuildOptions{
-					AlwaysRebuild: true,
-				}); err != nil {
-					slog.Error("fatal", "err", err)
-					os.Exit(1)
-				}
-
-				return nil
-			}
-
 			dir = append(dir, planDirective)
 
 			if loginExec != "" {
@@ -151,6 +137,5 @@ func init() {
 	loginCmd.PersistentFlags().StringVarP(&loginExec, "exec", "E", "", "run a different command rather than dropping into a shell")
 	loginCmd.PersistentFlags().StringVar(&loginSaveConfig, "save-definition", "", "serialize the definition to the specified filename")
 	loginCmd.PersistentFlags().StringVarP(&loginLoadConfig, "load-definition", "c", "", "run a virtual machine from a serialized definition")
-	loginCmd.PersistentFlags().BoolVar(&loginPlanDebug, "plan-debug", false, "debug the generated plan instead of starting the virtual machine")
 	rootCmd.AddCommand(loginCmd)
 }

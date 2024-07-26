@@ -1,22 +1,11 @@
-package main
+package common
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
-	"log/slog"
 	"reflect"
 )
-
-func getSha256Hash(content []byte) string {
-	sum := sha256.Sum256(content)
-
-	return hex.EncodeToString(sum[:])
-}
 
 type SerializableValue interface {
 	SerializableType() string
@@ -51,85 +40,29 @@ type definitionPointer struct {
 	Hash     string
 }
 
-type Mixed interface {
-	SerializableValue
-
-	TagMixed()
-}
-
-type RawValue struct {
-	Value int
-}
-
-// TagMixed implements Mixed.
-func (r RawValue) TagMixed() { panic("unimplemented") }
-
-// Type implements SerializableValue.
-func (r RawValue) SerializableType() string { return "RawValue" }
-
-var (
-	_ Mixed = RawValue{}
-)
-
-type TestParameters struct {
-	Recurse *TestDef
-	Value   int
-	Array   []Mixed
-}
-
-// SerializableType implements SerializableValue.
-func (t TestParameters) SerializableType() string { return "TestParameters" }
-
-var (
-	_ SerializableValue = TestParameters{}
-)
-
-type TestDef struct {
-	params TestParameters
-}
-
-// TagMixed implements Mixed.
-func (t *TestDef) TagMixed() { panic("unimplemented") }
-
-// Create implements definition.
-func (t *TestDef) Create(params SerializableValue) Definition {
-	return &TestDef{params: *params.(*TestParameters)}
-}
-
-// Type implements definition.
-func (t *TestDef) SerializableType() string { return "testDef" }
-
-// Params implements definition.
-func (t *TestDef) Params() SerializableValue { return t.params }
-
-var (
-	_ Definition = &TestDef{}
-	_ Mixed      = &TestDef{}
-)
-
 type serializedDefinition struct {
 	TypeName string
 	Params   map[string]json.RawMessage
 }
 
-type definitionDatabase struct {
+type DefinitionDatabase struct {
 	cache map[string]Definition
 }
 
-func (db *definitionDatabase) hashDefinition(d Definition) (string, error) {
-	val, err := db.marshalDefinition(d)
+func (db *DefinitionDatabase) HashDefinition(d Definition) (string, error) {
+	val, err := db.MarshalDefinition(d)
 	if err != nil {
 		return "", err
 	}
 
-	hash := getSha256Hash(val)
+	hash := GetSha256Hash(val)
 
 	db.cache[hash] = d
 
 	return hash, nil
 }
 
-func (db *definitionDatabase) marshalSerializableValue(params SerializableValue) (map[string]json.RawMessage, error) {
+func (db *DefinitionDatabase) marshalSerializableValue(params SerializableValue) (map[string]json.RawMessage, error) {
 	ret := make(map[string]json.RawMessage)
 
 	val := reflect.ValueOf(params)
@@ -162,7 +95,7 @@ func (db *definitionDatabase) marshalSerializableValue(params SerializableValue)
 
 			switch val := val.(type) {
 			case Definition:
-				hash, err := db.hashDefinition(val)
+				hash, err := db.HashDefinition(val)
 				if err != nil {
 					return nil, err
 				}
@@ -211,7 +144,7 @@ func (db *definitionDatabase) marshalSerializableValue(params SerializableValue)
 	return ret, nil
 }
 
-func (db *definitionDatabase) marshalDefinition(d Definition) ([]byte, error) {
+func (db *DefinitionDatabase) MarshalDefinition(d Definition) ([]byte, error) {
 	serialized := &serializedDefinition{
 		TypeName: d.SerializableType(),
 	}
@@ -227,7 +160,7 @@ func (db *definitionDatabase) marshalDefinition(d Definition) ([]byte, error) {
 	return json.Marshal(serialized)
 }
 
-func (db *definitionDatabase) unmarshalObject(params any, input map[string]json.RawMessage) (any, error) {
+func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.RawMessage) (any, error) {
 	typ := reflect.TypeOf(params)
 	ret := reflect.New(typ)
 	val := ret.Elem()
@@ -355,7 +288,7 @@ func (db *definitionDatabase) unmarshalObject(params any, input map[string]json.
 	return ret.Interface(), nil
 }
 
-func (db *definitionDatabase) unmarshalParameters(params SerializableValue, input map[string]json.RawMessage) (SerializableValue, error) {
+func (db *DefinitionDatabase) unmarshalParameters(params SerializableValue, input map[string]json.RawMessage) (SerializableValue, error) {
 	ret, err := db.unmarshalObject(params, input)
 	if err != nil {
 		return nil, err
@@ -364,7 +297,7 @@ func (db *definitionDatabase) unmarshalParameters(params SerializableValue, inpu
 	return ret.(SerializableValue), nil
 }
 
-func (db *definitionDatabase) unmarshalDefinition(input io.Reader) (Definition, error) {
+func (db *DefinitionDatabase) UnmarshalDefinition(input io.Reader) (Definition, error) {
 	var def serializedDefinition
 
 	dec := json.NewDecoder(input)
@@ -391,7 +324,7 @@ func (db *definitionDatabase) unmarshalDefinition(input io.Reader) (Definition, 
 	return fac.Create(params), nil
 }
 
-func (db *definitionDatabase) unmarshalPointer(ptr definitionPointer) (Definition, error) {
+func (db *DefinitionDatabase) unmarshalPointer(ptr definitionPointer) (Definition, error) {
 	val, ok := db.cache[ptr.Hash]
 	if !ok {
 		return nil, fmt.Errorf("could not find definitionCache entry for %s", ptr.Hash)
@@ -400,7 +333,7 @@ func (db *definitionDatabase) unmarshalPointer(ptr definitionPointer) (Definitio
 	return val, nil
 }
 
-func (db *definitionDatabase) unmarshalSerializableValue(typeName string, val json.RawMessage) (SerializableValue, error) {
+func (db *DefinitionDatabase) unmarshalSerializableValue(typeName string, val json.RawMessage) (SerializableValue, error) {
 	fac, ok := registeredTypes[typeName]
 	if !ok {
 		return nil, fmt.Errorf("factory for type %s not found", typeName)
@@ -430,27 +363,6 @@ func (db *definitionDatabase) unmarshalSerializableValue(typeName string, val js
 	}
 }
 
-func main() {
-	RegisterType(&TestDef{})
-	RegisterType(RawValue{})
-
-	db := &definitionDatabase{cache: make(map[string]Definition)}
-
-	t1 := &TestDef{params: TestParameters{Value: 10}}
-
-	t2 := &TestDef{params: TestParameters{Recurse: t1, Array: []Mixed{t1, RawValue{Value: 10}}}}
-
-	val, err := db.marshalDefinition(t2)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	slog.Info("", "val", string(val))
-
-	t3, err := db.unmarshalDefinition(bytes.NewBuffer(val))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	slog.Info("", "t3", t3, "t3.array[1]", t3.Params().(TestParameters).Array[1])
+func NewDefinitionDatabase() *DefinitionDatabase {
+	return &DefinitionDatabase{cache: make(map[string]Definition)}
 }

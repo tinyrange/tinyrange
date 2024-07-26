@@ -61,10 +61,16 @@ var (
 )
 
 type BuildFsDefinition struct {
-	Directives []common.Directive
-	Kind       string
+	params BuildFsParameters
 
 	frags []config.Fragment
+}
+
+// implements common.BuildDefinition.
+func (def *BuildFsDefinition) Params() common.SerializableValue { return def.params }
+func (def *BuildFsDefinition) SerializableType() string         { return "BuildFsDefinition" }
+func (def *BuildFsDefinition) Create(params common.SerializableValue) common.Definition {
+	return &BuildFsDefinition{params: *params.(*BuildFsParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.
@@ -75,7 +81,7 @@ func (def *BuildFsDefinition) ToStarlark(ctx common.BuildContext, result filesys
 // Build implements common.BuildDefinition.
 func (def *BuildFsDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	// Launch child builds for each directive.
-	for _, directive := range def.Directives {
+	for _, directive := range def.params.Directives {
 		frags, err := directive.AsFragments(ctx)
 		if err != nil {
 			return nil, err
@@ -90,10 +96,10 @@ func (def *BuildFsDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		}
 	}
 
-	if def.Kind == "initramfs" {
+	if def.params.Kind == "initramfs" {
 		return &initRamFsBuilderResult{frags: def.frags}, nil
 	} else {
-		return nil, fmt.Errorf("kind not implemented: %s", def.Kind)
+		return nil, fmt.Errorf("kind not implemented: %s", def.params.Kind)
 	}
 }
 
@@ -111,11 +117,11 @@ func (def *BuildFsDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time
 func (def *BuildFsDefinition) Tag() string {
 	out := []string{"BuildFs"}
 
-	for _, dir := range def.Directives {
+	for _, dir := range def.params.Directives {
 		out = append(out, dir.Tag())
 	}
 
-	out = append(out, def.Kind)
+	out = append(out, def.params.Kind)
 
 	return strings.Join(out, "_")
 }
@@ -134,5 +140,5 @@ var (
 )
 
 func NewBuildFsDefinition(dir []common.Directive, kind string) *BuildFsDefinition {
-	return &BuildFsDefinition{Directives: dir, Kind: kind}
+	return &BuildFsDefinition{params: BuildFsParameters{Directives: dir, Kind: kind}}
 }

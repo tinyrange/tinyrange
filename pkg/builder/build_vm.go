@@ -38,21 +38,20 @@ func runTinyRange(exe string, configFilename string) (*exec.Cmd, error) {
 }
 
 type BuildVmDefinition struct {
-	// TOOD(joshua): Allow customizing the kernel, hypervisor, and startup script.
-	Directives  []common.Directive
-	Kernel      common.BuildDefinition
-	InitRamFs   common.BuildDefinition
-	OutputFile  string
-	CpuCores    int
-	MemoryMB    int
-	StorageSize int
-	Interaction string
+	params BuildVmParameters
 
 	mux       *http.ServeMux
 	server    *http.Server
 	cmd       *exec.Cmd
 	out       io.WriteCloser
 	gotOutput bool
+}
+
+// implements common.BuildDefinition.
+func (def *BuildVmDefinition) Params() common.SerializableValue { return def.params }
+func (def *BuildVmDefinition) SerializableType() string         { return "BuildVmDefinition" }
+func (def *BuildVmDefinition) Create(params common.SerializableValue) common.Definition {
+	return &BuildVmDefinition{params: *params.(*BuildVmParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.
@@ -66,7 +65,7 @@ func (def *BuildVmDefinition) WriteTo(w io.Writer) (n int64, err error) {
 		return 0, err
 	}
 
-	if !def.gotOutput && def.OutputFile != "" {
+	if !def.gotOutput && def.params.OutputFile != "" {
 		return 0, fmt.Errorf("VM did not write any output")
 	}
 
@@ -81,7 +80,7 @@ func (def *BuildVmDefinition) WriteTo(w io.Writer) (n int64, err error) {
 func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	builderCfg := config.BuilderConfig{}
 
-	builderCfg.OutputFilename = def.OutputFile
+	builderCfg.OutputFilename = def.params.OutputFile
 
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
@@ -97,7 +96,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		return nil, err
 	}
 
-	kernelDef := def.Kernel
+	kernelDef := def.params.Kernel
 	if kernelDef == nil {
 		kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL, 0)
 	}
@@ -120,16 +119,16 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	vmCfg.BaseDirectory = wd
 	vmCfg.HypervisorScript = hvScript
 	vmCfg.KernelFilename = kernelFilename
-	vmCfg.CPUCores = def.CpuCores
-	vmCfg.MemoryMB = def.MemoryMB
-	vmCfg.StorageSize = def.StorageSize
-	vmCfg.Interaction = def.Interaction
+	vmCfg.CPUCores = def.params.CpuCores
+	vmCfg.MemoryMB = def.params.MemoryMB
+	vmCfg.StorageSize = def.params.StorageSize
+	vmCfg.Interaction = def.params.Interaction
 
-	if def.InitRamFs != nil {
+	if def.params.InitRamFs != nil {
 		// bypass the default init logic.
 		// The user code is expected to call `/init -run-config /builder.json` some how.
 
-		initRamFs, err := ctx.BuildChild(def.InitRamFs)
+		initRamFs, err := ctx.BuildChild(def.params.InitRamFs)
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +153,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	)
 
 	// Launch child builds for each directive.
-	for _, directive := range def.Directives {
+	for _, directive := range def.params.Directives {
 		frags, err := directive.AsFragments(ctx)
 		if err != nil {
 			return nil, err
@@ -252,15 +251,15 @@ func (def *BuildVmDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time
 func (def *BuildVmDefinition) Tag() string {
 	out := []string{"BuildVm"}
 
-	for _, dir := range def.Directives {
+	for _, dir := range def.params.Directives {
 		out = append(out, dir.Tag())
 	}
 
-	out = append(out, def.OutputFile)
-	out = append(out, def.Interaction)
+	out = append(out, def.params.OutputFile)
+	out = append(out, def.params.Interaction)
 
-	if def.InitRamFs != nil {
-		out = append(out, def.InitRamFs.Tag())
+	if def.params.InitRamFs != nil {
+		out = append(out, def.params.InitRamFs.Tag())
 	}
 
 	return strings.Join(out, "_")
@@ -300,13 +299,15 @@ func NewBuildVmDefinition(
 		memoryMb = 1024
 	}
 	return &BuildVmDefinition{
-		Directives:  dir,
-		Kernel:      kernel,
-		InitRamFs:   initramfs,
-		OutputFile:  output,
-		CpuCores:    cpuCores,
-		MemoryMB:    memoryMb,
-		StorageSize: storageSize,
-		Interaction: interaction,
+		params: BuildVmParameters{
+			Directives:  dir,
+			Kernel:      kernel,
+			InitRamFs:   initramfs,
+			OutputFile:  output,
+			CpuCores:    cpuCores,
+			MemoryMB:    memoryMb,
+			StorageSize: storageSize,
+			Interaction: interaction,
+		},
 	}
 }

@@ -28,9 +28,16 @@ var (
 )
 
 type FileDefinition struct {
-	f filesystem.File
+	params FileParameters
+}
 
-	fh filesystem.FileHandle
+// implements common.BuildDefinition.
+func (def *FileDefinition) Params() common.SerializableValue { return def.params }
+func (def *FileDefinition) SerializableType() string {
+	return "FileDefinition"
+}
+func (def *FileDefinition) Create(params common.SerializableValue) common.Definition {
+	return &FileDefinition{params: *params.(*FileParameters)}
 }
 
 // AsFragments implements common.Directive.
@@ -47,7 +54,7 @@ func (def *FileDefinition) AsFragments(ctx common.BuildContext) ([]config.Fragme
 		return nil, err
 	}
 
-	stat, err := def.f.Stat()
+	stat, err := def.params.File.Stat()
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +75,7 @@ func (def *FileDefinition) ToStarlark(ctx common.BuildContext, result filesystem
 
 // Build implements common.BuildDefinition.
 func (def *FileDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	fh, err := def.f.Open()
+	fh, err := def.params.File.Open()
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +85,7 @@ func (def *FileDefinition) Build(ctx common.BuildContext) (common.BuildResult, e
 
 // NeedsBuild implements common.BuildDefinition.
 func (def *FileDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
-	info, err := def.f.Stat()
+	info, err := def.params.File.Stat()
 	if err != nil {
 		return true, err
 	}
@@ -88,7 +95,7 @@ func (def *FileDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Ti
 
 // Tag implements common.BuildDefinition.
 func (def *FileDefinition) Tag() string {
-	info, err := def.f.Stat()
+	info, err := def.params.File.Stat()
 	if err != nil {
 		return "<unknown>"
 	}
@@ -111,5 +118,5 @@ var (
 )
 
 func NewFileDefinition(f filesystem.File) *FileDefinition {
-	return &FileDefinition{f: f}
+	return &FileDefinition{params: FileParameters{File: f}}
 }

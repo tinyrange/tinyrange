@@ -37,7 +37,7 @@ func UnmarshalDefinition(r io.Reader) (common.BuildDefinition, error) {
 
 	for _, dir := range out.Directives {
 		if dir.Plan != nil {
-			plan := &PlanDefinition{
+			params := PlanParameters{
 				Builder: dir.Plan.Builder,
 			}
 
@@ -47,14 +47,14 @@ func UnmarshalDefinition(r io.Reader) (common.BuildDefinition, error) {
 					return nil, err
 				}
 
-				plan.Search = append(plan.Search, query)
+				params.Search = append(params.Search, query)
 			}
 
 			for _, tag := range dir.Plan.Tags {
-				plan.TagList = append(plan.TagList, tag)
+				params.TagList = append(params.TagList, tag)
 			}
 
-			directives = append(directives, plan)
+			directives = append(directives, &PlanDefinition{params: params})
 		} else if dir.RunCommand != nil {
 			directives = append(directives, common.DirectiveRunCommand(*dir.RunCommand))
 		} else {
@@ -74,15 +74,15 @@ func MarshalDefinition(w io.Writer, def common.BuildDefinition) error {
 	case *BuildVmDefinition:
 		objVm := serializedBuildVm{}
 
-		for _, dir := range def.Directives {
+		for _, dir := range def.params.Directives {
 			switch dir := dir.(type) {
 			case *PlanDefinition:
 				directive := serializedPlan{
-					Builder: dir.Builder,
-					Tags:    dir.TagList,
+					Builder: dir.params.Builder,
+					Tags:    dir.params.TagList,
 				}
 
-				for _, q := range dir.Search {
+				for _, q := range dir.params.Search {
 					directive.Packages = append(directive.Packages, q.String())
 				}
 

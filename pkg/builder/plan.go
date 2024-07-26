@@ -14,12 +14,16 @@ import (
 )
 
 type PlanDefinition struct {
-	Builder string
-	Search  []common.PackageQuery
-	TagList common.TagList
-	Debug   bool
+	params PlanParameters
 
 	Fragments []config.Fragment
+}
+
+// implements common.BuildDefinition.
+func (def *PlanDefinition) Params() common.SerializableValue { return def.params }
+func (def *PlanDefinition) SerializableType() string         { return "PlanDefinition" }
+func (def *PlanDefinition) Create(params common.SerializableValue) common.Definition {
+	return &PlanDefinition{params: *params.(*PlanParameters)}
 }
 
 // AsFragments implements common.Directive.
@@ -100,16 +104,14 @@ func (def *PlanDefinition) WriteTo(w io.Writer) (n int64, err error) {
 
 // Build implements common.BuildDefinition.
 func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	builder, err := ctx.Database().GetBuilder(def.Builder)
+	builder, err := ctx.Database().GetBuilder(def.params.Builder)
 	if err != nil {
 		return nil, err
 	}
 
-	plan, err := builder.Plan(def.Search, def.TagList, common.PlanOptions{
-		Debug: def.Debug,
-	})
+	plan, err := builder.Plan(def.params.Search, def.params.TagList, common.PlanOptions{})
 	if err != nil {
-		plan, _ = builder.Plan(def.Search, def.TagList, common.PlanOptions{
+		plan, _ = builder.Plan(def.params.Search, def.params.TagList, common.PlanOptions{
 			Debug: true,
 		})
 
@@ -120,14 +122,6 @@ func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, e
 
 	if err := plan.WriteTree(); err != nil {
 		return nil, err
-	}
-
-	if def.Debug {
-		if err := plan.WriteTree(); err != nil {
-			return nil, err
-		}
-
-		return def, nil
 	}
 
 	for _, dir := range plan.Directives() {
@@ -155,10 +149,9 @@ func (def *PlanDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Ti
 func (def *PlanDefinition) Tag() string {
 	return strings.Join([]string{
 		"PlanDefinition",
-		def.Builder,
-		fmt.Sprintf("%+v", def.Search),
-		def.TagList.String(),
-		fmt.Sprintf("%v", def.Debug),
+		def.params.Builder,
+		fmt.Sprintf("%+v", def.params.Search),
+		def.params.TagList.String(),
 	}, "_")
 }
 
@@ -180,8 +173,10 @@ var (
 
 func NewPlanDefinition(builder string, search []common.PackageQuery, tagList common.TagList) *PlanDefinition {
 	return &PlanDefinition{
-		Builder: builder,
-		Search:  search,
-		TagList: tagList,
+		params: PlanParameters{
+			Builder: builder,
+			Search:  search,
+			TagList: tagList,
+		},
 	}
 }

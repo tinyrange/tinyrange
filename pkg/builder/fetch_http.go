@@ -17,13 +17,18 @@ import (
 var ErrNotFound = errors.New("HTTP 404: Not Found")
 
 type FetchHttpBuildDefinition struct {
-	Url        string
-	ExpireTime time.Duration
+	params FetchHttpParameters
 
-	requestMaker func(method string, url string) (*http.Request, error)
-	// If this returns false, nil then the request will be redone.
-	responseHandler func(resp *http.Response) (bool, error)
-	resp            *http.Response
+	resp *http.Response
+}
+
+// implements common.BuildDefinition.
+func (def *FetchHttpBuildDefinition) Params() common.SerializableValue { return def.params }
+func (def *FetchHttpBuildDefinition) SerializableType() string {
+	return "DecompressFileBuildDefinition"
+}
+func (def *FetchHttpBuildDefinition) Create(params common.SerializableValue) common.Definition {
+	return &FetchHttpBuildDefinition{params: *params.(*FetchHttpParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.
@@ -33,8 +38,8 @@ func (f *FetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext, result fi
 
 // NeedsBuild implements BuildDefinition.
 func (f *FetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
-	if f.ExpireTime != 0 {
-		return time.Now().After(cacheTime.Add(f.ExpireTime)), nil
+	if f.params.ExpireTime != 0 {
+		return time.Now().After(cacheTime.Add(f.params.ExpireTime)), nil
 	}
 
 	// The HTTP cache is never invalidated unless the client asks it to be.
@@ -45,7 +50,7 @@ func (f *FetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime
 func (f *FetchHttpBuildDefinition) WriteTo(w io.Writer) (n int64, err error) {
 	defer f.resp.Body.Close()
 
-	prog := progressbar.DefaultBytes(f.resp.ContentLength, f.Url)
+	prog := progressbar.DefaultBytes(f.resp.ContentLength, f.params.Url)
 	defer prog.Close()
 
 	return io.Copy(io.MultiWriter(prog, w), f.resp.Body)
@@ -53,7 +58,7 @@ func (f *FetchHttpBuildDefinition) WriteTo(w io.Writer) (n int64, err error) {
 
 // Build implements BuildDefinition.
 func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	urls, err := ctx.Database().UrlsFor(f.Url)
+	urls, err := ctx.Database().UrlsFor(f.params.Url)
 	if err != nil {
 		return nil, err
 	}
@@ -68,16 +73,9 @@ func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext) (common.BuildR
 	for _, url := range urls {
 		var req *http.Request
 
-		if f.requestMaker != nil {
-			req, err = f.requestMaker("GET", url)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			req, err = http.NewRequest("GET", url, nil)
-			if err != nil {
-				return nil, err
-			}
+		req, err = http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, err
 		}
 
 		resp, err := client.Do(req)
@@ -85,17 +83,6 @@ func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext) (common.BuildR
 			slog.Warn("failed to fetch", "url", url, "err", err)
 			onlyNotFound = false
 			continue
-		}
-
-		if f.responseHandler != nil {
-			ok, err := f.responseHandler(resp)
-			if err != nil {
-				return nil, err
-			}
-
-			if !ok {
-				return f.Build(ctx)
-			}
 		}
 
 		if resp.StatusCode == http.StatusOK {
@@ -122,12 +109,12 @@ func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext) (common.BuildR
 		return nil, nil
 	}
 
-	return nil, fmt.Errorf("unable to find options to fetch %s", f.Url)
+	return nil, fmt.Errorf("unable to find options to fetch %s", f.params.Url)
 }
 
 // Tag implements BuildDefinition.
 func (f *FetchHttpBuildDefinition) Tag() string {
-	return f.Url
+	return f.params.Url
 }
 
 func (def *FetchHttpBuildDefinition) String() string { return def.Tag() }
@@ -145,5 +132,5 @@ var (
 )
 
 func NewFetchHttpBuildDefinition(url string, expireTime time.Duration) *FetchHttpBuildDefinition {
-	return &FetchHttpBuildDefinition{Url: url, ExpireTime: expireTime}
+	return &FetchHttpBuildDefinition{params: FetchHttpParameters{Url: url, ExpireTime: expireTime}}
 }

@@ -13,9 +13,17 @@ import (
 )
 
 type StarBuildDefinition struct {
+	params      StarParameters
 	Name        []string
 	Builder     starlark.Callable
 	BuilderArgs starlark.Tuple
+}
+
+// implements common.BuildDefinition.
+func (def *StarBuildDefinition) Params() common.SerializableValue { return def.params }
+func (def *StarBuildDefinition) SerializableType() string         { return "StarBuildDefinition" }
+func (def *StarBuildDefinition) Create(params common.SerializableValue) common.Definition {
+	return &StarBuildDefinition{params: *params.(*StarParameters)}
 }
 
 // AsFragments implements common.Directive.

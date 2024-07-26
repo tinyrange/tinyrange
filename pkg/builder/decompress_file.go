@@ -13,10 +13,18 @@ import (
 )
 
 type DecompressFileBuildDefinition struct {
-	Base common.BuildDefinition
-	Kind string
+	params DecompressFileParameters
 
 	r io.ReadCloser
+}
+
+// implements common.BuildDefinition.
+func (def *DecompressFileBuildDefinition) Params() common.SerializableValue { return def.params }
+func (def *DecompressFileBuildDefinition) SerializableType() string {
+	return "DecompressFileBuildDefinition"
+}
+func (def *DecompressFileBuildDefinition) Create(params common.SerializableValue) common.Definition {
+	return &DecompressFileBuildDefinition{params: *params.(*DecompressFileParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.
@@ -26,7 +34,7 @@ func (def *DecompressFileBuildDefinition) ToStarlark(ctx common.BuildContext, re
 
 // NeedsBuild implements BuildDefinition.
 func (def *DecompressFileBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
-	build, err := ctx.NeedsBuild(def.Base)
+	build, err := ctx.NeedsBuild(def.params.Base)
 	if err != nil {
 		return true, err
 	}
@@ -44,7 +52,7 @@ func (def *DecompressFileBuildDefinition) WriteTo(w io.Writer) (n int64, err err
 
 // Build implements BuildDefinition.
 func (def *DecompressFileBuildDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	f, err := ctx.BuildChild(def.Base)
+	f, err := ctx.BuildChild(def.params.Base)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +62,7 @@ func (def *DecompressFileBuildDefinition) Build(ctx common.BuildContext) (common
 		return nil, err
 	}
 
-	switch def.Kind {
+	switch def.params.Kind {
 	case ".xz":
 		reader, err := xz.NewReader(fh, xz.DefaultDictMax)
 		if err != nil {
@@ -63,7 +71,7 @@ func (def *DecompressFileBuildDefinition) Build(ctx common.BuildContext) (common
 
 		def.r = io.NopCloser(reader)
 	default:
-		return nil, fmt.Errorf("DecompressFile with unknown kind: %s", def.Kind)
+		return nil, fmt.Errorf("DecompressFile with unknown kind: %s", def.params.Kind)
 	}
 
 	return def, nil
@@ -71,7 +79,7 @@ func (def *DecompressFileBuildDefinition) Build(ctx common.BuildContext) (common
 
 // Tag implements BuildDefinition.
 func (def *DecompressFileBuildDefinition) Tag() string {
-	return strings.Join([]string{"DecompressFile", def.Base.Tag(), def.Kind}, "_")
+	return strings.Join([]string{"DecompressFile", def.params.Base.Tag(), def.params.Kind}, "_")
 }
 
 func (def *DecompressFileBuildDefinition) String() string { return def.Tag() }
@@ -89,5 +97,7 @@ var (
 )
 
 func NewDecompressFileBuildDefinition(base common.BuildDefinition, kind string) *DecompressFileBuildDefinition {
-	return &DecompressFileBuildDefinition{Base: base, Kind: kind}
+	return &DecompressFileBuildDefinition{
+		params: DecompressFileParameters{Base: base, Kind: kind},
+	}
 }

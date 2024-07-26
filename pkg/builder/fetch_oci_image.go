@@ -109,10 +109,17 @@ func (ctx *ociRegistryContext) responseHandler(resp *http.Response) (bool, error
 }
 
 type registryRequestDefinition struct {
-	ctx        *ociRegistryContext
-	url        string
-	expireTime time.Duration
-	accept     []string
+	ctx    *ociRegistryContext
+	params RegistryRequestParameters
+}
+
+// implements common.BuildDefinition.
+func (def *registryRequestDefinition) Params() common.SerializableValue { return def.params }
+func (def *registryRequestDefinition) SerializableType() string {
+	return "registryRequestDefinition"
+}
+func (def *registryRequestDefinition) Create(params common.SerializableValue) common.Definition {
+	return &registryRequestDefinition{params: *params.(*RegistryRequestParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.
@@ -122,12 +129,12 @@ func (r *registryRequestDefinition) ToStarlark(ctx common.BuildContext, result f
 
 // Build implements common.BuildDefinition.
 func (r *registryRequestDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	req, err := r.ctx.makeRequest("GET", r.ctx.registry+r.url)
+	req, err := r.ctx.makeRequest("GET", r.ctx.registry+r.params.Url)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, val := range r.accept {
+	for _, val := range r.params.Accept {
 		req.Header.Add("Accept", val)
 	}
 
@@ -154,8 +161,8 @@ func (r *registryRequestDefinition) Build(ctx common.BuildContext) (common.Build
 
 // NeedsBuild implements common.BuildDefinition.
 func (r *registryRequestDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
-	if r.expireTime > 0 {
-		return cacheTime.After(time.Now().Add(r.expireTime)), nil
+	if r.params.ExpireTime > 0 {
+		return cacheTime.After(time.Now().Add(r.params.ExpireTime)), nil
 	} else {
 		return false, nil
 	}
@@ -163,8 +170,8 @@ func (r *registryRequestDefinition) NeedsBuild(ctx common.BuildContext, cacheTim
 
 // Tag implements common.BuildDefinition.
 func (r *registryRequestDefinition) Tag() string {
-	tag := []string{"ociRegistryRequest", r.ctx.registry, r.url}
-	tag = append(tag, r.accept...)
+	tag := []string{"ociRegistryRequest", r.ctx.registry, r.params.Url}
+	tag = append(tag, r.params.Accept...)
 	return strings.Join(tag, "_")
 }
 
@@ -173,12 +180,18 @@ var (
 )
 
 type FetchOciImageDefinition struct {
-	registry     string
-	image        string
-	tag          string
-	architecture string
+	params FetchOciImageParameters
 
 	LayerArchives []*filesystem.FileDigest
+}
+
+// implements common.BuildDefinition.
+func (def *FetchOciImageDefinition) Params() common.SerializableValue { return def.params }
+func (def *FetchOciImageDefinition) SerializableType() string {
+	return "FetchOciImageDefinition"
+}
+func (def *FetchOciImageDefinition) Create(params common.SerializableValue) common.Definition {
+	return &FetchOciImageDefinition{params: *params.(*FetchOciImageParameters)}
 }
 
 // AsFragments implements common.Directive.
@@ -208,51 +221,75 @@ func (def *FetchOciImageDefinition) AsFragments(ctx common.BuildContext) ([]conf
 
 // ToStarlark implements common.BuildDefinition.
 func (def *FetchOciImageDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
-	return starlark.None, fmt.Errorf("converting FetchOciImageDefinition to Starlark not supported")
+	if err := ParseJsonFromFile(result, &def); err != nil {
+		return nil, err
+	}
+
+	fs := filesystem.NewMemoryDirectory()
+
+	for _, layer := range def.LayerArchives {
+		layerFile, err := ctx.FileFromDigest(layer)
+		if err != nil {
+			return nil, err
+		}
+
+		ark, err := filesystem.ReadArchiveFromFile(layerFile)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		if err := filesystem.ExtractArchive(ark, fs); err != nil {
+			return starlark.None, err
+		}
+	}
+
+	return filesystem.NewStarDirectory(fs, ""), nil
 }
 
 // tagDirective implements common.Directive.
 func (def *FetchOciImageDefinition) TagDirective() { panic("unimplemented") }
 
 func (def *FetchOciImageDefinition) FromDirective() string {
-	return fmt.Sprintf("%s:%s", def.image, def.tag)
+	return fmt.Sprintf("%s:%s", def.params.Image, def.params.Tag)
 }
 
-func (def *FetchOciImageDefinition) SetDefaults() {
-	if def.registry == "" {
-		def.registry = DEFAULT_REGISTRY
+func (def *FetchOciImageDefinition) setDefaults() {
+	if def.params.Registry == "" {
+		def.params.Registry = DEFAULT_REGISTRY
 	}
-	if def.tag == "" {
-		def.tag = "latest"
+	if def.params.Tag == "" {
+		def.params.Tag = "latest"
 	}
-	if def.architecture == "" {
-		def.architecture = "amd64"
+	if def.params.Architecture == "" {
+		def.params.Architecture = "amd64"
 	}
 }
 
 func (def *FetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.BuildDefinition {
 	return &registryRequestDefinition{
 		ctx: regCtx,
-		url: fmt.Sprintf("/%s/manifests/%s", def.image, def.tag),
-		accept: []string{
-			"application/vnd.docker.distribution.manifest.list.v2+json",
-			"application/vnd.oci.image.index.v1+json",
+		params: RegistryRequestParameters{
+			Url: fmt.Sprintf("/%s/manifests/%s", def.params.Image, def.params.Tag),
+			Accept: []string{
+				"application/vnd.docker.distribution.manifest.list.v2+json",
+				"application/vnd.oci.image.index.v1+json",
+			},
+			ExpireTime: 24 * time.Hour, // Expire the tag after 24 hours.
 		},
-		expireTime: 24 * time.Hour, // Expire the tag after 24 hours.
 	}
 }
 
 func (def *FetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext, regCtx *ociRegistryContext, index oci.ImageIndexV1) (common.BuildResult, error) {
 	// Request all the layers.
 	for _, layer := range index.FsLayers {
-		layerArchive, err := ctx.BuildChild(&ReadArchiveBuildDefinition{
-			Base: &FetchHttpBuildDefinition{
-				requestMaker:    regCtx.makeRequest,
-				responseHandler: regCtx.responseHandler,
-				Url:             fmt.Sprintf("%s/%s/blobs/%s", regCtx.registry, def.image, layer.BlobSum),
-			},
-			Kind: ".tar.gz",
-		})
+		layerArchive, err := ctx.BuildChild(
+			NewReadArchiveBuildDefinition(&registryRequestDefinition{
+				ctx: regCtx,
+				params: RegistryRequestParameters{
+					Url: fmt.Sprintf("/%s/blobs/%s", def.params.Image, layer.BlobSum),
+				},
+			}, ".tar.gz"),
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -274,14 +311,14 @@ func (def *FetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext, re
 func (def *FetchOciImageDefinition) buildFromManifest(ctx common.BuildContext, regCtx *ociRegistryContext, manifest oci.ImageManifest) (common.BuildResult, error) {
 	// Request all the layers.
 	for _, layer := range manifest.Layers {
-		layerArchive, err := ctx.BuildChild(&ReadArchiveBuildDefinition{
-			Base: &FetchHttpBuildDefinition{
-				requestMaker:    regCtx.makeRequest,
-				responseHandler: regCtx.responseHandler,
-				Url:             fmt.Sprintf("%s/%s/blobs/%s", regCtx.registry, def.image, layer.Digest),
-			},
-			Kind: ".tar.gz",
-		})
+		layerArchive, err := ctx.BuildChild(
+			NewReadArchiveBuildDefinition(&registryRequestDefinition{
+				ctx: regCtx,
+				params: RegistryRequestParameters{
+					Url: fmt.Sprintf("/%s/blobs/%s", def.params.Image, layer.Digest),
+				},
+			}, ".tar.gz"),
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -303,16 +340,18 @@ func (def *FetchOciImageDefinition) buildFromIndex(ctx common.BuildContext, regC
 	// Get the right manifest for the architecture.
 	var manifestId oci.ImageManifestIdentifier
 	for _, manifest := range index.Manifests {
-		if manifest.Platform.Architecture == def.architecture {
+		if manifest.Platform.Architecture == def.params.Architecture {
 			manifestId = manifest
 		}
 	}
 
 	manifestFile, err := ctx.BuildChild(&registryRequestDefinition{
 		ctx: regCtx,
-		url: fmt.Sprintf("/%s/manifests/%s", def.image, manifestId.Digest),
-		accept: []string{
-			"application/vnd.oci.image.manifest.v1+json",
+		params: RegistryRequestParameters{
+			Url: fmt.Sprintf("/%s/manifests/%s", def.params.Image, manifestId.Digest),
+			Accept: []string{
+				"application/vnd.oci.image.manifest.v1+json",
+			},
 		},
 		// manifests are content addressed so don't expire.
 	})
@@ -337,7 +376,7 @@ func (def *FetchOciImageDefinition) buildFromIndex(ctx common.BuildContext, regC
 
 // Build implements common.BuildDefinition.
 func (def *FetchOciImageDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	regCtx := &ociRegistryContext{registry: def.registry}
+	regCtx := &ociRegistryContext{registry: def.params.Registry}
 
 	// Get the index for the image tag.
 	indexFile, err := ctx.BuildChild(def.indexDef(regCtx))
@@ -365,8 +404,8 @@ func (def *FetchOciImageDefinition) Build(ctx common.BuildContext) (common.Build
 			return nil, err
 		}
 
-		if index1.Architecture != def.architecture {
-			return nil, fmt.Errorf("index is of the wrong architecture: %s != %s", index1.Architecture, def.architecture)
+		if index1.Architecture != def.params.Architecture {
+			return nil, fmt.Errorf("index is of the wrong architecture: %s != %s", index1.Architecture, def.params.Architecture)
 		}
 
 		return def.buildFromV1Index(ctx, regCtx, index1)
@@ -377,12 +416,12 @@ func (def *FetchOciImageDefinition) Build(ctx common.BuildContext) (common.Build
 
 // NeedsBuild implements common.BuildDefinition.
 func (def *FetchOciImageDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
-	return ctx.NeedsBuild(def.indexDef(&ociRegistryContext{registry: def.registry}))
+	return ctx.NeedsBuild(def.indexDef(&ociRegistryContext{registry: def.params.Registry}))
 }
 
 // Tag implements common.BuildDefinition.
 func (def *FetchOciImageDefinition) Tag() string {
-	tag := []string{"fetchOciImage", def.registry, def.image, def.tag, def.architecture}
+	tag := []string{"fetchOciImage", def.params.Registry, def.params.Image, def.params.Tag, def.params.Architecture}
 
 	return strings.Join(tag, "_")
 }
@@ -417,13 +456,15 @@ var (
 
 func NewFetchOCIImageDefinition(registry, image, tag, architecture string) *FetchOciImageDefinition {
 	ret := &FetchOciImageDefinition{
-		registry:     registry,
-		image:        image,
-		tag:          tag,
-		architecture: architecture,
+		params: FetchOciImageParameters{
+			Registry:     registry,
+			Image:        image,
+			Tag:          tag,
+			Architecture: architecture,
+		},
 	}
 
-	ret.SetDefaults()
+	ret.setDefaults()
 
 	return ret
 }

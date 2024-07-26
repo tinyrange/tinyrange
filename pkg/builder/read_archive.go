@@ -426,8 +426,14 @@ var (
 )
 
 type ReadArchiveBuildDefinition struct {
-	Base common.BuildDefinition
-	Kind string
+	params ReadArchiveParameters
+}
+
+// implements common.BuildDefinition.
+func (def *ReadArchiveBuildDefinition) Params() common.SerializableValue { return def.params }
+func (def *ReadArchiveBuildDefinition) SerializableType() string         { return "ReadArchiveBuildDefinition" }
+func (def *ReadArchiveBuildDefinition) Create(params common.SerializableValue) common.Definition {
+	return &ReadArchiveBuildDefinition{params: *params.(*ReadArchiveParameters)}
 }
 
 // AsFragments implements common.Directive.
@@ -461,12 +467,12 @@ func (r *ReadArchiveBuildDefinition) ToStarlark(ctx common.BuildContext, result 
 
 // NeedsBuild implements BuildDefinition.
 func (r *ReadArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
-	build, err := ctx.NeedsBuild(r.Base)
+	build, err := ctx.NeedsBuild(r.params.Base)
 	if err != nil {
 		return true, err
 	}
 	if build {
-		slog.Info("rebuild", "base", r.Base)
+		slog.Info("rebuild", "base", r.params.Base)
 		return true, nil
 	} else {
 		return false, nil // archives don't need to be re-extracted unless the underlying file changes.
@@ -475,7 +481,7 @@ func (r *ReadArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTi
 
 // Build implements BuildDefinition.
 func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	f, err := ctx.BuildChild(r.Base)
+	f, err := ctx.BuildChild(r.params.Base)
 	if err != nil {
 		return nil, err
 	}
@@ -485,7 +491,7 @@ func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.Buil
 		return nil, err
 	}
 
-	if strings.HasSuffix(r.Kind, ".zip") {
+	if strings.HasSuffix(r.params.Kind, ".zip") {
 		info, err := f.Stat()
 		if err != nil {
 			return nil, err
@@ -498,7 +504,7 @@ func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.Buil
 
 		return &zipToArchiveBuildResult{r: reader}, nil
 	} else {
-		kind := r.Kind
+		kind := r.params.Kind
 
 		var reader io.Reader
 
@@ -532,14 +538,14 @@ func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.Buil
 		} else if strings.HasSuffix(kind, ".cpio") {
 			return &cpioToArchiveBuildResult{r: cpio.NewReader(reader)}, nil
 		} else {
-			return nil, fmt.Errorf("ReadArchive with unknown kind: %s", r.Kind)
+			return nil, fmt.Errorf("ReadArchive with unknown kind: %s", r.params.Kind)
 		}
 	}
 }
 
 // Tag implements BuildDefinition.
 func (r *ReadArchiveBuildDefinition) Tag() string {
-	return strings.Join([]string{"ReadArchive", r.Base.Tag(), r.Kind}, "_")
+	return strings.Join([]string{"ReadArchive", r.params.Base.Tag(), r.params.Kind}, "_")
 }
 
 func (def *ReadArchiveBuildDefinition) String() string { return def.Tag() }
@@ -557,5 +563,5 @@ var (
 )
 
 func NewReadArchiveBuildDefinition(base common.BuildDefinition, kind string) *ReadArchiveBuildDefinition {
-	return &ReadArchiveBuildDefinition{Base: base, Kind: kind}
+	return &ReadArchiveBuildDefinition{params: ReadArchiveParameters{Base: base, Kind: kind}}
 }

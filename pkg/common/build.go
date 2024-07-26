@@ -17,6 +17,7 @@ type BuildSource interface {
 }
 
 type BuildDefinition interface {
+	Definition
 	BuildSource
 	NeedsBuild(ctx BuildContext, cacheTime time.Time) (bool, error)
 	Build(ctx BuildContext) (BuildResult, error)
