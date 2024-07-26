@@ -667,9 +667,13 @@ var (
 	_ starlark.Indexable = &recordList{}
 )
 
+type recordResult struct {
+	rec *record
+	err error
+}
+
 type RecordReader2 struct {
-	err     chan error
-	records chan *record
+	results chan recordResult
 	r       io.ReaderAt
 	off     int64
 }
@@ -682,40 +686,39 @@ func (r *RecordReader2) readValues() {
 		}
 
 		if _, err := r.r.ReadAt(rec.data[:], r.off); err != nil {
-			r.err <- err
-			return
+			r.results <- recordResult{rec: nil, err: err}
+			break
 		}
 
 		recordLen := binary.LittleEndian.Uint32(rec.data[0:4])
 		kind := rec.kind()
 
 		if kind == _RECORD_INVALID || kind > _RECORD_LAST {
-			r.err <- fmt.Errorf("invalid read")
-			return
+			r.results <- recordResult{rec: nil, err: fmt.Errorf("invalid read")}
+			break
 		}
 
 		rec.totalLen = int(recordLen)
 
 		r.off += int64(recordLen)
 
-		r.records <- rec
+		r.results <- recordResult{rec: rec, err: nil}
 	}
 }
 
 func (r *RecordReader2) ReadValue() (starlark.Value, error) {
-	select {
-	case err := <-r.err:
-		return nil, err
-	case record := <-r.records:
-		return record.toStarlarkValue(0)
+	result := <-r.results
+	if result.err != nil {
+		return nil, result.err
 	}
+
+	return result.rec.toStarlarkValue(0)
 }
 
 func NewReader2(r io.ReaderAt) *RecordReader2 {
 	reader := &RecordReader2{
 		r:       r,
-		err:     make(chan error),
-		records: make(chan *record, 8),
+		results: make(chan recordResult, 8),
 	}
 
 	go reader.readValues()
