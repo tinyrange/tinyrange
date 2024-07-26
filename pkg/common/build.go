@@ -25,6 +25,8 @@ type BuildDefinition interface {
 }
 
 type BuildContext interface {
+	starlark.Value
+
 	CreateOutput() (io.WriteCloser, error)
 	CreateFile(name string) (string, io.WriteCloser, error)
 	HasCreatedOutput() bool
@@ -35,7 +37,7 @@ type BuildContext interface {
 	Database() PackageDatabase
 	BuildChild(def BuildDefinition) (filesystem.File, error)
 	NeedsBuild(def BuildDefinition) (bool, error)
-	Call(callable starlark.Callable, args ...starlark.Value) (starlark.Value, error)
+	Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error)
 	ChildContext(source BuildSource, status *BuildStatus, filename string) BuildContext
 	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
 	FilenameFromDigest(digest *filesystem.FileDigest) (string, error)

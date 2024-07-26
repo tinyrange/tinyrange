@@ -162,7 +162,7 @@ func (r *registryRequestDefinition) Build(ctx common.BuildContext) (common.Build
 // NeedsBuild implements common.BuildDefinition.
 func (r *registryRequestDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
 	if r.params.ExpireTime > 0 {
-		return cacheTime.After(time.Now().Add(r.params.ExpireTime)), nil
+		return cacheTime.After(time.Now().Add(time.Duration(r.params.ExpireTime))), nil
 	} else {
 		return false, nil
 	}
@@ -274,7 +274,7 @@ func (def *FetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.
 				"application/vnd.docker.distribution.manifest.list.v2+json",
 				"application/vnd.oci.image.index.v1+json",
 			},
-			ExpireTime: 24 * time.Hour, // Expire the tag after 24 hours.
+			ExpireTime: int64(24 * time.Hour), // Expire the tag after 24 hours.
 		},
 	}
 }

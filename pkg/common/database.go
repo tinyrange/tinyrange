@@ -26,7 +26,7 @@ type InstallationPlan interface {
 type ContainerBuilder interface {
 	starlark.Value
 
-	Plan(packages []PackageQuery, tags TagList, opts PlanOptions) (InstallationPlan, error)
+	Plan(db PackageDatabase, packages []PackageQuery, tags TagList, opts PlanOptions) (InstallationPlan, error)
 	Search(pkg PackageQuery) ([]*Package, error)
 }
 
@@ -38,5 +38,7 @@ type PackageDatabase interface {
 	UrlsFor(url string) ([]string, error)
 	HttpClient() (*http.Client, error)
 	ShouldRebuildUserDefinitions() bool
-	GetBuilder(name string) (ContainerBuilder, error)
+	GetContainerBuilder(name string) (ContainerBuilder, error)
+	GetBuilder(filename string, builder string) (starlark.Callable, error)
+	NewThread(filename string) *starlark.Thread
 }

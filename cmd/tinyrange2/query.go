@@ -26,7 +26,7 @@ var queryCmd = &cobra.Command{
 			return err
 		}
 
-		b, err := db.GetBuilder(queryBuilder)
+		b, err := db.GetContainerBuilder(queryBuilder)
 		if err != nil {
 			return err
 		}

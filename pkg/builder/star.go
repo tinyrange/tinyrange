@@ -12,11 +12,61 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func SerializableValueToStarlark(ctx common.BuildContext, val any) (starlark.Value, error) {
+	switch val := val.(type) {
+	case common.BuildDefinition:
+		result, err := ctx.BuildChild(val)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		return val.ToStarlark(ctx, result)
+	case string:
+		return starlark.String(val), nil
+	case []any:
+		var ret []starlark.Value
+
+		for _, child := range val {
+			item, err := SerializableValueToStarlark(ctx, child)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			ret = append(ret, item)
+		}
+
+		return starlark.NewList(ret), nil
+	default:
+		return starlark.None, fmt.Errorf("SerializableValueToStarlark not implemented: %T %+v", val, val)
+	}
+}
+
+func StarlarkValueToSerializable(val starlark.Value) (any, error) {
+	switch val := val.(type) {
+	case common.BuildDefinition:
+		return val, nil
+	case starlark.String:
+		return string(val), nil
+	case *starlark.List:
+		var ret []any
+
+		for i := 0; i < val.Len(); i++ {
+			child, err := StarlarkValueToSerializable(val.Index(i))
+			if err != nil {
+				return nil, err
+			}
+
+			ret = append(ret, child)
+		}
+
+		return ret, nil
+	default:
+		return starlark.None, fmt.Errorf("StarlarkValueToSerializable not implemented: %T %+v", val, val)
+	}
+}
+
 type StarBuildDefinition struct {
-	params      StarParameters
-	Name        []string
-	Builder     starlark.Callable
-	BuilderArgs starlark.Tuple
+	params StarParameters
 }
 
 // implements common.BuildDefinition.
@@ -56,7 +106,7 @@ func (def *StarBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime ti
 		return true, nil
 	}
 
-	for _, arg := range def.BuilderArgs {
+	for _, arg := range def.params.Arguments {
 		if argDef, ok := arg.(common.BuildDefinition); ok {
 			needsBuild, err := ctx.NeedsBuild(argDef)
 			if err != nil {
@@ -77,19 +127,10 @@ func (def *StarBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime ti
 func (def *StarBuildDefinition) Tag() string {
 	var parts []string
 
-	parts = append(parts, def.Name...)
+	parts = append(parts, def.params.ScriptFilename, def.params.BuilderName)
 
-	for _, arg := range def.BuilderArgs {
-		if src, ok := arg.(common.BuildSource); ok {
-			parts = append(parts, src.Tag())
-		} else if lst, ok := arg.(*starlark.List); ok {
-			parts = append(parts, fmt.Sprintf("%+v", lst))
-		} else if str, ok := starlark.AsString(arg); ok {
-			parts = append(parts, str)
-		} else {
-			slog.Warn("could not convert to string", "type", arg.Type())
-			continue
-		}
+	for _, arg := range def.params.Arguments {
+		parts = append(parts, fmt.Sprintf("%+v", arg))
 	}
 
 	return strings.Join(parts, "_")
@@ -97,25 +138,16 @@ func (def *StarBuildDefinition) Tag() string {
 
 func (def *StarBuildDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	var args starlark.Tuple
-	for _, arg := range def.BuilderArgs {
-		if argDef, ok := arg.(common.BuildDefinition); ok {
-			res, err := ctx.BuildChild(argDef)
-			if err != nil {
-				return nil, err
-			}
-
-			val, err := argDef.ToStarlark(ctx, res)
-			if err != nil {
-				return nil, err
-			}
-
-			args = append(args, val)
-		} else {
-			args = append(args, arg)
+	for _, arg := range def.params.Arguments {
+		val, err := SerializableValueToStarlark(ctx, arg)
+		if err != nil {
+			return nil, err
 		}
+
+		args = append(args, val)
 	}
 
-	res, err := ctx.Call(def.Builder, args...)
+	res, err := ctx.Call(def.params.ScriptFilename, def.params.BuilderName, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -149,15 +181,16 @@ var (
 	_ common.Directive       = &StarBuildDefinition{}
 )
 
-func NewStarBuildDefinition(name string, builder starlark.Value, args starlark.Tuple) (*StarBuildDefinition, error) {
-	f, ok := builder.(starlark.Callable)
-	if !ok {
-		return nil, fmt.Errorf("builder %s is not callable", builder.Type())
+func NewStarBuildDefinition(filename string, builder string, args []any) (*StarBuildDefinition, error) {
+	if filename == "" || builder == "" {
+		return nil, fmt.Errorf("no filename or builder passed to NewStarBuildDefinition")
 	}
 
 	return &StarBuildDefinition{
-		Name:        []string{name, f.Name()},
-		Builder:     f,
-		BuilderArgs: args,
+		params: StarParameters{
+			ScriptFilename: filename,
+			BuilderName:    builder,
+			Arguments:      args,
+		},
 	}, nil
 }

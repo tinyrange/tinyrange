@@ -224,12 +224,13 @@ func (b *BuildContext) AttrNames() []string {
 	return []string{"recordwriter", "add_package", "build"}
 }
 
-func (ctx *BuildContext) newThread() *starlark.Thread {
-	return &starlark.Thread{Name: ctx.Source.Tag()}
-}
+func (ctx *BuildContext) Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error) {
+	target, err := ctx.database.GetBuilder(filename, builder)
+	if err != nil {
+		return starlark.None, fmt.Errorf("failed to GetBuilder in BuildContext.Call: %s", err)
+	}
 
-func (ctx *BuildContext) Call(target starlark.Callable, args ...starlark.Value) (starlark.Value, error) {
-	result, err := starlark.Call(ctx.newThread(), target, append(starlark.Tuple{ctx}, args...), []starlark.Tuple{})
+	result, err := starlark.Call(ctx.database.NewThread(filename), target, append(starlark.Tuple{ctx}, args...), []starlark.Tuple{})
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
 			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())

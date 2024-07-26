@@ -247,9 +247,7 @@ def build_alpine_install_layer(ctx, directives):
         if type(pkg) == "common.DirectiveRunCommand":
             continue
 
-        res = ctx.build(pkg)
-
-        fs = filesystem(res.read_archive())
+        fs = filesystem(pkg.read_archive())
 
         for ent in fs[".pkg"]:
             if "pre-install.sh" in ent:

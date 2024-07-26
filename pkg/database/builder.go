@@ -10,11 +10,13 @@ import (
 )
 
 type ContainerBuilder struct {
-	Name         string
-	DisplayName  string
-	PlanCallback starlark.Callable
-	Packages     *PackageCollection
-	Metadata     starlark.Value
+	Name             string
+	DisplayName      string
+	Filename         string
+	PlanCallbackName string
+	Packages         *PackageCollection
+	Metadata         starlark.Value
+	db               *PackageDatabase
 
 	loaded bool
 }
@@ -70,7 +72,7 @@ func (builder *ContainerBuilder) Attr(name string) (starlark.Value, error) {
 				}
 			}
 
-			plan, err := builder.Plan(search, tagList, common.PlanOptions{})
+			plan, err := builder.Plan(builder.db, search, tagList, common.PlanOptions{})
 			if err != nil {
 				return nil, err
 			}
@@ -119,6 +121,8 @@ func (builder *ContainerBuilder) Load(db *PackageDatabase) error {
 		return nil
 	}
 
+	builder.db = db
+
 	if err := builder.Packages.Load(db); err != nil {
 		return err
 	}
@@ -128,7 +132,7 @@ func (builder *ContainerBuilder) Load(db *PackageDatabase) error {
 	return nil
 }
 
-func (builder *ContainerBuilder) Plan(packages []common.PackageQuery, tags common.TagList, opts common.PlanOptions) (common.InstallationPlan, error) {
+func (builder *ContainerBuilder) Plan(db common.PackageDatabase, packages []common.PackageQuery, tags common.TagList, opts common.PlanOptions) (common.InstallationPlan, error) {
 	plan := NewInstallationPlan(tags, opts)
 
 	// Add all the requested packages.
@@ -144,11 +148,16 @@ func (builder *ContainerBuilder) Plan(packages []common.PackageQuery, tags commo
 	}
 
 	// Call the plan callback.
-	thread := &starlark.Thread{}
+	thread := db.NewThread(builder.Filename)
+
+	callable, err := db.GetBuilder(builder.Filename, builder.PlanCallbackName)
+	if err != nil {
+		return nil, fmt.Errorf("could not get builder for ContainerBuilder.Plan: %s", err)
+	}
 
 	ret, err := starlark.Call(
 		thread,
-		builder.PlanCallback,
+		callable,
 		starlark.Tuple{builder, plan},
 		[]starlark.Tuple{},
 	)
@@ -213,15 +222,17 @@ var (
 func NewContainerBuilder(
 	name string,
 	displayName string,
-	planCallback starlark.Callable,
+	filename string,
+	planCallbackName string,
 	packages *PackageCollection,
 	metadata starlark.Value,
 ) (*ContainerBuilder, error) {
 	return &ContainerBuilder{
-		Name:         name,
-		DisplayName:  displayName,
-		PlanCallback: planCallback,
-		Packages:     packages,
-		Metadata:     metadata,
+		Name:             name,
+		DisplayName:      displayName,
+		Filename:         filename,
+		PlanCallbackName: planCallbackName,
+		Packages:         packages,
+		Metadata:         metadata,
 	}, nil
 }

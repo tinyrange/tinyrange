@@ -114,11 +114,28 @@ func (db *DefinitionDatabase) marshalSerializableValue(params SerializableValue)
 					TypeName: val.SerializableType(),
 					Values:   values,
 				}, nil
+			case []any:
+				var ret []any
+
+				for _, item := range val {
+					childVal := reflect.ValueOf(item)
+
+					child, err := encodeValue(childVal)
+					if err != nil {
+						return nil, err
+					}
+
+					ret = append(ret, child)
+				}
+
+				return ret, nil
 			case string:
 				return val, nil
 			case int:
 				return val, nil
 			case bool:
+				return val, nil
+			case int64:
 				return val, nil
 			default:
 				return nil, fmt.Errorf("encodeValue not implemented: %T %+v", val, val)
@@ -261,6 +278,26 @@ func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.
 				}
 
 				field.SetInt(int64(ret))
+
+				return nil
+			case reflect.Bool:
+				var ret bool
+
+				if err := json.Unmarshal(val, &ret); err != nil {
+					return err
+				}
+
+				field.SetBool(ret)
+
+				return nil
+			case reflect.Int64:
+				var ret int64
+
+				if err := json.Unmarshal(val, &ret); err != nil {
+					return err
+				}
+
+				field.SetInt(ret)
 
 				return nil
 			default:

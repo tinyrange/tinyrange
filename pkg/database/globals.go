@@ -72,10 +72,30 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				args starlark.Tuple,
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
-				buildCallable := args[0]
-				buildArgs := args[1:]
+				builderVal := args[0]
+				buildArgsVal := args[1:]
 
-				return builder.NewStarBuildDefinition(thread.Name, buildCallable, buildArgs)
+				builderFunc, ok := builderVal.(starlark.Callable)
+				if !ok {
+					return starlark.None, fmt.Errorf("could not convert %s to Callable", builderVal.Type())
+				}
+
+				var buildArgs []any
+
+				for _, arg := range buildArgsVal {
+					val, err := builder.StarlarkValueToSerializable(arg)
+					if err != nil {
+						return starlark.None, err
+					}
+
+					buildArgs = append(buildArgs, val)
+				}
+
+				if thread.Name == "" {
+					return starlark.None, fmt.Errorf("could not get name from thread")
+				}
+
+				return builder.NewStarBuildDefinition(thread.Name, builderFunc.Name(), buildArgs)
 			}),
 			"package_collection": starlark.NewBuiltin("define.package_collection", func(
 				thread *starlark.Thread,
@@ -108,7 +128,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					defs = append(defs, def)
 				}
 
-				return NewPackageCollection(thread.Name, parser, install, defs)
+				return NewPackageCollection(thread.Name, parser.Name(), install.Name(), defs)
 			}),
 			"container_builder": starlark.NewBuiltin("define.container_builder", func(
 				thread *starlark.Thread,
@@ -134,7 +154,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				return NewContainerBuilder(name, displayName, planCallback, packages, metadata)
+				return NewContainerBuilder(name, displayName, thread.Name, planCallback.Name(), packages, metadata)
 			}),
 			"fetch_http": starlark.NewBuiltin("define.fetch_http", func(
 				thread *starlark.Thread,

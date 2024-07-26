@@ -1,8 +1,6 @@
 package builder
 
 import (
-	"time"
-
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 )
@@ -38,15 +36,15 @@ type DecompressFileParameters struct {
 
 // Download a file from the internet.
 type FetchHttpParameters struct {
-	Url        string        // The URL to download (can start with mirror:// if a mirror is registered)
-	ExpireTime time.Duration // How long before the file is considered expired and will be redownloaded.
+	Url        string // The URL to download (can start with mirror:// if a mirror is registered)
+	ExpireTime int64  // How long before the file is considered expired and will be redownloaded.
 }
 
 // Make a request to a OCI registry.
 // This is a internal type that is attached to a context to persist the authentication token between requests.
 type RegistryRequestParameters struct {
 	Url        string
-	ExpireTime time.Duration
+	ExpireTime int64
 	Accept     []string
 }
 
@@ -83,9 +81,9 @@ type ReadArchiveParameters struct {
 
 // Execute a builder defined in Starlark.
 type StarParameters struct {
-	ScriptFile  common.BuildDefinition // A build definition for the script file to load and execute.
-	BuilderName string                 // The name of the builder function.
-	Arguments   []any                  // The arguments passed to the function. These must be convertible to starlark.Value.
+	ScriptFilename string // The filename of the script used to run this builder.
+	BuilderName    string // The name of the builder function.
+	Arguments      []any  // The arguments passed to the function. These must be convertible to starlark.Value.
 }
 
 func (b BuildFsParameters) SerializableType() string         { return "BuildFsParameters" }

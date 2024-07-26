@@ -266,7 +266,7 @@ func (ui *WebFrontend) handleBuilderMakePlan(w http.ResponseWriter, r *http.Requ
 
 	pkgs := ui.currentPackageList[builder.Name]
 
-	plan, err := builder.Plan(pkgs, common.TagList{level}, common.PlanOptions{})
+	plan, err := builder.Plan(ui.db, pkgs, common.TagList{level}, common.PlanOptions{})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -149,6 +149,8 @@ type PackageDatabase struct {
 
 	defs map[string]starlark.Value
 
+	builders map[string]starlark.Callable
+
 	defDb *common.DefinitionDatabase
 
 	buildDir string
@@ -188,9 +190,19 @@ func (db *PackageDatabase) getFileContents(name string) (string, error) {
 	return string(contents), nil
 }
 
-func (db *PackageDatabase) newThread(name string) *starlark.Thread {
+func (db *PackageDatabase) onLoadFile(filename string, defs starlark.StringDict) error {
+	for k, v := range defs {
+		if callable, ok := v.(starlark.Callable); ok {
+			db.builders[fmt.Sprintf("%s:%s", filename, k)] = callable
+		}
+	}
+
+	return nil
+}
+
+func (db *PackageDatabase) NewThread(filename string) *starlark.Thread {
 	return &starlark.Thread{
-		Name: name,
+		Name: filename,
 		Load: func(thread *starlark.Thread, module string) (starlark.StringDict, error) {
 			globals := db.getGlobals(module)
 
@@ -199,11 +211,17 @@ func (db *PackageDatabase) newThread(name string) *starlark.Thread {
 				return nil, err
 			}
 
-			ret, err := starlark.ExecFileOptions(db.getFileOptions(), thread, module, contents, globals)
+			newThread := db.NewThread(module)
+
+			ret, err := starlark.ExecFileOptions(db.getFileOptions(), newThread, module, contents, globals)
 			if err != nil {
 				if sErr, ok := err.(*starlark.EvalError); ok {
 					slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
 				}
+				return nil, err
+			}
+
+			if err := db.onLoadFile(module, ret); err != nil {
 				return nil, err
 			}
 
@@ -264,7 +282,7 @@ func (db *PackageDatabase) AddContainerBuilder(builder *ContainerBuilder) error 
 }
 
 func (db *PackageDatabase) LoadFile(filename string) error {
-	thread := db.newThread(filename)
+	thread := db.NewThread(filename)
 
 	globals := db.getGlobals("__main__")
 
@@ -279,6 +297,10 @@ func (db *PackageDatabase) LoadFile(filename string) error {
 		return err
 	}
 
+	if err := db.onLoadFile(filename, defs); err != nil {
+		return err
+	}
+
 	for k, v := range defs {
 		db.defs[k] = v
 	}
@@ -287,7 +309,7 @@ func (db *PackageDatabase) LoadFile(filename string) error {
 }
 
 func (db *PackageDatabase) RunScript(filename string, files map[string]filesystem.File, outputFilename string) error {
-	thread := db.newThread(filename)
+	thread := db.NewThread(filename)
 
 	globals := db.getGlobals("__main__")
 
@@ -299,6 +321,10 @@ func (db *PackageDatabase) RunScript(filename string, files map[string]filesyste
 
 	decls, err := starlark.ExecFileOptions(db.getFileOptions(), thread, filename, contents, globals)
 	if err != nil {
+		return err
+	}
+
+	if err := db.onLoadFile(filename, decls); err != nil {
 		return err
 	}
 
@@ -550,7 +576,20 @@ func (db *PackageDatabase) NewName(name string, version string, tags []string) (
 	}, nil
 }
 
-func (db *PackageDatabase) GetBuilder(name string) (common.ContainerBuilder, error) {
+func (db *PackageDatabase) GetBuilder(filename string, builder string) (starlark.Callable, error) {
+	if filename == "" {
+		return nil, fmt.Errorf("no filename passed to GetBuilder")
+	}
+
+	callable, ok := db.builders[fmt.Sprintf("%s:%s", filename, builder)]
+	if !ok {
+		return nil, fmt.Errorf("callable %s:%s not found", filename, builder)
+	}
+
+	return callable, nil
+}
+
+func (db *PackageDatabase) GetContainerBuilder(name string) (common.ContainerBuilder, error) {
 	builder, ok := db.ContainerBuilders[name]
 	if !ok {
 		return nil, fmt.Errorf("builder %s not found", name)
@@ -696,7 +735,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			builder, err := db.GetBuilder(name)
+			builder, err := db.GetContainerBuilder(name)
 			if err != nil {
 				return starlark.None, err
 			}
@@ -784,5 +823,6 @@ func New(buildDir string) *PackageDatabase {
 		buildDir:          buildDir,
 		defs:              map[string]starlark.Value{},
 		defDb:             common.NewDefinitionDatabase(),
+		builders:          make(map[string]starlark.Callable),
 	}
 }

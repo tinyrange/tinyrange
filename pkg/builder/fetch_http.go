@@ -39,7 +39,7 @@ func (f *FetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext, result fi
 // NeedsBuild implements BuildDefinition.
 func (f *FetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
 	if f.params.ExpireTime != 0 {
-		return time.Now().After(cacheTime.Add(f.params.ExpireTime)), nil
+		return time.Now().After(cacheTime.Add(time.Duration(f.params.ExpireTime))), nil
 	}
 
 	// The HTTP cache is never invalidated unless the client asks it to be.
@@ -132,5 +132,5 @@ var (
 )
 
 func NewFetchHttpBuildDefinition(url string, expireTime time.Duration) *FetchHttpBuildDefinition {
-	return &FetchHttpBuildDefinition{params: FetchHttpParameters{Url: url, ExpireTime: expireTime}}
+	return &FetchHttpBuildDefinition{params: FetchHttpParameters{Url: url, ExpireTime: int64(expireTime)}}
 }

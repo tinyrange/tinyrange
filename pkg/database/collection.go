@@ -16,15 +16,16 @@ import (
 )
 
 type PackageCollection struct {
-	Name    []string
-	Parser  starlark.Callable
-	Install starlark.Callable
-	Sources []common.BuildDefinition
+	Filename string
+	Parser   string
+	Install  string
+	Sources  []common.BuildDefinition
 
 	RawPackages map[string]*common.Package
 	Packages    map[string][]*common.Package
 
 	pkgMtx sync.Mutex
+	db     *PackageDatabase
 }
 
 func (parser *PackageCollection) addPackage(pkg *common.Package) error {
@@ -103,10 +104,12 @@ func (parser *PackageCollection) AttrNames() []string {
 
 // Tag implements BuildSource.
 func (parser *PackageCollection) Tag() string {
-	return strings.Join(parser.Name, "_")
+	return strings.Join([]string{parser.Filename, parser.Parser, parser.Install}, "_")
 }
 
 func (parser *PackageCollection) Load(db *PackageDatabase) error {
+	parser.db = db
+
 	var records []starlark.Value
 
 	ctx := db.NewBuildContext(parser)
@@ -143,6 +146,11 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 	slog.Info("built all package sources", "took", time.Since(start))
 	start = time.Now()
 
+	parserCallback, err := db.GetBuilder(parser.Filename, parser.Parser)
+	if err != nil {
+		return fmt.Errorf("failed to GetBuilder in PackageCollection.Load: %s", err)
+	}
+
 	wg := sync.WaitGroup{}
 
 	// This doesn't scale partially well but 4 threads gives roughly a 2x speed improvement.
@@ -160,7 +168,9 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 
 			child := ctx.ChildContext(parser, nil, "")
 
-			_, err := child.Call(parser.Parser, parser, starlark.NewList(records))
+			thread := db.NewThread(parser.Filename)
+
+			_, err := starlark.Call(thread, parserCallback, starlark.Tuple{child, parser, starlark.NewList(records)}, []starlark.Tuple{})
 			if err != nil {
 				errors <- err
 			}
@@ -221,9 +231,16 @@ func (parser *PackageCollection) Query(query common.PackageQuery) ([]*common.Pac
 }
 
 func (parser *PackageCollection) InstallerFor(pkg *common.Package, tags common.TagList) (*common.Installer, error) {
-	thread := &starlark.Thread{Name: pkg.Name.String()}
+	if parser.db == nil {
+		return nil, fmt.Errorf("parser is not loaded")
+	}
 
-	ret, err := starlark.Call(thread, parser.Install, starlark.Tuple{pkg, tags}, []starlark.Tuple{})
+	getInstall, err := parser.db.GetBuilder(parser.Filename, parser.Install)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get builder in InstallerFor: %s", err)
+	}
+
+	ret, err := starlark.Call(parser.db.NewThread(parser.Filename), getInstall, starlark.Tuple{pkg, tags}, []starlark.Tuple{})
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
 			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
@@ -240,7 +257,7 @@ func (parser *PackageCollection) InstallerFor(pkg *common.Package, tags common.T
 	return install, nil
 }
 
-func (def *PackageCollection) String() string { return strings.Join(def.Name, "_") }
+func (def *PackageCollection) String() string { return def.Tag() }
 func (*PackageCollection) Type() string       { return "PackageCollection" }
 func (*PackageCollection) Hash() (uint32, error) {
 	return 0, fmt.Errorf("PackageCollection is not hashable")
@@ -255,13 +272,13 @@ var (
 )
 
 func NewPackageCollection(
-	name string,
-	parser starlark.Callable,
-	install starlark.Callable,
+	filename string,
+	parser string,
+	install string,
 	sources []common.BuildDefinition,
 ) (*PackageCollection, error) {
 	return &PackageCollection{
-		Name:        []string{name, parser.Name(), install.Name()},
+		Filename:    filename,
 		Parser:      parser,
 		Install:     install,
 		Sources:     sources,

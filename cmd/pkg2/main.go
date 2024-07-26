@@ -148,7 +148,7 @@ func pkg2Main() error {
 		}
 
 		if *builder != "" {
-			builder, err := db.GetBuilder(*builder)
+			builder, err := db.GetContainerBuilder(*builder)
 			if err != nil {
 				return err
 			}
@@ -168,7 +168,7 @@ func pkg2Main() error {
 
 				tags := strings.Split((*buildTags), ",")
 
-				plan, err := builder.Plan(queries, common.TagList(tags), common.PlanOptions{})
+				plan, err := builder.Plan(db, queries, common.TagList(tags), common.PlanOptions{})
 				if err != nil {
 					return err
 				}

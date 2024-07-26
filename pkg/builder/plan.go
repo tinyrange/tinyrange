@@ -104,14 +104,14 @@ func (def *PlanDefinition) WriteTo(w io.Writer) (n int64, err error) {
 
 // Build implements common.BuildDefinition.
 func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	builder, err := ctx.Database().GetBuilder(def.params.Builder)
+	builder, err := ctx.Database().GetContainerBuilder(def.params.Builder)
 	if err != nil {
 		return nil, err
 	}
 
-	plan, err := builder.Plan(def.params.Search, def.params.TagList, common.PlanOptions{})
+	plan, err := builder.Plan(ctx.Database(), def.params.Search, def.params.TagList, common.PlanOptions{})
 	if err != nil {
-		plan, _ = builder.Plan(def.params.Search, def.params.TagList, common.PlanOptions{
+		plan, _ = builder.Plan(ctx.Database(), def.params.Search, def.params.TagList, common.PlanOptions{
 			Debug: true,
 		})
 
