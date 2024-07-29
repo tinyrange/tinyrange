@@ -35,13 +35,13 @@ func (i fileListArray) String() string {
 
 func (i fileListArray) Set(value string) error {
 	if k, v, ok := strings.Cut(value, "="); ok {
-		i[k] = filesystem.NewLocalFile(v)
+		i[k] = filesystem.NewLocalFile(v, nil)
 
 		return nil
 	} else {
 		base := filepath.Base(value)
 
-		i[base] = filesystem.NewLocalFile(value)
+		i[base] = filesystem.NewLocalFile(value, nil)
 
 		return nil
 	}

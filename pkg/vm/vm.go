@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -297,7 +298,7 @@ func (factory *VirtualMachineFactory) load(filename string) error {
 			return starlark.None, err
 		}
 
-		hash := common.GetSha256Hash(contentsBytes)
+		hash := hash.GetSha256Hash(contentsBytes)
 
 		path := filepath.Join(factory.buildDir, hash+".bin")
 

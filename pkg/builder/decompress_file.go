@@ -8,6 +8,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/xi2/xz"
 	"go.starlark.net/starlark"
 )
@@ -19,11 +20,11 @@ type DecompressFileBuildDefinition struct {
 }
 
 // implements common.BuildDefinition.
-func (def *DecompressFileBuildDefinition) Params() common.SerializableValue { return def.params }
+func (def *DecompressFileBuildDefinition) Params() hash.SerializableValue { return def.params }
 func (def *DecompressFileBuildDefinition) SerializableType() string {
 	return "DecompressFileBuildDefinition"
 }
-func (def *DecompressFileBuildDefinition) Create(params common.SerializableValue) common.Definition {
+func (def *DecompressFileBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &DecompressFileBuildDefinition{params: *params.(*DecompressFileParameters)}
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
 
@@ -70,9 +71,9 @@ type StarBuildDefinition struct {
 }
 
 // implements common.BuildDefinition.
-func (def *StarBuildDefinition) Params() common.SerializableValue { return def.params }
-func (def *StarBuildDefinition) SerializableType() string         { return "StarBuildDefinition" }
-func (def *StarBuildDefinition) Create(params common.SerializableValue) common.Definition {
+func (def *StarBuildDefinition) Params() hash.SerializableValue { return def.params }
+func (def *StarBuildDefinition) SerializableType() string       { return "StarBuildDefinition" }
+func (def *StarBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &StarBuildDefinition{params: *params.(*StarParameters)}
 }
 

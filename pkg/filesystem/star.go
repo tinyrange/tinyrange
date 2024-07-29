@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"path"
 	"strings"
 
 	xj "github.com/basgys/goxml2json"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
@@ -18,6 +20,14 @@ var starlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builti
 type StarFile struct {
 	File
 	Name string
+}
+
+// AsSerializableValue implements hash.ValueCaster.
+func (f *StarFile) AsSerializableValue() (hash.SerializableValue, error) {
+	switch val := f.File.(type) {
+	default:
+		return nil, fmt.Errorf("StarFile.AsSerializableValue unimplemented: %T %+v", val, val)
+	}
 }
 
 // Attr implements starlark.HasAttrs.
@@ -180,15 +190,56 @@ func (*StarFile) Freeze()               {}
 var (
 	_ starlark.Value    = &StarFile{}
 	_ starlark.HasAttrs = &StarFile{}
+	_ hash.ValueCaster  = &StarFile{}
 )
 
 func NewStarFile(f File, name string) *StarFile {
 	return &StarFile{File: f, Name: name}
 }
 
+type archiveIterator struct {
+	ents []Entry
+	i    int
+}
+
+// Done implements starlark.Iterator.
+func (a *archiveIterator) Done() {
+	a.i = len(a.ents)
+}
+
+// Next implements starlark.Iterator.
+func (a *archiveIterator) Next(p *starlark.Value) bool {
+	if a.i == len(a.ents) {
+		return false
+	}
+
+	ent := a.ents[a.i]
+
+	*p = NewStarFile(ent, ent.Name())
+
+	a.i += 1
+
+	return true
+}
+
+var (
+	_ starlark.Iterator = &archiveIterator{}
+)
+
 type StarArchive struct {
 	Archive
 	Name string
+}
+
+// Iterate implements starlark.Iterable.
+func (f *StarArchive) Iterate() starlark.Iterator {
+	ents, err := f.Entries()
+	if err != nil {
+		slog.Error("could not get entries", "err", err)
+		return nil
+	}
+
+	return &archiveIterator{ents: ents}
 }
 
 // Get implements starlark.Mapping.
@@ -219,8 +270,9 @@ func (*StarArchive) Truth() starlark.Bool  { return starlark.True }
 func (*StarArchive) Freeze()               {}
 
 var (
-	_ starlark.Value   = &StarArchive{}
-	_ starlark.Mapping = &StarArchive{}
+	_ starlark.Value    = &StarArchive{}
+	_ starlark.Mapping  = &StarArchive{}
+	_ starlark.Iterable = &StarArchive{}
 )
 
 func NewStarArchive(ark Archive, name string) *StarArchive {

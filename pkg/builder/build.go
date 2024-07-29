@@ -57,7 +57,7 @@ func (b *BuildContext) FilenameFromDigest(digest *filesystem.FileDigest) (string
 // FileFromDigest implements common.BuildContext.
 func (b *BuildContext) FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error) {
 	if digest.Hash != "" {
-		return &filesystem.LocalFile{Filename: digest.Hash}, nil
+		return filesystem.NewLocalFile(digest.Hash, nil), nil
 	}
 
 	return nil, fmt.Errorf("could not convert digest to hash")
@@ -126,7 +126,10 @@ func (b *BuildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
 		return true, nil
 	}
 
-	hash := common.GetSha256Hash([]byte(def.Tag()))
+	hash, err := b.database.HashDefinition(def)
+	if err != nil {
+		return true, err
+	}
 
 	filename := filepath.Join(b.database.GetBuildDir(), hash+".bin")
 

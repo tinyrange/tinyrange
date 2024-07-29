@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"strings"
+
+	"github.com/tinyrange/tinyrange/pkg/hash"
 )
 
 type Archive interface {
@@ -25,6 +27,12 @@ func ReadArchiveFromFile(f File) (Archive, error) {
 	fh, err := f.Open()
 	if err != nil {
 		return nil, err
+	}
+
+	var source hash.SerializableValue
+
+	if src, err := SourceFromFile(f); err == nil {
+		source = src
 	}
 
 	var ret ArrayArchive
@@ -52,6 +60,7 @@ func ReadArchiveFromFile(f File) (Archive, error) {
 		}
 
 		hdr.underlyingFile = fh
+		hdr.underlyingSource = source
 
 		ret = append(ret, &hdr)
 

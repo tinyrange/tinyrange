@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
 
@@ -26,8 +27,8 @@ func (PackageQuery) Freeze()                  {}
 func (PackageQuery) SerializableType() string { return "PackageQuery" }
 
 var (
-	_ starlark.Value    = PackageQuery{}
-	_ SerializableValue = PackageQuery{}
+	_ starlark.Value         = PackageQuery{}
+	_ hash.SerializableValue = PackageQuery{}
 )
 
 func ParsePackageQuery(s string) (PackageQuery, error) {

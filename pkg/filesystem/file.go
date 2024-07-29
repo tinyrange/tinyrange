@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"time"
+
+	"github.com/tinyrange/tinyrange/pkg/hash"
 )
 
 func GetLinkName(ent File) (string, error) {
@@ -133,7 +135,8 @@ type Entry interface {
 const CACHE_ENTRY_SIZE = 1024
 
 type CacheEntry struct {
-	underlyingFile io.ReaderAt
+	underlyingFile   io.ReaderAt
+	underlyingSource hash.SerializableValue
 
 	COffset   int64    `json:"o"`
 	CTypeflag FileType `json:"t"`
@@ -192,30 +195,65 @@ var (
 )
 
 type LocalFile struct {
-	Filename string
+	filename string
+	source   hash.SerializableValue
 }
 
 // Digest implements File.
 func (l *LocalFile) Digest() *FileDigest {
-	return &FileDigest{Hash: l.Filename}
+	return &FileDigest{Hash: l.filename}
 }
 
 // Open implements File.
 func (l *LocalFile) Open() (FileHandle, error) {
-	return os.Open(l.Filename)
+	return os.Open(l.filename)
 }
 
 // Stat implements File.
 func (l *LocalFile) Stat() (FileInfo, error) {
-	return os.Stat(l.Filename)
+	return os.Stat(l.filename)
 }
 
 var (
 	_ File = &LocalFile{}
 )
 
-func NewLocalFile(filename string) File {
-	return &LocalFile{Filename: filename}
+func NewLocalFile(filename string, source hash.SerializableValue) File {
+	return &LocalFile{filename: filename, source: source}
+}
+
+type ChildSource struct {
+	Source hash.SerializableValue
+	Name   string
+}
+
+// SerializableType implements hash.SerializableValue.
+func (c *ChildSource) SerializableType() string {
+	return "ChildSource"
+}
+
+var (
+	_ hash.SerializableValue = &ChildSource{}
+)
+
+func SourceFromFile(f File) (hash.SerializableValue, error) {
+	switch f := f.(type) {
+	case *LocalFile:
+		return f.source, nil
+	case *StarFile:
+		return SourceFromFile(f.File)
+	case *CacheEntry:
+		if f.underlyingSource != nil {
+			return &ChildSource{
+				Source: f.underlyingSource,
+				Name:   f.CName,
+			}, nil
+		} else {
+			return nil, fmt.Errorf("CacheEntry has no source")
+		}
+	default:
+		return nil, fmt.Errorf("SourceFromFile not implemented: %T %+v", f, f)
+	}
 }
 
 type memoryFile struct {

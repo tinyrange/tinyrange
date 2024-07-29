@@ -25,7 +25,16 @@ func asDirective(val starlark.Value) (common.Directive, error) {
 	} else if directive, ok := val.(common.Directive); ok {
 		return directive, nil
 	} else if file, ok := val.(filesystem.File); ok {
-		return builder.NewFileDefinition(file), nil
+		def, err := builder.NewDefinitionFromFile(file)
+		if err != nil {
+			return nil, err
+		}
+
+		if dir, ok := def.(common.Directive); ok {
+			return dir, nil
+		} else {
+			return nil, fmt.Errorf("could not convert %T to Directive", def)
+		}
 	} else {
 		return nil, fmt.Errorf("could not convert %s to Directive", val.Type())
 	}
@@ -197,7 +206,10 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				if def, ok := val.(common.BuildDefinition); ok {
 					return builder.NewReadArchiveBuildDefinition(def, kind), nil
 				} else if file, ok := val.(filesystem.File); ok {
-					fileDef := builder.NewFileDefinition(file)
+					fileDef, err := builder.NewDefinitionFromFile(file)
+					if err != nil {
+						return starlark.None, err
+					}
 
 					return builder.NewReadArchiveBuildDefinition(fileDef, kind), nil
 				} else {

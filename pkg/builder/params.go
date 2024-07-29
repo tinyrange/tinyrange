@@ -3,6 +3,7 @@ package builder
 import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 )
 
 // Build Filesystem exports a series of directives into a filesystem format.
@@ -62,6 +63,12 @@ type FileParameters struct {
 	File filesystem.File
 }
 
+// Extract a single file from a archive.
+type ExtractFileParameters struct {
+	Base common.BuildDefinition
+	Name string
+}
+
 // Create a installation plan using a given builder.
 // The result is a serialized version of PlanDefinition which contains a list of fragments.
 type PlanParameters struct {
@@ -93,19 +100,21 @@ func (f FetchHttpParameters) SerializableType() string       { return "FetchHttp
 func (r RegistryRequestParameters) SerializableType() string { return "RegistryRequestParameters" }
 func (f FetchOciImageParameters) SerializableType() string   { return "FetchOciImageParameters" }
 func (f FileParameters) SerializableType() string            { return "FileParameters" }
+func (f ExtractFileParameters) SerializableType() string     { return "ExtractFileParameters" }
 func (p PlanParameters) SerializableType() string            { return "PlanParameters" }
 func (r ReadArchiveParameters) SerializableType() string     { return "ReadArchiveParameters" }
 func (s StarParameters) SerializableType() string            { return "StarParameters" }
 
 var (
-	_ common.SerializableValue = BuildVmParameters{}
-	_ common.SerializableValue = BuildFsParameters{}
-	_ common.SerializableValue = DecompressFileParameters{}
-	_ common.SerializableValue = FetchHttpParameters{}
-	_ common.SerializableValue = RegistryRequestParameters{}
-	_ common.SerializableValue = FetchOciImageParameters{}
-	_ common.SerializableValue = FileParameters{}
-	_ common.SerializableValue = PlanParameters{}
-	_ common.SerializableValue = ReadArchiveParameters{}
-	_ common.SerializableValue = StarParameters{}
+	_ hash.SerializableValue = BuildVmParameters{}
+	_ hash.SerializableValue = BuildFsParameters{}
+	_ hash.SerializableValue = DecompressFileParameters{}
+	_ hash.SerializableValue = FetchHttpParameters{}
+	_ hash.SerializableValue = RegistryRequestParameters{}
+	_ hash.SerializableValue = FetchOciImageParameters{}
+	_ hash.SerializableValue = FileParameters{}
+	_ hash.SerializableValue = ExtractFileParameters{}
+	_ hash.SerializableValue = PlanParameters{}
+	_ hash.SerializableValue = ReadArchiveParameters{}
+	_ hash.SerializableValue = StarParameters{}
 )

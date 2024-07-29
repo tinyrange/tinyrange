@@ -17,6 +17,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/stdlib"
 	"go.starlark.net/starlark"
@@ -151,9 +152,14 @@ type PackageDatabase struct {
 
 	builders map[string]starlark.Callable
 
-	defDb *common.DefinitionDatabase
+	defDb *hash.DefinitionDatabase
 
 	buildDir string
+}
+
+// HashDefinition implements common.PackageDatabase.
+func (db *PackageDatabase) HashDefinition(def common.BuildDefinition) (string, error) {
+	return db.defDb.HashDefinition(def)
 }
 
 // GetBuildDir implements common.PackageDatabase.
@@ -404,7 +410,11 @@ func (db *PackageDatabase) updateBuildStatus(def common.BuildDefinition, status 
 
 func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (filesystem.File, error) {
 	tag := def.Tag()
-	hash := common.GetSha256Hash([]byte(tag))
+
+	hash, err := db.HashDefinition(def)
+	if err != nil {
+		return nil, err
+	}
 
 	status := &common.BuildStatus{Tag: tag}
 
@@ -479,7 +489,7 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 					// Write the build status.
 					db.updateBuildStatus(def, status)
 
-					return &filesystem.LocalFile{Filename: filename}, nil
+					return filesystem.NewLocalFile(filename, def), nil
 				}
 
 				child.SetHasCached()
@@ -514,7 +524,7 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 			// Write the build status.
 			db.updateBuildStatus(def, status)
 
-			return &filesystem.LocalFile{Filename: filename}, nil
+			return filesystem.NewLocalFile(filename, def), nil
 		}
 
 		// If the build has already been written then don't write it again.
@@ -556,7 +566,7 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 		db.updateBuildStatus(def, status)
 
 		// Return the file.
-		return &filesystem.LocalFile{Filename: filename}, nil
+		return filesystem.NewLocalFile(filename, def), nil
 	}
 }
 
@@ -624,7 +634,7 @@ func (db *PackageDatabase) LoadBuiltinBuilders() error {
 	for _, builder := range []string{
 		"//fetchers/alpine.star",
 		"//fetchers/rpm.star",
-		// "//fetchers/debian.star",
+		"//fetchers/debian.star",
 		"//fetchers/arch.star",
 	} {
 		if err := db.LoadFile(builder); err != nil {
@@ -777,7 +787,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 						return nil, err
 					}
 
-					return filesystem.NewStarFile(filesystem.NewLocalFile(local), "tinyrange"), nil
+					return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange"), nil
 				} else {
 					return starlark.None, fmt.Errorf("invalid architecture for tinyrange: %s", arch)
 				}
@@ -787,7 +797,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 					return nil, err
 				}
 
-				return filesystem.NewStarFile(filesystem.NewLocalFile(local), "tinyrange_qemu.star"), nil
+				return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange_qemu.star"), nil
 			} else {
 				return starlark.None, fmt.Errorf("unknown builtin executable: %s", name)
 			}
@@ -822,7 +832,7 @@ func New(buildDir string) *PackageDatabase {
 		buildStatuses:     make(map[common.BuildDefinition]*common.BuildStatus),
 		buildDir:          buildDir,
 		defs:              map[string]starlark.Value{},
-		defDb:             common.NewDefinitionDatabase(),
+		defDb:             hash.NewDefinitionDatabase(),
 		builders:          make(map[string]starlark.Callable),
 	}
 }

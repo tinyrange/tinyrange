@@ -1,14 +1,26 @@
-package common
+package hash
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"reflect"
 )
 
+func GetSha256Hash(content []byte) string {
+	sum := sha256.Sum256(content)
+
+	return hex.EncodeToString(sum[:])
+}
+
 type SerializableValue interface {
 	SerializableType() string
+}
+
+type ValueCaster interface {
+	AsSerializableValue() (SerializableValue, error)
 }
 
 type Definition interface {
@@ -92,6 +104,15 @@ func (db *DefinitionDatabase) marshalSerializableValue(params SerializableValue)
 			return ret, nil
 		} else {
 			val := field.Interface()
+
+			if caster, ok := val.(ValueCaster); ok {
+				newVal, err := caster.AsSerializableValue()
+				if err != nil {
+					return nil, err
+				}
+
+				val = newVal
+			}
 
 			switch val := val.(type) {
 			case Definition:

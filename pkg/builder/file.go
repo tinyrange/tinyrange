@@ -3,12 +3,14 @@ package builder
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
 
@@ -32,11 +34,11 @@ type FileDefinition struct {
 }
 
 // implements common.BuildDefinition.
-func (def *FileDefinition) Params() common.SerializableValue { return def.params }
+func (def *FileDefinition) Params() hash.SerializableValue { return def.params }
 func (def *FileDefinition) SerializableType() string {
 	return "FileDefinition"
 }
-func (def *FileDefinition) Create(params common.SerializableValue) common.Definition {
+func (def *FileDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &FileDefinition{params: *params.(*FileParameters)}
 }
 
@@ -60,7 +62,7 @@ func (def *FileDefinition) AsFragments(ctx common.BuildContext) ([]config.Fragme
 	}
 
 	return []config.Fragment{
-		config.Fragment{LocalFile: &config.LocalFileFragment{
+		{LocalFile: &config.LocalFileFragment{
 			HostFilename:  filename,
 			GuestFilename: stat.Name(),
 			Executable:    stat.Mode().Perm()&0111 != 0,
@@ -117,6 +119,27 @@ var (
 	_ common.Directive       = &FileDefinition{}
 )
 
-func NewFileDefinition(f filesystem.File) *FileDefinition {
-	return &FileDefinition{params: FileParameters{File: f}}
+func definitionFromSource(source hash.SerializableValue) (common.BuildDefinition, error) {
+	if def, ok := source.(common.BuildDefinition); ok {
+		return def, nil
+	} else if child, ok := source.(*filesystem.ChildSource); ok {
+		base, err := definitionFromSource(child.Source)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewExtractFileDefinition(base, child.Name), nil
+	} else {
+		return nil, fmt.Errorf("NewDefinitionFromFile: unimplemented Source: %T %+v", source, source)
+	}
+}
+
+func NewDefinitionFromFile(f filesystem.File) (common.BuildDefinition, error) {
+	if source, err := filesystem.SourceFromFile(f); err == nil {
+		return definitionFromSource(source)
+	} else {
+		slog.Warn("failed to get source from file", "err", err)
+	}
+
+	return &FileDefinition{params: FileParameters{File: f}}, nil
 }

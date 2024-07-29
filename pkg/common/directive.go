@@ -5,11 +5,12 @@ import (
 	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
 
 type Directive interface {
-	SerializableValue
+	hash.SerializableValue
 	Tag() string
 	AsFragments(ctx BuildContext) ([]config.Fragment, error)
 }
@@ -81,7 +82,7 @@ func (d DirectiveAddFile) Tag() string {
 	if d.Definition != nil {
 		return fmt.Sprintf("AddFile_%s_%s_%+v", d.Filename, d.Definition.Tag(), d.Executable)
 	} else {
-		sum := GetSha256Hash(d.Contents)
+		sum := hash.GetSha256Hash(d.Contents)
 
 		return fmt.Sprintf("AddFile_%s_%s_%+v", d.Filename, sum, d.Executable)
 	}

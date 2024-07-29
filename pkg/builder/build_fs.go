@@ -10,6 +10,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/cpio"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
 
@@ -23,7 +24,7 @@ func (i *initRamFsBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 
 	for _, frag := range i.frags {
 		if frag.Archive != nil {
-			f := filesystem.NewLocalFile(frag.Archive.HostFilename)
+			f := filesystem.NewLocalFile(frag.Archive.HostFilename, nil)
 
 			ark, err := filesystem.ReadArchiveFromFile(f)
 			if err != nil {
@@ -67,9 +68,9 @@ type BuildFsDefinition struct {
 }
 
 // implements common.BuildDefinition.
-func (def *BuildFsDefinition) Params() common.SerializableValue { return def.params }
-func (def *BuildFsDefinition) SerializableType() string         { return "BuildFsDefinition" }
-func (def *BuildFsDefinition) Create(params common.SerializableValue) common.Definition {
+func (def *BuildFsDefinition) Params() hash.SerializableValue { return def.params }
+func (def *BuildFsDefinition) SerializableType() string       { return "BuildFsDefinition" }
+func (def *BuildFsDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &BuildFsDefinition{params: *params.(*BuildFsParameters)}
 }
 

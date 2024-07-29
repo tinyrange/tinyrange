@@ -13,11 +13,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/blakesmith/ar"
 	"github.com/cavaliergopher/cpio"
 	"github.com/klauspost/compress/zstd"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/xi2/xz"
 	"go.starlark.net/starlark"
 )
@@ -425,14 +427,76 @@ var (
 	_ common.BuildResult = &cpioToArchiveBuildResult{}
 )
 
+type arToArchiveBuildResult struct {
+	r *ar.Reader
+}
+
+// WriteTo implements common.BuildResult.
+func (c *arToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
+	for {
+		hdr, err := c.r.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return -1, err
+		}
+
+		var typeFlag = filesystem.TypeRegular
+
+		ent := &filesystem.CacheEntry{
+			COffset:   n + 1024,
+			CTypeflag: typeFlag,
+			CName:     hdr.Name,
+			CSize:     hdr.Size,
+			CMode:     hdr.Mode,
+			CUid:      hdr.Uid,
+			CGid:      hdr.Gid,
+			CModTime:  hdr.ModTime.UnixMicro(),
+		}
+
+		bytes, err := json.Marshal(&ent)
+		if err != nil {
+			return -1, err
+		}
+
+		if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
+			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
+		} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
+			tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
+			copy(tmp, bytes)
+			bytes = tmp
+		}
+
+		childN, err := w.Write(bytes)
+		if err != nil {
+			return -1, err
+		}
+
+		n += int64(childN)
+
+		childN64, err := io.CopyN(w, c.r, hdr.Size)
+		if err != nil {
+			return -1, err
+		}
+
+		n += childN64
+	}
+
+	return
+}
+
+var (
+	_ common.BuildResult = &arToArchiveBuildResult{}
+)
+
 type ReadArchiveBuildDefinition struct {
 	params ReadArchiveParameters
 }
 
 // implements common.BuildDefinition.
-func (def *ReadArchiveBuildDefinition) Params() common.SerializableValue { return def.params }
-func (def *ReadArchiveBuildDefinition) SerializableType() string         { return "ReadArchiveBuildDefinition" }
-func (def *ReadArchiveBuildDefinition) Create(params common.SerializableValue) common.Definition {
+func (def *ReadArchiveBuildDefinition) Params() hash.SerializableValue { return def.params }
+func (def *ReadArchiveBuildDefinition) SerializableType() string       { return "ReadArchiveBuildDefinition" }
+func (def *ReadArchiveBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &ReadArchiveBuildDefinition{params: *params.(*ReadArchiveParameters)}
 }
 
@@ -537,6 +601,8 @@ func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.Buil
 			return &tarToArchiveBuildResult{r: tar.NewReader(reader)}, nil
 		} else if strings.HasSuffix(kind, ".cpio") {
 			return &cpioToArchiveBuildResult{r: cpio.NewReader(reader)}, nil
+		} else if strings.HasSuffix(kind, ".ar") {
+			return &arToArchiveBuildResult{r: ar.NewReader(reader)}, nil
 		} else {
 			return nil, fmt.Errorf("ReadArchive with unknown kind: %s", r.params.Kind)
 		}

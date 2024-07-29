@@ -41,4 +41,5 @@ type PackageDatabase interface {
 	GetContainerBuilder(name string) (ContainerBuilder, error)
 	GetBuilder(filename string, builder string) (starlark.Callable, error)
 	NewThread(filename string) *starlark.Thread
+	HashDefinition(def BuildDefinition) (string, error)
 }

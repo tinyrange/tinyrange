@@ -1,8 +1,6 @@
 package common
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -37,12 +35,6 @@ func ToStringList(it starlark.Iterable) ([]string, error) {
 	}
 
 	return ret, nil
-}
-
-func GetSha256Hash(content []byte) string {
-	sum := sha256.Sum256(content)
-
-	return hex.EncodeToString(sum[:])
 }
 
 // From: https://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go

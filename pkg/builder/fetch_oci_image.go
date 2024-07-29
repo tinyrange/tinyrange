@@ -14,6 +14,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
 
@@ -114,11 +115,11 @@ type registryRequestDefinition struct {
 }
 
 // implements common.BuildDefinition.
-func (def *registryRequestDefinition) Params() common.SerializableValue { return def.params }
+func (def *registryRequestDefinition) Params() hash.SerializableValue { return def.params }
 func (def *registryRequestDefinition) SerializableType() string {
 	return "registryRequestDefinition"
 }
-func (def *registryRequestDefinition) Create(params common.SerializableValue) common.Definition {
+func (def *registryRequestDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &registryRequestDefinition{params: *params.(*RegistryRequestParameters)}
 }
 
@@ -186,11 +187,11 @@ type FetchOciImageDefinition struct {
 }
 
 // implements common.BuildDefinition.
-func (def *FetchOciImageDefinition) Params() common.SerializableValue { return def.params }
+func (def *FetchOciImageDefinition) Params() hash.SerializableValue { return def.params }
 func (def *FetchOciImageDefinition) SerializableType() string {
 	return "FetchOciImageDefinition"
 }
-func (def *FetchOciImageDefinition) Create(params common.SerializableValue) common.Definition {
+func (def *FetchOciImageDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &FetchOciImageDefinition{params: *params.(*FetchOciImageParameters)}
 }
 

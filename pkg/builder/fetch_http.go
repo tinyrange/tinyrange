@@ -11,6 +11,7 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
 
@@ -23,11 +24,9 @@ type FetchHttpBuildDefinition struct {
 }
 
 // implements common.BuildDefinition.
-func (def *FetchHttpBuildDefinition) Params() common.SerializableValue { return def.params }
-func (def *FetchHttpBuildDefinition) SerializableType() string {
-	return "DecompressFileBuildDefinition"
-}
-func (def *FetchHttpBuildDefinition) Create(params common.SerializableValue) common.Definition {
+func (def *FetchHttpBuildDefinition) Params() hash.SerializableValue { return def.params }
+func (def *FetchHttpBuildDefinition) SerializableType() string       { return "FetchHttpBuildDefinition" }
+func (def *FetchHttpBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &FetchHttpBuildDefinition{params: *params.(*FetchHttpParameters)}
 }
 

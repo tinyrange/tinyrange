@@ -16,6 +16,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
 
@@ -48,9 +49,9 @@ type BuildVmDefinition struct {
 }
 
 // implements common.BuildDefinition.
-func (def *BuildVmDefinition) Params() common.SerializableValue { return def.params }
-func (def *BuildVmDefinition) SerializableType() string         { return "BuildVmDefinition" }
-func (def *BuildVmDefinition) Create(params common.SerializableValue) common.Definition {
+func (def *BuildVmDefinition) Params() hash.SerializableValue { return def.params }
+func (def *BuildVmDefinition) SerializableType() string       { return "BuildVmDefinition" }
+func (def *BuildVmDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &BuildVmDefinition{params: *params.(*BuildVmParameters)}
 }
 

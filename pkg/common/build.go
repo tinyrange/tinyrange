@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
 
@@ -17,7 +18,7 @@ type BuildSource interface {
 }
 
 type BuildDefinition interface {
-	Definition
+	hash.Definition
 	BuildSource
 	NeedsBuild(ctx BuildContext, cacheTime time.Time) (bool, error)
 	Build(ctx BuildContext) (BuildResult, error)

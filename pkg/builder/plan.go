@@ -10,6 +10,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
 
@@ -20,9 +21,9 @@ type PlanDefinition struct {
 }
 
 // implements common.BuildDefinition.
-func (def *PlanDefinition) Params() common.SerializableValue { return def.params }
-func (def *PlanDefinition) SerializableType() string         { return "PlanDefinition" }
-func (def *PlanDefinition) Create(params common.SerializableValue) common.Definition {
+func (def *PlanDefinition) Params() hash.SerializableValue { return def.params }
+func (def *PlanDefinition) SerializableType() string       { return "PlanDefinition" }
+func (def *PlanDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &PlanDefinition{params: *params.(*PlanParameters)}
 }
 
@@ -65,7 +66,7 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 			for _, frag := range def.Fragments {
 				if frag.Archive != nil {
 					ark, err := filesystem.ReadArchiveFromFile(
-						filesystem.NewLocalFile(frag.Archive.HostFilename),
+						filesystem.NewLocalFile(frag.Archive.HostFilename, nil),
 					)
 					if err != nil {
 						return starlark.None, err
