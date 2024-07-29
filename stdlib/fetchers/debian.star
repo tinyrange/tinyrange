@@ -108,21 +108,15 @@ def convert_debian_package(ctx, name, source):
     data = None
     control = None
 
-    print([f for f in ar])
-
     for f in ar:
         if f.name.startswith("data."):
             data = filesystem(db.build(define.read_archive(f, f.name)))
         elif f.name.startswith("control."):
             control = filesystem(db.build(define.read_archive(f, f.name)))
 
-    print([f for f in control])
-
-    control = parse_debian_index("", control["control"].read())
-
     ret = filesystem()
 
-    ret[".pkg/control/{}".format(name)] = json.encode(control)
+    ret[".pkg/{}".format(name)] = control
 
     for top in data:
         ret[top.name] = top
@@ -205,9 +199,64 @@ def make_ubuntu_repos(only_latest = True):
 
     return ubuntu_repos
 
+def build_debian_install_layer(ctx, directives):
+    ret = filesystem()
+
+    ret["usr/local/.keep"] = file("hello")
+
+    preinst = []
+    postinst = []
+
+    for pkg in directives:
+        if type(pkg) == "common.DirectiveRunCommand":
+            continue
+
+        fs = filesystem(pkg.read_archive())
+
+        for ent in fs[".pkg"]:
+            if "preinst" in ent:
+                f = ent["preinst"]
+                preinst.append({
+                    "kind": "execute",
+                    "exec": f.name,
+                    "args": ["install"],
+                    "env": {
+                        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                        "DPKG_MAINTSCRIPT_PACKAGE": ent.base,
+                        "DPKG_MAINTSCRIPT_NAME": "preinst",
+                        "DPKG_ROOT": "",
+                        "DEBIAN_FRONTEND": "noninteractive",
+                    },
+                })
+
+            if "postinst" in ent:
+                f = ent["postinst"]
+                postinst.append({
+                    "kind": "execute",
+                    "exec": f.name,
+                    "args": ["configure"],
+                    "env": {
+                        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                        "DPKG_MAINTSCRIPT_PACKAGE": ent.base,
+                        "DPKG_MAINTSCRIPT_NAME": "postinst",
+                        "DEBIAN_FRONTEND": "noninteractive",
+                    },
+                })
+
+    ret[".pkg/scripts.json"] = json.encode(preinst + postinst)
+
+    return ctx.archive(ret)
+
 def build_debian_directives(builder, plan):
     if plan.tags.contains("level3"):
-        return plan.directives
+        return [
+            define.build(
+                build_debian_install_layer,
+                plan.directives,
+            ),
+        ] + plan.directives + [
+            directive.run_command("/init -run-scripts /.pkg/scripts.json"),
+        ]
     else:
         return [
             define.fetch_oci_image(image = "library/ubuntu", tag = builder.metadata["version"]),

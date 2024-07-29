@@ -381,6 +381,8 @@ func (f *StarDirectory) SetKey(k starlark.Value, v starlark.Value) error {
 func (f *StarDirectory) Attr(name string) (starlark.Value, error) {
 	if name == "name" {
 		return starlark.String(f.Name), nil
+	} else if name == "base" {
+		return starlark.String(path.Base(f.Name)), nil
 	} else {
 		return nil, nil
 	}
@@ -388,7 +390,7 @@ func (f *StarDirectory) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (f *StarDirectory) AttrNames() []string {
-	return []string{"name"}
+	return []string{"name", "base"}
 }
 
 func (f *StarDirectory) String() string      { return fmt.Sprintf("Directory{%s}", f.Name) }

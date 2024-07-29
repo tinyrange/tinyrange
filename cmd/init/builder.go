@@ -15,7 +15,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 )
 
-func execCommand(args []string) error {
+func execCommand(args []string, environment map[string]string) error {
 	if ok, _ := common.Exists(args[0]); !ok {
 		return fmt.Errorf("path %s does not exist", args[0])
 	}
@@ -25,6 +25,11 @@ func execCommand(args []string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
+	cmd.Env = cmd.Environ()
+
+	for k, v := range environment {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
 
 	return cmd.Run()
 }
@@ -36,11 +41,11 @@ func runCommand(script string) error {
 			return err
 		}
 
-		return execCommand(tokens)
+		return execCommand(tokens, nil)
 	} else if script == "interactive" {
-		return execCommand([]string{"/bin/login", "-f", "root"})
+		return execCommand([]string{"/bin/login", "-f", "root"}, nil)
 	} else {
-		return execCommand([]string{"/bin/sh", "-c", script})
+		return execCommand([]string{"/bin/sh", "-c", script}, nil)
 	}
 }
 
@@ -80,9 +85,11 @@ func runWithConfig(cfg config.BuilderConfig) error {
 }
 
 type BuilderScript struct {
-	Kind     string   `json:"kind"`
-	Triggers []string `json:"triggers"`
-	Exec     string   `json:"exec"`
+	Kind        string            `json:"kind"`
+	Triggers    []string          `json:"triggers"`
+	Exec        string            `json:"exec"`
+	Arguments   []string          `json:"args"`
+	Environment map[string]string `json:"env"`
 }
 
 func runScript(script BuilderScript) error {
@@ -95,7 +102,7 @@ func runScript(script BuilderScript) error {
 				continue
 			}
 
-			if err := execCommand([]string{script.Exec, trigger}); err != nil {
+			if err := execCommand([]string{script.Exec, trigger}, script.Environment); err != nil {
 				return err
 			}
 		}
@@ -106,7 +113,7 @@ func runScript(script BuilderScript) error {
 	case "execute":
 		start := time.Now()
 
-		if err := execCommand([]string{script.Exec}); err != nil {
+		if err := execCommand(append([]string{script.Exec}, script.Arguments...), script.Environment); err != nil {
 			return err
 		}
 

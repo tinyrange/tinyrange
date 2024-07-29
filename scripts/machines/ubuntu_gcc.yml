@@ -1,0 +1,21 @@
+directives:
+    - plan:
+        builder: ubuntu@jammy
+        packages:
+            - 'base-files:'
+            - 'debianutils:'
+            - 'base-passwd:'
+            - 'bash:'
+            - 'dash:'
+            - 'coreutils:'
+            - 'libc-bin:'
+            - 'sed:'
+            - 'grep:'
+            - 'findutils:'
+            - 'login:'
+            - 'ncurses-base:'
+            - 'nano:'
+            - 'build-essential:'
+        tags:
+            - level3
+    - run_command: interactive
