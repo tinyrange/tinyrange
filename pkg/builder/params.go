@@ -29,6 +29,17 @@ type BuildVmParameters struct {
 	Interaction string                 // How will the virtual machine be interacted with (ssh, serial)
 }
 
+// Build Emulator uses a internal shell script to run simple shell scripts with support from
+// Starlark to stub applications. The Directives and output file work the name way as
+// BuildVmParameters.
+type BuildEmulatorParameters struct {
+	Directives []common.Directive // A list of directives to build the root filesystem from.
+	OutputFile string             // The name inside of the guest of the file to copy as the build result.
+
+	ScriptFilename string // The filename of the script used to run this builder.
+	CreateName     string // The name of the create function.
+}
+
 // Decompress a build result.
 type DecompressFileParameters struct {
 	Base common.BuildDefinition // The build result to decompress.
@@ -95,6 +106,7 @@ type StarParameters struct {
 
 func (b BuildFsParameters) SerializableType() string         { return "BuildFsParameters" }
 func (b BuildVmParameters) SerializableType() string         { return "BuildVmParameters" }
+func (b BuildEmulatorParameters) SerializableType() string   { return "BuildEmulatorParameters" }
 func (d DecompressFileParameters) SerializableType() string  { return "DecompressFileParameters" }
 func (f FetchHttpParameters) SerializableType() string       { return "FetchHttpParameters" }
 func (r RegistryRequestParameters) SerializableType() string { return "RegistryRequestParameters" }
@@ -108,6 +120,7 @@ func (s StarParameters) SerializableType() string            { return "StarParam
 var (
 	_ hash.SerializableValue = BuildVmParameters{}
 	_ hash.SerializableValue = BuildFsParameters{}
+	_ hash.SerializableValue = BuildEmulatorParameters{}
 	_ hash.SerializableValue = DecompressFileParameters{}
 	_ hash.SerializableValue = FetchHttpParameters{}
 	_ hash.SerializableValue = RegistryRequestParameters{}

@@ -17,6 +17,30 @@ import (
 
 var starlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builtin).CallInternal
 
+func AsFile(f any) (File, error) {
+	switch f := f.(type) {
+	case *StarFile:
+		return f.File, nil
+	case File:
+		return f, nil
+	case starlark.Value:
+		str, ok := starlark.AsString(f)
+		if !ok {
+			return nil, fmt.Errorf("could not convert %s to File", f.Type())
+		}
+
+		ret := NewMemoryFile(TypeRegular)
+
+		if err := ret.Overwrite([]byte(str)); err != nil {
+			return nil, err
+		}
+
+		return ret, nil
+	default:
+		return nil, fmt.Errorf("could not convert %T to File", f)
+	}
+}
+
 type StarFile struct {
 	File
 	Name string
@@ -161,6 +185,8 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 		return starlark.String(f.Name), nil
 	} else if name == "base" {
 		return starlark.String(path.Base(f.Name)), nil
+	} else if name == "dir" {
+		return starlark.String(path.Dir(f.Name)), nil
 	}
 
 	if mut, ok := f.File.(MutableFile); ok {
@@ -172,7 +198,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (f *StarFile) AttrNames() []string {
-	ret := []string{"read", "read_archive", "name", "base"}
+	ret := []string{"read", "read_archive", "name", "base", "dir"}
 
 	if _, ok := f.File.(MutableFile); ok {
 		ret = append(ret, []string{}...)

@@ -18,7 +18,6 @@ require (
 	github.com/miekg/dns v1.1.61
 	github.com/schollz/progressbar/v3 v3.14.4
 	github.com/spf13/cobra v1.8.1
-	github.com/tetratelabs/wazero v1.7.3
 	github.com/tinyrange/vm v0.0.0-20240616031946-b46d8ccc03db
 	github.com/wader/readline v0.0.0-20230307172220-bcb7158e7448
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
@@ -30,7 +29,7 @@ require (
 	golang.org/x/term v0.21.0
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20240607232048-44edc9b3c5c2
-	mvdan.cc/sh/v3 v3.8.0
+	mvdan.cc/sh v2.6.4+incompatible
 )
 
 require (
@@ -39,6 +38,7 @@ require (
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josharian/native v1.1.0 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mdlayher/netlink v1.7.2 // indirect
@@ -46,6 +46,7 @@ require (
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/pierrec/lz4/v4 v4.1.14 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923 // indirect
 	golang.org/x/mod v0.18.0 // indirect

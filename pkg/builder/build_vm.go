@@ -244,7 +244,7 @@ func (def *BuildVmDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time
 		return true, nil
 	}
 
-	// TODO(joshua): Check if any of the child directives
+	// TODO(joshua): Check if any of the child directives need to be built.
 	return false, nil
 }
 

@@ -376,6 +376,49 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				return builder.NewBuildFsDefinition(directives, kind), nil
 			}),
+			"build_emulator": starlark.NewBuiltin("define.build_emulator", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var val starlark.Value
+
+				var (
+					directiveList  starlark.Iterable
+					outputFilename string
+					createCallback starlark.Callable
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"directives", &directiveList,
+					"output_filename", &outputFilename,
+					"create", &createCallback,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				var directives []common.Directive
+
+				directiveIter := directiveList.Iterate()
+				defer directiveIter.Done()
+
+				for directiveIter.Next(&val) {
+					dir, err := asDirective(val)
+					if err != nil {
+						return nil, err
+					}
+
+					directives = append(directives, dir)
+				}
+
+				return builder.NewBuildEmulatorDefinition(
+					directives,
+					outputFilename,
+					thread.Name,
+					createCallback.Name(),
+				), nil
+			}),
 			"plan": starlark.NewBuiltin("define.plan", func(
 				thread *starlark.Thread,
 				fn *starlark.Builtin,

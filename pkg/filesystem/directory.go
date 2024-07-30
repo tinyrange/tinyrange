@@ -31,6 +31,8 @@ func getMutable(dir Directory) MutableDirectory {
 }
 
 func OpenPath(dir Directory, p string) (DirectoryEntry, error) {
+	p = strings.TrimPrefix(p, "/")
+
 	tokens := strings.Split(path.Clean(p), "/")
 
 	var currentDir = dir
@@ -53,6 +55,8 @@ func OpenPath(dir Directory, p string) (DirectoryEntry, error) {
 }
 
 func Mkdir(dir Directory, p string) (MutableDirectory, error) {
+	p = strings.TrimPrefix(p, "/")
+
 	tokens := strings.Split(path.Clean(p), "/")
 
 	var currentDir = dir
@@ -91,6 +95,8 @@ func Mkdir(dir Directory, p string) (MutableDirectory, error) {
 }
 
 func CreateChild(dir Directory, p string, f File) error {
+	p = strings.TrimPrefix(p, "/")
+
 	tokens := strings.Split(path.Clean(p), "/")
 
 	var currentDir = dir
