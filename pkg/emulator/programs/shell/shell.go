@@ -11,7 +11,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/emulator/shared"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
-	"mvdan.cc/sh/syntax"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 type shellProgram struct {
@@ -34,6 +34,8 @@ func (sh *shellProgram) runProgram(args []string, env shared.Environment) error 
 	if builtin, ok := sh.builtIns[args[0]]; ok {
 		return builtin(args)
 	}
+
+	// slog.Info("runProgram", "args", args)
 
 	proc, err := sh.proc.Fork()
 	if err != nil {
@@ -144,6 +146,7 @@ func (sh *shellProgram) evalStmt(stmt *syntax.Stmt) error {
 	switch cmd := stmt.Cmd.(type) {
 	case *syntax.CallExpr:
 		env := make(shared.Environment)
+
 		for _, assign := range cmd.Assigns {
 			k, v, err := sh.evalAssign(assign)
 			if err != nil {
@@ -197,7 +200,7 @@ func (sh *shellProgram) evalStmt(stmt *syntax.Stmt) error {
 	case *syntax.DeclClause:
 		switch cmd.Variant.Value {
 		case "export":
-			for _, assign := range cmd.Assigns {
+			for _, assign := range cmd.Args {
 				k, v, err := sh.evalAssign(assign)
 				if err != nil {
 					return err
@@ -377,6 +380,17 @@ func (sh *shellProgram) sourceFile(filename string) error {
 	if err != nil {
 		return err
 	}
+
+	// if filename == "build.sh" {
+	// 	marshalled, err := json.Marshal(f)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+
+	// 	if err := os.WriteFile("local/parsed.json", marshalled, os.ModePerm); err != nil {
+	// 		return err
+	// 	}
+	// }
 
 	return sh.evalFile(f)
 }

@@ -191,6 +191,25 @@ func (p *process) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
+	} else if name == "env" {
+		return starlark.NewBuiltin("Process.env", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				key string
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"key", &key,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.String(p.Getenv(key)), nil
+		}), nil
 	} else {
 		return nil, nil
 	}
@@ -314,7 +333,7 @@ func (emu *Emulator) LookPath(cwd string, env shared.Environment, name string) (
 		}
 	}
 
-	return "", fmt.Errorf("could not find: %s", name)
+	return "", fmt.Errorf("could not find executable: %s", name)
 }
 
 // LookPath implements shared.Kernel.
