@@ -79,7 +79,14 @@ func (*vmBackend) Sync() error {
 	return nil
 }
 
-func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forwardSsh bool, exportFilesystem string) error {
+func runWithConfig(
+	buildDir string,
+	cfg config.TinyRangeConfig,
+	debug bool,
+	forwardSsh bool,
+	exportFilesystem string,
+	listenNbd string,
+) error {
 	if cfg.StorageSize == 0 || cfg.CPUCores == 0 || cfg.MemoryMB == 0 {
 		return fmt.Errorf("invalid config")
 	}
@@ -254,6 +261,43 @@ func runWithConfig(buildDir string, cfg config.TinyRangeConfig, debug bool, forw
 		}
 
 		return nil
+	}
+
+	if listenNbd != "" {
+		listener, err := net.Listen("tcp", listenNbd)
+		if err != nil {
+			return fmt.Errorf("failed to listen: %v", err)
+		}
+
+		slog.Info("nbd listening on", "addr", listener.Addr().String())
+
+		backend := &vmBackend{vm: vmem}
+
+		for {
+			conn, err := listener.Accept()
+			if errors.Is(err, net.ErrClosed) {
+				return nil
+			} else if err != nil {
+				return err
+			}
+
+			go func(conn net.Conn) {
+				slog.Debug("got nbd connection", "remote", conn.RemoteAddr().String())
+				err = gonbd.Handle(conn, []gonbd.Export{{
+					Name:        "",
+					Description: "",
+					Backend:     backend,
+				}}, &gonbd.Options{
+					ReadOnly:           false,
+					MinimumBlockSize:   1024,
+					PreferredBlockSize: uint32(backend.PreferredBlockSize()),
+					MaximumBlockSize:   32*1024*1024 - 1,
+				})
+				if err != nil {
+					slog.Warn("nbd server failed to handle", "error", err)
+				}
+			}(conn)
+		}
 	}
 
 	start = time.Now()
@@ -551,7 +595,7 @@ func runWithCommandLineConfig(buildDir string, rebuild bool, image string, execC
 		RootFsFragments:  fragments,
 		StorageSize:      storageSize,
 		Interaction:      "ssh",
-	}, *debug, false, "")
+	}, *debug, false, "", "")
 }
 
 var (
@@ -566,6 +610,7 @@ var (
 	execCommand      = flag.String("exec", "", "if set then run a command rather than creating a login shell")
 	printVersion     = flag.Bool("version", false, "print the version information")
 	exportFilesystem = flag.String("export-filesystem", "", "write the filesystem to the host filesystem")
+	listenNbd        = flag.String("listen-nbd", "", "Listen with an NBD server on the given address and port")
 )
 
 func tinyRangeMain() error {
@@ -604,7 +649,7 @@ func tinyRangeMain() error {
 			}
 		}
 
-		return runWithConfig(*buildDir, cfg, *debug, false, *exportFilesystem)
+		return runWithConfig(*buildDir, cfg, *debug, false, *exportFilesystem, *listenNbd)
 	} else {
 		return runWithCommandLineConfig(*buildDir, *rebuild, *image, *execCommand, *cpuCores, *memoryMb, *storageSize)
 	}
