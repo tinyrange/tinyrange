@@ -23,19 +23,3 @@ jobs:
       - name: Build
         run: |
           go run ./build.go -os linux -arch amd64
-          go run ./build.go -os windows -arch amd64
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tinyrange_installer_linux_amd64
-          path: build/tinyrange_installer_linux_amd64
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tinyrange_installer_windows_amd64
-          path: build/cross-windows-amd64/tinyrange_installer_windows_amd64.exe
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tinyrange_qemu.star
-          path: build/tinyrange_qemu.star

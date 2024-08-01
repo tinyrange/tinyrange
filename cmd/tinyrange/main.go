@@ -1,182 +1,65 @@
 package main
 
 import (
-	"encoding/json"
-	"flag"
 	"fmt"
-	"io/fs"
-	"log/slog"
 	"os"
-	"strings"
 
-	"github.com/tinyrange/tinyrange/pkg/builder"
+	"github.com/spf13/cobra"
 	"github.com/tinyrange/tinyrange/pkg/buildinfo"
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/database"
-	_ "github.com/tinyrange/tinyrange/pkg/platform"
-	"github.com/tinyrange/tinyrange/pkg/tinyrange"
-	"gopkg.in/yaml.v3"
 )
-
-func parseOciImageName(name string) *builder.FetchOciImageDefinition {
-	name, tag, ok := strings.Cut(name, ":")
-
-	if !ok {
-		tag = "latest"
-	}
-
-	return builder.NewFetchOCIImageDefinition(
-		builder.DEFAULT_REGISTRY,
-		name,
-		tag,
-		"amd64",
-	)
-}
-
-func runWithCommandLineConfig(buildDir string, rebuild bool, image string, execCommand string, cpuCores int, memoryMb int, storageSize int) error {
-	db := database.New(buildDir)
-
-	fragments := []config.Fragment{
-		{Builtin: &config.BuiltinFragment{Name: "init", GuestFilename: "/init"}},
-		{Builtin: &config.BuiltinFragment{Name: "init.star", GuestFilename: "/init.star"}},
-	}
-
-	{
-		def := parseOciImageName(image)
-
-		ctx := db.NewBuildContext(def)
-
-		res, err := db.Build(ctx, def, common.BuildOptions{
-			AlwaysRebuild: rebuild,
-		})
-		if err != nil {
-			return err
-		}
-
-		if err := builder.ParseJsonFromFile(res, &def); err != nil {
-			return err
-		}
-
-		for _, hash := range def.LayerArchives {
-			filename, err := ctx.FilenameFromDigest(hash)
-			if err != nil {
-				return err
-			}
-
-			fragments = append(fragments, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
-		}
-	}
-
-	if execCommand != "" {
-		initJson, err := json.Marshal(&struct {
-			SSHCommand []string `json:"ssh_command"`
-		}{
-			SSHCommand: []string{"/bin/sh", "-c", execCommand},
-		})
-		if err != nil {
-			return err
-		}
-
-		fragments = append(fragments, config.Fragment{FileContents: &config.FileContentsFragment{GuestFilename: "/init.json", Contents: initJson}})
-	}
-
-	kernelFilename := ""
-
-	{
-		def := builder.NewFetchHttpBuildDefinition(builder.OFFICIAL_KERNEL_URL, 0)
-
-		ctx := db.NewBuildContext(def)
-
-		res, err := db.Build(ctx, def, common.BuildOptions{
-			AlwaysRebuild: rebuild,
-		})
-		if err != nil {
-			return err
-		}
-
-		kernelFilename, err = ctx.FilenameFromDigest(res.Digest())
-		if err != nil {
-			return err
-		}
-	}
-
-	hypervisorScript, err := common.GetAdjacentExecutable("tinyrange_qemu.star")
-	if err != nil {
-		return err
-	}
-
-	return tinyrange.RunWithConfig(buildDir, config.TinyRangeConfig{
-		HypervisorScript: hypervisorScript,
-		KernelFilename:   kernelFilename,
-		CPUCores:         cpuCores,
-		MemoryMB:         memoryMb,
-		RootFsFragments:  fragments,
-		StorageSize:      storageSize,
-		Interaction:      "ssh",
-	}, *debug, false, "", "")
-}
 
 var (
-	cpuCores         = flag.Int("cpu-cores", 1, "set the number of cpu cores in the VM")
-	memoryMb         = flag.Int("memory", 1024, "set the number of megabytes of RAM in the VM")
-	storageSize      = flag.Int("storage-size", 512, "the size of the VM storage in megabytes")
-	image            = flag.String("image", "library/alpine:latest", "the OCI image to boot inside the virtual machine")
-	configFile       = flag.String("config", "", "passes a custom config. this overrides all other flags.")
-	debug            = flag.Bool("debug", false, "redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup")
-	buildDir         = flag.String("build-dir", common.GetDefaultBuildDir(), "the directory to build definitions to")
-	rebuild          = flag.Bool("rebuild", false, "always rebuild the kernel and image definitions")
-	execCommand      = flag.String("exec", "", "if set then run a command rather than creating a login shell")
-	printVersion     = flag.Bool("version", false, "print the version information")
-	exportFilesystem = flag.String("export-filesystem", "", "write the filesystem to the host filesystem")
-	listenNbd        = flag.String("listen-nbd", "", "Listen with an NBD server on the given address and port")
+	rootBuildDir   string
+	rootRebuild    bool
+	rootCpuProfile string
+	rootVerbose    bool
 )
 
-func tinyRangeMain() error {
-	flag.Parse()
+var rootCmd = &cobra.Command{
+	Use:   "tinyrange",
+	Short: "TinyRange: Next-generation Virtualization for Cyber and beyond",
+	Long: fmt.Sprintf(`TinyRange version %s
+Built at The University of Queensland
+Complete documentation is available at https://github.com/tinyrange/tinyrange`, buildinfo.VERSION),
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if rootVerbose || os.Getenv("TINYRANGE_VERBOSE") == "on" {
+			if err := common.EnableVerbose(); err != nil {
+				return err
+			}
+		}
 
-	if *printVersion {
-		fmt.Printf("TinyRange version: %s\nThe University of Queensland\n", buildinfo.VERSION)
 		return nil
+	},
+}
+
+func newDb() (*database.PackageDatabase, error) {
+	db := database.New(rootBuildDir)
+
+	if err := common.Ensure(rootBuildDir, os.ModePerm); err != nil {
+		return nil, err
 	}
 
-	if err := common.Ensure(*buildDir, fs.ModePerm); err != nil {
-		return fmt.Errorf("failed to create build dir: %w", err)
+	db.RebuildUserDefinitions = rootRebuild
+
+	if err := db.LoadBuiltinBuilders(); err != nil {
+		return nil, err
 	}
 
-	if *configFile != "" {
-		f, err := os.Open(*configFile)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
+	return db, nil
+}
 
-		var cfg config.TinyRangeConfig
-
-		if strings.HasSuffix(f.Name(), ".json") {
-
-			dec := json.NewDecoder(f)
-
-			if err := dec.Decode(&cfg); err != nil {
-				return err
-			}
-		} else if strings.HasSuffix(f.Name(), ".yml") {
-			dec := yaml.NewDecoder(f)
-
-			if err := dec.Decode(&cfg); err != nil {
-				return err
-			}
-		}
-
-		return tinyrange.RunWithConfig(*buildDir, cfg, *debug, false, *exportFilesystem, *listenNbd)
-	} else {
-		return runWithCommandLineConfig(*buildDir, *rebuild, *image, *execCommand, *cpuCores, *memoryMb, *storageSize)
-	}
+func init() {
+	rootCmd.PersistentFlags().StringVar(&rootBuildDir, "buildDir", common.GetDefaultBuildDir(), "specify the directory for built definitions and temporary files")
+	rootCmd.PersistentFlags().BoolVar(&rootRebuild, "rebuild", false, "should user package definitions be rebuilt even if we already have built them previously")
+	rootCmd.PersistentFlags().StringVar(&rootCpuProfile, "cpuprofile", "", "write cpu profile to file")
+	rootCmd.PersistentFlags().BoolVar(&rootVerbose, "verbose", false, "enable debugging output")
 }
 
 func main() {
-	if err := tinyRangeMain(); err != nil {
-		slog.Error("fatal", "err", err)
+	if err := rootCmd.Execute(); err != nil {
+		// fmt.Println(err)
 		os.Exit(1)
 	}
 }

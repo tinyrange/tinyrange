@@ -98,11 +98,10 @@ func NewArchive(w io.Writer, prefix string) *ZipArchive {
 }
 
 var (
-	buildOs       = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
-	buildArch     = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
-	buildDir      = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
-	buildVersion1 = flag.Bool("v1", false, "build version 1 tools (tinyrange, pkg2, installer)")
-	debug         = flag.Bool("debug", false, "Print executed commands.")
+	buildOs   = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
+	buildArch = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
+	buildDir  = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
+	debug     = flag.Bool("debug", false, "Print executed commands.")
 )
 
 func buildInitForTarget(buildArch string) error {
@@ -176,112 +175,6 @@ func buildTinyRangeForTarget(buildDir string, buildOs string, buildArch string) 
 	}
 
 	log.Printf("Build TinyRange for target: %s/%s", buildOs, buildArch)
-	err := cmd.Run()
-	if err != nil {
-		return "", err
-	}
-
-	return outputFilename, nil
-}
-
-func buildPkg2ForTarget(buildDir string, buildOs string, buildArch string) (string, error) {
-	outputFilename := getTarget(buildDir, buildOs, "pkg2")
-
-	args := []string{
-		"build",
-		"-o", outputFilename,
-	}
-
-	args = append(args, "github.com/tinyrange/tinyrange/cmd/pkg2")
-
-	cmd := exec.Command("go", args...)
-
-	cmd.Env = cmd.Environ()
-
-	cmd.Env = append(cmd.Env, "GOOS="+buildOs)
-	cmd.Env = append(cmd.Env, "GOARCH="+buildArch)
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-
-	if *debug {
-		log.Printf("executing %v", cmd.Args)
-	}
-
-	log.Printf("Build Pkg2 for target: %s/%s", buildOs, buildArch)
-	err := cmd.Run()
-	if err != nil {
-		return "", err
-	}
-
-	return outputFilename, nil
-}
-
-func buildTinyRange2ForTarget(buildDir string, buildOs string, buildArch string) (string, error) {
-	outputFilename := getTarget(buildDir, buildOs, "tinyrange2")
-
-	args := []string{
-		"build",
-		"-o", outputFilename,
-	}
-
-	args = append(args, "github.com/tinyrange/tinyrange/cmd/tinyrange2")
-
-	cmd := exec.Command("go", args...)
-
-	cmd.Env = cmd.Environ()
-
-	cmd.Env = append(cmd.Env, "GOOS="+buildOs)
-	cmd.Env = append(cmd.Env, "GOARCH="+buildArch)
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-
-	if *debug {
-		log.Printf("executing %v", cmd.Args)
-	}
-
-	log.Printf("Build TinyRange2 for target: %s/%s", buildOs, buildArch)
-	err := cmd.Run()
-	if err != nil {
-		return "", err
-	}
-
-	return outputFilename, nil
-}
-
-func buildInstallerForTarget(buildDir string, targetName string, buildOs string, buildArch string) (string, error) {
-	outputFilename := getTarget(buildDir, buildOs, fmt.Sprintf("tinyrange_installer_%s_%s", buildOs, buildArch))
-
-	args := []string{
-		"build",
-		"-o", outputFilename,
-	}
-
-	if targetName != "" {
-		args = append(args, fmt.Sprintf("github.com/tinyrange/tinyrange/build/%s", targetName))
-	} else {
-		args = append(args, "github.com/tinyrange/tinyrange/build")
-	}
-
-	cmd := exec.Command("go", args...)
-
-	cmd.Env = cmd.Environ()
-
-	cmd.Env = append(cmd.Env, "GOOS="+buildOs)
-	cmd.Env = append(cmd.Env, "GOARCH="+buildArch)
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-
-	if *debug {
-		log.Printf("executing %v", cmd.Args)
-	}
-
-	log.Printf("Build Installer for target: %s/%s", buildOs, buildArch)
 	err := cmd.Run()
 	if err != nil {
 		return "", err
@@ -381,44 +274,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	target, targetName, err := getTargetDir(*buildDir, *buildOs, *buildArch)
+	target, _, err := getTargetDir(*buildDir, *buildOs, *buildArch)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if *buildVersion1 {
-		if targetName != "" {
-			if *buildOs == "windows" {
-				if err := copyFile(
-					filepath.Join(*buildDir, "installer_windows.go"),
-					filepath.Join(target, "installer.go"),
-				); err != nil {
-					log.Fatal(err)
-				}
-			} else {
-				if err := copyFile(
-					filepath.Join(*buildDir, "installer.go"),
-					filepath.Join(target, "installer.go"),
-				); err != nil {
-					log.Fatal(err)
-				}
-			}
-		}
-
-		if _, err := buildPkg2ForTarget(target, *buildOs, *buildArch); err != nil {
-			log.Fatal(err)
-		}
-
-		if _, err := buildTinyRangeForTarget(target, *buildOs, *buildArch); err != nil {
-			log.Fatal(err)
-		}
-
-		if _, err := buildInstallerForTarget(target, targetName, *buildOs, *buildArch); err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		if _, err := buildTinyRange2ForTarget(target, *buildOs, *buildArch); err != nil {
-			log.Fatal(err)
-		}
+	if _, err := buildTinyRangeForTarget(target, *buildOs, *buildArch); err != nil {
+		log.Fatal(err)
 	}
 }
