@@ -13,10 +13,26 @@ import (
 	"go.starlark.net/starlark"
 )
 
-const TINYRANGE_NAME = "tinyrange"
-
 var StarlarkJsonEncode = starlarkjson.Module.Members["encode"].(*starlark.Builtin).CallInternal
 var StarlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builtin).CallInternal
+
+var verboseEnabled = false
+
+func EnableVerbose() error {
+	verboseEnabled = true
+
+	slog.SetLogLoggerLevel(slog.LevelDebug)
+
+	if err := os.Setenv("TINYRANGE_VERBOSE", "on"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func IsVerbose() bool {
+	return verboseEnabled
+}
 
 func ToStringList(it starlark.Iterable) ([]string, error) {
 	iter := it.Iterate()
@@ -95,12 +111,6 @@ func GetAdjacentExecutable(name string) (string, error) {
 	}
 
 	return exec.LookPath(name)
-}
-
-func GetTinyRangeExecutable() (string, error) {
-	// TODO(joshua): Don't assume that the TinyRange executable is always called tinyrange.
-	// Maybe allow setting it with a environment variable?
-	return GetAdjacentExecutable(TINYRANGE_NAME)
 }
 
 func GetDefaultBuildDir() string {

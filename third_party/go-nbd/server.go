@@ -358,7 +358,7 @@ n:
 			}
 
 			if len(b) <= int(requestHeader.Length) {
-				slog.Info("(read) invalid block size", "b", len(b), "requestHeader.Length", int(requestHeader.Length))
+				slog.Error("(read) invalid block size", "b", len(b), "requestHeader.Length", int(requestHeader.Length))
 				return ErrInvalidBlocksize
 			}
 
@@ -389,7 +389,7 @@ n:
 			}
 
 			if len(b) <= int(requestHeader.Length) {
-				slog.Info("(write) invalid block size", "b", len(b), "requestHeader.Length", int(requestHeader.Length))
+				slog.Error("(write) invalid block size", "b", len(b), "requestHeader.Length", int(requestHeader.Length))
 				return ErrInvalidBlocksize
 			}
 

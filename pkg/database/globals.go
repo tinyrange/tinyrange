@@ -145,24 +145,44 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
 				var (
-					name         string
-					displayName  string
-					planCallback starlark.Callable
-					packages     *PackageCollection
-					metadata     starlark.Value
+					name                string
+					displayName         string
+					planCallback        starlark.Callable
+					packages            *PackageCollection
+					defaultPackagesList starlark.Iterable
+					metadata            starlark.Value
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"name", &name,
 					"plan_callback", &planCallback,
 					"packages", &packages,
+					"default_packages?", &defaultPackagesList,
 					"display_name?", &displayName,
 					"metadata?", &metadata,
 				); err != nil {
 					return starlark.None, err
 				}
 
-				return NewContainerBuilder(name, displayName, thread.Name, planCallback.Name(), packages, metadata)
+				var defaultPackages []common.PackageQuery
+
+				if defaultPackagesList != nil {
+					directiveIter := defaultPackagesList.Iterate()
+					defer directiveIter.Done()
+
+					var val starlark.Value
+
+					for directiveIter.Next(&val) {
+						dir, ok := val.(common.PackageQuery)
+						if !ok {
+							return starlark.None, fmt.Errorf("expected PackageQuery got %s", val.Type())
+						}
+
+						defaultPackages = append(defaultPackages, dir)
+					}
+				}
+
+				return NewContainerBuilder(name, displayName, thread.Name, planCallback.Name(), defaultPackages, packages, metadata)
 			}),
 			"fetch_http": starlark.NewBuiltin("define.fetch_http", func(
 				thread *starlark.Thread,
@@ -338,6 +358,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					memoryMb,
 					storageSize,
 					interaction,
+					false,
 				), nil
 			}),
 			"build_fs": starlark.NewBuiltin("define.build_fs", func(

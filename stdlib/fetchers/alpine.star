@@ -313,6 +313,12 @@ def make_alpine_builders(repos):
             # The plan callback just returns the list of directives after the plan is created.
             plan_callback = build_alpine_directives,
 
+            # Set default packages.
+            default_packages = [
+                query("busybox-binsh"),
+                query("alpine-baselayout"),
+            ],
+
             # This builder is scoped to just the packages in this repo.
             packages = repos[version],
 

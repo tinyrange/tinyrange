@@ -19,6 +19,7 @@ var (
 	loginExec        string
 	loginLoadConfig  string
 	loginSaveConfig  string
+	loginDebug       bool
 )
 
 var loginCmd = &cobra.Command{
@@ -85,7 +86,7 @@ var loginCmd = &cobra.Command{
 				return fmt.Errorf("please specify a builder")
 			}
 
-			planDirective := builder.NewPlanDefinition(loginBuilder, pkgs, common.TagList{"level3"})
+			planDirective := builder.NewPlanDefinition(loginBuilder, pkgs, common.TagList{"level3", "defaults"})
 
 			dir = append(dir, planDirective)
 
@@ -100,7 +101,7 @@ var loginCmd = &cobra.Command{
 				nil, nil,
 				"",
 				loginCpuCores, loginMemorySize, loginStorageSize,
-				"ssh",
+				"ssh", loginDebug,
 			)
 
 			if loginSaveConfig != "" {
@@ -130,10 +131,11 @@ var loginCmd = &cobra.Command{
 }
 
 func init() {
-	loginCmd.PersistentFlags().StringVarP(&loginBuilder, "builder", "b", "", "the container builder used to construct the virtual machine")
+	loginCmd.PersistentFlags().StringVarP(&loginBuilder, "builder", "b", "alpine@3.20", "the container builder used to construct the virtual machine")
 	loginCmd.PersistentFlags().IntVar(&loginCpuCores, "cpu", 1, "the number of CPU cores to allocate to the virtual machine")
 	loginCmd.PersistentFlags().IntVar(&loginMemorySize, "ram", 1024, "the amount of ram in the virtual machine in megabytes")
 	loginCmd.PersistentFlags().IntVar(&loginStorageSize, "storage", 1024, "the amount of storage to allocate in the virtual machine in megabytes")
+	loginCmd.PersistentFlags().BoolVar(&loginDebug, "debug", false, "redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup")
 	loginCmd.PersistentFlags().StringVarP(&loginExec, "exec", "E", "", "run a different command rather than dropping into a shell")
 	loginCmd.PersistentFlags().StringVar(&loginSaveConfig, "save-definition", "", "serialize the definition to the specified filename")
 	loginCmd.PersistentFlags().StringVarP(&loginLoadConfig, "load-definition", "c", "", "run a virtual machine from a serialized definition")

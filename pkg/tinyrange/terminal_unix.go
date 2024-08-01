@@ -3,7 +3,7 @@
 
 // From: https://github.com/superfly/flyctl/blob/master/ssh/terminal_unix.go (Apache-2.0)
 
-package main
+package tinyrange
 
 import (
 	"log/slog"

@@ -62,6 +62,8 @@ type TinyRangeConfig struct {
 	MemoryMB int `json:"memory_mb" yaml:"memory_mb"`
 	// Config parameters to pass to the hypervisor.
 	HypervisorConfig map[string]string `json:"hypervisor_config" yaml:"hypervisor_config"`
+	// Redirect hypervisor input to the host. The VM will exit after it completes initialization.
+	Debug bool
 }
 
 func (cfg TinyRangeConfig) Resolve(filename string) string {

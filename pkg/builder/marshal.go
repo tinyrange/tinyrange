@@ -64,7 +64,7 @@ func UnmarshalDefinition(r io.Reader) (common.BuildDefinition, error) {
 		}
 	}
 
-	ret := NewBuildVmDefinition(directives, nil, nil, "", 0, 0, 0, "ssh")
+	ret := NewBuildVmDefinition(directives, nil, nil, "", 0, 0, 0, "ssh", false)
 
 	return ret, nil
 }

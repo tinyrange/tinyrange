@@ -494,12 +494,12 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 
 				child.SetHasCached()
 
-				slog.Info("rebuild requested", "Tag", def.Tag())
+				slog.Debug("rebuild requested", "Tag", def.Tag())
 			} else {
-				slog.Info("building", "Tag", def.Tag())
+				slog.Debug("building", "Tag", def.Tag())
 			}
 		} else {
-			slog.Info("building", "Tag", def.Tag())
+			slog.Debug("building", "Tag", def.Tag())
 		}
 
 		defValue, err := db.defDb.MarshalDefinition(def)
@@ -610,7 +610,7 @@ func (db *PackageDatabase) GetContainerBuilder(name string) (common.ContainerBui
 		if err := builder.Load(db); err != nil {
 			return nil, err
 		}
-		slog.Info("loaded", "builder", builder.DisplayName, "took", time.Since(start))
+		slog.Debug("loaded", "builder", builder.DisplayName, "took", time.Since(start))
 	}
 
 	return builder, nil
@@ -779,15 +779,15 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 				} else {
 					return starlark.None, fmt.Errorf("invalid architecture for init: %s", arch)
 				}
-			} else if name == "tinyrange" {
+			} else if name == "tinyrange2" {
 				// Assume that the user wants a Linux executable.
 				if common.CPUArchitecture(arch).IsNative() && runtime.GOOS == "linux" {
-					local, err := common.GetTinyRangeExecutable()
+					local, err := os.Executable()
 					if err != nil {
 						return nil, err
 					}
 
-					return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange"), nil
+					return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange2"), nil
 				} else {
 					return starlark.None, fmt.Errorf("invalid architecture for tinyrange: %s", arch)
 				}

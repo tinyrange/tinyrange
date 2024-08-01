@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log/slog"
 	"path"
 	"strings"
 	"time"
@@ -536,7 +535,6 @@ func (r *ReadArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTi
 		return true, err
 	}
 	if build {
-		slog.Info("rebuild", "base", r.params.Base)
 		return true, nil
 	} else {
 		return false, nil // archives don't need to be re-extracted unless the underlying file changes.

@@ -143,7 +143,7 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 		}
 	}
 
-	slog.Info("built all package sources", "took", time.Since(start))
+	slog.Debug("built all package sources", "took", time.Since(start))
 	start = time.Now()
 
 	parserCallback, err := db.GetBuilder(parser.Filename, parser.Parser)
@@ -186,7 +186,7 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 	case err := <-errors:
 		return err
 	case <-done:
-		slog.Info("loaded all packages", "count", len(records), "took", time.Since(start))
+		slog.Debug("loaded all packages", "count", len(records), "took", time.Since(start))
 
 		return nil
 	}

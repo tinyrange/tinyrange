@@ -45,6 +45,16 @@ func (lst TagList) AttrNames() []string {
 	return []string{"contains"}
 }
 
+func (lst TagList) Contains(search string) bool {
+	for _, name := range lst {
+		if search == name {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (lst TagList) Matches(other TagList) bool {
 	otherMap := make(map[string]bool)
 	for _, k := range other {

@@ -12,10 +12,13 @@ def main():
     # print(fetch_http("http://1.1.1.1"))
 
     # Set the hostname.
-    set_hostname("login")
+    set_hostname("tinyrange")
 
     # Mount /proc filesystem.
     mount("proc", "proc", "/proc", ensure_path = True)
+
+    if "tinyrange.verbose=on" in file_read("/proc/cmdline"):
+        set_verbose()
 
     # Mount other filesystems.
     mount("devtmpfs", "devtmpfs", "/dev", ensure_path = True, ignore_error = True)
@@ -32,6 +35,10 @@ def main():
     # Write /etc/resolv.conf
     path_ensure("/etc")
     file_write("/etc/resolv.conf", "nameserver 10.42.0.1\n")
+
+    # Write a custom MOTD since the default one might link to distribution
+    # documentation which may not work inside TinyRange.
+    file_write("/etc/motd", "")
 
     if True:
         run_ssh_server(ssh_connect)

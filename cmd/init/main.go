@@ -222,7 +222,7 @@ func (s *sshServer) handleRequests(conn ssh.Conn, connection ssh.Channel, reques
 	for req := range requests {
 		switch req.Type {
 		case "pty-req":
-			slog.Info("pty-req", "payload", hex.EncodeToString(req.Payload))
+			slog.Debug("pty-req", "payload", hex.EncodeToString(req.Payload))
 			termLen := req.Payload[3]
 
 			// Make sure we correctly forward the terminal from the host.
@@ -543,7 +543,7 @@ func initMain() error {
 			return nil, fmt.Errorf("failed to configure interface: %v", err)
 		}
 
-		slog.Info("configured networking statically", "routers", router)
+		slog.Debug("configured networking statically", "routers", router)
 
 		return starlark.String(router), nil
 	})
@@ -886,6 +886,19 @@ func initMain() error {
 		return starlark.None, nil
 	})
 
+	globals["set_verbose"] = starlark.NewBuiltin("set_verbose", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		if err := common.EnableVerbose(); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
 	globals["json"] = starlarkjson.Module
 
 	var uname unix.Utsname
@@ -938,6 +951,13 @@ func initMain() error {
 }
 
 func main() {
+	if os.Getenv("TINYRANGE_VERBOSE") == "on" {
+		if err := common.EnableVerbose(); err != nil {
+			slog.Error("failed to enable verbose logging", "err", err)
+			os.Exit(1)
+		}
+	}
+
 	if err := initMain(); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)

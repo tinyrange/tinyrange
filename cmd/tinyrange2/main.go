@@ -14,6 +14,7 @@ var (
 	rootBuildDir   string
 	rootRebuild    bool
 	rootCpuProfile string
+	rootVerbose    bool
 )
 
 var rootCmd = &cobra.Command{
@@ -22,6 +23,15 @@ var rootCmd = &cobra.Command{
 	Long: fmt.Sprintf(`TinyRange version %s
 Built at The University of Queensland
 Complete documentation is available at https://github.com/tinyrange/tinyrange`, buildinfo.VERSION),
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if rootVerbose || os.Getenv("TINYRANGE_VERBOSE") == "on" {
+			if err := common.EnableVerbose(); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	},
 }
 
 func newDb() (*database.PackageDatabase, error) {
@@ -44,6 +54,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&rootBuildDir, "buildDir", common.GetDefaultBuildDir(), "specify the directory for built definitions and temporary files")
 	rootCmd.PersistentFlags().BoolVar(&rootRebuild, "rebuild", false, "should user package definitions be rebuilt even if we already have built them previously")
 	rootCmd.PersistentFlags().StringVar(&rootCpuProfile, "cpuprofile", "", "write cpu profile to file")
+	rootCmd.PersistentFlags().BoolVar(&rootVerbose, "verbose", false, "enable debugging output")
 }
 
 func main() {

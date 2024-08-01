@@ -23,13 +23,13 @@ import (
 var OFFICIAL_KERNEL_URL = "https://github.com/tinyrange/linux_build/releases/download/linux_x86_6.6.7/vmlinux_x86_64"
 
 func runTinyRange(exe string, configFilename string) (*exec.Cmd, error) {
-	cmd := exec.Command(exe, "-config", configFilename)
+	cmd := exec.Command(exe, "run", configFilename)
 
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	slog.Info("executing tinyrange", "args", cmd.Args)
+	slog.Debug("executing tinyrange", "args", cmd.Args)
 
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -124,6 +124,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	vmCfg.MemoryMB = def.params.MemoryMB
 	vmCfg.StorageSize = def.params.StorageSize
 	vmCfg.Interaction = def.params.Interaction
+	vmCfg.Debug = def.params.Debug
 
 	if def.params.InitRamFs != nil {
 		// bypass the default init logic.
@@ -223,7 +224,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		return nil, err
 	}
 
-	exe, err := common.GetTinyRangeExecutable()
+	exe, err := os.Executable()
 	if err != nil {
 		return nil, err
 	}
@@ -289,6 +290,7 @@ func NewBuildVmDefinition(
 	memoryMb int,
 	storageSize int,
 	interaction string,
+	debug bool,
 ) *BuildVmDefinition {
 	if storageSize == 0 {
 		storageSize = 1024
@@ -309,6 +311,7 @@ func NewBuildVmDefinition(
 			MemoryMB:    memoryMb,
 			StorageSize: storageSize,
 			Interaction: interaction,
+			Debug:       debug,
 		},
 	}
 }

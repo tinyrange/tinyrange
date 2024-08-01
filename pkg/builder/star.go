@@ -115,7 +115,7 @@ func (def *StarBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime ti
 			}
 
 			if needsBuild {
-				slog.Info("forcing rebuild", "def", argDef)
+				slog.Debug("forcing rebuild", "def", argDef)
 				return true, nil
 			}
 		}

@@ -96,7 +96,7 @@ func (def *BuildEmulatorDefinition) Build(ctx common.BuildContext) (common.Build
 
 	// Run each command in the emulator.
 	for _, command := range commands {
-		slog.Info("emulator", "run", command)
+		slog.Debug("emulator", "run", command)
 		if err := emu.RunShell(command); err != nil {
 			return nil, err
 		}

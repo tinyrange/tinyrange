@@ -14,6 +14,7 @@ type ContainerBuilder struct {
 	DisplayName      string
 	Filename         string
 	PlanCallbackName string
+	DefaultPackages  []common.PackageQuery
 	Packages         *PackageCollection
 	Metadata         starlark.Value
 	db               *PackageDatabase
@@ -135,6 +136,14 @@ func (builder *ContainerBuilder) Load(db *PackageDatabase) error {
 func (builder *ContainerBuilder) Plan(db common.PackageDatabase, packages []common.PackageQuery, tags common.TagList, opts common.PlanOptions) (common.InstallationPlan, error) {
 	plan := NewInstallationPlan(tags, opts)
 
+	if tags.Contains("defaults") {
+		for _, pkg := range builder.DefaultPackages {
+			if err := plan.Add(builder, pkg); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	// Add all the requested packages.
 	for _, pkg := range packages {
 		if err := plan.Add(builder, pkg); err != nil {
@@ -224,6 +233,7 @@ func NewContainerBuilder(
 	displayName string,
 	filename string,
 	planCallbackName string,
+	defaultPackages []common.PackageQuery,
 	packages *PackageCollection,
 	metadata starlark.Value,
 ) (*ContainerBuilder, error) {
@@ -232,6 +242,7 @@ func NewContainerBuilder(
 		DisplayName:      displayName,
 		Filename:         filename,
 		PlanCallbackName: planCallbackName,
+		DefaultPackages:  defaultPackages,
 		Packages:         packages,
 		Metadata:         metadata,
 	}, nil

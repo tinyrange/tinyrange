@@ -1250,6 +1250,10 @@ def main(ctx):
     # Trust the random number generator on the host CPU.
     kernel_cmdline.append("random.trust_cpu=on")
 
+    # Pass the verbose flag though to the virtual machine.
+    if ctx.verbose:
+        kernel_cmdline.append("tinyrange.verbose=on")
+
     # Add a random number generator using virtio-rng
     args += [
         "-device",

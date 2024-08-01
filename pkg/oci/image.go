@@ -90,7 +90,7 @@ type OciImageDownloader struct {
 }
 
 func (dl *OciImageDownloader) makeRegistryRequest(method string, url string, acceptHeaders []string) (*http.Response, error) {
-	slog.Info("making registry request", "method", method, "url", url, "accept", acceptHeaders)
+	slog.Debug("making registry request", "method", method, "url", url, "accept", acceptHeaders)
 
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
@@ -124,7 +124,7 @@ func (dl *OciImageDownloader) makeRegistryRequest(method string, url string, acc
 			authenticate["service"],
 			authenticate["scope"])
 
-		slog.Info("registry auth", "url", tokenUrl)
+		slog.Debug("registry auth", "url", tokenUrl)
 
 		resp, err := http.Get(tokenUrl)
 		if err != nil {

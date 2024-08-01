@@ -69,7 +69,7 @@ func uploadFile(address string, filename string) error {
 
 func runWithConfig(cfg config.BuilderConfig) error {
 	for _, cmd := range cfg.Commands {
-		slog.Info("running", "cmd", cmd)
+		slog.Debug("running", "cmd", cmd)
 		if err := runCommand(cmd); err != nil {
 			return err
 		}
@@ -107,7 +107,7 @@ func runScript(script BuilderScript) error {
 			}
 		}
 
-		slog.Info("trigger_on", "exec", script.Exec, "took", time.Since(start))
+		slog.Debug("trigger_on", "exec", script.Exec, "took", time.Since(start))
 
 		return nil
 	case "execute":
@@ -117,7 +117,7 @@ func runScript(script BuilderScript) error {
 			return err
 		}
 
-		slog.Info("ran script", "exec", script.Exec, "took", time.Since(start))
+		slog.Debug("ran script", "exec", script.Exec, "took", time.Since(start))
 
 		return nil
 	default:

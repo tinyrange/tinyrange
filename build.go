@@ -98,10 +98,11 @@ func NewArchive(w io.Writer, prefix string) *ZipArchive {
 }
 
 var (
-	buildOs   = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
-	buildArch = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
-	buildDir  = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
-	debug     = flag.Bool("debug", false, "Print executed commands.")
+	buildOs       = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
+	buildArch     = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
+	buildDir      = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
+	buildVersion1 = flag.Bool("v1", false, "build version 1 tools (tinyrange, pkg2, installer)")
+	debug         = flag.Bool("debug", false, "Print executed commands.")
 )
 
 func buildInitForTarget(buildArch string) error {
@@ -384,37 +385,40 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if targetName != "" {
-		if *buildOs == "windows" {
-			if err := copyFile(
-				filepath.Join(*buildDir, "installer_windows.go"),
-				filepath.Join(target, "installer.go"),
-			); err != nil {
-				log.Fatal(err)
-			}
-		} else {
-			if err := copyFile(
-				filepath.Join(*buildDir, "installer.go"),
-				filepath.Join(target, "installer.go"),
-			); err != nil {
-				log.Fatal(err)
+
+	if *buildVersion1 {
+		if targetName != "" {
+			if *buildOs == "windows" {
+				if err := copyFile(
+					filepath.Join(*buildDir, "installer_windows.go"),
+					filepath.Join(target, "installer.go"),
+				); err != nil {
+					log.Fatal(err)
+				}
+			} else {
+				if err := copyFile(
+					filepath.Join(*buildDir, "installer.go"),
+					filepath.Join(target, "installer.go"),
+				); err != nil {
+					log.Fatal(err)
+				}
 			}
 		}
-	}
 
-	if _, err := buildPkg2ForTarget(target, *buildOs, *buildArch); err != nil {
-		log.Fatal(err)
-	}
+		if _, err := buildPkg2ForTarget(target, *buildOs, *buildArch); err != nil {
+			log.Fatal(err)
+		}
 
-	if _, err := buildTinyRangeForTarget(target, *buildOs, *buildArch); err != nil {
-		log.Fatal(err)
-	}
+		if _, err := buildTinyRangeForTarget(target, *buildOs, *buildArch); err != nil {
+			log.Fatal(err)
+		}
 
-	if _, err := buildTinyRange2ForTarget(target, *buildOs, *buildArch); err != nil {
-		log.Fatal(err)
-	}
-
-	if _, err := buildInstallerForTarget(target, targetName, *buildOs, *buildArch); err != nil {
-		log.Fatal(err)
+		if _, err := buildInstallerForTarget(target, targetName, *buildOs, *buildArch); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		if _, err := buildTinyRange2ForTarget(target, *buildOs, *buildArch); err != nil {
+			log.Fatal(err)
+		}
 	}
 }

@@ -144,7 +144,7 @@ func pkg2Main() error {
 				return err
 			}
 
-			slog.Info("loaded all container builders", "duration", time.Since(start))
+			slog.Debug("loaded all container builders", "duration", time.Since(start))
 		}
 
 		if *builder != "" {

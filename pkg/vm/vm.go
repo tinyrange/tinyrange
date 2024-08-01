@@ -53,7 +53,7 @@ type VirtualMachine struct {
 func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bool) error {
 	vm.mtx.Lock()
 
-	slog.Info("running hypervisor", "command", exe.command, "args", exe.args)
+	slog.Debug("running hypervisor", "command", exe.command, "args", exe.args)
 
 	vm.cmd = exec.Command(exe.command, exe.args...)
 
@@ -130,6 +130,12 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 		} else {
 			return starlark.False, nil
 		}
+	} else if name == "verbose" {
+		if common.IsVerbose() {
+			return starlark.True, nil
+		} else {
+			return starlark.False, nil
+		}
 	} else {
 		return nil, nil
 	}
@@ -138,12 +144,16 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 // AttrNames implements starlark.HasAttrs.
 func (vm *VirtualMachine) AttrNames() []string {
 	return []string{
+		"cpu_cores",
+		"memory_mb",
 		"kernel",
 		"initrd",
 		"disk_image",
 		"net_send",
 		"net_recv",
 		"mac_address",
+		"accelerate",
+		"verbose",
 	}
 }
 

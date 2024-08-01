@@ -27,6 +27,7 @@ type BuildVmParameters struct {
 	MemoryMB    int                    // The amount of RAM in the virtual machine in megabytes.
 	StorageSize int                    // The amount of storage the root device will have in megabytes.
 	Interaction string                 // How will the virtual machine be interacted with (ssh, serial)
+	Debug       bool                   // Redirect hypervisor input to the host. The VM will exit after it completes initialization.
 }
 
 // Build Emulator uses a internal shell script to run simple shell scripts with support from
