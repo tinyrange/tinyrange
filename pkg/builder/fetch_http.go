@@ -27,7 +27,7 @@ type FetchHttpBuildDefinition struct {
 func (def *FetchHttpBuildDefinition) Params() hash.SerializableValue { return def.params }
 func (def *FetchHttpBuildDefinition) SerializableType() string       { return "FetchHttpBuildDefinition" }
 func (def *FetchHttpBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &FetchHttpBuildDefinition{params: *params.(*FetchHttpParameters)}
+	return &FetchHttpBuildDefinition{params: params.(FetchHttpParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.

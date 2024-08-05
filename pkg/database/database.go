@@ -162,11 +162,6 @@ func (db *PackageDatabase) HashDefinition(def common.BuildDefinition) (string, e
 	return db.defDb.HashDefinition(def)
 }
 
-// GetBuildDir implements common.PackageDatabase.
-func (db *PackageDatabase) GetBuildDir() string {
-	return db.buildDir
-}
-
 // ShouldRebuildUserDefinitions implements common.PackageDatabase.
 func (db *PackageDatabase) ShouldRebuildUserDefinitions() bool {
 	return db.RebuildUserDefinitions
@@ -408,6 +403,10 @@ func (db *PackageDatabase) updateBuildStatus(def common.BuildDefinition, status 
 	db.buildStatuses[def] = status
 }
 
+func (db *PackageDatabase) FilenameFromHash(hash string, suffix string) (string, error) {
+	return filepath.Join(db.buildDir, hash+suffix), nil
+}
+
 func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (filesystem.File, error) {
 	tag := def.Tag()
 
@@ -468,10 +467,15 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 
 		return f, nil
 	} else {
-		filename := filepath.Join(db.buildDir, hash+".bin")
+		filename, err := db.FilenameFromHash(hash, ".bin")
+		if err != nil {
+			return nil, err
+		}
+
+		tmpFilename := filename + ".tmp"
 
 		// Get a child context for the build.
-		child := ctx.ChildContext(def, status, filename+".tmp")
+		child := ctx.ChildContext(def, status, tmpFilename)
 
 		if !opts.AlwaysRebuild {
 			// Check if the file already exists. If it does then return it.
@@ -507,7 +511,12 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 			return nil, fmt.Errorf("failed to marshal definition: %s", err)
 		}
 
-		if err := os.WriteFile(filepath.Join(db.buildDir, hash+".def"), defValue, os.ModePerm); err != nil {
+		defFilename, err := db.FilenameFromHash(hash, ".def")
+		if err != nil {
+			return nil, err
+		}
+
+		if err := os.WriteFile(defFilename, defValue, os.ModePerm); err != nil {
 			return nil, fmt.Errorf("failed to write definition: %s", err)
 		}
 
@@ -530,7 +539,7 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 		// If the build has already been written then don't write it again.
 		if !child.HasCreatedOutput() {
 			// Once the build is complete then write it to disk.
-			outFile, err := os.Create(filename + ".tmp")
+			outFile, err := os.Create(tmpFilename)
 			if err != nil {
 				return nil, err
 			}
@@ -538,25 +547,25 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 			// Write the build result to disk. If any of these steps fail then remove the temporary file.
 			if _, err := result.WriteTo(outFile); err != nil {
 				outFile.Close()
-				os.Remove(filename + ".tmp")
+				os.Remove(tmpFilename)
 				return nil, err
 			}
 
 			if err := outFile.Close(); err != nil {
-				os.Remove(filename + ".tmp")
+				os.Remove(tmpFilename)
 				return nil, err
 			}
 		} else {
 			// Let the result close the file on it's own.
 			if _, err := result.WriteTo(nil); err != nil {
-				os.Remove(filename + ".tmp")
+				os.Remove(tmpFilename)
 				return nil, err
 			}
 		}
 
 		// Finally rename the temporary file to the final filename.
-		if err := os.Rename(filename+".tmp", filename); err != nil {
-			os.Remove(filename + ".tmp")
+		if err := os.Rename(tmpFilename, filename); err != nil {
+			os.Remove(tmpFilename)
 			return nil, err
 		}
 
@@ -616,7 +625,7 @@ func (db *PackageDatabase) GetContainerBuilder(name string) (common.ContainerBui
 	return builder, nil
 }
 
-func (db *PackageDatabase) BuildByName(name string, opts common.BuildOptions) (filesystem.File, error) {
+func (db *PackageDatabase) GetDefinitionByDeclaredName(name string) (common.BuildDefinition, error) {
 	def, ok := db.defs[name]
 	if !ok {
 		return nil, fmt.Errorf("name %s not found", name)
@@ -627,7 +636,49 @@ func (db *PackageDatabase) BuildByName(name string, opts common.BuildOptions) (f
 		return nil, fmt.Errorf("value %s is not a BuildDefinition", def.Type())
 	}
 
-	return db.Build(db.NewBuildContext(buildDef), buildDef, opts)
+	return buildDef, nil
+}
+
+func (db *PackageDatabase) missDefinitionCache(hash string) (io.ReadCloser, error) {
+	filename, err := db.FilenameFromHash(hash, ".def")
+	if err != nil {
+		return nil, err
+	}
+
+	return os.Open(filename)
+}
+
+func (db *PackageDatabase) GetDefinitionByHash(hash string) (common.BuildDefinition, error) {
+	def, ok := db.defDb.GetDefinitionByHash(hash)
+	if ok {
+		if buildDef, ok := def.(common.BuildDefinition); ok {
+			return buildDef, nil
+		} else {
+			return nil, fmt.Errorf("could not convert %T to BuildDefinition", def)
+		}
+	}
+
+	filename, err := db.FilenameFromHash(hash, ".def")
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	def, err = db.defDb.UnmarshalDefinition(f)
+	if err != nil {
+		return nil, err
+	}
+
+	if buildDef, ok := def.(common.BuildDefinition); ok {
+		return buildDef, nil
+	} else {
+		return nil, fmt.Errorf("could not convert %T to BuildDefinition", def)
+	}
 }
 
 func (db *PackageDatabase) LoadBuiltinBuilders() error {
@@ -825,14 +876,18 @@ var (
 )
 
 func New(buildDir string) *PackageDatabase {
-	return &PackageDatabase{
+	db := &PackageDatabase{
 		ContainerBuilders: make(map[string]*ContainerBuilder),
 		mirrors:           make(map[string][]string),
 		memoryCache:       make(map[string][]byte),
 		buildStatuses:     make(map[common.BuildDefinition]*common.BuildStatus),
 		buildDir:          buildDir,
 		defs:              map[string]starlark.Value{},
-		defDb:             hash.NewDefinitionDatabase(),
-		builders:          make(map[string]starlark.Callable),
+
+		builders: make(map[string]starlark.Callable),
 	}
+
+	db.defDb = hash.NewDefinitionDatabase(db.missDefinitionCache)
+
+	return db
 }

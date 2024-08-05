@@ -20,6 +20,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func init() {
+	hash.RegisterType(&BuildVmDefinition{})
+}
+
 var OFFICIAL_KERNEL_URL = "https://github.com/tinyrange/linux_build/releases/download/linux_x86_6.6.7/vmlinux_x86_64"
 
 func runTinyRange(exe string, configFilename string) (*exec.Cmd, error) {
@@ -52,7 +56,7 @@ type BuildVmDefinition struct {
 func (def *BuildVmDefinition) Params() hash.SerializableValue { return def.params }
 func (def *BuildVmDefinition) SerializableType() string       { return "BuildVmDefinition" }
 func (def *BuildVmDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &BuildVmDefinition{params: *params.(*BuildVmParameters)}
+	return &BuildVmDefinition{params: params.(BuildVmParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.

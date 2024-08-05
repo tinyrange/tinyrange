@@ -25,7 +25,7 @@ func (def *DecompressFileBuildDefinition) SerializableType() string {
 	return "DecompressFileBuildDefinition"
 }
 func (def *DecompressFileBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &DecompressFileBuildDefinition{params: *params.(*DecompressFileParameters)}
+	return &DecompressFileBuildDefinition{params: params.(DecompressFileParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.

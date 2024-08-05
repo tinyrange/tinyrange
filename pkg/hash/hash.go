@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"reflect"
 )
 
@@ -57,8 +58,16 @@ type serializedDefinition struct {
 	Params   map[string]json.RawMessage
 }
 
+type CacheMissFunction func(hash string) (io.ReadCloser, error)
+
 type DefinitionDatabase struct {
 	cache map[string]Definition
+	miss  CacheMissFunction
+}
+
+func (db *DefinitionDatabase) GetDefinitionByHash(hash string) (Definition, bool) {
+	def, ok := db.cache[hash]
+	return def, ok
 }
 
 func (db *DefinitionDatabase) HashDefinition(d Definition) (string, error) {
@@ -78,6 +87,11 @@ func (db *DefinitionDatabase) marshalSerializableValue(params SerializableValue)
 	ret := make(map[string]json.RawMessage)
 
 	val := reflect.ValueOf(params)
+
+	if val.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("attempt to marshal non struct: %T", params)
+	}
+
 	typ := reflect.TypeOf(params)
 
 	var encodeValue func(val reflect.Value) (any, error)
@@ -221,17 +235,28 @@ func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.
 				return err
 			}
 
-			defVal := reflect.ValueOf(def)
+			if def != nil {
+				defVal := reflect.ValueOf(def)
 
-			if !defVal.CanConvert(fieldType) {
-				return fmt.Errorf("can not convert %s to %s", defVal.Type(), fieldType)
+				if !defVal.CanConvert(fieldType) {
+					slog.Info("", "kind", defVal.Kind())
+					if defVal.Kind() != reflect.Pointer {
+						return fmt.Errorf("can not convert %s to %s", defVal.Type(), fieldType)
+					}
+
+					defVal = defVal.Elem()
+
+					if !defVal.CanConvert(fieldType) {
+						return fmt.Errorf("can not convert %s to %s", defVal.Type(), fieldType)
+					}
+				}
+
+				if !field.CanSet() {
+					return fmt.Errorf("can not set field %s", field)
+				}
+
+				field.Set(defVal.Convert(fieldType))
 			}
-
-			if !field.CanSet() {
-				return fmt.Errorf("can not set field %s", field)
-			}
-
-			field.Set(defVal.Convert(fieldType))
 
 			return nil
 		} else if fieldType.Implements(reflect.TypeFor[SerializableValue]()) {
@@ -251,7 +276,15 @@ func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.
 			defVal := reflect.ValueOf(def)
 
 			if !defVal.CanConvert(fieldType) {
-				return fmt.Errorf("can not convert %s to %s", defVal.Type(), fieldType)
+				if defVal.Kind() != reflect.Pointer {
+					return fmt.Errorf("can not convert %s to %s", defVal.Type(), fieldType)
+				}
+
+				defVal = defVal.Elem()
+
+				if !defVal.CanConvert(fieldType) {
+					return fmt.Errorf("can not convert %s to %s", defVal.Type(), fieldType)
+				}
 			}
 
 			if !field.CanSet() {
@@ -333,7 +366,8 @@ func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.
 
 		val, ok := input[fieldType.Name]
 		if !ok {
-			return nil, fmt.Errorf("could not find field with name %s", fieldType.Name)
+			// Ignore fields that don't exist in the input.
+			continue
 		}
 
 		if !field.CanSet() {
@@ -345,7 +379,7 @@ func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.
 		}
 	}
 
-	return ret.Interface(), nil
+	return val.Interface(), nil
 }
 
 func (db *DefinitionDatabase) unmarshalParameters(params SerializableValue, input map[string]json.RawMessage) (SerializableValue, error) {
@@ -385,9 +419,32 @@ func (db *DefinitionDatabase) UnmarshalDefinition(input io.Reader) (Definition, 
 }
 
 func (db *DefinitionDatabase) unmarshalPointer(ptr definitionPointer) (Definition, error) {
+	if ptr.TypeName == "" {
+		// assume a null ptr.
+
+		return nil, nil
+	}
+
+	if ptr.Hash == "" {
+		return nil, fmt.Errorf("attempt to unmarshalPointer with empty hash")
+	}
+
 	val, ok := db.cache[ptr.Hash]
 	if !ok {
-		return nil, fmt.Errorf("could not find definitionCache entry for %s", ptr.Hash)
+		f, err := db.miss(ptr.Hash)
+		if err != nil {
+			return nil, fmt.Errorf("could not find definitionCache entry for %s: %s", ptr.Hash, err)
+		}
+		defer f.Close()
+
+		def, err := db.UnmarshalDefinition(f)
+		if err != nil {
+			return nil, err
+		}
+
+		db.cache[ptr.Hash] = def
+
+		return def, nil
 	}
 
 	return val, nil
@@ -423,6 +480,6 @@ func (db *DefinitionDatabase) unmarshalSerializableValue(typeName string, val js
 	}
 }
 
-func NewDefinitionDatabase() *DefinitionDatabase {
-	return &DefinitionDatabase{cache: make(map[string]Definition)}
+func NewDefinitionDatabase(miss CacheMissFunction) *DefinitionDatabase {
+	return &DefinitionDatabase{cache: make(map[string]Definition), miss: miss}
 }

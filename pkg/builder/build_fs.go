@@ -71,7 +71,7 @@ type BuildFsDefinition struct {
 func (def *BuildFsDefinition) Params() hash.SerializableValue { return def.params }
 func (def *BuildFsDefinition) SerializableType() string       { return "BuildFsDefinition" }
 func (def *BuildFsDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &BuildFsDefinition{params: *params.(*BuildFsParameters)}
+	return &BuildFsDefinition{params: params.(BuildFsParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.

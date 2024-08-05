@@ -8,6 +8,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func init() {
+	hash.RegisterType(PackageQuery{})
+}
+
 type PackageQuery struct {
 	MatchDirect      bool
 	Name             string

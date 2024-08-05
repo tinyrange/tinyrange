@@ -66,7 +66,7 @@ func (def *ExtractFileDefinition) SerializableType() string {
 	return "ExtractFileDefinition"
 }
 func (def *ExtractFileDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &ExtractFileDefinition{params: *params.(*ExtractFileParameters)}
+	return &ExtractFileDefinition{params: params.(ExtractFileParameters)}
 }
 
 var (

@@ -39,7 +39,7 @@ func (def *FileDefinition) SerializableType() string {
 	return "FileDefinition"
 }
 func (def *FileDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &FileDefinition{params: *params.(*FileParameters)}
+	return &FileDefinition{params: params.(FileParameters)}
 }
 
 // AsFragments implements common.Directive.

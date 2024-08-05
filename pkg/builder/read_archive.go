@@ -496,7 +496,7 @@ type ReadArchiveBuildDefinition struct {
 func (def *ReadArchiveBuildDefinition) Params() hash.SerializableValue { return def.params }
 func (def *ReadArchiveBuildDefinition) SerializableType() string       { return "ReadArchiveBuildDefinition" }
 func (def *ReadArchiveBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &ReadArchiveBuildDefinition{params: *params.(*ReadArchiveParameters)}
+	return &ReadArchiveBuildDefinition{params: params.(ReadArchiveParameters)}
 }
 
 // AsFragments implements common.Directive.

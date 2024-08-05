@@ -74,7 +74,7 @@ type StarBuildDefinition struct {
 func (def *StarBuildDefinition) Params() hash.SerializableValue { return def.params }
 func (def *StarBuildDefinition) SerializableType() string       { return "StarBuildDefinition" }
 func (def *StarBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &StarBuildDefinition{params: *params.(*StarParameters)}
+	return &StarBuildDefinition{params: params.(StarParameters)}
 }
 
 // AsFragments implements common.Directive.

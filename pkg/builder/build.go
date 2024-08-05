@@ -5,7 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -131,7 +130,10 @@ func (b *BuildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
 		return true, err
 	}
 
-	filename := filepath.Join(b.database.GetBuildDir(), hash+".bin")
+	filename, err := b.database.FilenameFromHash(hash, ".bin")
+	if err != nil {
+		return true, err
+	}
 
 	// Get a child context for the build.
 	child := b.ChildContext(def, b.status, filename+".tmp")

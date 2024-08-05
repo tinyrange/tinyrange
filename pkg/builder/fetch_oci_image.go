@@ -120,7 +120,7 @@ func (def *registryRequestDefinition) SerializableType() string {
 	return "registryRequestDefinition"
 }
 func (def *registryRequestDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &registryRequestDefinition{params: *params.(*RegistryRequestParameters)}
+	return &registryRequestDefinition{params: params.(RegistryRequestParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.
@@ -192,7 +192,7 @@ func (def *FetchOciImageDefinition) SerializableType() string {
 	return "FetchOciImageDefinition"
 }
 func (def *FetchOciImageDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &FetchOciImageDefinition{params: *params.(*FetchOciImageParameters)}
+	return &FetchOciImageDefinition{params: params.(FetchOciImageParameters)}
 }
 
 // AsFragments implements common.Directive.

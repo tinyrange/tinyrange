@@ -9,6 +9,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func init() {
+	hash.RegisterType(DirectiveRunCommand{})
+}
+
 type Directive interface {
 	hash.SerializableValue
 	Tag() string

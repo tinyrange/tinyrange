@@ -24,7 +24,7 @@ type BuildEmulatorDefinition struct {
 func (def *BuildEmulatorDefinition) Params() hash.SerializableValue { return def.params }
 func (def *BuildEmulatorDefinition) SerializableType() string       { return "BuildVmDefinition" }
 func (def *BuildEmulatorDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &BuildVmDefinition{params: *params.(*BuildVmParameters)}
+	return &BuildVmDefinition{params: params.(BuildVmParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.

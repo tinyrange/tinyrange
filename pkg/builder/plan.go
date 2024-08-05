@@ -14,6 +14,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func init() {
+	hash.RegisterType(&PlanDefinition{})
+}
+
 type PlanDefinition struct {
 	params PlanParameters
 
@@ -24,7 +28,7 @@ type PlanDefinition struct {
 func (def *PlanDefinition) Params() hash.SerializableValue { return def.params }
 func (def *PlanDefinition) SerializableType() string       { return "PlanDefinition" }
 func (def *PlanDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &PlanDefinition{params: *params.(*PlanParameters)}
+	return &PlanDefinition{params: params.(PlanParameters)}
 }
 
 // AsFragments implements common.Directive.
