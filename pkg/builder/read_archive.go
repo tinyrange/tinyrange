@@ -23,6 +23,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func init() {
+	hash.RegisterType(&ReadArchiveBuildDefinition{})
+}
+
 type directoryToArchiveBuildResult struct {
 	dir filesystem.Directory
 	off int64
@@ -613,9 +617,9 @@ func (r *ReadArchiveBuildDefinition) Tag() string {
 }
 
 func (def *ReadArchiveBuildDefinition) String() string { return def.Tag() }
-func (*ReadArchiveBuildDefinition) Type() string       { return "FetchHttpBuildDefinition" }
+func (*ReadArchiveBuildDefinition) Type() string       { return "ReadArchiveBuildDefinition" }
 func (*ReadArchiveBuildDefinition) Hash() (uint32, error) {
-	return 0, fmt.Errorf("FetchHttpBuildDefinition is not hashable")
+	return 0, fmt.Errorf("ReadArchiveBuildDefinition is not hashable")
 }
 func (*ReadArchiveBuildDefinition) Truth() starlark.Bool { return starlark.True }
 func (*ReadArchiveBuildDefinition) Freeze()              {}

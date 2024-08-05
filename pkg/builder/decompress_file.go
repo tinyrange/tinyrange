@@ -13,6 +13,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func init() {
+	hash.RegisterType(&DecompressFileBuildDefinition{})
+}
+
 type DecompressFileBuildDefinition struct {
 	params DecompressFileParameters
 

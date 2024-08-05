@@ -14,6 +14,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func init() {
+	hash.RegisterType(&BuildEmulatorDefinition{})
+}
+
 type BuildEmulatorDefinition struct {
 	params BuildEmulatorParameters
 
@@ -22,7 +26,7 @@ type BuildEmulatorDefinition struct {
 
 // implements common.BuildDefinition.
 func (def *BuildEmulatorDefinition) Params() hash.SerializableValue { return def.params }
-func (def *BuildEmulatorDefinition) SerializableType() string       { return "BuildVmDefinition" }
+func (def *BuildEmulatorDefinition) SerializableType() string       { return "BuildEmulatorDefinition" }
 func (def *BuildEmulatorDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &BuildVmDefinition{params: params.(BuildVmParameters)}
 }

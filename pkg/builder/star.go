@@ -13,7 +13,11 @@ import (
 	"go.starlark.net/starlark"
 )
 
-func SerializableValueToStarlark(ctx common.BuildContext, val any) (starlark.Value, error) {
+func init() {
+	hash.RegisterType(&StarBuildDefinition{})
+}
+
+func SerializableValueToStarlark(ctx common.BuildContext, val hash.SerializableValue) (starlark.Value, error) {
 	switch val := val.(type) {
 	case common.BuildDefinition:
 		result, err := ctx.BuildChild(val)
@@ -22,9 +26,9 @@ func SerializableValueToStarlark(ctx common.BuildContext, val any) (starlark.Val
 		}
 
 		return val.ToStarlark(ctx, result)
-	case string:
+	case hash.SerializableString:
 		return starlark.String(val), nil
-	case []any:
+	case hash.SerializableList:
 		var ret []starlark.Value
 
 		for _, child := range val {
@@ -42,14 +46,14 @@ func SerializableValueToStarlark(ctx common.BuildContext, val any) (starlark.Val
 	}
 }
 
-func StarlarkValueToSerializable(val starlark.Value) (any, error) {
+func StarlarkValueToSerializable(val starlark.Value) (hash.SerializableValue, error) {
 	switch val := val.(type) {
 	case common.BuildDefinition:
 		return val, nil
 	case starlark.String:
-		return string(val), nil
+		return hash.SerializableString(val), nil
 	case *starlark.List:
-		var ret []any
+		var ret hash.SerializableList
 
 		for i := 0; i < val.Len(); i++ {
 			child, err := StarlarkValueToSerializable(val.Index(i))
@@ -62,7 +66,7 @@ func StarlarkValueToSerializable(val starlark.Value) (any, error) {
 
 		return ret, nil
 	default:
-		return starlark.None, fmt.Errorf("StarlarkValueToSerializable not implemented: %T %+v", val, val)
+		return nil, fmt.Errorf("StarlarkValueToSerializable not implemented: %T %+v", val, val)
 	}
 }
 
@@ -182,7 +186,7 @@ var (
 	_ common.Directive       = &StarBuildDefinition{}
 )
 
-func NewStarBuildDefinition(filename string, builder string, args []any) (*StarBuildDefinition, error) {
+func NewStarBuildDefinition(filename string, builder string, args []hash.SerializableValue) (*StarBuildDefinition, error) {
 	if filename == "" || builder == "" {
 		return nil, fmt.Errorf("no filename or builder passed to NewStarBuildDefinition")
 	}

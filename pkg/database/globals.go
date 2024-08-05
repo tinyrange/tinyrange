@@ -10,6 +10,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
@@ -88,7 +89,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, fmt.Errorf("could not convert %s to Callable", builderVal.Type())
 				}
 
-				var buildArgs []any
+				var buildArgs []hash.SerializableValue
 
 				for _, arg := range buildArgsVal {
 					val, err := builder.StarlarkValueToSerializable(arg)

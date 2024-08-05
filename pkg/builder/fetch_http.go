@@ -15,6 +15,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func init() {
+	hash.RegisterType(&FetchHttpBuildDefinition{})
+}
+
 var ErrNotFound = errors.New("HTTP 404: Not Found")
 
 type FetchHttpBuildDefinition struct {

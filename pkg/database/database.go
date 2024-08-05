@@ -681,6 +681,24 @@ func (db *PackageDatabase) GetDefinitionByHash(hash string) (common.BuildDefinit
 	}
 }
 
+func (db *PackageDatabase) GetAllHashes() ([]string, error) {
+	var ret []string
+
+	ents, err := os.ReadDir(db.buildDir)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, ent := range ents {
+		ext := filepath.Ext(ent.Name())
+		if ext == ".def" {
+			ret = append(ret, strings.TrimSuffix(ent.Name(), ext))
+		}
+	}
+
+	return ret, nil
+}
+
 func (db *PackageDatabase) LoadBuiltinBuilders() error {
 	for _, builder := range []string{
 		"//fetchers/alpine.star",

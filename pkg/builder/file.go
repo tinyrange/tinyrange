@@ -14,6 +14,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func init() {
+	hash.RegisterType(&FileDefinition{})
+}
+
 type copyFileResult struct {
 	fh filesystem.FileHandle
 }

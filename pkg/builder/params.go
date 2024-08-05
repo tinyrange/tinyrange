@@ -100,9 +100,9 @@ type ReadArchiveParameters struct {
 
 // Execute a builder defined in Starlark.
 type StarParameters struct {
-	ScriptFilename string // The filename of the script used to run this builder.
-	BuilderName    string // The name of the builder function.
-	Arguments      []any  // The arguments passed to the function. These must be convertible to starlark.Value.
+	ScriptFilename string                   // The filename of the script used to run this builder.
+	BuilderName    string                   // The name of the builder function.
+	Arguments      []hash.SerializableValue // The arguments passed to the function. These must be convertible to starlark.Value.
 }
 
 func (b BuildFsParameters) SerializableType() string         { return "BuildFsParameters" }

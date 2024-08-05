@@ -20,6 +20,21 @@ type SerializableValue interface {
 	SerializableType() string
 }
 
+type SerializableList []SerializableValue
+
+// SerializableType implements SerializableValue.
+func (s SerializableList) SerializableType() string { return "SerializableList" }
+
+type SerializableString string
+
+// SerializableType implements SerializableValue.
+func (s SerializableString) SerializableType() string { return "SerializableString" }
+
+var (
+	_ SerializableValue = SerializableList{}
+	_ SerializableValue = SerializableString("")
+)
+
 type ValueCaster interface {
 	AsSerializableValue() (SerializableValue, error)
 }
@@ -41,6 +56,10 @@ func RegisterType(typ SerializableValue) {
 	}
 
 	registeredTypes[name] = typ
+}
+
+func init() {
+	RegisterType(SerializableList{})
 }
 
 type serializedValue struct {
@@ -139,17 +158,9 @@ func (db *DefinitionDatabase) marshalSerializableValue(params SerializableValue)
 					TypeName: val.SerializableType(),
 					Hash:     hash,
 				}, nil
-			case SerializableValue:
-				values, err := db.marshalSerializableValue(val)
-				if err != nil {
-					return nil, err
-				}
-
-				return serializedValue{
-					TypeName: val.SerializableType(),
-					Values:   values,
-				}, nil
-			case []any:
+			case SerializableString:
+				return val, nil
+			case SerializableList:
 				var ret []any
 
 				for _, item := range val {
@@ -164,6 +175,16 @@ func (db *DefinitionDatabase) marshalSerializableValue(params SerializableValue)
 				}
 
 				return ret, nil
+			case SerializableValue:
+				values, err := db.marshalSerializableValue(val)
+				if err != nil {
+					return nil, err
+				}
+
+				return serializedValue{
+					TypeName: val.SerializableType(),
+					Values:   values,
+				}, nil
 			case string:
 				return val, nil
 			case int:
@@ -260,40 +281,75 @@ func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.
 
 			return nil
 		} else if fieldType.Implements(reflect.TypeFor[SerializableValue]()) {
-			var ret struct {
-				TypeName string
-			}
+			var ret any
 
 			if err := json.Unmarshal(val, &ret); err != nil {
 				return err
 			}
 
-			def, err := db.unmarshalSerializableValue(ret.TypeName, val)
-			if err != nil {
-				return err
-			}
+			switch ret := ret.(type) {
+			case string:
+				field.Set(reflect.ValueOf(SerializableString(ret)))
 
-			defVal := reflect.ValueOf(def)
-
-			if !defVal.CanConvert(fieldType) {
-				if defVal.Kind() != reflect.Pointer {
-					return fmt.Errorf("can not convert %s to %s", defVal.Type(), fieldType)
+				return nil
+			case map[string]any:
+				typeName, ok := ret["TypeName"]
+				if !ok {
+					return fmt.Errorf("got nested struct without type information: %+v", ret)
 				}
 
-				defVal = defVal.Elem()
+				str, ok := typeName.(string)
+				if !ok {
+					return fmt.Errorf("got nested struct without type information: %+v", ret)
+				}
+
+				def, err := db.unmarshalSerializableValue(str, val)
+				if err != nil {
+					return err
+				}
+
+				defVal := reflect.ValueOf(def)
 
 				if !defVal.CanConvert(fieldType) {
-					return fmt.Errorf("can not convert %s to %s", defVal.Type(), fieldType)
+					if defVal.Kind() != reflect.Pointer {
+						return fmt.Errorf("can not convert %s to %s", defVal.Type(), fieldType)
+					}
+
+					defVal = defVal.Elem()
+
+					if !defVal.CanConvert(fieldType) {
+						return fmt.Errorf("can not convert %s to %s", defVal.Type(), fieldType)
+					}
 				}
+
+				if !field.CanSet() {
+					return fmt.Errorf("can not set field %s", field)
+				}
+
+				field.Set(defVal.Convert(fieldType))
+
+				return nil
+			case []any:
+				var values []json.RawMessage
+
+				if err := json.Unmarshal(val, &values); err != nil {
+					return err
+				}
+
+				retLst := reflect.MakeSlice(reflect.TypeFor[SerializableList](), len(values), len(values))
+
+				for i, val := range values {
+					if err := decodeValue(retLst.Index(i), val); err != nil {
+						return err
+					}
+				}
+
+				field.Set(retLst)
+
+				return nil
+			default:
+				return fmt.Errorf("decodeValue(SerializableValue) not implemented: %T %+v", ret, ret)
 			}
-
-			if !field.CanSet() {
-				return fmt.Errorf("can not set field %s", field)
-			}
-
-			field.Set(defVal.Convert(fieldType))
-
-			return nil
 		} else {
 			switch fieldType.Kind() {
 			case reflect.Slice:
@@ -355,7 +411,7 @@ func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.
 
 				return nil
 			default:
-				return fmt.Errorf("decodeValue not implemented: %s", fieldType)
+				return fmt.Errorf("decodeValue not implemented: %s %s", fieldType, val)
 			}
 		}
 	}

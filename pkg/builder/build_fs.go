@@ -14,6 +14,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func init() {
+	hash.RegisterType(&BuildFsDefinition{})
+}
+
 type initRamFsBuilderResult struct {
 	frags []config.Fragment
 }

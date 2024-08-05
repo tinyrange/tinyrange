@@ -10,6 +10,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func init() {
+	hash.RegisterType(&ExtractFileDefinition{})
+}
+
 type ExtractFileDefinition struct {
 	params ExtractFileParameters
 }

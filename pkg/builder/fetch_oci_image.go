@@ -18,6 +18,11 @@ import (
 	"go.starlark.net/starlark"
 )
 
+func init() {
+	hash.RegisterType(&registryRequestDefinition{})
+	hash.RegisterType(&FetchOciImageDefinition{})
+}
+
 const (
 	DEFAULT_REGISTRY = "https://registry-1.docker.io/v2"
 )
