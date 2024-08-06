@@ -157,7 +157,8 @@ type PackageDatabase struct {
 	buildStatusMtx sync.Mutex
 	buildStatuses  map[common.BuildDefinition]*common.BuildStatus
 
-	defs map[string]starlark.Value
+	loadedFiles map[string]bool
+	defs        map[string]starlark.Value
 
 	builders map[string]starlark.Callable
 
@@ -312,7 +313,7 @@ func (db *PackageDatabase) LoadFile(filename string) error {
 	}
 
 	for k, v := range defs {
-		db.defs[k] = v
+		db.defs[fmt.Sprintf("%s:%s", filename, k)] = v
 	}
 
 	return nil
@@ -639,6 +640,17 @@ func (db *PackageDatabase) GetContainerBuilder(name string) (common.ContainerBui
 }
 
 func (db *PackageDatabase) GetDefinitionByDeclaredName(name string) (common.BuildDefinition, error) {
+	filename, _, ok := strings.Cut(name, ":")
+	if !ok {
+		return nil, fmt.Errorf("misformed declared name: %s", name)
+	}
+
+	if _, ok := db.loadedFiles[filename]; !ok {
+		if err := db.LoadFile(filename); err != nil {
+			return nil, err
+		}
+	}
+
 	def, ok := db.defs[name]
 	if !ok {
 		return nil, fmt.Errorf("name %s not found", name)
@@ -692,6 +704,14 @@ func (db *PackageDatabase) GetDefinitionByHash(hash string) (common.BuildDefinit
 	} else {
 		return nil, fmt.Errorf("could not convert %T to BuildDefinition", def)
 	}
+}
+
+func (db *PackageDatabase) GetDefinitionByShorthand(shorthand string) (common.BuildDefinition, error) {
+	if len(shorthand) == 64 && !strings.Contains(shorthand, ":") {
+		return db.GetDefinitionByHash(shorthand)
+	}
+
+	return db.GetDefinitionByDeclaredName(shorthand)
 }
 
 func (db *PackageDatabase) GetAllHashes() ([]string, error) {
@@ -861,7 +881,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 				} else {
 					return starlark.None, fmt.Errorf("invalid architecture for init: %s", arch)
 				}
-			} else if name == "tinyrange2" {
+			} else if name == "tinyrange" {
 				// Assume that the user wants a Linux executable.
 				if common.CPUArchitecture(arch).IsNative() && runtime.GOOS == "linux" {
 					local, err := os.Executable()
@@ -869,7 +889,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 						return nil, err
 					}
 
-					return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange2"), nil
+					return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange"), nil
 				} else {
 					return starlark.None, fmt.Errorf("invalid architecture for tinyrange: %s", arch)
 				}
@@ -913,9 +933,9 @@ func New(buildDir string) *PackageDatabase {
 		memoryCache:       make(map[string][]byte),
 		buildStatuses:     make(map[common.BuildDefinition]*common.BuildStatus),
 		buildDir:          buildDir,
-		defs:              map[string]starlark.Value{},
-
-		builders: make(map[string]starlark.Callable),
+		defs:              make(map[string]starlark.Value),
+		loadedFiles:       make(map[string]bool),
+		builders:          make(map[string]starlark.Callable),
 	}
 
 	db.defDb = hash.NewDefinitionDatabase(db.missDefinitionCache)

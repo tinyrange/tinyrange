@@ -4,6 +4,6 @@ set -ex
 
 ./build.go
 
-build/pkg2 -o benchmarks/bench_startup_docker.md -rebuild -build bench_startup_docker scripts/benchmark.star
-build/pkg2 -o benchmarks/bench_startup_podman.md -rebuild -build bench_startup_podman scripts/benchmark.star
-build/pkg2 -o benchmarks/bench_startup_tinyrange.md -rebuild -build bench_startup_tinyrange scripts/benchmark.star
+# build/tinyrange build -o benchmarks/bench_startup_docker.md scripts/benchmark.star:bench_startup_docker
+# build/tinyrange build -o benchmarks/bench_startup_podman.md scripts/benchmark.star:bench_startup_podman
+build/tinyrange build -o benchmarks/bench_startup_tinyrange.md scripts/benchmark.star:bench_startup_tinyrange

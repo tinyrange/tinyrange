@@ -100,11 +100,9 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					buildArgs = append(buildArgs, val)
 				}
 
-				if thread.Name == "" {
-					return starlark.None, fmt.Errorf("could not get name from thread")
-				}
+				filename := thread.CallFrame(1).Pos.Filename()
 
-				return builder.NewStarBuildDefinition(thread.Name, builderFunc.Name(), buildArgs)
+				return builder.NewStarBuildDefinition(filename, builderFunc.Name(), buildArgs)
 			}),
 			"package_collection": starlark.NewBuiltin("define.package_collection", func(
 				thread *starlark.Thread,
@@ -137,7 +135,9 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					defs = append(defs, def)
 				}
 
-				return NewPackageCollection(thread.Name, parser.Name(), install.Name(), defs)
+				filename := thread.CallFrame(1).Pos.Filename()
+
+				return NewPackageCollection(filename, parser.Name(), install.Name(), defs)
 			}),
 			"container_builder": starlark.NewBuiltin("define.container_builder", func(
 				thread *starlark.Thread,
@@ -183,7 +183,9 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					}
 				}
 
-				return NewContainerBuilder(name, displayName, thread.Name, planCallback.Name(), defaultPackages, packages, metadata)
+				filename := thread.CallFrame(1).Pos.Filename()
+
+				return NewContainerBuilder(name, displayName, filename, planCallback.Name(), defaultPackages, packages, metadata)
 			}),
 			"fetch_http": starlark.NewBuiltin("define.fetch_http", func(
 				thread *starlark.Thread,
@@ -434,10 +436,12 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					directives = append(directives, dir)
 				}
 
+				filename := thread.CallFrame(1).Pos.Filename()
+
 				return builder.NewBuildEmulatorDefinition(
 					directives,
 					outputFilename,
-					thread.Name,
+					filename,
 					createCallback.Name(),
 				), nil
 			}),

@@ -2,9 +2,15 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/tinyrange/tinyrange/pkg/common"
+)
+
+var (
+	buildOutput string
 )
 
 var buildCmd = &cobra.Command{
@@ -20,15 +26,34 @@ var buildCmd = &cobra.Command{
 			return err
 		}
 
-		def, err := db.GetDefinitionByHash(args[0])
+		def, err := db.GetDefinitionByShorthand(args[0])
 		if err != nil {
 			return err
 		}
 
-		if _, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{
+		f, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{
 			AlwaysRebuild: true,
-		}); err != nil {
+		})
+		if err != nil {
 			return err
+		}
+
+		if buildOutput != "" {
+			fh, err := f.Open()
+			if err != nil {
+				return err
+			}
+			defer fh.Close()
+
+			out, err := os.Create(buildOutput)
+			if err != nil {
+				return err
+			}
+			defer out.Close()
+
+			if _, err := io.Copy(out, fh); err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -36,5 +61,6 @@ var buildCmd = &cobra.Command{
 }
 
 func init() {
+	buildCmd.PersistentFlags().StringVarP(&buildOutput, "output", "o", "", "if specified then copy the build output to a local file at path")
 	rootCmd.AddCommand(buildCmd)
 }

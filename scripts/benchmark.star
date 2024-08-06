@@ -126,8 +126,8 @@ bench_startup_podman = define.build_vm(
 
 bench_startup_tinyrange = define.build_vm(
     directives = tinyrange_base_directives + [
-        directive.run_command("source /etc/profile; cd /root; ./tinyrange -exec 'whoami'"),
-        directive.run_command("source /etc/profile; cd /root; hyperfine --export-json /result.json \"./tinyrange -exec 'whoami'\""),
+        directive.run_command("source /etc/profile; cd /root; ./tinyrange login -E whoami"),
+        directive.run_command("source /etc/profile; cd /root; hyperfine --export-json /result.json \"./tinyrange login -E whoami\""),
     ],
     output = "/result.json",
     **vm_params
