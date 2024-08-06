@@ -28,7 +28,9 @@ stderr_logfile_maxbytes=0
 )
 
 ui_script = directive.run_command("""
-/usr/bin/supervisord -c "/supervisord.conf" -n &
+source /etc/profile
+
+/usr/bin/supervisord -c "/root/supervisord.conf" -n &
         
 sleep 2
         
