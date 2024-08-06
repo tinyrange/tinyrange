@@ -31,6 +31,11 @@ type BuiltinFragment struct {
 	GuestFilename string `json:"guest_filename" yaml:"guest_filename"`
 }
 
+type ExportPortFragment struct {
+	Name string `json:"name" yaml:"name"`
+	Port int    `json:"port" yaml:"port"`
+}
+
 type Fragment struct {
 	// Not supported by TinyRange directly.
 	RunCommand   *RunCommandFragment   `json:"run_command,omitempty" yaml:"run_command"`
@@ -38,6 +43,7 @@ type Fragment struct {
 	FileContents *FileContentsFragment `json:"file_contents,omitempty" yaml:"file_contents"`
 	Archive      *ArchiveFragment      `json:"archive,omitempty" yaml:"archive"`
 	Builtin      *BuiltinFragment      `json:"builtin,omitempty" yaml:"builtin"`
+	ExportPort   *ExportPortFragment   `json:"export_port,omitempty" yaml:"export_port"`
 }
 
 // A config file that can be passed to TinyRange to configure and execute a virtual machine.

@@ -77,6 +77,7 @@ var (
 type scriptArguments struct {
 	args           map[string]starlark.Value
 	outputFilename string
+	additionalArgs []string
 }
 
 // Attr implements starlark.HasAttrs.
@@ -99,6 +100,14 @@ func (s *scriptArguments) Attr(name string) (starlark.Value, error) {
 
 			return &outputFile{f: f}, nil
 		}), nil
+	} else if name == "args" {
+		var ret []starlark.Value
+
+		for _, arg := range s.additionalArgs {
+			ret = append(ret, starlark.String(arg))
+		}
+
+		return starlark.NewList(ret), nil
 	} else {
 		return nil, nil
 	}
@@ -106,7 +115,7 @@ func (s *scriptArguments) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (s *scriptArguments) AttrNames() []string {
-	return []string{"output"}
+	return []string{"output", "args"}
 }
 
 // Get implements starlark.Mapping.
@@ -309,7 +318,7 @@ func (db *PackageDatabase) LoadFile(filename string) error {
 	return nil
 }
 
-func (db *PackageDatabase) RunScript(filename string, files map[string]filesystem.File, outputFilename string) error {
+func (db *PackageDatabase) RunScript(filename string, files map[string]filesystem.File, additionalArgs []string, outputFilename string) error {
 	thread := db.NewThread(filename)
 
 	globals := db.getGlobals("__main__")
@@ -329,7 +338,11 @@ func (db *PackageDatabase) RunScript(filename string, files map[string]filesyste
 		return err
 	}
 
-	args := &scriptArguments{args: make(map[string]starlark.Value), outputFilename: outputFilename}
+	args := &scriptArguments{
+		args:           make(map[string]starlark.Value),
+		outputFilename: outputFilename,
+		additionalArgs: additionalArgs,
+	}
 
 	for k, v := range files {
 		args.args[k] = filesystem.NewStarFile(v, k)

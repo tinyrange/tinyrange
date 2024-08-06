@@ -104,6 +104,8 @@ func RunWithConfig(
 		return fmt.Errorf("failed to create ext4 filesystem: %w", err)
 	}
 
+	var exportedPorts []int
+
 	for _, frag := range cfg.RootFsFragments {
 		if localFile := frag.LocalFile; localFile != nil {
 			file, err := os.Open(cfg.Resolve(localFile.HostFilename))
@@ -237,6 +239,8 @@ func RunWithConfig(
 					return fmt.Errorf("failed to chmod in guest: %w", err)
 				}
 			}
+		} else if port := frag.ExportPort; port != nil {
+			exportedPorts = append(exportedPorts, port.Port)
 		} else {
 			return fmt.Errorf("unknown fragment kind")
 		}
@@ -453,6 +457,39 @@ func RunWithConfig(
 
 					if err := common.Proxy(clientConn, conn, 4096); err != nil {
 						slog.Error("failed to proxy ssh connection", "err", err)
+						return
+					}
+				}()
+			}
+		}()
+	}
+
+	for _, port := range exportedPorts {
+		portListen, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+		if err != nil {
+			return err
+		}
+
+		go func() {
+			for {
+				conn, err := portListen.Accept()
+				if err != nil {
+					slog.Error("failed to accept", "err", err)
+					return
+				}
+
+				go func() {
+					defer conn.Close()
+
+					clientConn, err := ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("10.42.0.2:%d", port))
+					if err != nil {
+						slog.Error("failed to dial vm port", "err", err)
+						return
+					}
+					defer clientConn.Close()
+
+					if err := common.Proxy(clientConn, conn, 4096); err != nil {
+						slog.Error("failed to proxy connection", "err", err)
 						return
 					}
 				}()

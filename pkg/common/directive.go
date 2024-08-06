@@ -127,10 +127,31 @@ func (d DirectiveArchive) Tag() string {
 	return fmt.Sprintf("DirArchive_%s_%s", d.Definition.Tag(), d.Target)
 }
 
+type DirectiveExportPort struct {
+	Name string
+	Port int
+}
+
+// SerializableType implements Directive.
+func (d DirectiveExportPort) SerializableType() string { return "DirectiveExportPort" }
+
+// AsFragments implements Directive.
+func (d DirectiveExportPort) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+	return []config.Fragment{
+		{ExportPort: &config.ExportPortFragment{Name: d.Name, Port: d.Port}},
+	}, nil
+}
+
+// Tag implements Directive.
+func (d DirectiveExportPort) Tag() string {
+	return fmt.Sprintf("DirPort_%s_%d", d.Name, d.Port)
+}
+
 var (
 	_ Directive = DirectiveRunCommand{}
 	_ Directive = DirectiveAddFile{}
 	_ Directive = DirectiveArchive{}
+	_ Directive = DirectiveExportPort{}
 )
 
 type StarDirective struct {

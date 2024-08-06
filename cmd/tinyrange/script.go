@@ -41,7 +41,7 @@ var scriptCmd = &cobra.Command{
 
 		filename := args[0]
 
-		if err := db.RunScript(filename, files, scriptOutput); err != nil {
+		if err := db.RunScript(filename, files, args[1:], scriptOutput); err != nil {
 			slog.Error("fatal", "err", err)
 			os.Exit(1)
 		}

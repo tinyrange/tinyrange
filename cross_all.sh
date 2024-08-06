@@ -9,7 +9,7 @@ go run build.go -os linux -arch amd64
 go run build.go -os windows -arch amd64
 go run build.go -os darwin -arch arm64
 go run build.go -os linux -arch arm64
-
+        
 # Tier 2: Ad-hoc Support
 go run build.go -os linux -arch riscv64
 go run build.go -os darwin -arch amd64

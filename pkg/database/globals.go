@@ -593,6 +593,29 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, fmt.Errorf("could not convert %s to File", val.Type())
 				}
 			}),
+			"export_port": starlark.NewBuiltin("directive.export_port", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					name string
+					port int
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"name", &name,
+					"port", &port,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				return &common.StarDirective{Directive: common.DirectiveExportPort{
+					Name: name,
+					Port: port,
+				}}, nil
+			}),
 		},
 	}
 
