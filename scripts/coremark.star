@@ -12,3 +12,6 @@ test = define.build_vm(
     ],
     output = "/coremark-main/run1.log",
 )
+
+def main(args):
+    print(db.build(test).read())
