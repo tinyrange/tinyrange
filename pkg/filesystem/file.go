@@ -17,6 +17,11 @@ func GetLinkName(ent File) (string, error) {
 		return GetLinkName(ent.File)
 	case *CacheEntry:
 		return ent.CLinkname, nil
+	case *memoryFile:
+		if ent.kind != TypeSymlink {
+			return "", fs.ErrInvalid
+		}
+		return string(ent.contents), nil
 	default:
 		return "", fmt.Errorf("GetLinkName not implemented: %T", ent)
 	}
@@ -47,6 +52,12 @@ type BasicFileHandle interface {
 type FileHandle interface {
 	BasicFileHandle
 	io.Closer
+}
+
+type WritableFileHandle interface {
+	FileHandle
+	io.Writer
+	io.WriterAt
 }
 
 type nopCloserFileHandle struct {
@@ -347,5 +358,13 @@ func NewMemoryFile(kind FileType) MutableFile {
 	return &memoryFile{
 		mode:  fs.FileMode(0755),
 		mTime: time.Now(),
+	}
+}
+
+func NewSymlink(target string) MutableFile {
+	return &memoryFile{
+		kind:     TypeSymlink,
+		mode:     fs.FileMode(0755),
+		contents: []byte(target),
 	}
 }

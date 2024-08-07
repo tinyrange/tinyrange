@@ -140,6 +140,7 @@ type MutableDirectory interface {
 
 	Mkdir(name string) (MutableDirectory, error)
 	Create(name string, f File) error
+	Unlink(name string) error
 }
 
 type memoryDirectory struct {
@@ -156,6 +157,17 @@ func (m *memoryDirectory) IsDir() bool {
 // Sys implements FileInfo.
 func (m *memoryDirectory) Sys() any {
 	return m
+}
+
+// Unlink implements MutableDirectory.
+func (m *memoryDirectory) Unlink(name string) error {
+	if strings.Contains(name, "/") {
+		return fmt.Errorf("MutableDirectory methods can not handle paths")
+	}
+
+	delete(m.entries, name)
+
+	return nil
 }
 
 // Create implements MutableDirectory.
