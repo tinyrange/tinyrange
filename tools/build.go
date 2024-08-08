@@ -156,6 +156,7 @@ func buildTinyRangeForTarget(buildDir string, buildOs string, buildArch string) 
 	args := []string{
 		"build",
 		"-o", outputFilename,
+		"-tags", "official",
 	}
 
 	args = append(args, "github.com/tinyrange/tinyrange")

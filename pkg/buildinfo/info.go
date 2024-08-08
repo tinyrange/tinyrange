@@ -1,3 +1,5 @@
+//go:build official
+
 package buildinfo
 
 import _ "embed"
