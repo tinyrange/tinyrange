@@ -74,6 +74,19 @@ type StarBuildDefinition struct {
 	params StarParameters
 }
 
+// Dependencies implements common.BuildDefinition.
+func (def *StarBuildDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+	var ret []common.DependencyNode
+
+	for _, arg := range def.params.Arguments {
+		if argDef, ok := arg.(common.BuildDefinition); ok {
+			ret = append(ret, argDef)
+		}
+	}
+
+	return ret, nil
+}
+
 // implements common.BuildDefinition.
 func (def *StarBuildDefinition) Params() hash.SerializableValue { return def.params }
 func (def *StarBuildDefinition) SerializableType() string       { return "StarBuildDefinition" }

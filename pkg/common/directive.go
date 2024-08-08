@@ -14,13 +14,18 @@ func init() {
 }
 
 type Directive interface {
-	hash.SerializableValue
+	DependencyNode
 	Tag() string
 	AsFragments(ctx BuildContext) ([]config.Fragment, error)
 }
 
 type DirectiveRunCommand struct {
 	Command string
+}
+
+// Dependencies implements Directive.
+func (d DirectiveRunCommand) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return []DependencyNode{}, nil
 }
 
 // SerializableType implements Directive.
@@ -43,6 +48,11 @@ type DirectiveAddFile struct {
 	Definition BuildDefinition
 	Contents   []byte
 	Executable bool
+}
+
+// Dependencies implements Directive.
+func (d DirectiveAddFile) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return []DependencyNode{d.Definition}, nil
 }
 
 // SerializableType implements Directive.
@@ -97,6 +107,11 @@ type DirectiveArchive struct {
 	Target     string
 }
 
+// Dependencies implements Directive.
+func (d DirectiveArchive) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return []DependencyNode{d.Definition}, nil
+}
+
 // SerializableType implements Directive.
 func (d DirectiveArchive) SerializableType() string { return "DirectiveArchive" }
 
@@ -130,6 +145,11 @@ func (d DirectiveArchive) Tag() string {
 type DirectiveExportPort struct {
 	Name string
 	Port int
+}
+
+// Dependencies implements Directive.
+func (d DirectiveExportPort) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return []DependencyNode{}, nil
 }
 
 // SerializableType implements Directive.

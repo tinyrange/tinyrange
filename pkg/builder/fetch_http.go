@@ -27,6 +27,11 @@ type FetchHttpBuildDefinition struct {
 	resp *http.Response
 }
 
+// Dependencies implements common.BuildDefinition.
+func (def *FetchHttpBuildDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+	return []common.DependencyNode{}, nil
+}
+
 // implements common.BuildDefinition.
 func (def *FetchHttpBuildDefinition) Params() hash.SerializableValue { return def.params }
 func (def *FetchHttpBuildDefinition) SerializableType() string       { return "FetchHttpBuildDefinition" }

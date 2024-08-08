@@ -24,6 +24,17 @@ type BuildEmulatorDefinition struct {
 	frags []config.Fragment
 }
 
+// Dependencies implements common.BuildDefinition.
+func (def *BuildEmulatorDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+	var ret []common.DependencyNode
+
+	for _, directive := range def.params.Directives {
+		ret = append(ret, directive)
+	}
+
+	return ret, nil
+}
+
 // implements common.BuildDefinition.
 func (def *BuildEmulatorDefinition) Params() hash.SerializableValue { return def.params }
 func (def *BuildEmulatorDefinition) SerializableType() string       { return "BuildEmulatorDefinition" }

@@ -52,6 +52,28 @@ type BuildVmDefinition struct {
 	gotOutput bool
 }
 
+// Dependencies implements common.BuildDefinition.
+func (def *BuildVmDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+	var ret []common.DependencyNode
+
+	kernelDef := def.params.Kernel
+	if kernelDef == nil {
+		kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL, 0)
+	}
+
+	ret = append(ret, kernelDef)
+
+	if def.params.InitRamFs != nil {
+		ret = append(ret, def.params.InitRamFs)
+	}
+
+	for _, directive := range def.params.Directives {
+		ret = append(ret, directive)
+	}
+
+	return ret, nil
+}
+
 // implements common.BuildDefinition.
 func (def *BuildVmDefinition) Params() hash.SerializableValue { return def.params }
 func (def *BuildVmDefinition) SerializableType() string       { return "BuildVmDefinition" }

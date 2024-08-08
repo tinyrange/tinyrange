@@ -119,6 +119,11 @@ type registryRequestDefinition struct {
 	params RegistryRequestParameters
 }
 
+// Dependencies implements common.BuildDefinition.
+func (def *registryRequestDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+	return []common.DependencyNode{}, nil
+}
+
 // implements common.BuildDefinition.
 func (def *registryRequestDefinition) Params() hash.SerializableValue { return def.params }
 func (def *registryRequestDefinition) SerializableType() string {
@@ -189,6 +194,13 @@ type FetchOciImageDefinition struct {
 	params FetchOciImageParameters
 
 	LayerArchives []*filesystem.FileDigest
+}
+
+// Dependencies implements common.Directive.
+func (def *FetchOciImageDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+	// The requests are dynamic dependencies.
+
+	return []common.DependencyNode{}, nil
 }
 
 // implements common.BuildDefinition.

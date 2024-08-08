@@ -37,6 +37,11 @@ type FileDefinition struct {
 	params FileParameters
 }
 
+// Dependencies implements common.BuildDefinition.
+func (def *FileDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+	return []common.DependencyNode{}, nil
+}
+
 // implements common.BuildDefinition.
 func (def *FileDefinition) Params() hash.SerializableValue { return def.params }
 func (def *FileDefinition) SerializableType() string {

@@ -17,9 +17,15 @@ type BuildSource interface {
 	Tag() string
 }
 
+type DependencyNode interface {
+	hash.SerializableValue
+	Dependencies(ctx BuildContext) ([]DependencyNode, error)
+}
+
 type BuildDefinition interface {
 	hash.Definition
 	BuildSource
+	DependencyNode
 	NeedsBuild(ctx BuildContext, cacheTime time.Time) (bool, error)
 	Build(ctx BuildContext) (BuildResult, error)
 	ToStarlark(ctx BuildContext, result filesystem.File) (starlark.Value, error)

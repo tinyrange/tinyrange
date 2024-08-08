@@ -24,6 +24,12 @@ type PlanDefinition struct {
 	Fragments []config.Fragment
 }
 
+// Dependencies implements common.BuildDefinition.
+func (def *PlanDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+	// The builder is a dynamic dependency.
+	return []common.DependencyNode{}, nil
+}
+
 // implements common.BuildDefinition.
 func (def *PlanDefinition) Params() hash.SerializableValue { return def.params }
 func (def *PlanDefinition) SerializableType() string       { return "PlanDefinition" }

@@ -496,6 +496,15 @@ type ReadArchiveBuildDefinition struct {
 	params ReadArchiveParameters
 }
 
+// Dependencies implements common.BuildDefinition.
+func (def *ReadArchiveBuildDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+	if def.params.Base != nil {
+		return []common.DependencyNode{def.params.Base}, nil
+	} else {
+		return []common.DependencyNode{}, nil
+	}
+}
+
 // implements common.BuildDefinition.
 func (def *ReadArchiveBuildDefinition) Params() hash.SerializableValue { return def.params }
 func (def *ReadArchiveBuildDefinition) SerializableType() string       { return "ReadArchiveBuildDefinition" }
@@ -518,7 +527,7 @@ func (r *ReadArchiveBuildDefinition) AsFragments(ctx common.BuildContext) ([]con
 	}
 
 	return []config.Fragment{
-		config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}},
+		{Archive: &config.ArchiveFragment{HostFilename: filename}},
 	}, nil
 }
 
