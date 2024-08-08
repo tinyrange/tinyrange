@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -57,7 +57,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&rootVerbose, "verbose", false, "enable debugging output")
 }
 
-func main() {
+func Run() {
 	if err := rootCmd.Execute(); err != nil {
 		// fmt.Println(err)
 		os.Exit(1)

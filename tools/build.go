@@ -158,7 +158,7 @@ func buildTinyRangeForTarget(buildDir string, buildOs string, buildArch string) 
 		"-o", outputFilename,
 	}
 
-	args = append(args, "github.com/tinyrange/tinyrange/cmd/tinyrange")
+	args = append(args, "github.com/tinyrange/tinyrange")
 
 	cmd := exec.Command("go", args...)
 

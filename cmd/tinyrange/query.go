@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -26,7 +26,9 @@ var queryCmd = &cobra.Command{
 			return err
 		}
 
-		b, err := db.GetContainerBuilder(queryBuilder)
+		ctx := db.NewBuildContext(nil)
+
+		b, err := db.GetContainerBuilder(ctx, queryBuilder)
 		if err != nil {
 			return err
 		}

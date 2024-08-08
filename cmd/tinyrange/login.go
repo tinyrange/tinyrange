@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -126,11 +126,16 @@ var loginCmd = &cobra.Command{
 
 				return nil
 			} else {
-				if _, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{
+				ctx := db.NewBuildContext(def)
+				if _, err := db.Build(ctx, def, common.BuildOptions{
 					AlwaysRebuild: true,
 				}); err != nil {
 					slog.Error("fatal", "err", err)
 					os.Exit(1)
+				}
+
+				if common.IsVerbose() {
+					ctx.DisplayTree()
 				}
 
 				return nil
