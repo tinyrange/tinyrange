@@ -22,4 +22,4 @@ jobs:
 
       - name: Build
         run: |
-          go run ./build.go -os linux -arch amd64
+          go run ./tools/build.go -os linux -arch amd64
