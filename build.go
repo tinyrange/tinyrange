@@ -102,6 +102,7 @@ var (
 	buildArch = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
 	buildDir  = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
 	debug     = flag.Bool("debug", false, "Print executed commands.")
+	run       = flag.Bool("run", false, "Run TinyRange with the remaining arguments")
 )
 
 func buildInitForTarget(buildArch string) error {
@@ -279,7 +280,20 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if _, err := buildTinyRangeForTarget(target, *buildOs, *buildArch); err != nil {
+	filename, err := buildTinyRangeForTarget(target, *buildOs, *buildArch)
+	if err != nil {
 		log.Fatal(err)
+	}
+
+	if *run {
+		cmd := exec.Command(filename, flag.Args()...)
+
+		cmd.Stdout = os.Stdout
+		cmd.Stdin = os.Stdin
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
