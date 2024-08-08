@@ -30,11 +30,19 @@ func (t *installationTree) writeTree(prefix string) error {
 	}
 
 	if t.Installer == nil {
-		color.New(color.Faint).Printf("%s- %s (installed %s)\n", prefix, t.Query, t.Package.Name)
+		if t.Package == nil {
+			color.New(color.Faint).Printf("%s- %s (installed)\n", prefix, t.Query)
+		} else {
+			color.New(color.Faint).Printf("%s- %s (installed %s)\n", prefix, t.Query, t.Package.Name)
+		}
 	} else if t.Query.Equals(t.Package.Name) {
 		color.Green("%s- %s", prefix, t.Query)
 	} else {
-		color.Green("%s- %s(%s)", prefix, t.Package.Name, t.Query)
+		if t.Package == nil {
+			color.Green("%s- (%s)", prefix, t.Query)
+		} else {
+			color.Green("%s- %s(%s)", prefix, t.Package.Name, t.Query)
+		}
 	}
 
 	for _, depend := range t.Dependencies {
@@ -152,47 +160,15 @@ func (plan *InstallationPlan) addName(name common.PackageName, pkg *common.Packa
 	}
 }
 
-func (plan *InstallationPlan) add(builder *ContainerBuilder, query common.PackageQuery) (ret *installationTree) {
+func (plan *InstallationPlan) addInternal(
+	builder *ContainerBuilder,
+	query common.PackageQuery,
+	options []installOption,
+	option installOption,
+) (ret *installationTree) {
 	ret = &installationTree{Query: query}
 
-	// Query for any packages matching the query.
-	results, err := builder.Packages.Query(query)
-	if err != nil {
-		ret.Error = err
-		return
-	}
-
-	// Early out if we can't find a package matching the query.
-	if len(results) == 0 {
-		ret.Error = fmt.Errorf("could not find package for query: %s", query)
-		return
-	}
-
-	// Collect all possible options.
-	var options []installOption
-
-	for _, result := range results {
-		installer, err := builder.Packages.InstallerFor(result, plan.tags)
-		if err != nil {
-			ret.Error = fmt.Errorf("failed to get installer for %s", result.Name)
-			return
-		}
-
-		options = append(options, installOption{
-			pkg:     result,
-			install: installer,
-		})
-	}
-
 	ret.Options = options
-
-	// Raise a error if we can't find a matching installer.
-	if len(options) == 0 {
-		ret.Error = fmt.Errorf("could not find installer for package: %s", query)
-		return
-	}
-
-	option := options[0]
 
 	// Check to see if this package is already installed.
 	if pkg, ok := plan.checkName(option.pkg.Name); ok {
@@ -237,6 +213,64 @@ func (plan *InstallationPlan) add(builder *ContainerBuilder, query common.Packag
 	plan.directives = append(plan.directives, option.install.Directives...)
 
 	return
+}
+
+func (plan *InstallationPlan) add(builder *ContainerBuilder, query common.PackageQuery) (ret *installationTree) {
+	ret = &installationTree{Query: query}
+
+	// Query for any packages matching the query.
+	results, err := builder.Packages.Query(query)
+	if err != nil {
+		ret.Error = err
+		return
+	}
+
+	// Early out if we can't find a package matching the query.
+	if len(results) == 0 {
+		ret.Error = fmt.Errorf("could not find package for query: %s", query)
+		return
+	}
+
+	// Collect all possible options.
+	var options []installOption
+
+	for _, result := range results {
+		installer, err := builder.Packages.InstallerFor(result, plan.tags)
+		if err != nil {
+			ret.Error = fmt.Errorf("failed to get installer for %s", result.Name)
+			return
+		}
+
+		options = append(options, installOption{
+			pkg:     result,
+			install: installer,
+		})
+	}
+
+	ret.Options = options
+
+	// Raise a error if we can't find a matching installer.
+	if len(options) == 0 {
+		ret.Error = fmt.Errorf("could not find installer for package: %s", query)
+		return
+	}
+
+	if len(query.Tags) > 0 {
+		for _, option := range options {
+			child := plan.addInternal(builder, query, options, option)
+			if child.Error != nil && !plan.options.Debug {
+				ret.Error = fmt.Errorf("error adding dependency for query %s: %s", query, child.Error)
+				return
+			}
+
+			ret.Dependencies = append(ret.Dependencies, child)
+		}
+
+		return ret
+	} else {
+		option := options[0]
+		return plan.addInternal(builder, query, options, option)
+	}
 }
 
 func (plan *InstallationPlan) Add(builder *ContainerBuilder, query common.PackageQuery) error {

@@ -17,13 +17,20 @@ type PackageQuery struct {
 	Name             string
 	MatchPartialName bool
 	Version          string
+	Tags             TagList
 }
 
 func (q PackageQuery) Equals(n PackageName) bool {
 	return q.Name == n.Name && q.Version == n.Version
 }
 
-func (q PackageQuery) String() string         { return fmt.Sprintf("%s:%s", q.Name, q.Version) }
+func (q PackageQuery) String() string {
+	if len(q.Tags) > 0 {
+		return fmt.Sprintf("%+v", q.Tags)
+	} else {
+		return fmt.Sprintf("%s:%s", q.Name, q.Version)
+	}
+}
 func (PackageQuery) Type() string             { return "PackageQuery" }
 func (PackageQuery) Hash() (uint32, error)    { return 0, fmt.Errorf("PackageQuery is not hashable") }
 func (PackageQuery) Truth() starlark.Bool     { return starlark.True }
@@ -71,6 +78,10 @@ func (name PackageName) Matches(query PackageQuery) bool {
 				return false
 			}
 		}
+	}
+
+	if len(query.Tags) > 0 {
+		return false
 	}
 
 	// if query.Version != "" {
@@ -145,6 +156,7 @@ type Package struct {
 	Name    PackageName
 	Aliases []PackageName
 	Raw     starlark.Value
+	Tags    TagList
 }
 
 // Attr implements starlark.HasAttrs.
@@ -162,6 +174,10 @@ func (pkg *Package) AttrNames() []string {
 }
 
 func (pkg *Package) Matches(query PackageQuery) bool {
+	if len(query.Tags) > 0 && query.Tags.Matches(pkg.Tags) {
+		return true
+	}
+
 	if pkg.Name.Matches(query) {
 		return true
 	}
@@ -190,6 +206,6 @@ var (
 	_ starlark.HasAttrs = &Package{}
 )
 
-func NewPackage(name PackageName, aliases []PackageName, raw starlark.Value) *Package {
-	return &Package{Name: name, Aliases: aliases, Raw: raw}
+func NewPackage(name PackageName, aliases []PackageName, raw starlark.Value, tags TagList) *Package {
+	return &Package{Name: name, Aliases: aliases, Raw: raw, Tags: tags}
 }

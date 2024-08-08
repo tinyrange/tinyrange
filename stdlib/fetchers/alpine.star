@@ -282,14 +282,19 @@ def build_alpine_directives(builder, plan):
     if plan.tags.contains("level3"):
         # If we are using level3 then add a first layer that generates the inital scripts.
 
-        return [
+        directives = [
             define.build(
                 build_alpine_install_layer,
                 plan.directives,
             ),
-        ] + plan.directives + [
-            directive.run_command("/init -run-scripts /.pkg/scripts.json"),
-        ]
+        ] + plan.directives
+
+        if not plan.tags.contains("noScripts"):
+            directives.append([
+                directive.run_command("/init -run-scripts /.pkg/scripts.json"),
+            ])
+
+        return directives
     elif plan.tags.contains("download"):
         return plan.directives
     else:
@@ -314,6 +319,7 @@ def make_alpine_builders(repos):
             plan_callback = build_alpine_directives,
 
             # Set default packages.
+            # TODO(joshua): Fix this for older versions of Alpine.
             default_packages = [
                 query("busybox-binsh"),
                 query("alpine-baselayout"),

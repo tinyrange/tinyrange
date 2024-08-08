@@ -58,12 +58,14 @@ func (parser *PackageCollection) Attr(name string) (starlark.Value, error) {
 				name      common.PackageName
 				aliasList starlark.Iterable
 				raw       starlark.Value
+				tagsValue starlark.Iterable
 			)
 
 			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 				"name", &name,
 				"aliases?", &aliasList,
 				"raw?", &raw,
+				"tags?", &tagsValue,
 			); err != nil {
 				return starlark.None, err
 			}
@@ -84,7 +86,16 @@ func (parser *PackageCollection) Attr(name string) (starlark.Value, error) {
 				}
 			}
 
-			pkg := common.NewPackage(name, aliases, raw)
+			var tags common.TagList
+			var err error
+			if tagsValue != nil {
+				tags, err = common.ToStringList(tagsValue)
+				if err != nil {
+					return starlark.None, err
+				}
+			}
+
+			pkg := common.NewPackage(name, aliases, raw, tags)
 
 			if err := parser.addPackage(pkg); err != nil {
 				return starlark.None, err
@@ -202,6 +213,12 @@ func (parser *PackageCollection) Query(query common.PackageQuery) ([]*common.Pac
 				directs = append(directs, pkg)
 			} else if pkg.Matches(query) {
 				aliases = append(aliases, pkg)
+			}
+		}
+	} else if len(query.Tags) > 0 {
+		for _, pkg := range parser.RawPackages {
+			if pkg.Matches(query) {
+				directs = append(directs, pkg)
 			}
 		}
 	} else {

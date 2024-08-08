@@ -1,4 +1,5 @@
 db.add_mirror("ubuntu", ["https://mirror.aarnet.edu.au/pub/ubuntu/archive"])
+db.add_mirror("neurodebian", ["https://mirror.aarnet.edu.au/pub/neurodebian"])
 
 LATEST_UBUNTU_VERSION = "jammy"
 
@@ -80,6 +81,8 @@ def split_debian_name(q):
             pkg_version = ">" + rest.removeprefix(">> ")
         elif rest.startswith("<<"):
             pkg_version = "<" + rest.removeprefix("<< ")
+        elif rest.startswith("<="):
+            pkg_version = "<" + rest.removeprefix("<= ")
         elif rest.startswith("="):
             pkg_version = rest.removeprefix("= ")
         else:
@@ -173,29 +176,50 @@ def parse_debian_package(ctx, collection, packages):
                 name = ent["package"],
                 version = ent["version"],
             ),
+            tags = ["priority:" + ent["priority"].lower()],
             aliases = aliases,
             raw = ent,
         )
 
-def make_ubuntu_repos(only_latest = True):
+def make_ubuntu_repos(only_latest = True, include_neurodebian = False):
     ubuntu_repos = {}
 
-    for version in ["jammy"]:
+    for version in ["jammy", "focal"]:
         if only_latest and version != LATEST_UBUNTU_VERSION:
             continue
+
+        repos = []
+
+        repos.append(define.build(
+            parse_debian_release,
+            define.fetch_http(
+                url = "mirror://ubuntu/dists/{}/Release".format(version),
+                expire_time = duration("8h"),
+            ),
+            "mirror://ubuntu/",
+        ))
 
         ubuntu_repos[version] = define.package_collection(
             parse_debian_package,
             get_debian_installer,
-            define.build(
+            *repos
+        )
+
+        if include_neurodebian and version == "focal":
+            repos.append(define.build(
                 parse_debian_release,
                 define.fetch_http(
-                    url = "mirror://ubuntu/dists/{}/Release".format(version),
+                    url = "mirror://neurodebian/dists/{}/Release".format(version),
                     expire_time = duration("8h"),
                 ),
-                "mirror://ubuntu/",
-            ),
-        )
+                "mirror://neurodebian",
+            ))
+
+            ubuntu_repos[version + "_neurodebian"] = define.package_collection(
+                parse_debian_package,
+                get_debian_installer,
+                *repos
+            )
 
     return ubuntu_repos
 
@@ -249,12 +273,17 @@ def build_debian_install_layer(ctx, directives):
 
 def build_debian_directives(builder, plan):
     if plan.tags.contains("level3"):
-        return [
+        directives = [
             define.build(
                 build_debian_install_layer,
                 plan.directives,
             ),
-        ] + plan.directives + [
+        ] + plan.directives
+
+        if plan.tags.contains("noScripts"):
+            return directives
+
+        return directives + [
             directive.run_command("/init -run-scripts /.pkg/scripts.json"),
         ]
     else:
@@ -270,6 +299,12 @@ def make_ubuntu_builders(repos):
             name = "ubuntu@" + version,
             display_name = "Ubuntu " + version,
             plan_callback = build_debian_directives,
+            # Packages with a high priority need to be installed.
+            default_packages = [
+                query("*", tags = ["priority:required"]),
+                query("*", tags = ["priority:important"]),
+                query("*", tags = ["priority:standard"]),
+            ],
             # This builder is scoped to just the packages in this repo.
             packages = repos[version],
             metadata = {
@@ -280,5 +315,8 @@ def make_ubuntu_builders(repos):
     return ret
 
 if __name__ == "__main__":
-    for builder in make_ubuntu_builders(make_ubuntu_repos(only_latest = True)):
+    for builder in make_ubuntu_builders(make_ubuntu_repos(
+        only_latest = False,
+        include_neurodebian = True,
+    )):
         db.add_container_builder(builder)

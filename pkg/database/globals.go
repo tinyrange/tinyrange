@@ -729,7 +729,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 			}
 		}
 
-		return common.NewPackage(name, aliases, raw), nil
+		return common.NewPackage(name, aliases, raw, common.TagList{}), nil
 	})
 
 	ret["name"] = starlark.NewBuiltin("name", func(
@@ -773,11 +773,13 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
 		var (
-			name string
+			name      string
+			tagsValue starlark.Iterable
 		)
 
 		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 			"name", &name,
+			"tags?", &tagsValue,
 		); err != nil {
 			return starlark.None, err
 		}
@@ -786,6 +788,16 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		if err != nil {
 			return starlark.None, err
 		}
+
+		var tags []string
+		if tagsValue != nil {
+			tags, err = common.ToStringList(tagsValue)
+			if err != nil {
+				return starlark.None, err
+			}
+		}
+
+		q.Tags = common.TagList(tags)
 
 		return q, nil
 	})

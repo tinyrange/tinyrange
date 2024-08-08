@@ -20,6 +20,7 @@ var (
 	loginLoadConfig  string
 	loginSaveConfig  string
 	loginDebug       bool
+	loginNoScripts   bool
 )
 
 var loginCmd = &cobra.Command{
@@ -86,7 +87,15 @@ var loginCmd = &cobra.Command{
 				return fmt.Errorf("please specify a builder")
 			}
 
-			planDirective := builder.NewPlanDefinition(loginBuilder, pkgs, common.TagList{"level3", "defaults"})
+			var tags common.TagList
+
+			tags = append(tags, "level3", "defaults")
+
+			if loginNoScripts {
+				tags = append(tags, "noScripts")
+			}
+
+			planDirective := builder.NewPlanDefinition(loginBuilder, pkgs, tags)
 
 			dir = append(dir, planDirective)
 
@@ -139,5 +148,6 @@ func init() {
 	loginCmd.PersistentFlags().StringVarP(&loginExec, "exec", "E", "", "run a different command rather than dropping into a shell")
 	loginCmd.PersistentFlags().StringVar(&loginSaveConfig, "save-definition", "", "serialize the definition to the specified filename")
 	loginCmd.PersistentFlags().StringVarP(&loginLoadConfig, "load-definition", "c", "", "run a virtual machine from a serialized definition")
+	loginCmd.PersistentFlags().BoolVar(&loginNoScripts, "no-scripts", false, "disable script execution")
 	rootCmd.AddCommand(loginCmd)
 }
