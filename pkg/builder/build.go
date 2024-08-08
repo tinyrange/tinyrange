@@ -13,15 +13,32 @@ import (
 )
 
 type BuildContext struct {
-	Source   common.BuildSource
+	source   common.BuildSource
 	database common.PackageDatabase
 	parent   *BuildContext
 	status   *common.BuildStatus
+	children []*BuildContext
 
 	filename  string
 	output    io.WriteCloser
 	inMemory  bool
 	hasCached bool
+}
+
+func (b *BuildContext) DisplayTree() {
+	var dumpContext func(ctx *BuildContext, prefix string)
+
+	dumpContext = func(ctx *BuildContext, prefix string) {
+		fmt.Printf("%s%s\n", prefix, ctx.source)
+
+		for _, child := range ctx.children {
+			dumpContext(child, prefix+"  ")
+		}
+	}
+
+	fmt.Printf("\n")
+
+	dumpContext(b, "")
 }
 
 // SetHasCached implements common.BuildContext.
@@ -78,15 +95,19 @@ func (b *BuildContext) Database() common.PackageDatabase {
 }
 
 func (b *BuildContext) ChildContext(source common.BuildSource, status *common.BuildStatus, filename string) common.BuildContext {
-	return &BuildContext{
+	ctx := &BuildContext{
 		parent:   b,
 		filename: filename,
 		output:   nil,
 		status:   status,
-		Source:   source,
+		source:   source,
 		database: b.database,
 		inMemory: b.inMemory,
 	}
+
+	b.children = append(b.children, ctx)
+
+	return ctx
 }
 
 func (b *BuildContext) CreateOutput() (io.WriteCloser, error) {
@@ -259,5 +280,5 @@ var (
 )
 
 func NewBuildContext(source common.BuildSource, db common.PackageDatabase) *BuildContext {
-	return &BuildContext{Source: source, database: db}
+	return &BuildContext{source: source, database: db}
 }

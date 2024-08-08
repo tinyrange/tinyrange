@@ -34,6 +34,7 @@ type BuildDefinition interface {
 type BuildContext interface {
 	starlark.Value
 
+	DisplayTree()
 	CreateOutput() (io.WriteCloser, error)
 	CreateFile(name string) (string, io.WriteCloser, error)
 	HasCreatedOutput() bool

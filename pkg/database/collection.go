@@ -25,7 +25,6 @@ type PackageCollection struct {
 	Packages    map[string][]*common.Package
 
 	pkgMtx sync.Mutex
-	db     *PackageDatabase
 }
 
 func (parser *PackageCollection) addPackage(pkg *common.Package) error {
@@ -118,19 +117,15 @@ func (parser *PackageCollection) Tag() string {
 	return strings.Join([]string{parser.Filename, parser.Parser, parser.Install}, "_")
 }
 
-func (parser *PackageCollection) Load(db *PackageDatabase) error {
-	parser.db = db
-
+func (parser *PackageCollection) Load(ctx common.BuildContext) error {
 	var records []starlark.Value
-
-	ctx := db.NewBuildContext(parser)
 
 	start := time.Now()
 
 	// Build all the package sources.
 	// This can happen in parallel.
 	for _, source := range parser.Sources {
-		built, err := db.Build(ctx, source, common.BuildOptions{})
+		built, err := ctx.BuildChild(source)
 		if err != nil {
 			return err
 		}
@@ -157,7 +152,7 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 	slog.Debug("built all package sources", "took", time.Since(start))
 	start = time.Now()
 
-	parserCallback, err := db.GetBuilder(parser.Filename, parser.Parser)
+	parserCallback, err := ctx.Database().GetBuilder(parser.Filename, parser.Parser)
 	if err != nil {
 		return fmt.Errorf("failed to GetBuilder in PackageCollection.Load: %s", err)
 	}
@@ -179,7 +174,7 @@ func (parser *PackageCollection) Load(db *PackageDatabase) error {
 
 			child := ctx.ChildContext(parser, nil, "")
 
-			thread := db.NewThread(parser.Filename)
+			thread := ctx.Database().NewThread(parser.Filename)
 
 			_, err := starlark.Call(thread, parserCallback, starlark.Tuple{child, parser, starlark.NewList(records)}, []starlark.Tuple{})
 			if err != nil {
@@ -247,17 +242,13 @@ func (parser *PackageCollection) Query(query common.PackageQuery) ([]*common.Pac
 	return append(directs, aliases...), nil
 }
 
-func (parser *PackageCollection) InstallerFor(pkg *common.Package, tags common.TagList) (*common.Installer, error) {
-	if parser.db == nil {
-		return nil, fmt.Errorf("parser is not loaded")
-	}
-
-	getInstall, err := parser.db.GetBuilder(parser.Filename, parser.Install)
+func (parser *PackageCollection) InstallerFor(ctx common.BuildContext, pkg *common.Package, tags common.TagList) (*common.Installer, error) {
+	getInstall, err := ctx.Database().GetBuilder(parser.Filename, parser.Install)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get builder in InstallerFor: %s", err)
 	}
 
-	ret, err := starlark.Call(parser.db.NewThread(parser.Filename), getInstall, starlark.Tuple{pkg, tags}, []starlark.Tuple{})
+	ret, err := starlark.Call(ctx.Database().NewThread(parser.Filename), getInstall, starlark.Tuple{pkg, tags}, []starlark.Tuple{})
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
 			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())

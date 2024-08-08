@@ -8,15 +8,17 @@ TinyRange is currently a Pre-Alpha and expect major breaking changes as the arch
 
 Currently TinyRange only runs on Linux x86_64 and Windows x86_64 but support for other operating systems (MacOS, BSDs) and architectures (ARM64, RISC-V) is on the roadmap.
 
-The easiest way to get started is to grab the latest executable in https://github.com/tinyrange/tinyrange/releases. Just run the installer. You'll need the installer and `tinyrange_qemu.star` in the same directory.
+TinyRange has to be built from source right now. Support for binaries and `go install` will come later.
 
-Once TinyRange is installed you can start it with `tinyrange` (it's installed to `%HOME%/bin` on Windows and `~/.local/bin` on Linux).
+<!-- TinyRange can be installed like a regular Go executable using `go install github.com/tinyrange/tinyrange`. You'll also need [build/tinyrange_qemu.star](build/tinyrange_qemu.star) and QEMU somewhere in your PATH as well.
+
+QEMU can be installed with `apt install qemu-system-x86_64` on Debian derived distributions and `dnf install qemu-system-x86_64` on Red Hat derived distributions. -->
 
 ## Building from Source
 
 TinyRange is written in [Go](https://go.dev/) and requires both Go and [QEMU](https://www.qemu.org/) to be installed before it can be built.
 
-It can be built and run with the following code.
+It can be built and run from source with the following code.
 
 ```sh
 git clone https://github.com/tinyrange/tinyrange

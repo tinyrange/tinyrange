@@ -17,7 +17,7 @@ type ContainerBuilder struct {
 	DefaultPackages  []common.PackageQuery
 	Packages         *PackageCollection
 	Metadata         starlark.Value
-	db               *PackageDatabase
+	db               common.PackageDatabase
 
 	loaded bool
 }
@@ -73,7 +73,9 @@ func (builder *ContainerBuilder) Attr(name string) (starlark.Value, error) {
 				}
 			}
 
-			plan, err := builder.Plan(builder.db, search, tagList, common.PlanOptions{})
+			ctx := builder.db.NewBuildContext(nil)
+
+			plan, err := builder.Plan(ctx, search, tagList, common.PlanOptions{})
 			if err != nil {
 				return nil, err
 			}
@@ -117,14 +119,14 @@ func (builder *ContainerBuilder) Loaded() bool {
 	return builder.loaded
 }
 
-func (builder *ContainerBuilder) Load(db *PackageDatabase) error {
+func (builder *ContainerBuilder) Load(ctx common.BuildContext) error {
 	if builder.Loaded() {
 		return nil
 	}
 
-	builder.db = db
+	builder.db = ctx.Database()
 
-	if err := builder.Packages.Load(db); err != nil {
+	if err := builder.Packages.Load(ctx); err != nil {
 		return err
 	}
 
@@ -133,12 +135,17 @@ func (builder *ContainerBuilder) Load(db *PackageDatabase) error {
 	return nil
 }
 
-func (builder *ContainerBuilder) Plan(db common.PackageDatabase, packages []common.PackageQuery, tags common.TagList, opts common.PlanOptions) (common.InstallationPlan, error) {
+func (builder *ContainerBuilder) Plan(
+	ctx common.BuildContext,
+	packages []common.PackageQuery,
+	tags common.TagList,
+	opts common.PlanOptions,
+) (common.InstallationPlan, error) {
 	plan := NewInstallationPlan(tags, opts)
 
 	if tags.Contains("defaults") {
 		for _, pkg := range builder.DefaultPackages {
-			if err := plan.Add(builder, pkg); err != nil {
+			if err := plan.Add(ctx, builder, pkg); err != nil {
 				return nil, err
 			}
 		}
@@ -146,7 +153,7 @@ func (builder *ContainerBuilder) Plan(db common.PackageDatabase, packages []comm
 
 	// Add all the requested packages.
 	for _, pkg := range packages {
-		if err := plan.Add(builder, pkg); err != nil {
+		if err := plan.Add(ctx, builder, pkg); err != nil {
 			return nil, err
 		}
 	}
@@ -157,9 +164,9 @@ func (builder *ContainerBuilder) Plan(db common.PackageDatabase, packages []comm
 	}
 
 	// Call the plan callback.
-	thread := db.NewThread(builder.Filename)
+	thread := ctx.Database().NewThread(builder.Filename)
 
-	callable, err := db.GetBuilder(builder.Filename, builder.PlanCallbackName)
+	callable, err := ctx.Database().GetBuilder(builder.Filename, builder.PlanCallbackName)
 	if err != nil {
 		return nil, fmt.Errorf("could not get builder for ContainerBuilder.Plan: %s", err)
 	}

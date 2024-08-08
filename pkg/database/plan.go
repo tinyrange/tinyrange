@@ -161,6 +161,7 @@ func (plan *InstallationPlan) addName(name common.PackageName, pkg *common.Packa
 }
 
 func (plan *InstallationPlan) addInternal(
+	ctx common.BuildContext,
 	builder *ContainerBuilder,
 	query common.PackageQuery,
 	options []installOption,
@@ -199,7 +200,7 @@ func (plan *InstallationPlan) addInternal(
 
 	// For each dependency add it.
 	for _, depend := range option.install.Dependencies {
-		child := plan.add(builder, depend)
+		child := plan.add(ctx, builder, depend)
 		if child.Error != nil && !plan.options.Debug {
 			ret.Error = fmt.Errorf("error adding dependency for package %s: %s", query, child.Error)
 			return
@@ -215,7 +216,7 @@ func (plan *InstallationPlan) addInternal(
 	return
 }
 
-func (plan *InstallationPlan) add(builder *ContainerBuilder, query common.PackageQuery) (ret *installationTree) {
+func (plan *InstallationPlan) add(ctx common.BuildContext, builder *ContainerBuilder, query common.PackageQuery) (ret *installationTree) {
 	ret = &installationTree{Query: query}
 
 	// Query for any packages matching the query.
@@ -235,7 +236,7 @@ func (plan *InstallationPlan) add(builder *ContainerBuilder, query common.Packag
 	var options []installOption
 
 	for _, result := range results {
-		installer, err := builder.Packages.InstallerFor(result, plan.tags)
+		installer, err := builder.Packages.InstallerFor(ctx, result, plan.tags)
 		if err != nil {
 			ret.Error = fmt.Errorf("failed to get installer for %s", result.Name)
 			return
@@ -257,7 +258,7 @@ func (plan *InstallationPlan) add(builder *ContainerBuilder, query common.Packag
 
 	if len(query.Tags) > 0 {
 		for _, option := range options {
-			child := plan.addInternal(builder, query, options, option)
+			child := plan.addInternal(ctx, builder, query, options, option)
 			if child.Error != nil && !plan.options.Debug {
 				ret.Error = fmt.Errorf("error adding dependency for query %s: %s", query, child.Error)
 				return
@@ -269,12 +270,12 @@ func (plan *InstallationPlan) add(builder *ContainerBuilder, query common.Packag
 		return ret
 	} else {
 		option := options[0]
-		return plan.addInternal(builder, query, options, option)
+		return plan.addInternal(ctx, builder, query, options, option)
 	}
 }
 
-func (plan *InstallationPlan) Add(builder *ContainerBuilder, query common.PackageQuery) error {
-	tree := plan.add(builder, query)
+func (plan *InstallationPlan) Add(ctx common.BuildContext, builder *ContainerBuilder, query common.PackageQuery) error {
+	tree := plan.add(ctx, builder, query)
 	if tree.Error != nil && !plan.options.Debug {
 		return tree.Error
 	}

@@ -153,6 +153,7 @@ type PackageDatabase struct {
 	mirrors map[string][]string
 
 	memoryCache map[string][]byte
+	buildCache  map[string]filesystem.File
 
 	buildStatusMtx sync.Mutex
 	buildStatuses  map[common.BuildDefinition]*common.BuildStatus
@@ -366,6 +367,8 @@ func (db *PackageDatabase) RunScript(filename string, files map[string]filesyste
 }
 
 func (db *PackageDatabase) LoadAll(parallel bool) error {
+	ctx := db.NewBuildContext(nil)
+
 	if parallel {
 		var wg sync.WaitGroup
 		done := make(chan bool)
@@ -377,7 +380,7 @@ func (db *PackageDatabase) LoadAll(parallel bool) error {
 			go func(builder *ContainerBuilder) {
 				defer wg.Done()
 
-				if err := builder.Load(db); err != nil {
+				if err := builder.Load(ctx); err != nil {
 					errors <- err
 				}
 			}(builder)
@@ -397,7 +400,7 @@ func (db *PackageDatabase) LoadAll(parallel bool) error {
 		}
 	} else {
 		for _, builder := range db.ContainerBuilders {
-			if err := builder.Load(db); err != nil {
+			if err := builder.Load(ctx); err != nil {
 				return err
 			}
 		}
@@ -427,6 +430,10 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 	hash, err := db.HashDefinition(def)
 	if err != nil {
 		return nil, err
+	}
+
+	if f, ok := db.buildCache[hash]; ok {
+		return f, nil
 	}
 
 	status := &common.BuildStatus{Tag: tag}
@@ -475,6 +482,8 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 		}
 
 		status.Status = common.BuildStatusBuilt
+
+		db.buildCache[hash] = f
 
 		// Write the build status.
 		db.updateBuildStatus(def, status)
@@ -588,8 +597,12 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 		// Write the build status.
 		db.updateBuildStatus(def, status)
 
+		f := filesystem.NewLocalFile(filename, def)
+
+		db.buildCache[hash] = f
+
 		// Return the file.
-		return filesystem.NewLocalFile(filename, def), nil
+		return f, nil
 	}
 }
 
@@ -622,7 +635,7 @@ func (db *PackageDatabase) GetBuilder(filename string, builder string) (starlark
 	return callable, nil
 }
 
-func (db *PackageDatabase) GetContainerBuilder(name string) (common.ContainerBuilder, error) {
+func (db *PackageDatabase) GetContainerBuilder(ctx common.BuildContext, name string) (common.ContainerBuilder, error) {
 	builder, ok := db.ContainerBuilders[name]
 	if !ok {
 		return nil, fmt.Errorf("builder %s not found", name)
@@ -630,7 +643,7 @@ func (db *PackageDatabase) GetContainerBuilder(name string) (common.ContainerBui
 
 	if !builder.Loaded() {
 		start := time.Now()
-		if err := builder.Load(db); err != nil {
+		if err := builder.Load(ctx); err != nil {
 			return nil, err
 		}
 		slog.Debug("loaded", "builder", builder.DisplayName, "took", time.Since(start))
@@ -847,7 +860,9 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			builder, err := db.GetContainerBuilder(name)
+			ctx := db.NewBuildContext(nil)
+
+			builder, err := db.GetContainerBuilder(ctx, name)
 			if err != nil {
 				return starlark.None, err
 			}
@@ -931,6 +946,7 @@ func New(buildDir string) *PackageDatabase {
 		ContainerBuilders: make(map[string]*ContainerBuilder),
 		mirrors:           make(map[string][]string),
 		memoryCache:       make(map[string][]byte),
+		buildCache:        make(map[string]filesystem.File),
 		buildStatuses:     make(map[common.BuildDefinition]*common.BuildStatus),
 		buildDir:          buildDir,
 		defs:              make(map[string]starlark.Value),
