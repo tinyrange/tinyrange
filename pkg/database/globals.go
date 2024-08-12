@@ -691,47 +691,6 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		return common.NewInstaller(tagList, directives, dependencies), nil
 	})
 
-	ret["package"] = starlark.NewBuiltin("package", func(
-		thread *starlark.Thread,
-		fn *starlark.Builtin,
-		args starlark.Tuple,
-		kwargs []starlark.Tuple,
-	) (starlark.Value, error) {
-		var val starlark.Value
-
-		var (
-			name      common.PackageName
-			aliasList starlark.Iterable
-			raw       starlark.Value
-		)
-
-		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-			"name", &name,
-			"aliases?", &aliasList,
-			"raw?", &raw,
-		); err != nil {
-			return starlark.None, err
-		}
-
-		var aliases []common.PackageName
-
-		if aliasList != nil {
-			iter := aliasList.Iterate()
-			defer iter.Done()
-
-			for iter.Next(&val) {
-				alias, ok := val.(common.PackageName)
-				if !ok {
-					return nil, fmt.Errorf("could not convert %s to PackageName", val.Type())
-				}
-
-				aliases = append(aliases, alias)
-			}
-		}
-
-		return common.NewPackage(name, aliases, raw, common.TagList{}), nil
-	})
-
 	ret["name"] = starlark.NewBuiltin("name", func(
 		thread *starlark.Thread,
 		fn *starlark.Builtin,

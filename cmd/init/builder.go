@@ -43,7 +43,7 @@ func runCommand(script string) error {
 
 		return execCommand(tokens, nil)
 	} else if script == "interactive" {
-		return execCommand([]string{"/bin/login", "-f", "root"}, nil)
+		return execCommand([]string{"/bin/login", "-pf", "root"}, nil)
 	} else {
 		return execCommand([]string{"/bin/sh", "-c", script}, nil)
 	}

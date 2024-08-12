@@ -2,7 +2,7 @@ def ssh_connect(ctx):
     if "ssh_command" in args:
         return ctx.run(args["ssh_command"])
     else:
-        return ctx.run(["/bin/login", "-f", "root"])
+        return ctx.run(["/bin/login", "-pf", "root"])
 
 def main():
     network_interface_up("lo")
@@ -45,4 +45,4 @@ def main():
     elif "ssh_command" in args:
         run(*args["ssh_command"])
     else:
-        run("/bin/login", "-f", "root")
+        run("/bin/login", "-pf", "root")
