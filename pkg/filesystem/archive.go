@@ -1,8 +1,10 @@
 package filesystem
 
 import (
+	"embed"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/hash"
@@ -83,4 +85,57 @@ func ExtractArchive(ark Archive, mut MutableDirectory) error {
 	}
 
 	return nil
+}
+
+func ArchiveFromFS(eFs embed.FS, base string) (ArrayArchive, error) {
+	var ents ArrayArchive
+
+	if err := fs.WalkDir(eFs, base, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			ents = append(ents, SimpleEntry{
+				File:     NewMemoryDirectory(),
+				mode:     info.Mode(),
+				name:     path,
+				size:     info.Size(),
+				typeFlag: TypeDirectory,
+			})
+		} else {
+			f, err := eFs.Open(path)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+
+			contents, err := io.ReadAll(f)
+			if err != nil {
+				return err
+			}
+
+			mf := NewMemoryFile(TypeRegular)
+			mf.Overwrite(contents)
+
+			ents = append(ents, SimpleEntry{
+				File:     mf,
+				mode:     info.Mode(),
+				name:     path,
+				size:     info.Size(),
+				typeFlag: TypeRegular,
+			})
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return ents, nil
 }

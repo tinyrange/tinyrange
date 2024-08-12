@@ -22,6 +22,8 @@ func GetLinkName(ent File) (string, error) {
 			return "", fs.ErrInvalid
 		}
 		return string(ent.contents), nil
+	case SimpleEntry:
+		return ent.linkName, nil
 	default:
 		return "", fmt.Errorf("GetLinkName not implemented: %T", ent)
 	}
@@ -39,6 +41,8 @@ func GetUidAndGid(ent File) (int, int, error) {
 		return ent.uid, ent.gid, nil
 	case *CacheEntry:
 		return ent.CUid, ent.CGid, nil
+	case SimpleEntry:
+		return ent.uid, ent.gid, nil
 	default:
 		return -1, -1, fmt.Errorf("GetUidAndGid not implemented: %T", ent)
 	}
@@ -368,3 +372,31 @@ func NewSymlink(target string) MutableFile {
 		contents: []byte(target),
 	}
 }
+
+type SimpleEntry struct {
+	File
+
+	uid      int
+	gid      int
+	linkName string
+	modTime  time.Time
+	mode     fs.FileMode
+	name     string
+	size     int64
+	typeFlag FileType
+}
+
+func (s SimpleEntry) Devmajor() int64    { return 0 }
+func (s SimpleEntry) Devminor() int64    { return 0 }
+func (s SimpleEntry) Uid() int           { return s.uid }
+func (s SimpleEntry) Gid() int           { return s.gid }
+func (s SimpleEntry) Linkname() string   { return s.linkName }
+func (s SimpleEntry) ModTime() time.Time { return s.modTime }
+func (s SimpleEntry) Mode() fs.FileMode  { return s.mode }
+func (s SimpleEntry) Name() string       { return s.name }
+func (s SimpleEntry) Size() int64        { return s.size }
+func (s SimpleEntry) Typeflag() FileType { return s.typeFlag }
+
+var (
+	_ Entry = SimpleEntry{}
+)

@@ -1,6 +1,7 @@
 package common
 
 import (
+	"embed"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,6 +16,12 @@ import (
 
 var StarlarkJsonEncode = starlarkjson.Module.Members["encode"].(*starlark.Builtin).CallInternal
 var StarlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builtin).CallInternal
+
+var SOURCE_FS embed.FS
+
+func SetSourceFS(fs embed.FS) {
+	SOURCE_FS = fs
+}
 
 var verboseEnabled = false
 

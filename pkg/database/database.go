@@ -915,6 +915,19 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 				}
 
 				return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange_qemu.star"), nil
+			} else if name == "source" {
+				var fs filesystem.ArrayArchive
+
+				for _, root := range []string{"pkg", "cmd", "tools", "go.mod", "go.sum", "main.go", "LICENSE", "stdlib", "third_party"} {
+					subFs, err := filesystem.ArchiveFromFS(common.SOURCE_FS, root)
+					if err != nil {
+						return nil, err
+					}
+
+					fs = append(fs, subFs...)
+				}
+
+				return filesystem.NewStarArchive(fs, "source"), nil
 			} else {
 				return starlark.None, fmt.Errorf("unknown builtin executable: %s", name)
 			}
