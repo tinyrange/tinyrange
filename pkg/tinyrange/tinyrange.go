@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
@@ -178,64 +178,63 @@ func RunWithConfig(
 				return fmt.Errorf("unknown builtin: %s", builtin.Name)
 			}
 		} else if ark := frag.Archive; ark != nil {
-			fh, err := os.Open(cfg.Resolve(ark.HostFilename))
+			f := filesystem.NewLocalFile(cfg.Resolve(ark.HostFilename), nil)
+
+			archive, err := filesystem.ReadArchiveFromFile(f)
 			if err != nil {
-				return fmt.Errorf("failed to open archive: %w", err)
+				return fmt.Errorf("failed to read archive: %w", err)
 			}
 
-			entries, err := archive.ReadArchiveFromFile(fh)
+			entries, err := archive.Entries()
 			if err != nil {
 				return fmt.Errorf("failed to read archive: %w", err)
 			}
 
 			for _, ent := range entries {
-				name := ark.Target + "/" + ent.CName
+				name := ark.Target + "/" + ent.Name()
 
 				if fs.Exists(name) {
 					continue
 				}
 
-				switch ent.CTypeflag {
-				case archive.TypeDirectory:
+				switch ent.Typeflag() {
+				case filesystem.TypeDirectory:
 					// slog.Info("directory", "name", name)
 					name = strings.TrimSuffix(name, "/")
 					if err := fs.Mkdir(name, true); err != nil {
 						return fmt.Errorf("failed to mkdir in guest: %w", err)
 					}
-				case archive.TypeSymlink:
+				case filesystem.TypeSymlink:
 					// slog.Info("symlink", "name", name)
-					if err := fs.Symlink(name, ent.CLinkname); err != nil {
+					if err := fs.Symlink(name, ent.Linkname()); err != nil {
 						return fmt.Errorf("failed to symlink in guest: %w", err)
 					}
-				case archive.TypeLink:
+				case filesystem.TypeLink:
 					// slog.Info("link", "name", name)
-					if err := fs.Link(name, "/"+ent.CLinkname); err != nil {
+					if err := fs.Link(name, "/"+ent.Linkname()); err != nil {
 						return fmt.Errorf("failed to link in guest: %w", err)
 					}
-				case archive.TypeRegular:
+				case filesystem.TypeRegular:
 					// slog.Info("reg", "name", name)
 					f, err := ent.Open()
 					if err != nil {
 						return fmt.Errorf("failed to open file for guest: %w", err)
 					}
 
-					region, err := vm.NewFileRegion(f)
-					if err != nil {
-						return fmt.Errorf("failed to make region for guest: %w", err)
-					}
+					region := vm.NewReaderRegion(f, ent.Size())
 
 					if err := fs.CreateFile(name, region); err != nil {
 						return fmt.Errorf("failed to create file in guest %s: %w", name, err)
 					}
 				default:
-					return fmt.Errorf("unimplemented entry type: %s", ent.CTypeflag)
+					return fmt.Errorf("unimplemented entry type: %s", ent.Typeflag())
 				}
 
-				if err := fs.Chown(name, uint16(ent.CUid), uint16(ent.CGid)); err != nil {
+				if err := fs.Chown(name, uint16(ent.Uid()), uint16(ent.Gid())); err != nil {
 					return fmt.Errorf("failed to chown in guest: %w", err)
 				}
 
-				if err := fs.Chmod(name, goFs.FileMode(ent.CMode)); err != nil {
+				if err := fs.Chmod(name, goFs.FileMode(ent.Mode())); err != nil {
 					return fmt.Errorf("failed to chmod in guest: %w", err)
 				}
 			}
