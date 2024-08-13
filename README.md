@@ -23,7 +23,7 @@ It can be built and run from source with the following code.
 ```sh
 git clone https://github.com/tinyrange/tinyrange
 cd tinyrange
-./build.go && ./build/pkg2 -script scripts/tinyrange.star
+./tools/build.go -run -- login
 ```
 
 ## Scripting
