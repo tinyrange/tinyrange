@@ -390,7 +390,9 @@ func RunWithConfig(
 	{
 		dnsServer := &dnsServer{
 			dnsLookup: func(name string) (string, error) {
-				if name == "host.internal." {
+				if name == "tinyrange." {
+					return "10.42.0.2", nil
+				} else if name == "host.internal." {
 					return "10.42.0.1", nil
 				}
 

@@ -167,11 +167,36 @@ func (d DirectiveExportPort) Tag() string {
 	return fmt.Sprintf("DirPort_%s_%d", d.Name, d.Port)
 }
 
+type DirectiveEnvironment struct {
+	Variables []string
+}
+
+// Dependencies implements Directive.
+func (d DirectiveEnvironment) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return []DependencyNode{}, nil
+}
+
+// SerializableType implements Directive.
+func (d DirectiveEnvironment) SerializableType() string { return "DirectiveEnvironment" }
+
+// AsFragments implements Directive.
+func (d DirectiveEnvironment) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+	return []config.Fragment{
+		{Environment: &config.EnvironmentFragment{Variables: d.Variables}},
+	}, nil
+}
+
+// Tag implements Directive.
+func (d DirectiveEnvironment) Tag() string {
+	return fmt.Sprintf("DirEnvironment_%+v", d.Variables)
+}
+
 var (
 	_ Directive = DirectiveRunCommand{}
 	_ Directive = DirectiveAddFile{}
 	_ Directive = DirectiveArchive{}
 	_ Directive = DirectiveExportPort{}
+	_ Directive = DirectiveEnvironment{}
 )
 
 type StarDirective struct {

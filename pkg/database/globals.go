@@ -609,6 +609,42 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					Port: port,
 				}}, nil
 			}),
+			"environment": starlark.NewBuiltin("directive.environment", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					vars starlark.IterableMapping
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"vars", &vars,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				var variables []string
+
+				for _, item := range vars.Items() {
+					k, ok := starlark.AsString(item[0])
+					if !ok {
+						return starlark.None, fmt.Errorf("could not convert %s to string", item[0].Type())
+					}
+
+					v, ok := starlark.AsString(item[1])
+					if !ok {
+						return starlark.None, fmt.Errorf("could not convert %s to string", item[1].Type())
+					}
+
+					variables = append(variables, fmt.Sprintf("%s=%s", k, v))
+				}
+
+				return &common.StarDirective{Directive: common.DirectiveEnvironment{
+					Variables: variables,
+				}}, nil
+			}),
 		},
 	}
 

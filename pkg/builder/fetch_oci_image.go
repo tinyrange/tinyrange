@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -244,6 +245,8 @@ func (def *FetchOciImageDefinition) AsFragments(ctx common.BuildContext) ([]conf
 
 		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
 	}
+
+	slices.Reverse(ret)
 
 	if def.Config.Config.Env != nil {
 		ret = append(ret, config.Fragment{Environment: &config.EnvironmentFragment{Variables: def.Config.Config.Env}})
