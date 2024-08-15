@@ -434,34 +434,6 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					createCallback.Name(),
 				), nil
 			}),
-			"build_image": starlark.NewBuiltin("define.build_image", func(
-				thread *starlark.Thread,
-				fn *starlark.Builtin,
-				args starlark.Tuple,
-				kwargs []starlark.Tuple,
-			) (starlark.Value, error) {
-				var (
-					directiveList starlark.Iterable
-					kind          string
-				)
-
-				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-					"directives", &directiveList,
-					"kind", &kind,
-				); err != nil {
-					return starlark.None, err
-				}
-
-				directives, err := asDirectiveList(directiveList)
-				if err != nil {
-					return starlark.None, err
-				}
-
-				return builder.NewBuildImageDefinition(
-					directives,
-					kind,
-				), nil
-			}),
 			"plan": starlark.NewBuiltin("define.plan", func(
 				thread *starlark.Thread,
 				fn *starlark.Builtin,
