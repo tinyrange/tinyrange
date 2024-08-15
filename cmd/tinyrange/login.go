@@ -95,7 +95,10 @@ var loginCmd = &cobra.Command{
 				tags = append(tags, "noScripts")
 			}
 
-			planDirective := builder.NewPlanDefinition(loginBuilder, pkgs, tags)
+			planDirective, err := builder.NewPlanDefinition(loginBuilder, pkgs, tags)
+			if err != nil {
+				return err
+			}
 
 			dir = append(dir, planDirective)
 

@@ -68,6 +68,13 @@ func uploadFile(address string, filename string) error {
 }
 
 func runWithConfig(cfg config.BuilderConfig) error {
+	for _, env := range cfg.Environment {
+		k, v, _ := strings.Cut(env, "=")
+		if err := os.Setenv(k, v); err != nil {
+			return err
+		}
+	}
+
 	for _, cmd := range cfg.Commands {
 		slog.Debug("running", "cmd", cmd)
 		if err := runCommand(cmd); err != nil {

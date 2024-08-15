@@ -157,9 +157,9 @@ func (def *BuildEmulatorDefinition) Tag() string {
 }
 
 func (def *BuildEmulatorDefinition) String() string { return def.Tag() }
-func (*BuildEmulatorDefinition) Type() string       { return "BuildVmDefinition" }
+func (*BuildEmulatorDefinition) Type() string       { return "BuildEmulatorDefinition" }
 func (*BuildEmulatorDefinition) Hash() (uint32, error) {
-	return 0, fmt.Errorf("BuildVmDefinition is not hashable")
+	return 0, fmt.Errorf("BuildEmulatorDefinition is not hashable")
 }
 func (*BuildEmulatorDefinition) Truth() starlark.Bool { return starlark.True }
 func (*BuildEmulatorDefinition) Freeze()              {}

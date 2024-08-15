@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/builder/oci"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -44,14 +45,19 @@ func ParseJsonFromFile(f filesystem.File, out any) error {
 }
 
 type copyResponseResult struct {
-	body io.ReadCloser
+	body          io.ReadCloser
+	contentLength int64
+	url           string
 }
 
 // WriteTo implements common.BuildResult.
 func (c *copyResponseResult) WriteTo(w io.Writer) (n int64, err error) {
 	defer c.body.Close()
 
-	return io.Copy(w, c.body)
+	prog := progressbar.DefaultBytes(c.contentLength, c.url)
+	defer prog.Close()
+
+	return io.Copy(io.MultiWriter(prog, w), c.body)
 }
 
 var (
@@ -167,7 +173,11 @@ func (r *registryRequestDefinition) Build(ctx common.BuildContext) (common.Build
 		return r.Build(ctx)
 	}
 
-	return &copyResponseResult{body: resp.Body}, nil
+	return &copyResponseResult{
+		body:          resp.Body,
+		contentLength: resp.ContentLength,
+		url:           r.ctx.registry + r.params.Url,
+	}, nil
 }
 
 // NeedsBuild implements common.BuildDefinition.
@@ -194,6 +204,7 @@ type FetchOciImageDefinition struct {
 	params FetchOciImageParameters
 
 	LayerArchives []*filesystem.FileDigest
+	Config        oci.ImageConfig
 }
 
 // Dependencies implements common.Directive.
@@ -232,6 +243,10 @@ func (def *FetchOciImageDefinition) AsFragments(ctx common.BuildContext) ([]conf
 		}
 
 		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+	}
+
+	if def.Config.Config.Env != nil {
+		ret = append(ret, config.Fragment{Environment: &config.EnvironmentFragment{Variables: def.Config.Config.Env}})
 	}
 
 	return ret, nil
@@ -326,7 +341,12 @@ func (def *FetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext, re
 
 }
 
-func (def *FetchOciImageDefinition) buildFromManifest(ctx common.BuildContext, regCtx *ociRegistryContext, manifest oci.ImageManifest) (common.BuildResult, error) {
+func (def *FetchOciImageDefinition) buildFromManifest(
+	ctx common.BuildContext,
+	regCtx *ociRegistryContext,
+	manifest oci.ImageManifest,
+	config oci.ImageConfig,
+) (common.BuildResult, error) {
 	// Request all the layers.
 	for _, layer := range manifest.Layers {
 		layerArchive, err := ctx.BuildChild(
@@ -350,6 +370,8 @@ func (def *FetchOciImageDefinition) buildFromManifest(ctx common.BuildContext, r
 
 		def.LayerArchives = append(def.LayerArchives, layerDigest)
 	}
+
+	def.Config = config
 
 	return def, nil
 }
@@ -382,11 +404,27 @@ func (def *FetchOciImageDefinition) buildFromIndex(ctx common.BuildContext, regC
 		return nil, err
 	}
 
+	configFile, err := ctx.BuildChild(&registryRequestDefinition{
+		ctx: regCtx,
+		params: RegistryRequestParameters{
+			Url: fmt.Sprintf("/%s/blobs/%s", def.params.Image, manifest.Config.Digest),
+		},
+		// configs are content addressed so don't expire.
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var config oci.ImageConfig
+	if err := ParseJsonFromFile(configFile, &config); err != nil {
+		return nil, err
+	}
+
 	switch manifest.MediaType {
 	case "application/vnd.docker.distribution.manifest.v2+json":
-		return def.buildFromManifest(ctx, regCtx, manifest)
+		return def.buildFromManifest(ctx, regCtx, manifest, config)
 	case "application/vnd.oci.image.manifest.v1+json":
-		return def.buildFromManifest(ctx, regCtx, manifest)
+		return def.buildFromManifest(ctx, regCtx, manifest, config)
 	default:
 		return nil, fmt.Errorf("unknown manifest media type: %s", manifest.MediaType)
 	}
@@ -434,6 +472,10 @@ func (def *FetchOciImageDefinition) Build(ctx common.BuildContext) (common.Build
 
 // NeedsBuild implements common.BuildDefinition.
 func (def *FetchOciImageDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+	if ctx.Database().ShouldRebuildUserDefinitions() {
+		return true, nil
+	}
+
 	return ctx.NeedsBuild(def.indexDef(&ociRegistryContext{registry: def.params.Registry}))
 }
 

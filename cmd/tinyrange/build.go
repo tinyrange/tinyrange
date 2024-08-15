@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -15,7 +16,7 @@ var (
 
 var buildCmd = &cobra.Command{
 	Use:   "build",
-	Short: "Build a single definiton",
+	Short: "Build a single definition",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return fmt.Errorf("please specify a definition")
@@ -35,7 +36,8 @@ var buildCmd = &cobra.Command{
 			AlwaysRebuild: true,
 		})
 		if err != nil {
-			return err
+			slog.Error("fatal", "err", err)
+			os.Exit(1)
 		}
 
 		if buildOutput != "" {

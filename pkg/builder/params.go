@@ -30,7 +30,7 @@ type BuildVmParameters struct {
 	Debug       bool                   // Redirect hypervisor input to the host. The VM will exit after it completes initialization.
 }
 
-// Build Emulator uses a internal shell script to run simple shell scripts with support from
+// Build Emulator uses a internal shell emulator to run simple shell scripts with support from
 // Starlark to stub applications. The Directives and output file work the name way as
 // BuildVmParameters.
 type BuildEmulatorParameters struct {

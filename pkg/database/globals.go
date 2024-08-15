@@ -40,6 +40,30 @@ func asDirective(val starlark.Value) (common.Directive, error) {
 	}
 }
 
+func asDirectiveList(it starlark.Iterable) ([]common.Directive, error) {
+	if it == nil {
+		return nil, nil
+	}
+
+	var val starlark.Value
+
+	var directives []common.Directive
+
+	directiveIter := it.Iterate()
+	defer directiveIter.Done()
+
+	for directiveIter.Next(&val) {
+		dir, err := asDirective(val)
+		if err != nil {
+			return nil, err
+		}
+
+		directives = append(directives, dir)
+	}
+
+	return directives, nil
+}
+
 func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 	ret := starlark.StringDict{}
 
@@ -290,8 +314,6 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				args starlark.Tuple,
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
-				var val starlark.Value
-
 				var (
 					directiveList starlark.Iterable
 					kernel        starlark.Value
@@ -316,20 +338,9 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				var directives []common.Directive
-
-				if directiveList != nil {
-					directiveIter := directiveList.Iterate()
-					defer directiveIter.Done()
-
-					for directiveIter.Next(&val) {
-						dir, err := asDirective(val)
-						if err != nil {
-							return nil, err
-						}
-
-						directives = append(directives, dir)
-					}
+				directives, err := asDirectiveList(directiveList)
+				if err != nil {
+					return starlark.None, err
 				}
 
 				var initramfsDef common.BuildDefinition
@@ -370,8 +381,6 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				args starlark.Tuple,
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
-				var val starlark.Value
-
 				var (
 					directiveList starlark.Iterable
 					kind          string
@@ -384,18 +393,9 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				var directives []common.Directive
-
-				directiveIter := directiveList.Iterate()
-				defer directiveIter.Done()
-
-				for directiveIter.Next(&val) {
-					dir, err := asDirective(val)
-					if err != nil {
-						return nil, err
-					}
-
-					directives = append(directives, dir)
+				directives, err := asDirectiveList(directiveList)
+				if err != nil {
+					return starlark.None, err
 				}
 
 				return builder.NewBuildFsDefinition(directives, kind), nil
@@ -406,8 +406,6 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				args starlark.Tuple,
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
-				var val starlark.Value
-
 				var (
 					directiveList  starlark.Iterable
 					outputFilename string
@@ -422,18 +420,9 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				var directives []common.Directive
-
-				directiveIter := directiveList.Iterate()
-				defer directiveIter.Done()
-
-				for directiveIter.Next(&val) {
-					dir, err := asDirective(val)
-					if err != nil {
-						return nil, err
-					}
-
-					directives = append(directives, dir)
+				directives, err := asDirectiveList(directiveList)
+				if err != nil {
+					return starlark.None, err
 				}
 
 				filename := thread.CallFrame(1).Pos.Filename()
@@ -443,6 +432,34 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					outputFilename,
 					filename,
 					createCallback.Name(),
+				), nil
+			}),
+			"build_image": starlark.NewBuiltin("define.build_image", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					directiveList starlark.Iterable
+					kind          string
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"directives", &directiveList,
+					"kind", &kind,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				directives, err := asDirectiveList(directiveList)
+				if err != nil {
+					return starlark.None, err
+				}
+
+				return builder.NewBuildImageDefinition(
+					directives,
+					kind,
 				), nil
 			}),
 			"plan": starlark.NewBuiltin("define.plan", func(
@@ -495,7 +512,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					}
 				}
 
-				return builder.NewPlanDefinition(builderName, search, tagList), nil
+				return builder.NewPlanDefinition(builderName, search, tagList)
 			}),
 		},
 	}

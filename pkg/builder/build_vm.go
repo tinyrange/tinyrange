@@ -190,6 +190,8 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		for _, frag := range frags {
 			if frag.RunCommand != nil {
 				builderCfg.Commands = append(builderCfg.Commands, frag.RunCommand.Command)
+			} else if frag.Environment != nil {
+				builderCfg.Environment = append(builderCfg.Environment, frag.Environment.Variables...)
 			} else {
 				vmCfg.RootFsFragments = append(vmCfg.RootFsFragments, frag)
 			}

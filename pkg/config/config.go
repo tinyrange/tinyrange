@@ -26,6 +26,10 @@ type RunCommandFragment struct {
 	Command string `json:"command" yaml:"command"`
 }
 
+type EnvironmentFragment struct {
+	Variables []string `json:"variables" yaml:"variables"`
+}
+
 type BuiltinFragment struct {
 	Name          string `json:"builtin" yaml:"builtin"`
 	GuestFilename string `json:"guest_filename" yaml:"guest_filename"`
@@ -39,6 +43,7 @@ type ExportPortFragment struct {
 type Fragment struct {
 	// Not supported by TinyRange directly.
 	RunCommand   *RunCommandFragment   `json:"run_command,omitempty" yaml:"run_command"`
+	Environment  *EnvironmentFragment  `json:"environment,omitempty" yaml:"environment"`
 	LocalFile    *LocalFileFragment    `json:"local_file,omitempty" yaml:"local_file"`
 	FileContents *FileContentsFragment `json:"file_contents,omitempty" yaml:"file_contents"`
 	Archive      *ArchiveFragment      `json:"archive,omitempty" yaml:"archive"`

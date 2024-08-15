@@ -59,6 +59,9 @@ func (def *PlanDefinition) ToStarlark(ctx common.BuildContext, result filesystem
 		return nil, err
 	}
 
+	// Copy the parameters so the definition can be rebuilt.
+	plan.params = def.params
+
 	return plan, nil
 }
 
@@ -71,6 +74,8 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
+			var commands []starlark.Value
+
 			dir := filesystem.NewMemoryDirectory()
 
 			for _, frag := range def.Fragments {
@@ -85,12 +90,17 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 					if err := filesystem.ExtractArchive(ark, dir); err != nil {
 						return starlark.None, err
 					}
+				} else if frag.RunCommand != nil {
+					commands = append(commands, starlark.String(frag.RunCommand.Command))
 				} else {
 					return starlark.None, fmt.Errorf("unimplemented fragment type: %+v", frag)
 				}
 			}
 
-			return filesystem.NewStarDirectory(dir, ""), nil
+			return starlark.Tuple{
+				filesystem.NewStarDirectory(dir, ""),
+				starlark.NewList(commands),
+			}, nil
 		}), nil
 	} else {
 		return nil, nil
@@ -182,12 +192,16 @@ var (
 	_ common.Directive       = &PlanDefinition{}
 )
 
-func NewPlanDefinition(builder string, search []common.PackageQuery, tagList common.TagList) *PlanDefinition {
+func NewPlanDefinition(builder string, search []common.PackageQuery, tagList common.TagList) (*PlanDefinition, error) {
+	if builder == "" {
+		return nil, fmt.Errorf("no builder specified")
+	}
+
 	return &PlanDefinition{
 		params: PlanParameters{
 			Builder: builder,
 			Search:  search,
 			TagList: tagList,
 		},
-	}
+	}, nil
 }

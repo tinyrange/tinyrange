@@ -197,16 +197,22 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				dir *filesystem.StarDirectory
+				dir  *filesystem.StarDirectory
+				kind string
 			)
 
 			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 				"dir", &dir,
+				"kind?", &kind,
 			); err != nil {
 				return starlark.None, err
 			}
 
-			return &directoryToArchiveBuildResult{dir: dir}, nil
+			if kind == "" {
+				return &directoryToArchiveBuildResult{dir: dir}, nil
+			} else {
+				return starlark.None, fmt.Errorf("BuildContext.archive kind not implemented: %s", kind)
+			}
 		}), nil
 	} else if name == "build" {
 		return starlark.NewBuiltin("BuildContext.build", func(
