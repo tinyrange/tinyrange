@@ -23,3 +23,11 @@ jobs:
       - name: Build
         run: |
           go run ./tools/build.go -os linux -arch amd64
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get install -y qemu-kvm
+
+      - name: Run Test
+        run: |
+          ./build/tinyrange login -E "whoami"

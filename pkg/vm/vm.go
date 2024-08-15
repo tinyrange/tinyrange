@@ -69,10 +69,16 @@ func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bo
 }
 
 func (vm *VirtualMachine) Accelerate() bool {
-	if runtime.GOOS == "windows" {
-		return false
-	} else {
+	if runtime.GOOS == "linux" {
+		f, err := os.OpenFile("/dev/kvm", os.O_RDWR, os.ModePerm)
+		if err != nil {
+			return false
+		}
+		defer f.Close()
+
 		return true
+	} else {
+		return false
 	}
 }
 
