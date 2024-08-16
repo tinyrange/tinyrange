@@ -83,11 +83,11 @@ def main(args):
             ),
             supervisor_conf,
             ui_script,
-            directive.export_port("vnc", 5901),
         ],
         cpu_cores = 4,
         memory_mb = 4096,
         storage_size = 8192,
+        interaction = "vnc",
     )
 
     db.build(vm, always_rebuild = True)

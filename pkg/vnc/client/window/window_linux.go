@@ -1,3 +1,5 @@
+//go:build linux
+
 package window
 
 import (
@@ -15,93 +17,21 @@ import (
 	"github.com/jezek/xgbutil/xwindow"
 )
 
-type Event interface {
-	eventTag()
-}
-
-type ErrorEvent struct {
-	error
-}
-
-// eventTag implements Event.
-func (e *ErrorEvent) eventTag() { panic("unimplemented") }
-
-type ClosedEvent struct {
-}
-
-// eventTag implements Event.
-func (c *ClosedEvent) eventTag() { panic("unimplemented") }
-
-type MouseMoveEvent struct {
-	X int
-	Y int
-}
-
-// eventTag implements Event.
-func (m *MouseMoveEvent) eventTag() {
-	panic("unimplemented")
-}
-
-type MousePressEvent struct {
-	X      int
-	Y      int
-	Button xproto.Button
-}
-
-// eventTag implements Event.
-func (m *MousePressEvent) eventTag() {
-	panic("unimplemented")
-}
-
-type MouseReleaseEvent struct {
-	X      int
-	Y      int
-	Button xproto.Button
-}
-
-// eventTag implements Event.
-func (m *MouseReleaseEvent) eventTag() {
-	panic("unimplemented")
-}
-
-type KeyPressEvent struct {
-	Sym xproto.Keysym
-}
-
-// eventTag implements Event.
-func (k *KeyPressEvent) eventTag() {
-	panic("unimplemented")
-}
-
-type KeyReleaseEvent struct {
-	Sym xproto.Keysym
-}
-
-// eventTag implements Event.
-func (k *KeyReleaseEvent) eventTag() {
-	panic("unimplemented")
-}
-
-var (
-	_ Event = &ErrorEvent{}
-	_ Event = &ClosedEvent{}
-	_ Event = &MouseMoveEvent{}
-	_ Event = &MousePressEvent{}
-	_ Event = &MouseReleaseEvent{}
-	_ Event = &KeyPressEvent{}
-	_ Event = &KeyReleaseEvent{}
-)
-
-type Window struct {
+type windowImpl struct {
 	mtx    sync.Mutex
 	X      *xgbutil.XUtil
 	win    *xwindow.Window
 	canvas *xgraphics.Image
-	Events chan Event
+	events chan Event
 	closed bool
 }
 
-func (window *Window) writeEvent(evt Event) {
+// Events implements Window.
+func (window *windowImpl) Events() chan Event {
+	return window.events
+}
+
+func (window *windowImpl) writeEvent(evt Event) {
 	window.mtx.Lock()
 	defer window.mtx.Unlock()
 
@@ -109,10 +39,10 @@ func (window *Window) writeEvent(evt Event) {
 		return
 	}
 
-	window.Events <- evt
+	window.events <- evt
 }
 
-func (window *Window) Close() error {
+func (window *windowImpl) Close() error {
 	window.mtx.Lock()
 	defer window.mtx.Unlock()
 
@@ -129,7 +59,7 @@ func (window *Window) Close() error {
 	return nil
 }
 
-func (window *Window) DrawImage(img image.Image, bgra bool) error {
+func (window *windowImpl) DrawImage(img image.Image, bgra bool) error {
 	window.mtx.Lock()
 	defer window.mtx.Unlock()
 
@@ -158,7 +88,7 @@ func (window *Window) DrawImage(img image.Image, bgra bool) error {
 	return nil
 }
 
-func (window *Window) Create(width int, height int, title string) error {
+func (window *windowImpl) Create(width int, height int, title string) error {
 	window.mtx.Lock()
 	defer window.mtx.Unlock()
 
@@ -185,19 +115,19 @@ func (window *Window) Create(width int, height int, title string) error {
 
 	xevent.KeyPressFun(func(xu *xgbutil.XUtil, event xevent.KeyPressEvent) {
 		sym := keybind.KeysymGet(window.X, event.Detail, 0)
-		window.writeEvent(&KeyPressEvent{Sym: sym})
+		window.writeEvent(&KeyPressEvent{Sym: int32(sym)})
 	}).Connect(X, window.win.Id)
 	xevent.KeyReleaseFun(func(xu *xgbutil.XUtil, event xevent.KeyReleaseEvent) {
 		sym := keybind.KeysymGet(window.X, event.Detail, 0)
-		window.writeEvent(&KeyReleaseEvent{Sym: sym})
+		window.writeEvent(&KeyReleaseEvent{Sym: int32(sym)})
 	}).Connect(X, window.win.Id)
 
 	xevent.ButtonPressFun(func(xu *xgbutil.XUtil, event xevent.ButtonPressEvent) {
-		window.writeEvent(&MousePressEvent{X: int(event.EventX), Y: int(event.EventY), Button: event.Detail})
+		window.writeEvent(&MousePressEvent{X: int(event.EventX), Y: int(event.EventY), Button: byte(event.Detail)})
 	}).Connect(X, window.win.Id)
 
 	xevent.ButtonReleaseFun(func(xu *xgbutil.XUtil, event xevent.ButtonReleaseEvent) {
-		window.writeEvent(&MouseReleaseEvent{X: int(event.EventX), Y: int(event.EventY), Button: event.Detail})
+		window.writeEvent(&MouseReleaseEvent{X: int(event.EventX), Y: int(event.EventY), Button: byte(event.Detail)})
 	}).Connect(X, window.win.Id)
 
 	xevent.MotionNotifyFun(func(xu *xgbutil.XUtil, event xevent.MotionNotifyEvent) {
@@ -212,8 +142,8 @@ func (window *Window) Create(width int, height int, title string) error {
 	return nil
 }
 
-func New() *Window {
-	return &Window{
-		Events: make(chan Event),
-	}
+func New() (Window, error) {
+	return &windowImpl{
+		events: make(chan Event),
+	}, nil
 }

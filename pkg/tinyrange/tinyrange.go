@@ -500,7 +500,7 @@ func RunWithConfig(
 
 	slog.Debug("starting virtual machine", "took", time.Since(start))
 
-	if interaction == "ssh" {
+	if interaction == "ssh" || interaction == "vnc" {
 		go func() {
 			if err := virtualMachine.Run(nic, debug); err != nil {
 				slog.Error("failed to run virtual machine", "err", err)
@@ -509,6 +509,10 @@ func RunWithConfig(
 		defer virtualMachine.Shutdown()
 
 		// return nil
+
+		if interaction == "vnc" {
+			go runVncClient(ns, "10.42.0.2:5901")
+		}
 
 		// Start a loop so SSH can be restarted when requested by the user.
 		for {

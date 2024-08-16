@@ -1,31 +1,20 @@
-package main
+package client
 
 import (
-	"flag"
 	"log/slog"
 	"net"
-	"os"
 	"time"
 
-	"github.com/tinyrange/tinyrange/experimental/vncClient/rfb"
-	"github.com/tinyrange/tinyrange/experimental/vncClient/window"
+	"github.com/tinyrange/tinyrange/pkg/vnc/client/rfb"
+	"github.com/tinyrange/tinyrange/pkg/vnc/client/window"
 )
 
-var (
-	addr     = flag.String("addr", "127.0.0.1:5901", "The address of the server to connect to.")
-	password = flag.String("password", "password", "The password to set if requested by the server")
-)
-
-func appMain() error {
-	flag.Parse()
-
-	win := window.New()
-	defer win.Close()
-
-	nConn, err := net.Dial("tcp", *addr)
+func RunVNCClient(nConn net.Conn) error {
+	win, err := window.New()
 	if err != nil {
 		return err
 	}
+	defer win.Close()
 
 	conn, err := rfb.NewConn(nConn)
 	if err != nil {
@@ -62,7 +51,7 @@ func appMain() error {
 			default:
 				slog.Info("unrecognized", "event", evt)
 			}
-		case evt := <-win.Events:
+		case evt := <-win.Events():
 			switch evt := evt.(type) {
 			case *window.ClosedEvent:
 				return nil
@@ -96,12 +85,5 @@ func appMain() error {
 				return err
 			}
 		}
-	}
-}
-
-func main() {
-	if err := appMain(); err != nil {
-		slog.Error("fatal", "err", err)
-		os.Exit(1)
 	}
 }
