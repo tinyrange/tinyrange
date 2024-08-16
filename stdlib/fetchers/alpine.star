@@ -1,4 +1,5 @@
 db.add_mirror("alpine", ["https://dl-cdn.alpinelinux.org/alpine"])
+db.add_mirror("wolfi", ["https://packages.wolfi.dev"])
 
 LATEST_ALPINE_VERSION = "3.20"
 
@@ -337,3 +338,28 @@ def make_alpine_builders(repos):
 if __name__ == "__main__":
     for builder in make_alpine_builders(make_alpine_repos(only_latest = False)):
         db.add_container_builder(builder)
+
+    db.add_container_builder(define.container_builder(
+        name = "wolfi",
+        display_name = "Wolfi",
+        plan_callback = build_alpine_directives,
+        default_packages = [
+            query("busybox"),
+            query("wolfi-baselayout"),
+        ],
+        packages = define.package_collection(
+            parse_alpine_packages,
+            get_alpine_installer,
+            define.build(
+                parse_alpine_repo,
+                define.read_archive(
+                    define.fetch_http(
+                        "mirror://wolfi/os/x86_64/APKINDEX.tar.gz",
+                        expire_time = duration("8h"),
+                    ),
+                    ".tar.gz",
+                ),
+                "mirror://wolfi/os/x86_64",
+            ),
+        ),
+    ))
