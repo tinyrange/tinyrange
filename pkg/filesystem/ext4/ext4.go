@@ -1000,6 +1000,10 @@ func (i *InodeWrapper) chtime(mod time.Time) error {
 }
 
 func (i *InodeWrapper) addDirectoryEntry(child *InodeWrapper, name string) error {
+	if i.dir == nil {
+		return fmt.Errorf("not a directory")
+	}
+
 	child.node.SetLinksCount(child.node.LinksCount() + 1)
 
 	return i.dir.AddEntry(child, name)

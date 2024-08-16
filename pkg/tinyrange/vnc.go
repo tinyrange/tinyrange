@@ -18,7 +18,7 @@ func runVncClient(ns *netstack.NetStack, address string) error {
 	)
 
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 
 		conn, err = ns.DialInternalContext(ctx, "tcp", address)
@@ -26,11 +26,20 @@ func runVncClient(ns *netstack.NetStack, address string) error {
 			if !errors.Is(err, context.DeadlineExceeded) {
 				slog.Debug("failed to connect", "err", err)
 			}
+
+			time.Sleep(50 * time.Millisecond)
+
 			continue
 		}
 
 		break
 	}
 
-	return client.RunVNCClient(conn)
+	err = client.RunVNCClient(conn)
+	if err != nil {
+		slog.Error("VNC client crashed", "err", err)
+		return err
+	}
+
+	return nil
 }

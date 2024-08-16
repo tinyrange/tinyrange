@@ -202,7 +202,7 @@ func RunWithConfig(
 					// slog.Info("directory", "name", name)
 					name = strings.TrimSuffix(name, "/")
 					if err := fs.Mkdir(name, true); err != nil {
-						return fmt.Errorf("failed to mkdir in guest: %w", err)
+						return fmt.Errorf("failed to mkdir in guest %s: %w", name, err)
 					}
 				case filesystem.TypeSymlink:
 					// slog.Info("symlink", "name", name)

@@ -26,6 +26,7 @@ func RunVNCClient(nConn net.Conn) error {
 	defer updateTicks.Stop()
 
 	var buttonState rfb.Buttons
+	connected := false
 
 	for {
 		select {
@@ -42,6 +43,8 @@ func RunVNCClient(nConn net.Conn) error {
 				if err := conn.RequestUpdate(false); err != nil {
 					return err
 				}
+
+				connected = true
 			case *rfb.ErrorEvent:
 				return evt
 			case *rfb.UpdateRectangleEvent:
@@ -81,8 +84,10 @@ func RunVNCClient(nConn net.Conn) error {
 				slog.Info("unrecognized", "event", evt)
 			}
 		case <-updateTicks.C:
-			if err := conn.RequestUpdate(true); err != nil {
-				return err
+			if connected {
+				if err := conn.RequestUpdate(true); err != nil {
+					return err
+				}
 			}
 		}
 	}

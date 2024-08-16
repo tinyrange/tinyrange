@@ -60,9 +60,6 @@ func (window *windowImpl) Close() error {
 }
 
 func (window *windowImpl) DrawImage(img image.Image, bgra bool) error {
-	window.mtx.Lock()
-	defer window.mtx.Unlock()
-
 	subImg := window.canvas.SubImage(img.Bounds())
 	if subImg == nil {
 		return fmt.Errorf("no image returned for (%s)", img.Bounds())

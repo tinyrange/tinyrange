@@ -55,6 +55,13 @@ xfce4_packages = [
     query("faenza-icon-theme"),
 ]
 
+mate_packages = [
+    query("mate-desktop-environment"),
+    query("font-noto"),
+    query("adwaita-icon-theme"),
+    query("faenza-icon-theme"),
+]
+
 openrc_directives = [
     directive.add_file("/etc/network/interfaces", file("auto lo")),
     directive.run_command("openrc"),
@@ -62,32 +69,43 @@ openrc_directives = [
 ]
 
 def main(args):
+    wm = "xfce4"
+    wm_directives = []
+    wm_packages = []
     additional_packages = []
 
     for arg in args.args:
         additional_packages.append(query(arg))
 
+    if wm == "xfce4":
+        wm_packages = xfce4_packages
+        wm_directives.append(directive.add_file(
+            "/root/Xsession",
+            file("#!/bin/sh\nexec /usr/bin/xfce4-session"),
+            executable = True,
+        ))
+    else:
+        return error("unknown wm: {}".format(wm))
+
     vm = define.build_vm(
         directives = [
             define.plan(
                 builder = "alpine@3.20",
-                packages = base_packages + xfce4_packages + additional_packages,
+                packages = base_packages + wm_packages + additional_packages,
                 tags = ["level3", "defaults"],
             ),
         ] + openrc_directives + [
             directive.run_command("service dbus start"),
-            directive.add_file(
-                "/root/Xsession",
-                file("#!/bin/sh\nexec /usr/bin/xfce4-session"),
-                executable = True,
-            ),
+        ] + wm_directives + [
             supervisor_conf,
             ui_script,
         ],
         cpu_cores = 4,
-        memory_mb = 4096,
+        memory_mb = 4 * 1024,
         storage_size = 8192,
         interaction = "vnc",
     )
 
     db.build(vm, always_rebuild = True)
+
+    return None

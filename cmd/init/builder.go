@@ -31,7 +31,17 @@ func execCommand(args []string, environment map[string]string) error {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	return cmd.Run()
+	err := cmd.Run()
+	if exit, ok := err.(*exec.ExitError); ok {
+		if exit.ExitCode() == 255 {
+			slog.Warn("command returned exit 255", "args", args)
+			return nil
+		}
+	} else if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func runCommand(script string) error {
@@ -110,7 +120,7 @@ func runScript(script BuilderScript) error {
 			}
 
 			if err := execCommand([]string{script.Exec, trigger}, script.Environment); err != nil {
-				return err
+				return fmt.Errorf("failed to run trigger: %s", err)
 			}
 		}
 
@@ -121,7 +131,7 @@ func runScript(script BuilderScript) error {
 		start := time.Now()
 
 		if err := execCommand(append([]string{script.Exec}, script.Arguments...), script.Environment); err != nil {
-			return err
+			return fmt.Errorf("failed to run command (%s): %s", script.Exec, err)
 		}
 
 		slog.Debug("ran script", "exec", script.Exec, "took", time.Since(start))
