@@ -170,7 +170,17 @@ def optimise_args(args):
     ret = []
     last = None
 
+    base_image = ""
+    pkg_manager = ""
+
     for arg in args:
+        if "base-image" in arg:
+            base_image = arg["base-image"]
+            continue
+        elif "pkg-manager" in arg:
+            pkg_manager = arg["pkg-manager"]
+            continue
+
         if last == None:
             last = arg
             continue
@@ -184,16 +194,18 @@ def optimise_args(args):
             ret.append(last)
             last = arg
 
-    return ret + [last]
+    return ret + [last], base_image, pkg_manager
 
 def cmd_neurodocker(proc, args):
     args = parse_neurodocker_args(proc, [], args[3:])
 
-    args = optimise_args(args)
+    args, base_image, pkg_manager = optimise_args(args)
 
     proc["/output.yml"] = json.encode({
         "name": proc.env("toolName"),
         "version": proc.env("toolVersion"),
+        "base_image": base_image,
+        "pkg_manager": pkg_manager,
         "args": args,
     })
 

@@ -19,6 +19,32 @@ import (
 var ErrInterrupt = errors.New("Interrupt")
 var ErrRestart = errors.New("Restart")
 
+type waitReader struct {
+	closed   chan bool
+	isClosed bool
+}
+
+// Close implements io.ReadCloser.
+func (w *waitReader) Close() error {
+	if !w.isClosed {
+		close(w.closed)
+		w.isClosed = true
+	}
+
+	return nil
+}
+
+// Read implements io.Reader.
+func (w *waitReader) Read(p []byte) (n int, err error) {
+	<-w.closed
+
+	return 0, io.EOF
+}
+
+var (
+	_ io.ReadCloser = &waitReader{}
+)
+
 type closeType byte
 
 const (
@@ -119,6 +145,8 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, pass
 
 	width, height := 80, 40
 
+	nonInteractive := false
+
 	fd, ok := getFd(os.Stdin)
 	if ok {
 		state, err := term.MakeRaw(fd)
@@ -130,6 +158,10 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, pass
 		if w, h, err := getAndWatchSize(fd, session); err == nil {
 			width, height = w, h
 		}
+	} else {
+		slog.Debug("detected non-interactive session")
+
+		nonInteractive = true
 	}
 
 	term, ok := os.LookupEnv("TERM")
@@ -147,7 +179,14 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, pass
 
 	close := make(chan closeType, 1)
 
-	session.Stdin = &stdinWrap{Reader: os.Stdin, close: close}
+	if nonInteractive {
+		reader := &waitReader{closed: make(chan bool)}
+		defer reader.Close()
+
+		session.Stdin = reader
+	} else {
+		session.Stdin = &stdinWrap{Reader: os.Stdin, close: close}
+	}
 	session.Stdout = os.Stdout
 	session.Stderr = os.Stderr
 

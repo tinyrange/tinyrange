@@ -237,6 +237,10 @@ func generateRev() error {
 
 	err := out.Run()
 	if err != nil {
+		if _, err := os.Stat("pkg/buildinfo/commit.txt"); err == nil {
+			return nil
+		}
+
 		log.Printf("git describe --tags failed. Writing fallback")
 
 		err := os.WriteFile("pkg/buildinfo/commit.txt", []byte("nongit"), os.ModePerm)

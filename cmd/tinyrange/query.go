@@ -17,10 +17,6 @@ var queryCmd = &cobra.Command{
 			return fmt.Errorf("please specify a builder")
 		}
 
-		if len(args) == 0 {
-			return fmt.Errorf("please specify a query")
-		}
-
 		db, err := newDb()
 		if err != nil {
 			return err
@@ -33,9 +29,18 @@ var queryCmd = &cobra.Command{
 			return err
 		}
 
-		q, err := common.ParsePackageQuery(args[0])
-		if err != nil {
-			return err
+		var q common.PackageQuery
+
+		if len(args) > 0 {
+			q, err = common.ParsePackageQuery(args[0])
+			if err != nil {
+				return err
+			}
+		} else {
+			q, err = common.ParsePackageQuery("*")
+			if err != nil {
+				return err
+			}
 		}
 
 		q.MatchDirect = true

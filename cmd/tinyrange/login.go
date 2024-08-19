@@ -32,6 +32,7 @@ var (
 	loginNoScripts   bool
 	loginFiles       []string
 	loginArchives    []string
+	loginOutput      string
 )
 
 func detectArchiveExtractor(base common.BuildDefinition, filename string) (common.BuildDefinition, error) {
@@ -206,7 +207,7 @@ var loginCmd = &cobra.Command{
 			def := builder.NewBuildVmDefinition(
 				dir,
 				nil, nil,
-				"",
+				loginOutput,
 				loginCpuCores, loginMemorySize, loginStorageSize,
 				"ssh", loginDebug,
 			)
@@ -219,6 +220,32 @@ var loginCmd = &cobra.Command{
 				defer w.Close()
 
 				if err := builder.MarshalDefinition(w, def); err != nil {
+					return err
+				}
+
+				return nil
+			} else if loginOutput != "" {
+				ctx := db.NewBuildContext(def)
+
+				f, err := db.Build(ctx, def, common.BuildOptions{})
+				if err != nil {
+					slog.Error("fatal", "err", err)
+					os.Exit(1)
+				}
+
+				fh, err := f.Open()
+				if err != nil {
+					return err
+				}
+				defer fh.Close()
+
+				out, err := os.Create(path.Base(loginOutput))
+				if err != nil {
+					return err
+				}
+				defer out.Close()
+
+				if _, err := io.Copy(out, fh); err != nil {
 					return err
 				}
 
@@ -254,5 +281,6 @@ func init() {
 	loginCmd.PersistentFlags().BoolVar(&loginNoScripts, "no-scripts", false, "Disable script execution.")
 	loginCmd.PersistentFlags().StringArrayVarP(&loginFiles, "file", "f", []string{}, "Specify local files/URLs to be copied into the virtual machine. URLs will be downloaded to the build directory first.")
 	loginCmd.PersistentFlags().StringArrayVarP(&loginArchives, "archive", "a", []string{}, "Specify archives to be copied into the virtual machine. A copy will be made in the build directory.")
+	loginCmd.PersistentFlags().StringVarP(&loginOutput, "output", "o", "", "Write the specified file from the guest to the host.")
 	rootCmd.AddCommand(loginCmd)
 }
