@@ -492,6 +492,26 @@ var (
 	_ common.BuildResult = &arToArchiveBuildResult{}
 )
 
+func ReadArchiveSupportsExtracting(kind string) bool {
+	if strings.HasSuffix(kind, ".gz") {
+		kind = strings.TrimSuffix(kind, ".gz")
+	} else if strings.HasSuffix(kind, ".zst") {
+		kind = strings.TrimSuffix(kind, ".zst")
+	} else if strings.HasSuffix(kind, ".xz") {
+		kind = strings.TrimSuffix(kind, ".xz")
+	}
+
+	if strings.HasSuffix(kind, ".tar") {
+		return true
+	} else if strings.HasSuffix(kind, ".cpio") {
+		return true
+	} else if strings.HasSuffix(kind, ".ar") {
+		return true
+	} else {
+		return false
+	}
+}
+
 type ReadArchiveBuildDefinition struct {
 	params ReadArchiveParameters
 }

@@ -19,7 +19,7 @@ func init() {
 }
 
 type copyFileResult struct {
-	fh filesystem.FileHandle
+	fh io.ReadCloser
 }
 
 // WriteTo implements common.BuildResult.
@@ -128,6 +128,56 @@ var (
 	_ common.Directive       = &FileDefinition{}
 )
 
+type BuilderFunc func() (io.ReadCloser, error)
+
+type ConstantHashDefinition struct {
+	params  ConstantHashParameters
+	builder BuilderFunc
+}
+
+// Dependencies implements common.BuildDefinition.
+func (c *ConstantHashDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+	return []common.DependencyNode{}, nil
+}
+
+// implements common.BuildDefinition.
+func (c *ConstantHashDefinition) Params() hash.SerializableValue { return c.params }
+func (c *ConstantHashDefinition) SerializableType() string       { return "ConstantHashDefinition" }
+func (c *ConstantHashDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &ConstantHashDefinition{params: params.(ConstantHashParameters)}
+}
+
+// Build implements common.BuildDefinition.
+func (c *ConstantHashDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+	if c.builder == nil {
+		return nil, fmt.Errorf("no builder for ConstantHashDefinition(%s)", c.params.Hash)
+	}
+
+	r, err := c.builder()
+	if err != nil {
+		return nil, err
+	}
+
+	return &copyFileResult{fh: r}, nil
+}
+
+// NeedsBuild implements common.BuildDefinition.
+func (c *ConstantHashDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+	return false, nil
+}
+
+// Tag implements common.BuildDefinition.
+func (c *ConstantHashDefinition) Tag() string { return c.params.Hash }
+
+// ToStarlark implements common.BuildDefinition.
+func (c *ConstantHashDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	return filesystem.NewStarFile(result, c.params.Hash), nil
+}
+
+var (
+	_ common.BuildDefinition = &ConstantHashDefinition{}
+)
+
 func definitionFromSource(source hash.SerializableValue) (common.BuildDefinition, error) {
 	if def, ok := source.(common.BuildDefinition); ok {
 		return def, nil
@@ -151,4 +201,8 @@ func NewDefinitionFromFile(f filesystem.File) (common.BuildDefinition, error) {
 	}
 
 	return &FileDefinition{params: FileParameters{File: f}}, nil
+}
+
+func NewConstantHashDefinition(hash string, builder BuilderFunc) *ConstantHashDefinition {
+	return &ConstantHashDefinition{params: ConstantHashParameters{Hash: hash}, builder: builder}
 }

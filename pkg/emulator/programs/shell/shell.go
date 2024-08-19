@@ -224,7 +224,7 @@ func (sh *shellProgram) evalStmt(stmt *syntax.Stmt) error {
 func (sh *shellProgram) evalFile(f *syntax.File) error {
 	for _, stmt := range f.Stmts {
 		if err := sh.evalStmt(stmt); err != nil {
-			return err
+			return fmt.Errorf("shell: failed to evaluate statement: %s", err)
 		}
 	}
 
@@ -272,6 +272,8 @@ func (sh *shellProgram) init() {
 				return err
 			}
 
+			slog.Info("", "data", data)
+
 			tokens := strings.Split(string(data), args[2])
 
 			index, err := strconv.ParseInt(args[4], 10, 64)
@@ -280,7 +282,7 @@ func (sh *shellProgram) init() {
 			}
 
 			if index > int64(len(tokens)) {
-				return fmt.Errorf("attempt to get token out of range")
+				return fmt.Errorf("attempt to get token out of range: %d > %d", index, len(tokens))
 			}
 
 			if _, err := fmt.Fprintf(sh.proc, "%s", tokens[index-1]); err != nil {

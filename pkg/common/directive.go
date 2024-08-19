@@ -102,6 +102,34 @@ func (d DirectiveAddFile) Tag() string {
 	}
 }
 
+type DirectiveLocalFile struct {
+	Filename     string
+	HostFilename string
+}
+
+// AsFragments implements Directive.
+func (d DirectiveLocalFile) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+	return []config.Fragment{
+		{LocalFile: &config.LocalFileFragment{
+			HostFilename:  d.HostFilename,
+			GuestFilename: d.Filename,
+		}},
+	}, nil
+}
+
+// Dependencies implements Directive.
+func (d DirectiveLocalFile) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return []DependencyNode{}, nil
+}
+
+// SerializableType implements Directive.
+func (d DirectiveLocalFile) SerializableType() string { return "DirectiveLocalFile" }
+
+// Tag implements Directive.
+func (d DirectiveLocalFile) Tag() string {
+	return fmt.Sprintf("LocalFile_%s_%s", d.Filename, d.HostFilename)
+}
+
 type DirectiveArchive struct {
 	Definition BuildDefinition
 	Target     string
@@ -194,6 +222,7 @@ func (d DirectiveEnvironment) Tag() string {
 var (
 	_ Directive = DirectiveRunCommand{}
 	_ Directive = DirectiveAddFile{}
+	_ Directive = DirectiveLocalFile{}
 	_ Directive = DirectiveArchive{}
 	_ Directive = DirectiveExportPort{}
 	_ Directive = DirectiveEnvironment{}

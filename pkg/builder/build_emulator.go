@@ -106,14 +106,14 @@ func (def *BuildEmulatorDefinition) Build(ctx common.BuildContext) (common.Build
 		createFunc, starlark.Tuple{emu}, []starlark.Tuple{},
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to call emulator creation callback: %s", err)
 	}
 
 	// Run each command in the emulator.
 	for _, command := range commands {
 		slog.Debug("emulator", "run", command)
 		if err := emu.RunShell(command); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to run command in emulator [%+v]: %s", command, err)
 		}
 	}
 

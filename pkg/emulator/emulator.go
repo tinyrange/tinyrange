@@ -217,7 +217,7 @@ func (p *process) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (p *process) AttrNames() []string {
-	return []string{"write"}
+	return []string{"write", "env"}
 }
 
 // SetEnv implements shared.Process.

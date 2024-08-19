@@ -95,7 +95,37 @@ func (s *scriptArguments) Attr(name string) (starlark.Value, error) {
 
 			f, err := os.Create(s.outputFilename)
 			if err != nil {
-				return starlark.None, nil
+				return starlark.None, err
+			}
+
+			return &outputFile{f: f}, nil
+		}), nil
+	} else if name == "create_output" {
+		return starlark.NewBuiltin("Arguments.create_output", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				name string
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"name", &name,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			if strings.ContainsAny(name, "/\\") {
+				return starlark.None, fmt.Errorf("name for create_output can not contain path separators")
+			}
+
+			p := filepath.Join(s.outputFilename, name)
+
+			f, err := os.Create(p)
+			if err != nil {
+				return starlark.None, err
 			}
 
 			return &outputFile{f: f}, nil

@@ -75,6 +75,11 @@ type FileParameters struct {
 	File filesystem.File
 }
 
+// Constant hash needs to be manually replicated by constructing a object.
+type ConstantHashParameters struct {
+	Hash string
+}
+
 // Extract a single file from a archive.
 type ExtractFileParameters struct {
 	Base common.BuildDefinition
@@ -113,6 +118,7 @@ func (f FetchHttpParameters) SerializableType() string       { return "FetchHttp
 func (r RegistryRequestParameters) SerializableType() string { return "RegistryRequestParameters" }
 func (f FetchOciImageParameters) SerializableType() string   { return "FetchOciImageParameters" }
 func (f FileParameters) SerializableType() string            { return "FileParameters" }
+func (f ConstantHashParameters) SerializableType() string    { return "ConstantHashParameters" }
 func (f ExtractFileParameters) SerializableType() string     { return "ExtractFileParameters" }
 func (p PlanParameters) SerializableType() string            { return "PlanParameters" }
 func (r ReadArchiveParameters) SerializableType() string     { return "ReadArchiveParameters" }
@@ -127,6 +133,7 @@ var (
 	_ hash.SerializableValue = RegistryRequestParameters{}
 	_ hash.SerializableValue = FetchOciImageParameters{}
 	_ hash.SerializableValue = FileParameters{}
+	_ hash.SerializableValue = ConstantHashParameters{}
 	_ hash.SerializableValue = ExtractFileParameters{}
 	_ hash.SerializableValue = PlanParameters{}
 	_ hash.SerializableValue = ReadArchiveParameters{}

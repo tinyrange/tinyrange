@@ -36,8 +36,8 @@ packages = [
     "freesurfer",
 ]
 
-def parse_neurodocker_package(ret, args, name):
-    pkg_args = {}
+def parse_neurodocker_package(proc, ret, args, name):
+    pkg_args = {"pkg": name, "args": {}}
 
     index = 1
     for arg in args[1:]:
@@ -45,63 +45,71 @@ def parse_neurodocker_package(ret, args, name):
             break
 
         key, _, value = arg.partition("=")
-        pkg_args[key] = value
+        pkg_args["args"][key] = value
         index += 1
 
-    ret.append(("pkg", name, pkg_args))
+    ret.append(pkg_args)
 
-    return parse_neurodocker_args(ret, args[index:])
+    return parse_neurodocker_args(proc, ret, args[index:])
 
-def parse_neurodocker_args(ret, args):
+def parse_neurodocker_args(proc, ret, args):
     if len(args) == 0:
         return ret
 
     if args[0] == "--base-image":
-        ret.append(("base-image", args[1]))
+        ret.append({"base-image": args[1]})
 
-        return parse_neurodocker_args(ret, args[2:])
+        return parse_neurodocker_args(proc, ret, args[2:])
     elif args[0] == "--pkg-manager":
-        ret.append(("pkg-manager", args[1]))
+        ret.append({"pkg-manager": args[1]})
 
-        return parse_neurodocker_args(ret, args[2:])
+        return parse_neurodocker_args(proc, ret, args[2:])
     elif args[0] == "--entrypoint":
-        ret.append(("entrypoint", args[1]))
+        ret.append({"entrypoint": args[1]})
 
-        return parse_neurodocker_args(ret, args[2:])
+        return parse_neurodocker_args(proc, ret, args[2:])
     elif args[0] == "--workdir":
-        ret.append(("workdir", args[1]))
+        ret.append({"workdir": args[1]})
 
-        return parse_neurodocker_args(ret, args[2:])
+        return parse_neurodocker_args(proc, ret, args[2:])
     elif args[0] == "--user":
-        ret.append(("user", args[1]))
+        ret.append({"user": args[1]})
 
-        return parse_neurodocker_args(ret, args[2:])
+        return parse_neurodocker_args(proc, ret, args[2:])
     elif args[0] == "--env":
         index = 1
+        obj = {}
         for arg in args[1:]:
             if arg.startswith("--"):
                 break
 
             if arg != "":
-                ret.append(("env", arg))
+                k, _, v = arg.partition("=")
+                obj[k] = v
 
             index += 1
 
-        return parse_neurodocker_args(ret, args[index:])
+        ret.append({"env": obj})
+        return parse_neurodocker_args(proc, ret, args[index:])
     elif args[0] == "--copy":
-        ret.append(("copy", args[1], args[2]))
+        contents = ""
+        if "*" not in args[1]:
+            contents = proc[args[1]].read()
 
-        return parse_neurodocker_args(ret, args[3:])
+        ret.append({"copy": args[2], "filename": args[1], "contents": contents})
+
+        return parse_neurodocker_args(proc, ret, args[3:])
     elif args[0] == "--add":
-        ret.append(("add", args[1], args[2]))
+        ret.append({"add": [args[1], args[2]]})
 
-        return parse_neurodocker_args(ret, args[3:])
+        return parse_neurodocker_args(proc, ret, args[3:])
     elif args[0] == "--copy-from":
-        ret.append(("copy", args[1] + ":" + args[2], args[3]))
+        ret.append({"copy-from": [args[1], args[2], args[3]]})
 
-        return parse_neurodocker_args(ret, args[4:])
+        return parse_neurodocker_args(proc, ret, args[4:])
     elif args[0] == "--install":
         index = 1
+        install_args = []
         for arg in args[1:]:
             if arg.startswith("--"):
                 break
@@ -111,49 +119,78 @@ def parse_neurodocker_args(ret, args):
                 continue
 
             if arg != "":
-                ret.append(("install", arg))
+                install_args.append(arg)
 
             index += 1
 
-        return parse_neurodocker_args(ret, args[index:])
+        ret.append({"install": install_args})
+
+        return parse_neurodocker_args(proc, ret, args[index:])
     elif args[0] == "--run":
-        ret.append(("run", args[1]))
+        ret.append({"run": args[1]})
 
-        return parse_neurodocker_args(ret, args[2:])
+        return parse_neurodocker_args(proc, ret, args[2:])
     elif args[0].startswith("--run="):
-        ret.append(("run", args[0].removeprefix("--run=")))
+        ret.append({"run": args[0].removeprefix("--run=")})
 
-        return parse_neurodocker_args(ret, args[1:])
+        return parse_neurodocker_args(proc, ret, args[1:])
     elif args[0].startswith("--run-bash="):
-        ret.append(("run", args[0].removeprefix("--run-bash=")))
+        ret.append({"run": args[0].removeprefix("--run-bash="), "bash": True})
 
-        return parse_neurodocker_args(ret, args[1:])
+        return parse_neurodocker_args(proc, ret, args[1:])
     elif args[0].startswith("--workdir="):
-        ret.append(("workdir", args[0].removeprefix("--workdir=")))
+        ret.append({"workdir": args[0].removeprefix("--workdir=")})
 
-        return parse_neurodocker_args(ret, args[1:])
+        return parse_neurodocker_args(proc, ret, args[1:])
     elif args[0].startswith("--user="):
-        ret.append(("user", args[0].removeprefix("--user=")))
+        ret.append({"user": args[0].removeprefix("--user=")})
 
-        return parse_neurodocker_args(ret, args[1:])
+        return parse_neurodocker_args(proc, ret, args[1:])
     elif args[0].startswith("--install="):
         s = args[0].removeprefix("--install=")
 
-        for pkg in s.split(" "):
-            ret.append(("install", s))
+        install_args = []
 
-        return parse_neurodocker_args(ret, args[1:])
+        for pkg in s.split(" "):
+            install_args.append(pkg)
+
+        ret.append({"install": install_args})
+
+        return parse_neurodocker_args(proc, ret, args[1:])
     elif args[0] == "":
-        return parse_neurodocker_args(ret, args[1:])
+        return parse_neurodocker_args(proc, ret, args[1:])
     else:
         for pkg in packages:
             if args[0] == "--" + pkg:
-                return parse_neurodocker_package(ret, args, pkg)
+                return parse_neurodocker_package(proc, ret, args, pkg)
 
         return error("argument not implemented: " + args[0])
 
+def optimise_args(args):
+    ret = []
+    last = None
+
+    for arg in args:
+        if last == None:
+            last = arg
+            continue
+
+        if "env" in last and "env" in arg:
+            for k in arg["env"]:
+                last["env"][k] = arg["env"][k]
+        elif "install" in last and "install" in arg:
+            last["install"] += arg["install"]
+        else:
+            ret.append(last)
+            last = arg
+
+    return ret + [last]
+
 def cmd_neurodocker(proc, args):
-    args = parse_neurodocker_args([], args[3:])
+    args = parse_neurodocker_args(proc, [], args[3:])
+
+    args = optimise_args(args)
+
     proc["/output.yml"] = json.encode({
         "name": proc.env("toolName"),
         "version": proc.env("toolVersion"),
@@ -172,9 +209,10 @@ def create_neurocontainer_emulator(emu):
     emu.add_command("sed", cmd_sed)
 
 EXCLUDED_RECIPES = [
-    "neurocontainers-master/recipes/brkraw",
-    "neurocontainers-master/recipes/cartool",
-    "neurocontainers-master/recipes/itksnap",
+    "neurocontainers-master/recipes/afni",  # AFNI.version is empty (19/08/2024)
+    "neurocontainers-master/recipes/brkraw",  # Uses old TinyRange to generate.
+    "neurocontainers-master/recipes/cartool",  # Non-working with addtional commands for testing.
+    "neurocontainers-master/recipes/itksnap",  # Has option for old TinyRange build.
 ]
 
 def main(args):
@@ -203,7 +241,7 @@ def main(args):
 
         out = json.decode(result.read())
 
-        base_image = [v[1] for v in out["args"] if v[0] == "base-image"]
+        print(build_script_dir, out["name"], out["version"])
 
-        # print(build_script_dir, out["name"], out["version"], base_image)
-        print(out)
+        args.create_output(out["name"] + ".json").write(json.indent(json.encode(out)))
+        # print(out)
