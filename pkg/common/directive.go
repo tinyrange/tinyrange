@@ -219,6 +219,31 @@ func (d DirectiveEnvironment) Tag() string {
 	return fmt.Sprintf("DirEnvironment_%+v", d.Variables)
 }
 
+type DirectiveBuiltin struct {
+	Name          string
+	GuestFilename string
+}
+
+// Dependencies implements Directive.
+func (d DirectiveBuiltin) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return []DependencyNode{}, nil
+}
+
+// SerializableType implements Directive.
+func (d DirectiveBuiltin) SerializableType() string { return "DirectiveFragment" }
+
+// AsFragments implements Directive.
+func (d DirectiveBuiltin) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+	return []config.Fragment{
+		config.Fragment{Builtin: &config.BuiltinFragment{Name: d.Name, GuestFilename: d.GuestFilename}},
+	}, nil
+}
+
+// Tag implements Directive.
+func (d DirectiveBuiltin) Tag() string {
+	return fmt.Sprintf("BuiltinFrag_%s_%s", d.Name, d.GuestFilename)
+}
+
 var (
 	_ Directive = DirectiveRunCommand{}
 	_ Directive = DirectiveAddFile{}
@@ -226,6 +251,7 @@ var (
 	_ Directive = DirectiveArchive{}
 	_ Directive = DirectiveExportPort{}
 	_ Directive = DirectiveEnvironment{}
+	_ Directive = DirectiveBuiltin{}
 )
 
 type StarDirective struct {

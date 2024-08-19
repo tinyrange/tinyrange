@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"archive/tar"
 	"fmt"
 	"io"
 	"strings"
@@ -11,11 +12,27 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/cpio"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"go.starlark.net/starlark"
 )
 
 func init() {
 	hash.RegisterType(&BuildFsDefinition{})
+}
+
+func toTarTypeFlag(flag filesystem.FileType) byte {
+	switch flag {
+	case filesystem.TypeDirectory:
+		return tar.TypeDir
+	case filesystem.TypeRegular:
+		return tar.TypeReg
+	case filesystem.TypeSymlink:
+		return tar.TypeSymlink
+	case filesystem.TypeLink:
+		return tar.TypeLink
+	default:
+		panic(fmt.Sprintf("unimplemented type: %s", flag))
+	}
 }
 
 type initRamFsBuilderResult struct {
@@ -63,6 +80,104 @@ func (i *initRamFsBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 
 var (
 	_ common.BuildResult = &initRamFsBuilderResult{}
+)
+
+type tarBuilderResult struct {
+	frags []config.Fragment
+}
+
+// WriteTo implements common.BuildResult.
+func (i *tarBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
+	writer := tar.NewWriter(w)
+
+	written := make(map[string]bool)
+
+	for _, frag := range i.frags {
+		if frag.Archive != nil {
+			f := filesystem.NewLocalFile(frag.Archive.HostFilename, nil)
+
+			ark, err := filesystem.ReadArchiveFromFile(f)
+			if err != nil {
+				return 0, err
+			}
+
+			ents, err := ark.Entries()
+			if err != nil {
+				return 0, err
+			}
+
+			for _, ent := range ents {
+				name := ent.Name()
+
+				if name == "" {
+					name = "."
+				}
+
+				if _, ok := written[name]; ok {
+					continue
+				}
+
+				if err := writer.WriteHeader(&tar.Header{
+					Typeflag: toTarTypeFlag(ent.Typeflag()),
+					Name:     name,
+					Linkname: ent.Linkname(),
+					Size:     ent.Size(),
+					Mode:     int64(ent.Mode()),
+					Uid:      ent.Uid(),
+					Gid:      ent.Gid(),
+					ModTime:  ent.ModTime(),
+					Devmajor: ent.Devmajor(),
+					Devminor: ent.Devminor(),
+				}); err != nil {
+					return 0, err
+				}
+
+				if ent.Typeflag() == filesystem.TypeRegular {
+					fh, err := ent.Open()
+					if err != nil {
+						return 0, err
+					}
+					defer fh.Close()
+
+					if _, err := io.Copy(writer, fh); err != nil {
+						return 0, err
+					}
+				}
+
+				written[ent.Name()] = true
+			}
+		} else if frag.Builtin != nil {
+			if frag.Builtin.Name == "init" {
+				buf := initExec.INIT_EXECUTABLE
+
+				if err := writer.WriteHeader(&tar.Header{
+					Typeflag: tar.TypeReg,
+					Name:     frag.Builtin.GuestFilename,
+					Size:     int64(len(buf)),
+					Mode:     0755,
+					Uid:      0,
+					Gid:      0,
+					ModTime:  time.UnixMilli(0),
+				}); err != nil {
+					return 0, err
+				}
+
+				if _, err := writer.Write(buf); err != nil {
+					return 0, err
+				}
+			} else {
+				return 0, fmt.Errorf("unhandled builtin: %s", frag.Builtin.Name)
+			}
+		} else {
+			return 0, fmt.Errorf("unhandled fragment type: %+v", frag)
+		}
+	}
+
+	return 0, nil
+}
+
+var (
+	_ common.BuildResult = &tarBuilderResult{}
 )
 
 type BuildFsDefinition struct {
@@ -114,6 +229,8 @@ func (def *BuildFsDefinition) Build(ctx common.BuildContext) (common.BuildResult
 
 	if def.params.Kind == "initramfs" {
 		return &initRamFsBuilderResult{frags: def.frags}, nil
+	} else if def.params.Kind == "tar" {
+		return &tarBuilderResult{frags: def.frags}, nil
 	} else {
 		return nil, fmt.Errorf("kind not implemented: %s", def.params.Kind)
 	}

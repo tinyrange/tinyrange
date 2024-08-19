@@ -33,6 +33,7 @@ var (
 	loginFiles       []string
 	loginArchives    []string
 	loginOutput      string
+	loginWriteRoot   string
 )
 
 func detectArchiveExtractor(base common.BuildDefinition, filename string) (common.BuildDefinition, error) {
@@ -131,7 +132,7 @@ var loginCmd = &cobra.Command{
 
 			tags = append(tags, "level3", "defaults")
 
-			if loginNoScripts {
+			if loginNoScripts || loginWriteRoot != "" {
 				tags = append(tags, "noScripts")
 			}
 
@@ -196,6 +197,38 @@ var loginCmd = &cobra.Command{
 				}
 
 				dir = append(dir, common.DirectiveArchive{Definition: ark, Target: "/root"})
+			}
+
+			if loginWriteRoot != "" {
+				dir = append(dir, common.DirectiveBuiltin{Name: "init", GuestFilename: "init"})
+
+				def := builder.NewBuildFsDefinition(dir, "tar")
+
+				ctx := db.NewBuildContext(def)
+
+				f, err := db.Build(ctx, def, common.BuildOptions{})
+				if err != nil {
+					slog.Error("fatal", "err", err)
+					os.Exit(1)
+				}
+
+				fh, err := f.Open()
+				if err != nil {
+					return err
+				}
+				defer fh.Close()
+
+				out, err := os.Create(path.Base(loginWriteRoot))
+				if err != nil {
+					return err
+				}
+				defer out.Close()
+
+				if _, err := io.Copy(out, fh); err != nil {
+					return err
+				}
+
+				return nil
 			}
 
 			if loginExec != "" {
@@ -282,5 +315,6 @@ func init() {
 	loginCmd.PersistentFlags().StringArrayVarP(&loginFiles, "file", "f", []string{}, "Specify local files/URLs to be copied into the virtual machine. URLs will be downloaded to the build directory first.")
 	loginCmd.PersistentFlags().StringArrayVarP(&loginArchives, "archive", "a", []string{}, "Specify archives to be copied into the virtual machine. A copy will be made in the build directory.")
 	loginCmd.PersistentFlags().StringVarP(&loginOutput, "output", "o", "", "Write the specified file from the guest to the host.")
+	loginCmd.PersistentFlags().StringVar(&loginWriteRoot, "write-root", "", "Write the root filesystem as a .tar.gz archive.")
 	rootCmd.AddCommand(loginCmd)
 }
