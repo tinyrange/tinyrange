@@ -191,6 +191,7 @@ func RunWithConfig(
 			}
 
 			for _, ent := range entries {
+				// TODO(joshua): Why is this not filepath.join?
 				name := ark.Target + "/" + ent.Name()
 
 				if fs.Exists(name) {

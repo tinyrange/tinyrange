@@ -9,7 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
+	"github.com/anmitsu/go-shlex"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
@@ -142,6 +144,50 @@ func GetDefaultBuildDir() string {
 
 	// and create a build directory under that.
 	return filepath.Join(cache, "tinyrange", "build")
+}
+
+func ExecCommand(args []string, environment map[string]string) error {
+	if ok, _ := Exists(args[0]); !ok {
+		return fmt.Errorf("path %s does not exist", args[0])
+	}
+
+	cmd := exec.Command(args[0], args[1:]...)
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	cmd.Env = cmd.Environ()
+
+	for k, v := range environment {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	err := cmd.Run()
+	if exit, ok := err.(*exec.ExitError); ok {
+		if exit.ExitCode() == 255 {
+			slog.Warn("command returned exit 255", "args", args)
+			return nil
+		}
+	} else if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func RunCommand(script string) error {
+	if strings.HasPrefix(script, "/init") {
+		tokens, err := shlex.Split(script, true)
+		if err != nil {
+			return err
+		}
+
+		return ExecCommand(tokens, nil)
+	} else if script == "interactive" {
+		return ExecCommand([]string{"/bin/login", "-pf", "root"}, nil)
+	} else {
+		return ExecCommand([]string{"/bin/sh", "-c", script}, nil)
+	}
 }
 
 const REPO_PATH = ""

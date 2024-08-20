@@ -2,6 +2,8 @@ package builder
 
 import (
 	"archive/tar"
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -180,6 +182,37 @@ var (
 	_ common.BuildResult = &tarBuilderResult{}
 )
 
+type FragmentsBuilderResult struct {
+	Fragments []config.Fragment
+}
+
+// WriteTo implements common.BuildResult.
+func (frags *FragmentsBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
+	buf := new(bytes.Buffer)
+
+	enc := json.NewEncoder(buf)
+
+	if err := enc.Encode(&frags); err != nil {
+		return 0, err
+	}
+
+	return io.Copy(w, buf)
+}
+
+var (
+	_ common.BuildResult = &FragmentsBuilderResult{}
+)
+
+func ParseFragmentsBuilderResult(f filesystem.File) (*FragmentsBuilderResult, error) {
+	var ret FragmentsBuilderResult
+
+	if err := ParseJsonFromFile(f, &ret); err != nil {
+		return nil, err
+	}
+
+	return &ret, nil
+}
+
 type BuildFsDefinition struct {
 	params BuildFsParameters
 
@@ -219,7 +252,7 @@ func (def *BuildFsDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		}
 
 		for _, frag := range frags {
-			if frag.RunCommand != nil {
+			if frag.RunCommand != nil && def.params.Kind != "fragments" {
 				return nil, fmt.Errorf("build_fs does not support running commands")
 			} else {
 				def.frags = append(def.frags, frag)
@@ -231,6 +264,8 @@ func (def *BuildFsDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		return &initRamFsBuilderResult{frags: def.frags}, nil
 	} else if def.params.Kind == "tar" {
 		return &tarBuilderResult{frags: def.frags}, nil
+	} else if def.params.Kind == "fragments" {
+		return &FragmentsBuilderResult{Fragments: def.frags}, nil
 	} else {
 		return nil, fmt.Errorf("kind not implemented: %s", def.params.Kind)
 	}

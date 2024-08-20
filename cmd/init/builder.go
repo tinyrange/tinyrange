@@ -6,58 +6,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
-	"github.com/anmitsu/go-shlex"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 )
-
-func execCommand(args []string, environment map[string]string) error {
-	if ok, _ := common.Exists(args[0]); !ok {
-		return fmt.Errorf("path %s does not exist", args[0])
-	}
-
-	cmd := exec.Command(args[0], args[1:]...)
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-	cmd.Env = cmd.Environ()
-
-	for k, v := range environment {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-	}
-
-	err := cmd.Run()
-	if exit, ok := err.(*exec.ExitError); ok {
-		if exit.ExitCode() == 255 {
-			slog.Warn("command returned exit 255", "args", args)
-			return nil
-		}
-	} else if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func runCommand(script string) error {
-	if strings.HasPrefix(script, "/init") {
-		tokens, err := shlex.Split(script, true)
-		if err != nil {
-			return err
-		}
-
-		return execCommand(tokens, nil)
-	} else if script == "interactive" {
-		return execCommand([]string{"/bin/login", "-pf", "root"}, nil)
-	} else {
-		return execCommand([]string{"/bin/sh", "-c", script}, nil)
-	}
-}
 
 func uploadFile(address string, filename string) error {
 	f, err := os.Open(filename)
@@ -87,7 +41,7 @@ func runWithConfig(cfg config.BuilderConfig) error {
 
 	for _, cmd := range cfg.Commands {
 		slog.Debug("running", "cmd", cmd)
-		if err := runCommand(cmd); err != nil {
+		if err := common.RunCommand(cmd); err != nil {
 			return err
 		}
 	}
@@ -119,7 +73,7 @@ func runScript(script BuilderScript) error {
 				continue
 			}
 
-			if err := execCommand([]string{script.Exec, trigger}, script.Environment); err != nil {
+			if err := common.ExecCommand([]string{script.Exec, trigger}, script.Environment); err != nil {
 				return fmt.Errorf("failed to run trigger: %s", err)
 			}
 		}
@@ -130,7 +84,7 @@ func runScript(script BuilderScript) error {
 	case "execute":
 		start := time.Now()
 
-		if err := execCommand(append([]string{script.Exec}, script.Arguments...), script.Environment); err != nil {
+		if err := common.ExecCommand(append([]string{script.Exec}, script.Arguments...), script.Environment); err != nil {
 			return fmt.Errorf("failed to run command (%s): %s", script.Exec, err)
 		}
 
