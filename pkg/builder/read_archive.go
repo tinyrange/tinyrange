@@ -493,6 +493,10 @@ var (
 )
 
 func ReadArchiveSupportsExtracting(kind string) bool {
+	if strings.HasSuffix(kind, ".zip") {
+		return true
+	}
+
 	if strings.HasSuffix(kind, ".gz") {
 		kind = strings.TrimSuffix(kind, ".gz")
 	} else if strings.HasSuffix(kind, ".zst") {
