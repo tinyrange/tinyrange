@@ -546,6 +546,8 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 					// Write the build status.
 					db.updateBuildStatus(def, status)
 
+					slog.Debug("cached", "Tag", def.Tag(), "filename", filename)
+
 					return filesystem.NewLocalFile(filename, def), nil
 				}
 

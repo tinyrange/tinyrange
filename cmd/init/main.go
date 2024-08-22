@@ -371,10 +371,11 @@ func getFd(reader io.Reader) (fd int, ok bool) {
 
 var (
 	execShell    = flag.Bool("shell", false, "start the shell instead of running /init.sh")
-	runSshServer = flag.String("ssh", "", "run a ssh server")
+	runSshServer = flag.String("ssh", "", "run a ssh server that executes the argument on connection")
 	downloadFile = flag.String("download", "", "download a file from the specified server")
 	runScripts   = flag.String("run-scripts", "", "run a JSON file of scripts")
 	runConfig    = flag.String("run-config", "", "run a JSON file with a given builder config")
+	dumpFs       = flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
 )
 
 func initMain() error {
@@ -413,6 +414,10 @@ func initMain() error {
 		}
 	}
 
+	if *dumpFs != "" {
+		return common.DumpFs(*dumpFs)
+	}
+
 	if *runScripts != "" {
 		return builderRunScripts(*runScripts)
 	}
@@ -434,12 +439,12 @@ func initMain() error {
 		return runWithConfig(cfg)
 	}
 
-	if os.Getuid() != 0 {
-		return fmt.Errorf("/init will not run as any user besides root")
+	if os.Getpid() != 1 {
+		return fmt.Errorf("/init must run as PID 1")
 	}
 
-	if os.Getpid() != 1 {
-		return fmt.Errorf("/init will not execute as PIDs not equal to 1")
+	if os.Getuid() != 0 {
+		return fmt.Errorf("/init must be run as root")
 	}
 
 	var args starlark.Value = starlark.NewDict(0)
