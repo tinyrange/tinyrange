@@ -72,6 +72,18 @@ func (i *initRamFsBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 			if err := writer.AddSimpleFile(filename, c.Contents, c.Executable); err != nil {
 				return 0, fmt.Errorf("failed to add simple file: %s", c.GuestFilename)
 			}
+		} else if frag.Builtin != nil {
+			c := frag.Builtin
+
+			if c.Name == "init" {
+				buf := initExec.INIT_EXECUTABLE
+
+				if err := writer.AddSimpleFile(c.GuestFilename, buf, true); err != nil {
+					return 0, fmt.Errorf("failed to add simple file: %s", c.GuestFilename)
+				}
+			} else {
+				return 0, fmt.Errorf("unhandled builtin: %s", c.Name)
+			}
 		} else {
 			return 0, fmt.Errorf("unhandled fragment type: %+v", frag)
 		}

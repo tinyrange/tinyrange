@@ -279,8 +279,12 @@ func (file *file) makeSymlink(linkname string) {
 	file.content = []byte(linkname)
 }
 
-func newFile(name string) *file {
-	return &file{cpioEntry: &cpioEntry{name: name, kind: _CPIO_KIND_REGULAR, mtime: time.Unix(0, 0)}}
+func newFile(name string) (*file, error) {
+	if name == "" {
+		return nil, fmt.Errorf("empty name")
+	}
+
+	return &file{cpioEntry: &cpioEntry{name: name, kind: _CPIO_KIND_REGULAR, mtime: time.Unix(0, 0)}}, nil
 }
 
 type directory struct {
@@ -288,20 +292,26 @@ type directory struct {
 	entries map[string]entry
 }
 
-func (dir *directory) create(name string) *file {
-	child := newFile(name)
+func (dir *directory) create(name string) (*file, error) {
+	child, err := newFile(name)
+	if err != nil {
+		return nil, err
+	}
 
 	dir.entries[name] = child
 
-	return child
+	return child, nil
 }
 
-func (dir *directory) mkdir(name string) *directory {
-	child := newDirectory(name)
+func (dir *directory) mkdir(name string) (*directory, error) {
+	child, err := newDirectory(name)
+	if err != nil {
+		return nil, err
+	}
 
 	dir.entries[name] = child
 
-	return child
+	return child, nil
 }
 
 func (dir *directory) Children() []entry {
@@ -318,11 +328,15 @@ func (dir *directory) Children() []entry {
 	return ret
 }
 
-func newDirectory(name string) *directory {
+func newDirectory(name string) (*directory, error) {
+	if name == "" {
+		return nil, fmt.Errorf("empty name")
+	}
+
 	return &directory{
 		cpioEntry: &cpioEntry{name: name, kind: _CPIO_KIND_DIRECTORY, mtime: time.Unix(0, 0)},
 		entries:   make(map[string]entry),
-	}
+	}, nil
 }
 
 var (
@@ -349,7 +363,11 @@ func (fs *Filesystem) openPath(p string, mkdir bool) (*directory, string, error)
 			child, ok := current.entries[tk]
 			if !ok {
 				if mkdir {
-					child = current.mkdir(tk)
+					var err error
+					child, err = current.mkdir(tk)
+					if err != nil {
+						return nil, "", err
+					}
 				} else {
 					return nil, "", fmt.Errorf("child %s not found in %s", tk, strings.Join(tokens[:i], "/"))
 				}
@@ -375,7 +393,10 @@ func (fs *Filesystem) AddSimpleFile(filename string, contents []byte, executable
 		return err
 	}
 
-	f := parent.create(name)
+	f, err := parent.create(name)
+	if err != nil {
+		return err
+	}
 
 	f.content = contents
 
@@ -398,7 +419,10 @@ func (fs *Filesystem) AddFromEntry(prefix string, hdr filesystem.Entry) error {
 			return err
 		}
 
-		f := parent.create(name)
+		f, err := parent.create(name)
+		if err != nil {
+			return err
+		}
 
 		fh, err := hdr.Open()
 		if err != nil {
@@ -420,7 +444,10 @@ func (fs *Filesystem) AddFromEntry(prefix string, hdr filesystem.Entry) error {
 			return err
 		}
 
-		f := parent.create(name)
+		f, err := parent.create(name)
+		if err != nil {
+			return err
+		}
 
 		f.makeSymlink(hdr.Linkname())
 
@@ -432,7 +459,10 @@ func (fs *Filesystem) AddFromEntry(prefix string, hdr filesystem.Entry) error {
 		}
 
 		if cleanedName != "." {
-			ent = parent.mkdir(name)
+			ent, err = parent.mkdir(name)
+			if err != nil {
+				return err
+			}
 		} else {
 			ent = fs.root
 		}
@@ -474,7 +504,6 @@ func (fs *Filesystem) WriteTo(out io.Writer) (n int64, err error) {
 }
 
 func New() *Filesystem {
-	return &Filesystem{
-		root: newDirectory("."),
-	}
+	dir, _ := newDirectory(".")
+	return &Filesystem{root: dir}
 }

@@ -174,6 +174,44 @@ func RunWithConfig(
 				if err := fs.CreateFile(builtin.GuestFilename, vm.RawRegion(initExec.INIT_SCRIPT)); err != nil {
 					return err
 				}
+			} else if builtin.Name == "tinyrange" {
+				exe, err := os.Executable()
+				if err != nil {
+					return fmt.Errorf("failed to get executable: %w", err)
+				}
+
+				file, err := os.Open(exe)
+				if err != nil {
+					return fmt.Errorf("failed to load executable: %w", err)
+				}
+
+				region, err := vm.NewFileRegion(file)
+				if err != nil {
+					return fmt.Errorf("failed to create file region: %w", err)
+				}
+
+				if err := fs.CreateFile(builtin.GuestFilename, region); err != nil {
+					return fmt.Errorf("failed to create file %s: %w", builtin.GuestFilename, err)
+				}
+			} else if builtin.Name == "tinyrange_qemu.star" {
+				local, err := common.GetAdjacentExecutable("tinyrange_qemu.star")
+				if err != nil {
+					return fmt.Errorf("failed to get tinyrange_qemu.star: %w", err)
+				}
+
+				file, err := os.Open(local)
+				if err != nil {
+					return fmt.Errorf("failed to load executable: %w", err)
+				}
+
+				region, err := vm.NewFileRegion(file)
+				if err != nil {
+					return fmt.Errorf("failed to create file region: %w", err)
+				}
+
+				if err := fs.CreateFile(builtin.GuestFilename, region); err != nil {
+					return fmt.Errorf("failed to create file %s: %w", builtin.GuestFilename, err)
+				}
 			} else {
 				return fmt.Errorf("unknown builtin: %s", builtin.Name)
 			}

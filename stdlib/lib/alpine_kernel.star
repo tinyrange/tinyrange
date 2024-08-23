@@ -114,7 +114,7 @@ def alpine_initramfs(kernel_fs):
     return define.build_fs(
         directives = [
             define.build(get_inital_modules, kernel_fs_320),
-            directive.add_file("/init", db.get_builtin_executable("init", "x86_64"), executable = True),
+            directive.builtin("init", "init"),
             directive.add_file("/init.star", file(INIT_STAR)),
         ],
         kind = "initramfs",
