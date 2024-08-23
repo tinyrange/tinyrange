@@ -645,6 +645,29 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					Variables: variables,
 				}}, nil
 			}),
+			"builtin": starlark.NewBuiltin("directive.builtin", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					name          string
+					guestFilename string
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"name", &name,
+					"guest_filename", &guestFilename,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				return &common.StarDirective{Directive: common.DirectiveBuiltin{
+					Name:          name,
+					GuestFilename: guestFilename,
+				}}, nil
+			}),
 		},
 	}
 

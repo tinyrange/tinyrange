@@ -10,7 +10,7 @@ import (
 // The build result is the built filesystem.
 type BuildFsParameters struct {
 	Directives []common.Directive // A list of directives to build the filesystem from.
-	Kind       string             // The kind of filesystem to create (initramfs)
+	Kind       string             // The kind of filesystem to create (initramfs,tar,fragments)
 }
 
 // Build Virtual Machine uses TinyRange to run a virtual machine with a root

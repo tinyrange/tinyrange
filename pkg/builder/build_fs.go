@@ -149,12 +149,14 @@ func (i *tarBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 				written[ent.Name()] = true
 			}
 		} else if frag.Builtin != nil {
-			if frag.Builtin.Name == "init" {
+			c := frag.Builtin
+
+			if c.Name == "init" {
 				buf := initExec.INIT_EXECUTABLE
 
 				if err := writer.WriteHeader(&tar.Header{
 					Typeflag: tar.TypeReg,
-					Name:     frag.Builtin.GuestFilename,
+					Name:     c.GuestFilename,
 					Size:     int64(len(buf)),
 					Mode:     0755,
 					Uid:      0,
@@ -168,7 +170,33 @@ func (i *tarBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 					return 0, err
 				}
 			} else {
-				return 0, fmt.Errorf("unhandled builtin: %s", frag.Builtin.Name)
+				return 0, fmt.Errorf("unhandled builtin: %s", c.Name)
+			}
+		} else if frag.FileContents != nil {
+			c := frag.FileContents
+
+			buf := c.Contents
+
+			var mode int64 = 0644
+
+			if c.Executable {
+				mode = 0755
+			}
+
+			if err := writer.WriteHeader(&tar.Header{
+				Typeflag: tar.TypeReg,
+				Name:     c.GuestFilename,
+				Size:     int64(len(buf)),
+				Mode:     mode,
+				Uid:      0,
+				Gid:      0,
+				ModTime:  time.UnixMilli(0),
+			}); err != nil {
+				return 0, err
+			}
+
+			if _, err := writer.Write(buf); err != nil {
+				return 0, err
 			}
 		} else {
 			return 0, fmt.Errorf("unhandled fragment type: %+v", frag)
