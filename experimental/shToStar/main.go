@@ -38,6 +38,10 @@ type functionBlock struct {
 
 // Add implements block.
 func (f *functionBlock) Add(expr build.Expr) error {
+	if expr == nil {
+		panic("expr == nil")
+	}
+
 	f.Body = append(f.Body, expr)
 
 	return nil
@@ -49,6 +53,10 @@ type fileBlock struct {
 
 // Add implements block.
 func (f *fileBlock) Add(expr build.Expr) error {
+	if expr == nil {
+		panic("expr == nil")
+	}
+
 	f.Stmt = append(f.Stmt, expr)
 
 	return nil
@@ -60,6 +68,10 @@ type ifBlock struct {
 
 // Add implements block.
 func (i *ifBlock) Add(expr build.Expr) error {
+	if expr == nil {
+		panic("expr == nil")
+	}
+
 	i.True = append(i.True, expr)
 
 	return nil
@@ -86,9 +98,7 @@ func (sh *ShellScriptToStarlark) declareVariable(target block, value build.Expr)
 	})
 }
 
-func (sh *ShellScriptToStarlark) declareFunction(cb func(name string, target block) error) (string, error) {
-	name := randomId()
-
+func (sh *ShellScriptToStarlark) declareFunction(name string, cb func(name string, target block) error) (string, error) {
 	newFunc := &build.DefStmt{
 		Function: build.Function{
 			Params: []build.Expr{
@@ -134,6 +144,11 @@ func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 			X:    &build.Ident{Name: "builtin"},
 			Name: "cat",
 		}
+	case "echo":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "builtin"},
+			Name: "echo",
+		}
 	case "umask":
 		return &build.DotExpr{
 			X:    &build.Ident{Name: "builtin"},
@@ -149,6 +164,21 @@ func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 			X:    &build.Ident{Name: "builtin"},
 			Name: "continue",
 		}
+	case "set":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "builtin"},
+			Name: "set",
+		}
+	case "eval":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "builtin"},
+			Name: "eval",
+		}
+	case "command":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "builtin"},
+			Name: "command",
+		}
 	default:
 		return nil
 	}
@@ -157,6 +187,12 @@ func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 func (sh *ShellScriptToStarlark) translatePart(target block, part syntax.WordPart) (build.Expr, error) {
 	switch part := part.(type) {
 	case *syntax.Lit:
+		return &build.StringExpr{Value: part.Value}, nil
+	case *syntax.SglQuoted:
+		if part.Dollar {
+			return nil, fmt.Errorf("part.Dollar not implemented")
+		}
+
 		return &build.StringExpr{Value: part.Value}, nil
 	case *syntax.DblQuoted:
 		if part.Dollar {
@@ -174,13 +210,20 @@ func (sh *ShellScriptToStarlark) translatePart(target block, part syntax.WordPar
 			parts = append(parts, childExpr)
 		}
 
-		if len(parts) > 1 {
-			return nil, fmt.Errorf("len(parts) > 1")
+		if len(parts) == 0 {
+			return nil, fmt.Errorf("len(parts) == 0")
 		}
 
-		return parts[0], nil
+		if len(parts) > 1 {
+			return &build.CallExpr{
+				X:    &build.Ident{Name: "join"},
+				List: parts,
+			}, nil
+		} else {
+			return parts[0], nil
+		}
 	case *syntax.CmdSubst:
-		name, err := sh.declareFunction(func(name string, target block) error {
+		name, err := sh.declareFunction(randomId(), func(name string, target block) error {
 			for _, stmt := range part.Stmts {
 				expr, isExpr, err := sh.translateStmt(target, stmt)
 				if err != nil {
@@ -244,7 +287,7 @@ func (sh *ShellScriptToStarlark) translatePart(target block, part syntax.WordPar
 
 		return &build.CallExpr{X: &build.DotExpr{
 			X:    &build.Ident{Name: "ctx"},
-			Name: "get",
+			Name: "variable",
 		}, List: []build.Expr{
 			&build.StringExpr{Value: part.Param.Value},
 		}}, nil
@@ -344,17 +387,17 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 			}
 
 			if ret == nil {
-				ret = &build.CallExpr{
+				return &build.CallExpr{
 					X: &build.DotExpr{
 						X:    &build.Ident{Name: "ctx"},
-						Name: "set_environment",
+						Name: "set",
 					},
 					List: []build.Expr{
 						&build.DictExpr{
 							List: vals,
 						},
 					},
-				}
+				}, false, nil
 			} else {
 				ret = &build.CallExpr{
 					X: &build.DotExpr{
@@ -383,6 +426,8 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 		}
 
 		_ = name
+
+		var last *build.IfStmt
 
 		for _, c := range cmd.Items {
 			switch c.Op {
@@ -413,25 +458,41 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 						return nil, false, err
 					}
 
-					if isExpr {
-						expr = &build.CallExpr{
-							X: &build.DotExpr{
-								X:    expr,
-								Name: "run",
-							},
-							List: []build.Expr{
-								&build.Ident{Name: "ctx"},
-							},
+					if expr != nil {
+						if isExpr {
+							expr = &build.CallExpr{
+								X: &build.DotExpr{
+									X:    expr,
+									Name: "run",
+								},
+								List: []build.Expr{
+									&build.Ident{Name: "ctx"},
+								},
+							}
+						}
+
+						if err := ifTarget.Add(expr); err != nil {
+							return nil, false, err
 						}
 					}
+				}
 
-					if err := ifTarget.Add(expr); err != nil {
+				if len(ifTarget.True) == 0 {
+					if err := ifTarget.Add(&build.Ident{Name: "pass"}); err != nil {
 						return nil, false, err
 					}
 				}
 
-				if err := target.Add(ifStmt); err != nil {
-					return nil, false, err
+				if last != nil {
+					last.False = append(last.False, ifStmt)
+
+					last = ifStmt
+				} else {
+					if err := target.Add(ifStmt); err != nil {
+						return nil, false, err
+					}
+
+					last = ifStmt
 				}
 			default:
 				return nil, false, fmt.Errorf("cmd.Items.Op not implemented: %s", c.Op)
@@ -489,6 +550,30 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 				},
 				List: []build.Expr{rhs},
 			}, true, nil
+		case syntax.Pipe:
+			lhs, isExpr, err := sh.translateStmt(target, cmd.X)
+			if err != nil {
+				return nil, false, err
+			}
+			if !isExpr {
+				return nil, false, fmt.Errorf("BinaryCmd lhs is not a expression")
+			}
+
+			rhs, isExpr, err := sh.translateStmt(target, cmd.Y)
+			if err != nil {
+				return nil, false, err
+			}
+			if !isExpr {
+				return nil, false, fmt.Errorf("BinaryCmd rhs is not a expression")
+			}
+
+			return &build.CallExpr{
+				X: &build.DotExpr{
+					X:    lhs,
+					Name: "pipe",
+				},
+				List: []build.Expr{rhs},
+			}, true, nil
 		default:
 			return nil, false, fmt.Errorf("*syntax.BinaryCmd.Op not implemented: %s", cmd.Op)
 		}
@@ -497,27 +582,29 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 			return nil, false, fmt.Errorf("cmd.Select not implemented")
 		}
 
-		name, err := sh.declareFunction(func(name string, target block) error {
+		name, err := sh.declareFunction(randomId(), func(name string, target block) error {
 			for _, stmt := range cmd.Do {
 				expr, isExpr, err := sh.translateStmt(target, stmt)
 				if err != nil {
 					return err
 				}
 
-				if isExpr {
-					expr = &build.CallExpr{
-						X: &build.DotExpr{
-							X:    expr,
-							Name: "run",
-						},
-						List: []build.Expr{
-							&build.Ident{Name: "ctx"},
-						},
+				if expr != nil {
+					if isExpr {
+						expr = &build.CallExpr{
+							X: &build.DotExpr{
+								X:    expr,
+								Name: "run",
+							},
+							List: []build.Expr{
+								&build.Ident{Name: "ctx"},
+							},
+						}
 					}
-				}
 
-				if err := target.Add(expr); err != nil {
-					return err
+					if err := target.Add(expr); err != nil {
+						return err
+					}
 				}
 			}
 
@@ -557,13 +644,59 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 			return nil, false, fmt.Errorf("*syntax.ForClause loop not implemented: %T %+v", loop, loop)
 		}
 	case *syntax.IfClause:
-		check, err := sh.declareFunction(func(name string, target block) error {
+		check, err := sh.declareFunction(randomId(), func(name string, target block) error {
 			for _, stmt := range cmd.Cond {
 				expr, isExpr, err := sh.translateStmt(target, stmt)
 				if err != nil {
 					return err
 				}
 
+				if expr != nil {
+					if isExpr {
+						expr = &build.CallExpr{
+							X: &build.DotExpr{
+								X:    expr,
+								Name: "run",
+							},
+							List: []build.Expr{
+								&build.Ident{Name: "ctx"},
+							},
+						}
+					}
+
+					if err := target.Add(expr); err != nil {
+						return err
+					}
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
+			return nil, false, err
+		}
+
+		ifStmt := &build.IfStmt{
+			Cond: &build.CallExpr{
+				X: &build.DotExpr{
+					X:    &build.Ident{Name: "ctx"},
+					Name: "check_subshell",
+				},
+				List: []build.Expr{
+					&build.Ident{Name: check},
+				},
+			},
+		}
+
+		ifTarget := &ifBlock{IfStmt: ifStmt}
+
+		for _, stmt := range cmd.Then {
+			expr, isExpr, err := sh.translateStmt(ifTarget, stmt)
+			if err != nil {
+				return nil, false, err
+			}
+
+			if expr != nil {
 				if isExpr {
 					expr = &build.CallExpr{
 						X: &build.DotExpr{
@@ -576,47 +709,14 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 					}
 				}
 
-				if err := target.Add(expr); err != nil {
-					return err
+				if err := ifTarget.Add(expr); err != nil {
+					return nil, false, err
 				}
 			}
-
-			return nil
-		})
-		if err != nil {
-			return nil, false, err
 		}
 
-		ifStmt := &build.IfStmt{
-			Cond: &build.CallExpr{
-				X: &build.Ident{Name: "check_subshell"},
-				List: []build.Expr{
-					&build.Ident{Name: check},
-				},
-			},
-		}
-
-		ifTarget := &ifBlock{IfStmt: ifStmt}
-
-		for _, stmt := range cmd.Then {
-			expr, isExpr, err := sh.translateStmt(target, stmt)
-			if err != nil {
-				return nil, false, err
-			}
-
-			if isExpr {
-				expr = &build.CallExpr{
-					X: &build.DotExpr{
-						X:    expr,
-						Name: "run",
-					},
-					List: []build.Expr{
-						&build.Ident{Name: "ctx"},
-					},
-				}
-			}
-
-			if err := ifTarget.Add(expr); err != nil {
+		if len(ifTarget.True) == 0 {
+			if err := ifTarget.Add(&build.Ident{Name: "pass"}); err != nil {
 				return nil, false, err
 			}
 		}
@@ -626,6 +726,143 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 		}
 
 		return nil, false, nil
+	case *syntax.FuncDecl:
+		// if cmd.RsrvWord {
+		// 	return nil, false, fmt.Errorf("cmd.RsrvWord not implemented")
+		// }
+		// if cmd.Parens {
+		// 	return nil, false, fmt.Errorf("cmd.Parens not implemented")
+		// }
+
+		_, err := sh.declareFunction(cmd.Name.Value, func(name string, target block) error {
+			body := []*syntax.Stmt{cmd.Body}
+
+			if block, ok := cmd.Body.Cmd.(*syntax.Block); ok {
+				body = block.Stmts
+			}
+
+			for _, stmt := range body {
+				expr, isExpr, err := sh.translateStmt(target, stmt)
+				if err != nil {
+					return err
+				}
+
+				if expr != nil {
+					if isExpr {
+						expr = &build.CallExpr{
+							X: &build.DotExpr{
+								X:    expr,
+								Name: "run",
+							},
+							List: []build.Expr{
+								&build.Ident{Name: "ctx"},
+							},
+						}
+					}
+
+					if err := target.Add(expr); err != nil {
+						return err
+					}
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
+			return nil, false, err
+		}
+
+		return nil, false, nil
+	case *syntax.Block:
+		name, err := sh.declareFunction(randomId(), func(name string, target block) error {
+			for _, stmt := range cmd.Stmts {
+				expr, isExpr, err := sh.translateStmt(target, stmt)
+				if err != nil {
+					return err
+				}
+
+				if expr != nil {
+					if isExpr {
+						expr = &build.CallExpr{
+							X: &build.DotExpr{
+								X:    expr,
+								Name: "run",
+							},
+							List: []build.Expr{
+								&build.Ident{Name: "ctx"},
+							},
+						}
+					}
+
+					if err := target.Add(expr); err != nil {
+						return err
+					}
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
+			return nil, false, err
+		}
+
+		return &build.CallExpr{
+			X: &build.DotExpr{
+				X:    &build.Ident{Name: "ctx"},
+				Name: "subshell",
+			},
+			List: []build.Expr{
+				&build.Ident{Name: name},
+			},
+		}, false, nil
+	case *syntax.DeclClause:
+		vals := []*build.KeyValueExpr{}
+
+		for _, assign := range cmd.Args {
+			if assign.Append {
+				return nil, false, fmt.Errorf("assign.Append not implemented")
+			}
+			if assign.Naked {
+				return nil, false, fmt.Errorf("assign.Naked not implemented")
+			}
+			if assign.Index != nil {
+				return nil, false, fmt.Errorf("assign.Index not implemented")
+			}
+			if assign.Array != nil {
+				return nil, false, fmt.Errorf("assign.Array not implemented")
+			}
+
+			var val build.Expr
+
+			if assign.Value == nil {
+				val = &build.StringExpr{Value: ""}
+			} else {
+				var err error
+
+				val, err = sh.translateWord(target, assign.Value)
+				if err != nil {
+					return nil, false, err
+				}
+			}
+
+			vals = append(vals, &build.KeyValueExpr{
+				Key:   &build.StringExpr{Value: assign.Name.Value},
+				Value: val,
+			})
+		}
+
+		return &build.CallExpr{
+			X: &build.DotExpr{
+				X:    &build.Ident{Name: "ctx"},
+				Name: "declare",
+			},
+			List: []build.Expr{
+				&build.StringExpr{Value: cmd.Variant.Value},
+				&build.DictExpr{
+					List: vals,
+				},
+			},
+		}, false, nil
 	default:
 		return nil, false, fmt.Errorf("translateCmd not implemented: %T %+v", cmd, cmd)
 	}
@@ -752,20 +989,22 @@ func (sh *ShellScriptToStarlark) translateFile(f *syntax.File) error {
 			return err
 		}
 
-		if isExpr {
-			top = &build.CallExpr{
-				X: &build.DotExpr{
-					X:    top,
-					Name: "run",
-				},
-				List: []build.Expr{
-					&build.Ident{Name: "ctx"},
-				},
+		if top != nil {
+			if isExpr {
+				top = &build.CallExpr{
+					X: &build.DotExpr{
+						X:    top,
+						Name: "run",
+					},
+					List: []build.Expr{
+						&build.Ident{Name: "ctx"},
+					},
+				}
 			}
-		}
 
-		if err := target.Add(top); err != nil {
-			return err
+			if err := target.Add(top); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -776,7 +1015,7 @@ func (sh *ShellScriptToStarlark) emit() []byte {
 	return build.Format(sh.file)
 }
 
-func (sh *ShellScriptToStarlark) TranslateFile(r io.Reader, filename string, out io.Writer) ([]byte, error) {
+func (sh *ShellScriptToStarlark) TranslateFile(r io.Reader, filename string) ([]byte, error) {
 	parser := syntax.NewParser()
 
 	f, err := parser.Parse(r, filename)
@@ -793,10 +1032,10 @@ func (sh *ShellScriptToStarlark) TranslateFile(r io.Reader, filename string, out
 	return sh.emit(), nil
 }
 
-func translateFile(input string) error {
+func translateFile(input string) ([]byte, error) {
 	f, err := os.Open(input)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer f.Close()
 
@@ -814,16 +1053,7 @@ func translateFile(input string) error {
 		},
 	}
 
-	out, err := sh.TranslateFile(f, input, os.Stdout)
-	if err != nil {
-		return err
-	}
-
-	if _, err := os.Stdout.Write(out); err != nil {
-		return err
-	}
-
-	return nil
+	return sh.TranslateFile(f, input)
 }
 
 func appMain() error {
@@ -839,12 +1069,31 @@ func appMain() error {
 		}),
 	))
 
+	var (
+		successes []string
+		failures  []string
+	)
+
 	for _, input := range flag.Args() {
-		slog.Info("", "in", input)
-		if err := translateFile(input); err != nil {
-			slog.Error("error translating", "in", input, "err", err)
+		// slog.Info("", "in", input)
+		out, err := translateFile(input)
+		if err != nil {
+			failures = append(failures, fmt.Sprintf("%s %s", input, err))
+		} else {
+			successes = append(successes, input)
+
+			if true {
+				slog.Info("success", "input", input)
+				os.Stdout.Write(out)
+			}
 		}
 	}
+
+	for _, failure := range failures {
+		slog.Error("failure", "fail", failure)
+	}
+
+	slog.Info("results", "successes", len(successes), "failures", len(failures))
 
 	return nil
 }

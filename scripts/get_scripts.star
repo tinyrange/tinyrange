@@ -25,3 +25,27 @@ plan = define.plan(
 scripts = define.build(get_scripts, plan)
 
 script_fs = define.build_fs([scripts], "tar")
+
+plan_ubuntu = define.plan(
+    builder = "ubuntu@jammy",
+    packages = [
+        query("build-essential"),
+    ],
+    tags = ["level3", "defaults"],
+)
+
+scripts_ubuntu = define.build(get_scripts, plan_ubuntu)
+
+script_ubuntu_fs = define.build_fs([scripts_ubuntu], "tar")
+
+plan_ubuntu_ui = define.plan(
+    builder = "ubuntu@jammy",
+    packages = [
+        query("xfce4"),
+    ],
+    tags = ["level3", "defaults"],
+)
+
+scripts_ubuntu_ui = define.build(get_scripts, plan_ubuntu_ui)
+
+script_ubuntu_ui_fs = define.build_fs([scripts_ubuntu_ui], "tar")
