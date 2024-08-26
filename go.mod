@@ -35,6 +35,7 @@ require (
 require (
 	github.com/BurntSushi/freetype-go v0.0.0-20160129220410-b763ddbfe298 // indirect
 	github.com/BurntSushi/graphics-go v0.0.0-20160129215708-b43f31a4a966 // indirect
+	github.com/bazelbuild/buildtools v0.0.0-20240823132350-3488089d3661 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
@@ -42,6 +43,7 @@ require (
 	github.com/jezek/xgb v1.1.0 // indirect
 	github.com/jezek/xgbutil v0.0.0-20240804174445-e2e9464b6e01 // indirect
 	github.com/josharian/native v1.1.0 // indirect
+	github.com/lmittmann/tint v1.0.5 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mdlayher/netlink v1.7.2 // indirect

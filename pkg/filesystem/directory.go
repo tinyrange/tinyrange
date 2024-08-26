@@ -1,8 +1,10 @@
 package filesystem
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path"
 	"slices"
 	"strings"
@@ -201,6 +203,10 @@ func (m *memoryDirectory) Mkdir(name string) (MutableDirectory, error) {
 		return nil, fmt.Errorf("MutableDirectory methods can not handle paths")
 	}
 
+	if _, exists := m.entries[name]; exists {
+		return nil, os.ErrExist
+	}
+
 	child := NewMemoryDirectory()
 
 	m.entries[name] = child
@@ -259,7 +265,9 @@ func ExtractEntry(ent Entry, dir MutableDirectory) error {
 	switch ent.Typeflag() {
 	case TypeDirectory:
 		child, err := Mkdir(dir, ent.Name())
-		if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return nil
+		} else if err != nil {
 			return err
 		}
 
