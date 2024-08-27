@@ -164,6 +164,11 @@ func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 			X:    &build.Ident{Name: "builtin"},
 			Name: "continue",
 		}
+	case "return":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "builtin"},
+			Name: "return",
+		}
 	case "set":
 		return &build.DotExpr{
 			X:    &build.Ident{Name: "builtin"},
@@ -179,6 +184,10 @@ func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 			X:    &build.Ident{Name: "builtin"},
 			Name: "command",
 		}
+	case ".":
+		return &build.Ident{Name: "source"}
+	case "source":
+		return &build.Ident{Name: "source"}
 	default:
 		return nil
 	}
@@ -211,7 +220,7 @@ func (sh *ShellScriptToStarlark) translatePart(target block, part syntax.WordPar
 		}
 
 		if len(parts) == 0 {
-			return nil, fmt.Errorf("len(parts) == 0")
+			return &build.StringExpr{Value: ""}, nil
 		}
 
 		if len(parts) > 1 {
@@ -281,16 +290,76 @@ func (sh *ShellScriptToStarlark) translatePart(target block, part syntax.WordPar
 		if part.Repl != nil {
 			return nil, fmt.Errorf("part.Repl != nil")
 		}
-		if part.Exp != nil {
-			return nil, fmt.Errorf("part.Exp != nil")
-		}
 
-		return &build.CallExpr{X: &build.DotExpr{
-			X:    &build.Ident{Name: "ctx"},
-			Name: "variable",
-		}, List: []build.Expr{
-			&build.StringExpr{Value: part.Param.Value},
-		}}, nil
+		if part.Exp != nil {
+			switch part.Exp.Op {
+			case syntax.DefaultUnsetOrNull:
+				var def build.Expr = &build.StringExpr{Value: ""}
+
+				if part.Exp.Word != nil {
+					var err error
+					def, err = sh.translateWord(target, part.Exp.Word)
+					if err != nil {
+						return nil, err
+					}
+				}
+
+				return &build.CallExpr{X: &build.DotExpr{
+					X:    &build.Ident{Name: "ctx"},
+					Name: "variable",
+				}, List: []build.Expr{
+					&build.StringExpr{Value: part.Param.Value},
+					def,
+				}}, nil
+			case syntax.RemSmallPrefix:
+				var def build.Expr = &build.StringExpr{Value: ""}
+
+				if part.Exp.Word != nil {
+					var err error
+					def, err = sh.translateWord(target, part.Exp.Word)
+					if err != nil {
+						return nil, err
+					}
+				}
+
+				return &build.CallExpr{X: &build.DotExpr{
+					X:    &build.Ident{Name: "ctx"},
+					Name: "variable_remove_prefix",
+				}, List: []build.Expr{
+					&build.StringExpr{Value: part.Param.Value},
+					def,
+					&build.Ident{Name: "False"},
+				}}, nil
+			case syntax.RemLargePrefix:
+				var def build.Expr = &build.StringExpr{Value: ""}
+
+				if part.Exp.Word != nil {
+					var err error
+					def, err = sh.translateWord(target, part.Exp.Word)
+					if err != nil {
+						return nil, err
+					}
+				}
+
+				return &build.CallExpr{X: &build.DotExpr{
+					X:    &build.Ident{Name: "ctx"},
+					Name: "variable_remove_prefix",
+				}, List: []build.Expr{
+					&build.StringExpr{Value: part.Param.Value},
+					def,
+					&build.Ident{Name: "True"},
+				}}, nil
+			default:
+				return nil, fmt.Errorf("part.Exp.Op %s not implemented", part.Exp.Op)
+			}
+		} else {
+			return &build.CallExpr{X: &build.DotExpr{
+				X:    &build.Ident{Name: "ctx"},
+				Name: "variable",
+			}, List: []build.Expr{
+				&build.StringExpr{Value: part.Param.Value},
+			}}, nil
+		}
 	default:
 		return nil, fmt.Errorf("translatePart not implemented: %T %+v", part, part)
 	}
@@ -916,6 +985,32 @@ func (sh *ShellScriptToStarlark) translateStmt(target block, stmt *syntax.Stmt) 
 				},
 				List: []build.Expr{fd, redirectTo},
 			}
+		case syntax.AppOut:
+			redirectTo, err := sh.translateWord(target, redir.Word)
+			if err != nil {
+				return nil, false, err
+			}
+
+			top = &build.CallExpr{
+				X: &build.DotExpr{
+					X:    top,
+					Name: "redirect_append",
+				},
+				List: []build.Expr{fd, redirectTo},
+			}
+		case syntax.RdrIn:
+			redirectTo, err := sh.translateWord(target, redir.Word)
+			if err != nil {
+				return nil, false, err
+			}
+
+			top = &build.CallExpr{
+				X: &build.DotExpr{
+					X:    top,
+					Name: "redirect_in",
+				},
+				List: []build.Expr{fd, redirectTo},
+			}
 		case syntax.RdrAll:
 			redirectTo, err := sh.translateWord(target, redir.Word)
 			if err != nil {
@@ -943,6 +1038,14 @@ func (sh *ShellScriptToStarlark) translateStmt(target block, stmt *syntax.Stmt) 
 				List: []build.Expr{redirectTo},
 			}
 		case syntax.Hdoc:
+			top = &build.CallExpr{
+				X: &build.DotExpr{
+					X:    top,
+					Name: "pipe_stdin",
+				},
+				List: []build.Expr{hdoc},
+			}
+		case syntax.DashHdoc:
 			top = &build.CallExpr{
 				X: &build.DotExpr{
 					X:    top,
