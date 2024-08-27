@@ -135,6 +135,11 @@ func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 			X:    &build.Ident{Name: "builtin"},
 			Name: "cat",
 		}
+	case "readlink":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "builtin"},
+			Name: "readlink",
+		}
 	case "echo":
 		return &build.DotExpr{
 			X:    &build.Ident{Name: "builtin"},
@@ -955,13 +960,13 @@ func (sh *ShellScriptToStarlark) translateStmt(target block, stmt *syntax.Stmt) 
 	top := expr
 
 	for _, redir := range stmt.Redirs {
-		var fd build.Expr = &build.LiteralExpr{
-			Token: "0",
+		var fd build.Expr = &build.StringExpr{
+			Value: "1", // stdout
 		}
 
 		if redir.N != nil {
-			fd = &build.LiteralExpr{
-				Token: redir.N.Value,
+			fd = &build.StringExpr{
+				Value: redir.N.Value,
 			}
 		}
 
@@ -973,8 +978,6 @@ func (sh *ShellScriptToStarlark) translateStmt(target block, stmt *syntax.Stmt) 
 				return nil, false, err
 			}
 		}
-
-		_ = hdoc
 
 		switch redir.Op {
 		case syntax.RdrOut:
@@ -1040,7 +1043,7 @@ func (sh *ShellScriptToStarlark) translateStmt(target block, stmt *syntax.Stmt) 
 					X:    top,
 					Name: "duplicate_out",
 				},
-				List: []build.Expr{redirectTo},
+				List: []build.Expr{redirectTo, fd},
 			}
 		case syntax.Hdoc:
 			top = &build.CallExpr{

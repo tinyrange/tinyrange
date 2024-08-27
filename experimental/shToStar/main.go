@@ -27,7 +27,7 @@ func translateFile(input string) ([]byte, error) {
 }
 
 func runScript(filename string, contents []byte) error {
-	rt := NewRuntime()
+	rt := NewRuntime(false)
 
 	return rt.Run(filename, contents)
 }
@@ -55,23 +55,33 @@ func appMain() error {
 	)
 
 	for _, input := range flag.Args() {
-		// slog.Info("", "in", input)
+		slog.Info("start", "input", input)
+
+		translateStart := time.Now()
+
 		out, err := translateFile(input)
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s %s", input, err))
+			continue
 		} else {
 			successes = append(successes, input)
-
-			if true {
-				slog.Info("success", "input", input)
-				os.Stdout.Write(out)
-			}
 		}
 
+		translateTime := time.Since(translateStart)
+
+		var runTime time.Duration
+
 		if *runScripts {
+			runStart := time.Now()
 			if err := runScript(input, out); err != nil {
 				return err
 			}
+			runTime = time.Since(runStart)
+		}
+
+		if true {
+			os.Stdout.Write(out)
+			slog.Info("success", "input", input, "translateTime", translateTime, "runTime", runTime)
 		}
 	}
 
