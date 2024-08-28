@@ -77,6 +77,7 @@ var (
 
 type ShellScriptToStarlark struct {
 	includeExternalScripts bool
+	debianMode             bool
 	file                   *build.File
 	mainFunc               *build.DefStmt
 }
@@ -189,13 +190,55 @@ func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 			X:    &build.Ident{Name: "builtin"},
 			Name: "true",
 		}
+	case "which":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "builtin"},
+			Name: "which",
+		}
+	case "cd":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "builtin"},
+			Name: "cd",
+		}
 	case ".":
 		return sourceBuiltin
 	case "source":
 		return sourceBuiltin
-	default:
+	}
+
+	if !sh.debianMode {
 		return nil
 	}
+
+	switch str.Value {
+	case "dpkg-maintscript-helper":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "debian"},
+			Name: "dpkg_maintscript_helper",
+		}
+	case "deb-systemd-helper":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "debian"},
+			Name: "deb_systemd_helper",
+		}
+	case "update-rc.d":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "debian"},
+			Name: "update_rc_d",
+		}
+	case "invoke-rc.d":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "debian"},
+			Name: "invoke_rc_d",
+		}
+	case "py3compile":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "debian"},
+			Name: "py3compile",
+		}
+	}
+
+	return nil
 }
 
 func (sh *ShellScriptToStarlark) translatePart(target block, part syntax.WordPart) (build.Expr, error) {
@@ -678,30 +721,30 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 				},
 				List: []build.Expr{rhs},
 			}, true, nil
-		case syntax.Pipe:
-			lhs, isExpr, err := sh.translateStmt(target, cmd.X)
-			if err != nil {
-				return nil, false, err
-			}
-			if !isExpr {
-				return nil, false, fmt.Errorf("BinaryCmd lhs is not a expression")
-			}
+		// case syntax.Pipe:
+		// 	lhs, isExpr, err := sh.translateStmt(target, cmd.X)
+		// 	if err != nil {
+		// 		return nil, false, err
+		// 	}
+		// 	if !isExpr {
+		// 		return nil, false, fmt.Errorf("BinaryCmd lhs is not a expression")
+		// 	}
 
-			rhs, isExpr, err := sh.translateStmt(target, cmd.Y)
-			if err != nil {
-				return nil, false, err
-			}
-			if !isExpr {
-				return nil, false, fmt.Errorf("BinaryCmd rhs is not a expression")
-			}
+		// 	rhs, isExpr, err := sh.translateStmt(target, cmd.Y)
+		// 	if err != nil {
+		// 		return nil, false, err
+		// 	}
+		// 	if !isExpr {
+		// 		return nil, false, fmt.Errorf("BinaryCmd rhs is not a expression")
+		// 	}
 
-			return &build.CallExpr{
-				X: &build.DotExpr{
-					X:    lhs,
-					Name: "pipe",
-				},
-				List: []build.Expr{rhs},
-			}, true, nil
+		// 	return &build.CallExpr{
+		// 		X: &build.DotExpr{
+		// 			X:    lhs,
+		// 			Name: "pipe",
+		// 		},
+		// 		List: []build.Expr{rhs},
+		// 	}, true, nil
 		default:
 			return nil, false, fmt.Errorf("*syntax.BinaryCmd.Op not implemented: %s", cmd.Op)
 		}
@@ -1055,19 +1098,19 @@ func (sh *ShellScriptToStarlark) translateStmt(target block, stmt *syntax.Stmt) 
 				},
 				List: []build.Expr{fd, redirectTo},
 			}
-		case syntax.RdrIn:
-			redirectTo, err := sh.translateWord(target, redir.Word)
-			if err != nil {
-				return nil, false, err
-			}
+		// case syntax.RdrIn:
+		// 	redirectTo, err := sh.translateWord(target, redir.Word)
+		// 	if err != nil {
+		// 		return nil, false, err
+		// 	}
 
-			top = &build.CallExpr{
-				X: &build.DotExpr{
-					X:    top,
-					Name: "redirect_in",
-				},
-				List: []build.Expr{fd, redirectTo},
-			}
+		// 	top = &build.CallExpr{
+		// 		X: &build.DotExpr{
+		// 			X:    top,
+		// 			Name: "redirect_in",
+		// 		},
+		// 		List: []build.Expr{fd, redirectTo},
+		// 	}
 		case syntax.RdrAll:
 			redirectTo, err := sh.translateWord(target, redir.Word)
 			if err != nil {
@@ -1192,9 +1235,10 @@ func (sh *ShellScriptToStarlark) TranslateFile(r io.Reader, filename string) ([]
 	return sh.emit(), nil
 }
 
-func NewTranspiler(includeExternalScripts bool) *ShellScriptToStarlark {
+func NewTranspiler(includeExternalScripts bool, debianMode bool) *ShellScriptToStarlark {
 	return &ShellScriptToStarlark{
 		includeExternalScripts: includeExternalScripts,
+		debianMode:             debianMode,
 		file: &build.File{
 			Type: build.TypeDefault,
 		},

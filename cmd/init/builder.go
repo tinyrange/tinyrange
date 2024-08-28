@@ -65,7 +65,7 @@ func translateAndRun(args []string, environment map[string]string) (bool, error)
 	}
 	defer f.Close()
 
-	sh := shelltranslater.NewTranspiler(true)
+	sh := shelltranslater.NewTranspiler(true, true)
 
 	translated, err := sh.TranslateFile(f, args[0])
 	if err != nil {
@@ -98,7 +98,9 @@ func execCommand(translateShell bool, args []string, env map[string]string) erro
 			if fatal {
 				return fmt.Errorf("failed to translate and run: %s", err)
 			} else {
-				slog.Warn("failed to translate", "err", err)
+				if common.IsVerbose() {
+					slog.Warn("failed to translate", "prog", args[0], "err", err)
+				}
 			}
 		} else {
 			return nil

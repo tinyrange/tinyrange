@@ -9,6 +9,7 @@ import (
 
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
+	shelltranslater "github.com/tinyrange/tinyrange/pkg/shellTranslater"
 )
 
 // Grab scripts with: ./tools/build.go -run -- build scripts/get_scripts.star:script_fs -o local/scripts.tar
@@ -21,15 +22,15 @@ func translateFile(input string) ([]byte, error) {
 	}
 	defer f.Close()
 
-	sh := NewTranspiler()
+	sh := shelltranslater.NewTranspiler(false, true)
 
 	return sh.TranslateFile(f, input)
 }
 
 func runScript(filename string, contents []byte) error {
-	rt := NewRuntime(false)
+	rt := shelltranslater.NewRuntime(false)
 
-	return rt.Run(filename, contents)
+	return rt.Run(filename, contents, []string{}, make(map[string]string))
 }
 
 var (

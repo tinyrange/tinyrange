@@ -102,7 +102,7 @@ def parse_debian_alias(q):
 
     return name(name = n, version = v)
 
-def convert_debian_package(ctx, name, source):
+def convert_debian_package(ctx, name, version, source):
     ar = db.build(define.read_archive(
         source,
         ".ar",
@@ -120,6 +120,7 @@ def convert_debian_package(ctx, name, source):
     ret = filesystem()
 
     ret[".pkg/{}".format(name)] = control
+    ret[".pkg/{}/version".format(name)] = file(version)
 
     for top in data:
         ret[top.name] = top
@@ -156,6 +157,7 @@ def get_debian_installer(pkg, tags):
                 define.build(
                     convert_debian_package,
                     ent["package"],
+                    ent["version"],
                     download_archive,
                 ),
             ],
@@ -243,7 +245,7 @@ def build_debian_install_layer(ctx, directives):
                 preinst.append({
                     "kind": "execute",
                     "exec": f.name,
-                    "args": ["install"],
+                    "args": ["install", ""],
                     "env": {
                         "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
                         "DPKG_MAINTSCRIPT_PACKAGE": ent.base,
@@ -258,7 +260,7 @@ def build_debian_install_layer(ctx, directives):
                 postinst.append({
                     "kind": "execute",
                     "exec": f.name,
-                    "args": ["configure"],
+                    "args": ["configure", ""],
                     "env": {
                         "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
                         "DPKG_MAINTSCRIPT_PACKAGE": ent.base,
