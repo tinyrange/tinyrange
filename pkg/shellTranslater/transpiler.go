@@ -1,4 +1,4 @@
-package main
+package shelltranslater
 
 import (
 	"crypto/rand"
@@ -153,7 +153,7 @@ func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 	case "[":
 		return &build.DotExpr{
 			X:    &build.Ident{Name: "builtin"},
-			Name: "compare",
+			Name: "test",
 		}
 	case "continue":
 		return &build.DotExpr{

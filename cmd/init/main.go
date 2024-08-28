@@ -370,12 +370,13 @@ func getFd(reader io.Reader) (fd int, ok bool) {
 }
 
 var (
-	execShell    = flag.Bool("shell", false, "start the shell instead of running /init.sh")
-	runSshServer = flag.String("ssh", "", "run a ssh server that executes the argument on connection")
-	downloadFile = flag.String("download", "", "download a file from the specified server")
-	runScripts   = flag.String("run-scripts", "", "run a JSON file of scripts")
-	runConfig    = flag.String("run-config", "", "run a JSON file with a given builder config")
-	dumpFs       = flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
+	execShell        = flag.Bool("shell", false, "start the shell instead of running /init.sh")
+	runSshServer     = flag.String("ssh", "", "run a ssh server that executes the argument on connection")
+	downloadFile     = flag.String("download", "", "download a file from the specified server")
+	runScripts       = flag.String("run-scripts", "", "run a JSON file of scripts")
+	translateScripts = flag.Bool("translate-scripts", false, "translate scripts into starlark before running them")
+	runConfig        = flag.String("run-config", "", "run a JSON file with a given builder config")
+	dumpFs           = flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
 )
 
 func initMain() error {
@@ -419,7 +420,7 @@ func initMain() error {
 	}
 
 	if *runScripts != "" {
-		return builderRunScripts(*runScripts)
+		return builderRunScripts(*runScripts, *translateScripts)
 	}
 
 	if *runConfig != "" {
@@ -898,6 +899,31 @@ func initMain() error {
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
 		if err := common.EnableVerbose(); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
+	globals["set_env"] = starlark.NewBuiltin("set_env", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			key   string
+			value string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"key", &key,
+			"value", &value,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := os.Setenv(key, value); err != nil {
 			return starlark.None, err
 		}
 

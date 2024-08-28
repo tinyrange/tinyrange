@@ -158,6 +158,12 @@ func (sh *shellInstance) processLine(line string) error {
 		}
 
 		return nil
+	case strings.HasPrefix(line, "env"):
+		for _, env := range os.Environ() {
+			slog.Info("", "env", env)
+		}
+
+		return nil
 	default:
 		cmd := exec.Command(tokens[0], tokens[1:]...)
 		cmd.Stdout = os.Stdout
