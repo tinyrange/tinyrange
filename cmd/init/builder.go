@@ -56,20 +56,20 @@ func runWithConfig(cfg config.BuilderConfig) error {
 	return nil
 }
 
-func translateAndRun(args []string, environment map[string]string) error {
+func translateAndRun(args []string, environment map[string]string) (bool, error) {
 	transpileStart := time.Now()
 
 	f, err := os.Open(args[0])
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer f.Close()
 
-	sh := shelltranslater.NewTranspiler()
+	sh := shelltranslater.NewTranspiler(true)
 
 	translated, err := sh.TranslateFile(f, args[0])
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	transpileTime := time.Since(transpileStart)
@@ -81,12 +81,33 @@ func translateAndRun(args []string, environment map[string]string) error {
 	slog.Debug("running translated", "prog", args[0])
 
 	if err := rt.Run(args[0], translated, args, environment); err != nil {
-		return err
+		return true, err
 	}
 
 	runTime := time.Since(runStart)
 
 	slog.Debug("translated and run", "prog", args[0], "transpile", transpileTime, "run", runTime)
+
+	return true, nil
+}
+
+func execCommand(translateShell bool, args []string, env map[string]string) error {
+	if translateShell {
+		fatal, err := translateAndRun(args, env)
+		if err != nil {
+			if fatal {
+				return fmt.Errorf("failed to translate and run: %s", err)
+			} else {
+				slog.Warn("failed to translate", "err", err)
+			}
+		} else {
+			return nil
+		}
+	}
+
+	if err := common.ExecCommand(args, env); err != nil {
+		return fmt.Errorf("failed to run trigger: %s", err)
+	}
 
 	return nil
 }
@@ -118,14 +139,12 @@ func runScript(script BuilderScript, translateShell bool) error {
 			return nil
 		}
 
-		if translateShell {
-			if err := translateAndRun(append([]string{script.Exec}, args...), script.Environment); err != nil {
-				return fmt.Errorf("failed to translate and run: %s", err)
-			}
-		} else {
-			if err := common.ExecCommand(append([]string{script.Exec}, args...), script.Environment); err != nil {
-				return fmt.Errorf("failed to run trigger: %s", err)
-			}
+		if err := execCommand(
+			translateShell,
+			append([]string{script.Exec}, args...),
+			script.Environment,
+		); err != nil {
+			return err
 		}
 
 		slog.Debug("trigger_on", "exec", script.Exec, "took", time.Since(start))
@@ -134,14 +153,12 @@ func runScript(script BuilderScript, translateShell bool) error {
 	case "execute":
 		start := time.Now()
 
-		if translateShell {
-			if err := translateAndRun(append([]string{script.Exec}, script.Arguments...), script.Environment); err != nil {
-				return fmt.Errorf("failed to translate and run: %s", err)
-			}
-		} else {
-			if err := common.ExecCommand(append([]string{script.Exec}, script.Arguments...), script.Environment); err != nil {
-				return fmt.Errorf("failed to run command (%s): %s", script.Exec, err)
-			}
+		if err := execCommand(
+			translateShell,
+			append([]string{script.Exec}, script.Arguments...),
+			script.Environment,
+		); err != nil {
+			return err
 		}
 
 		slog.Debug("ran script", "exec", script.Exec, "took", time.Since(start))

@@ -434,10 +434,15 @@ func (s *shellContext) setArguments(args []string) {
 	}
 }
 
-func (s *shellContext) setEnvironment(env map[string]string) {
+func (s *shellContext) setEnvironment(env map[string]string) error {
 	for k, v := range env {
 		s.setVariable(k, v)
+
+		if err := os.Setenv(k, v); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (s *shellContext) setVariable(key string, value string) {
@@ -826,6 +831,15 @@ func (rt *ShellScriptToStarlarkRuntime) getGlobals() starlark.StringDict {
 			"noop": makeBuiltin("builtin.noop", func(self *command, args []string) error {
 				return nil
 			}),
+			"set": makeBuiltin("builtin.set", func(self *command, args []string) error {
+				if args[0] == "-e" {
+					self.ctx.terminateOnError = true
+
+					return nil
+				} else {
+					return fmt.Errorf("unimplemented set command: %+v", args)
+				}
+			}),
 		},
 	}
 
@@ -871,7 +885,10 @@ func (rt *ShellScriptToStarlarkRuntime) Run(filename string, contents []byte, ar
 
 	ctx := rt.newContext(nil, os.Stdout, os.Stderr, os.Stdin)
 
-	ctx.setEnvironment(environment)
+	if err := ctx.setEnvironment(environment); err != nil {
+		return err
+	}
+
 	ctx.setArguments(args)
 
 	err = rt.call(ctx, main)

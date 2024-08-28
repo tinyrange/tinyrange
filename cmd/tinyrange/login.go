@@ -290,9 +290,9 @@ func (config *loginConfig) run() error {
 			os.Exit(1)
 		}
 
-		if common.IsVerbose() {
-			ctx.DisplayTree()
-		}
+		// if common.IsVerbose() {
+		// 	ctx.DisplayTree()
+		// }
 
 		return nil
 	}

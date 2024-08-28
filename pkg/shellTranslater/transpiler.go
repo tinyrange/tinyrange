@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/bazelbuild/buildtools/build"
 	"mvdan.cc/sh/v3/syntax"
@@ -75,8 +76,9 @@ var (
 )
 
 type ShellScriptToStarlark struct {
-	file     *build.File
-	mainFunc *build.DefStmt
+	includeExternalScripts bool
+	file                   *build.File
+	mainFunc               *build.DefStmt
 }
 
 func (sh *ShellScriptToStarlark) declareVariable(target block, value build.Expr) (string, error) {
@@ -107,6 +109,8 @@ func (sh *ShellScriptToStarlark) declareFunction(name string, cb func(name strin
 
 	return name, target.Add(newFunc)
 }
+
+var sourceBuiltin = &build.Ident{Name: "source"}
 
 func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 	str, ok := val.(*build.StringExpr)
@@ -186,9 +190,9 @@ func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 			Name: "true",
 		}
 	case ".":
-		return &build.Ident{Name: "source"}
+		return sourceBuiltin
 	case "source":
-		return &build.Ident{Name: "source"}
+		return sourceBuiltin
 	default:
 		return nil
 	}
@@ -394,6 +398,45 @@ func (sh *ShellScriptToStarlark) translateWord(target block, word *syntax.Word) 
 	}
 }
 
+func asString(expr build.Expr) (string, error) {
+	switch expr := expr.(type) {
+	case *build.StringExpr:
+		return expr.Value, nil
+	default:
+		return "", fmt.Errorf("asString not implemented: %T %+v", expr, expr)
+	}
+}
+
+func (sh *ShellScriptToStarlark) sourceFile(target block, expr build.Expr) error {
+	filename, err := asString(expr)
+	if err != nil {
+		return err
+	}
+
+	if !sh.includeExternalScripts {
+		return fmt.Errorf("sourceFile only supported if includeExternalScripts is set")
+	}
+
+	r, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	parser := syntax.NewParser()
+
+	f, err := parser.Parse(r, filename)
+	if err != nil {
+		return err
+	}
+
+	if err := sh.translateFile(target, f); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) (build.Expr, bool, error) {
 	switch cmd := cmd.(type) {
 	case *syntax.CallExpr:
@@ -413,7 +456,13 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 		if len(args) > 0 {
 			builtin := sh.getBuiltin(args[0])
 
-			if builtin != nil {
+			if builtin == sourceBuiltin {
+				if err := sh.sourceFile(target, args[1]); err != nil {
+					return nil, false, err
+				}
+
+				return nil, false, nil
+			} else if builtin != nil {
 				ret = &build.CallExpr{
 					X:    builtin,
 					List: args[1:],
@@ -1091,9 +1140,7 @@ func (sh *ShellScriptToStarlark) translateStmt(target block, stmt *syntax.Stmt) 
 	return top, true, nil
 }
 
-func (sh *ShellScriptToStarlark) translateFile(f *syntax.File) error {
-	target := &functionBlock{DefStmt: sh.mainFunc}
-
+func (sh *ShellScriptToStarlark) translateFile(target block, f *syntax.File) error {
 	for _, stmt := range f.Stmts {
 		top, isExpr, err := sh.translateStmt(target, stmt)
 		if err != nil {
@@ -1134,7 +1181,9 @@ func (sh *ShellScriptToStarlark) TranslateFile(r io.Reader, filename string) ([]
 		return nil, err
 	}
 
-	if err := sh.translateFile(f); err != nil {
+	target := &functionBlock{DefStmt: sh.mainFunc}
+
+	if err := sh.translateFile(target, f); err != nil {
 		return nil, err
 	}
 
@@ -1143,8 +1192,9 @@ func (sh *ShellScriptToStarlark) TranslateFile(r io.Reader, filename string) ([]
 	return sh.emit(), nil
 }
 
-func NewTranspiler() *ShellScriptToStarlark {
+func NewTranspiler(includeExternalScripts bool) *ShellScriptToStarlark {
 	return &ShellScriptToStarlark{
+		includeExternalScripts: includeExternalScripts,
 		file: &build.File{
 			Type: build.TypeDefault,
 		},
