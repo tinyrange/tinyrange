@@ -952,6 +952,22 @@ func (rt *ShellScriptToStarlarkRuntime) getGlobals() starlark.StringDict {
 						} else {
 							return fmt.Errorf("test -f not supported without mutating host state")
 						}
+					} else if args[1] == "-L" {
+						if self.ctx.rt.mutateHostState {
+							info, err := os.Stat(args[2])
+							if err != nil {
+								fmt.Fprintf(self.stderr(), "failed to stat: %s\n", err)
+								return errExitCode(1)
+							}
+
+							if info.Mode()&fs.ModeSymlink != 0 {
+								return errExitCode(1)
+							} else {
+								return nil
+							}
+						} else {
+							return fmt.Errorf("test -x not supported without mutating host state")
+						}
 					} else {
 						return fmt.Errorf("unimplemented test command: %+v", args)
 					}

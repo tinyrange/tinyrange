@@ -57,6 +57,12 @@ func runWithConfig(cfg config.BuilderConfig) error {
 }
 
 func translateAndRun(args []string, environment map[string]string) (bool, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return false, err
+	}
+	defer os.Chdir(cwd)
+
 	transpileStart := time.Now()
 
 	f, err := os.Open(args[0])
