@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anmitsu/go-shlex"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
@@ -518,7 +519,9 @@ func (s *shellContext) Close() error {
 
 func (s *shellContext) setArguments(args []string) {
 	slog.Debug("setArguments", "args", args)
-	s.setVariable("@", strings.Join(args, " "))
+
+	s.setVariable("@", strings.Join(args[1:], " "))
+
 	for i, arg := range args {
 		s.setVariable(strconv.Itoa(i), arg)
 	}
@@ -736,7 +739,12 @@ func (ctx *shellContext) Attr(name string) (starlark.Value, error) {
 				argList = append(argList, val)
 			}
 
-			for _, arg := range argList {
+			newArgs, err := shlex.Split(strings.Join(argList, " "), true)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, arg := range newArgs {
 				ctx := ctx.rt.newContext(ctx, ctx.stdout, ctx.stderr, ctx.stdin)
 
 				ctx.setVariable(string(name), arg)
@@ -906,6 +914,82 @@ func (rt *ShellScriptToStarlarkRuntime) runShell(self *command, args []string) e
 	}
 }
 
+func (rt *ShellScriptToStarlarkRuntime) builtinTest(self *command, args []string) (bool, error) {
+	if args[0] == "!" {
+		val, err := rt.builtinTest(self, args[1:])
+		if err != nil {
+			return false, err
+		}
+
+		return !val, nil
+	} else if args[0] == "-n" {
+		return args[1] != "", nil
+	} else if args[0] == "-z" {
+		return args[1] == "", nil
+	} else if args[0] == "-e" {
+		if self.ctx.rt.mutateHostState {
+			ok, _ := common.Exists(args[1])
+			return ok, nil
+		} else {
+			return false, fmt.Errorf("test -e not supported without mutating host state")
+		}
+	} else if args[0] == "-f" {
+		if self.ctx.rt.mutateHostState {
+			info, err := os.Stat(args[1])
+			if err != nil {
+				fmt.Fprintf(self.stderr(), "failed to stat: %s\n", err)
+				return false, nil
+			}
+
+			return info.Mode().IsRegular(), nil
+		} else {
+			return false, fmt.Errorf("test -f not supported without mutating host state")
+		}
+	} else if args[0] == "-d" {
+		if self.ctx.rt.mutateHostState {
+			info, err := os.Stat(args[1])
+			if err != nil {
+				fmt.Fprintf(self.stderr(), "failed to stat: %s\n", err)
+				return false, nil
+			}
+
+			return info.Mode().IsDir(), nil
+		} else {
+			return false, fmt.Errorf("test -d not supported without mutating host state")
+		}
+	} else if args[0] == "-x" {
+		if self.ctx.rt.mutateHostState {
+			info, err := os.Stat(args[1])
+			if err != nil {
+				fmt.Fprintf(self.stderr(), "failed to stat: %s\n", err)
+				return false, nil
+			}
+
+			return info.Mode().Perm()&0111 != 0, nil
+		} else {
+			return false, fmt.Errorf("test -x not supported without mutating host state")
+		}
+	} else if args[0] == "-L" {
+		if self.ctx.rt.mutateHostState {
+			info, err := os.Stat(args[1])
+			if err != nil {
+				fmt.Fprintf(self.stderr(), "failed to stat: %s\n", err)
+				return false, nil
+			}
+
+			return info.Mode()&fs.ModeSymlink != 0, nil
+		} else {
+			return false, fmt.Errorf("test -x not supported without mutating host state")
+		}
+	} else if args[1] == "=" {
+		return args[0] == args[2], nil
+	} else if args[1] == "!=" {
+		return args[0] != args[2], nil
+	} else {
+		return false, fmt.Errorf("unimplemented test command: %+v", args)
+	}
+}
+
 func (rt *ShellScriptToStarlarkRuntime) getGlobals() starlark.StringDict {
 	globals := make(starlark.StringDict)
 
@@ -925,152 +1009,17 @@ func (rt *ShellScriptToStarlarkRuntime) getGlobals() starlark.StringDict {
 				return nil
 			}),
 			"test": makeBuiltin("builtin.test", func(self *command, args []string) error {
-				if args[0] == "!" {
-					if args[1] == "-e" {
-						if self.ctx.rt.mutateHostState {
-							if ok, _ := common.Exists(args[2]); ok {
-								return errExitCode(1)
-							} else {
-								return nil
-							}
-						} else {
-							return fmt.Errorf("test -e not supported without mutating host state")
-						}
-					} else if args[1] == "-f" {
-						if self.ctx.rt.mutateHostState {
-							info, err := os.Stat(args[2])
-							if err != nil {
-								fmt.Fprintf(self.stderr(), "failed to stat: %s\n", err)
-								return errExitCode(1)
-							}
+				slog.Debug("builtin test", "args", args)
 
-							if info.Mode().IsRegular() {
-								return errExitCode(1)
-							} else {
-								return nil
-							}
-						} else {
-							return fmt.Errorf("test -f not supported without mutating host state")
-						}
-					} else if args[1] == "-L" {
-						if self.ctx.rt.mutateHostState {
-							info, err := os.Stat(args[2])
-							if err != nil {
-								fmt.Fprintf(self.stderr(), "failed to stat: %s\n", err)
-								return errExitCode(1)
-							}
+				val, err := rt.builtinTest(self, args)
+				if err != nil {
+					return err
+				}
 
-							if info.Mode()&fs.ModeSymlink != 0 {
-								return errExitCode(1)
-							} else {
-								return nil
-							}
-						} else {
-							return fmt.Errorf("test -x not supported without mutating host state")
-						}
-					} else {
-						return fmt.Errorf("unimplemented test command: %+v", args)
-					}
-				} else if args[0] == "-n" {
-					if args[1] != "" {
-						return nil
-					} else {
-						return errExitCode(1)
-					}
-				} else if args[0] == "-z" {
-					if args[1] == "" {
-						return nil
-					} else {
-						return errExitCode(1)
-					}
-				} else if args[0] == "-e" {
-					if self.ctx.rt.mutateHostState {
-						if ok, _ := common.Exists(args[1]); ok {
-							return nil
-						} else {
-							return errExitCode(1)
-						}
-					} else {
-						return fmt.Errorf("test -e not supported without mutating host state")
-					}
-				} else if args[0] == "-f" {
-					if self.ctx.rt.mutateHostState {
-						info, err := os.Stat(args[1])
-						if err != nil {
-							fmt.Fprintf(self.stderr(), "failed to stat: %s\n", err)
-							return errExitCode(1)
-						}
-
-						if info.Mode().IsRegular() {
-							return nil
-						} else {
-							return errExitCode(1)
-						}
-					} else {
-						return fmt.Errorf("test -f not supported without mutating host state")
-					}
-				} else if args[0] == "-d" {
-					if self.ctx.rt.mutateHostState {
-						info, err := os.Stat(args[1])
-						if err != nil {
-							fmt.Fprintf(self.stderr(), "failed to stat: %s\n", err)
-							return errExitCode(1)
-						}
-
-						if info.Mode().IsDir() {
-							return nil
-						} else {
-							return errExitCode(1)
-						}
-					} else {
-						return fmt.Errorf("test -d not supported without mutating host state")
-					}
-				} else if args[0] == "-x" {
-					if self.ctx.rt.mutateHostState {
-						info, err := os.Stat(args[1])
-						if err != nil {
-							fmt.Fprintf(self.stderr(), "failed to stat: %s\n", err)
-							return errExitCode(1)
-						}
-
-						if info.Mode().Perm()&0111 != 0 {
-							return nil
-						} else {
-							return errExitCode(1)
-						}
-					} else {
-						return fmt.Errorf("test -x not supported without mutating host state")
-					}
-				} else if args[0] == "-L" {
-					if self.ctx.rt.mutateHostState {
-						info, err := os.Stat(args[1])
-						if err != nil {
-							fmt.Fprintf(self.stderr(), "failed to stat: %s\n", err)
-							return errExitCode(1)
-						}
-
-						if info.Mode()&fs.ModeSymlink != 0 {
-							return nil
-						} else {
-							return errExitCode(1)
-						}
-					} else {
-						return fmt.Errorf("test -x not supported without mutating host state")
-					}
-				} else if args[1] == "=" {
-					if args[0] == args[2] {
-						return nil
-					} else {
-						return errExitCode(1)
-					}
-				} else if args[1] == "!=" {
-					if args[0] != args[2] {
-						return nil
-					} else {
-						return errExitCode(1)
-					}
+				if val {
+					return nil
 				} else {
-					return fmt.Errorf("unimplemented test command: %+v", args)
+					return errExitCode(1)
 				}
 			}),
 			"exit": makeBuiltin("builtin.exit", func(self *command, args []string) error {
@@ -1222,6 +1171,11 @@ func (rt *ShellScriptToStarlarkRuntime) getGlobals() starlark.StringDict {
 			}),
 			"deb_systemd_helper": makeBuiltin("debian.deb_systemd_helper", func(self *command, args []string) error {
 				slog.Debug("debian.deb_systemd_helper", "args", args)
+
+				return nil
+			}),
+			"update_alternatives": makeBuiltin("debian.update_alternatives", func(self *command, args []string) error {
+				slog.Debug("debian.update_alternatives", "args", args)
 
 				return nil
 			}),

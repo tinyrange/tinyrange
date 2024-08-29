@@ -236,6 +236,11 @@ func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 			X:    &build.Ident{Name: "debian"},
 			Name: "py3compile",
 		}
+	case "update-alternatives":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "debian"},
+			Name: "update_alternatives",
+		}
 	}
 
 	return nil
