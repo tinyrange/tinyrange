@@ -299,6 +299,7 @@ def make_ubuntu_builders(repos):
         # Define a container builder for each version.
         ret.append(define.container_builder(
             name = "ubuntu@" + version,
+            arch = "x86_64",
             display_name = "Ubuntu " + version,
             plan_callback = build_debian_directives,
             # Packages with a high priority need to be installed.

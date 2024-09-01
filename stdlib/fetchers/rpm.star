@@ -223,6 +223,7 @@ if __name__ == "__main__":
         db.add_container_builder(
             define.container_builder(
                 name = "fedora@{}".format(version),
+                arch = "x86_64",
                 display_name = "Fedora Linux {}".format(version),
                 packages = define.package_collection(
                     parse_rpm_package,

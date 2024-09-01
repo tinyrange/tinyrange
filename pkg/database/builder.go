@@ -6,11 +6,13 @@ import (
 	"slices"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"go.starlark.net/starlark"
 )
 
 type ContainerBuilder struct {
 	Name             string
+	Architecture     config.CPUArchitecture
 	DisplayName      string
 	Filename         string
 	PlanCallbackName string
@@ -237,6 +239,7 @@ var (
 
 func NewContainerBuilder(
 	name string,
+	arch config.CPUArchitecture,
 	displayName string,
 	filename string,
 	planCallbackName string,
@@ -246,6 +249,7 @@ func NewContainerBuilder(
 ) (*ContainerBuilder, error) {
 	return &ContainerBuilder{
 		Name:             name,
+		Architecture:     arch,
 		DisplayName:      displayName,
 		Filename:         filename,
 		PlanCallbackName: planCallbackName,

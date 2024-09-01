@@ -1,9 +1,49 @@
 package config
 
 import (
+	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
+
+type CPUArchitecture string
+
+const (
+	ArchInvalid CPUArchitecture = ""
+	ArchX8664   CPUArchitecture = "x86_64"
+	ArchARM64   CPUArchitecture = "aarch64"
+)
+
+func (arch CPUArchitecture) IsNative() bool {
+	return arch == HostArchitecture
+}
+
+func ArchitectureFromString(s string) (CPUArchitecture, error) {
+	switch s {
+	case "x86_64":
+		return ArchX8664, nil
+	case "aarch64":
+		return ArchARM64, nil
+	case "":
+		return ArchInvalid, nil
+	default:
+		return ArchInvalid, fmt.Errorf("could not parse architecture: %s", s)
+	}
+}
+
+var HostArchitecture = getHostArchitecture()
+
+func getHostArchitecture() CPUArchitecture {
+	switch runtime.GOARCH {
+	case "amd64":
+		return ArchX8664
+	case "arm64":
+		return ArchARM64
+	default:
+		panic("unknown architecture: " + runtime.GOARCH)
+	}
+}
 
 type LocalFileFragment struct {
 	HostFilename  string `json:"host_filename" yaml:"host_filename"`
@@ -31,8 +71,9 @@ type EnvironmentFragment struct {
 }
 
 type BuiltinFragment struct {
-	Name          string `json:"builtin" yaml:"builtin"`
-	GuestFilename string `json:"guest_filename" yaml:"guest_filename"`
+	Name          string          `json:"builtin" yaml:"builtin"`
+	Architecture  CPUArchitecture `json:"architecture" yaml:"architecture"`
+	GuestFilename string          `json:"guest_filename" yaml:"guest_filename"`
 }
 
 type ExportPortFragment struct {
@@ -55,6 +96,8 @@ type Fragment struct {
 type TinyRangeConfig struct {
 	// The base directory all other filenames resolve from.
 	BaseDirectory string `json:"base_directory" yaml:"base_directory"`
+	// The CPU Architecture of the guest.
+	Architecture CPUArchitecture `json:"architecture" yaml:"architecture"`
 	// The filename of the hypervisor starlark script to use.
 	HypervisorScript string `json:"hypervisor_script" yaml:"hypervisor_script"`
 	// The kernel to boot.

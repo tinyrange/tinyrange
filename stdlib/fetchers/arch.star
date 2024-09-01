@@ -145,6 +145,7 @@ if __name__ == "__main__":
     db.add_container_builder(
         define.container_builder(
             name = "archlinux",
+            arch = "x86_64",
             display_name = "Arch Linux",
             packages = define.package_collection(
                 parse_arch_package,

@@ -85,6 +85,7 @@ func RunWithConfig(
 	}
 
 	if cfg.Debug {
+		slog.Warn("enabling hypervisor debug mode")
 		debug = true
 	}
 
@@ -163,7 +164,12 @@ func RunWithConfig(
 			}
 
 			if builtin.Name == "init" {
-				if err := fs.CreateFile(builtin.GuestFilename, vm.RawRegion(initExec.INIT_EXECUTABLE)); err != nil {
+				exec, err := initExec.GetInitExecutable(builtin.Architecture)
+				if err != nil {
+					return err
+				}
+
+				if err := fs.CreateFile(builtin.GuestFilename, vm.RawRegion(exec)); err != nil {
 					return err
 				}
 
@@ -393,6 +399,7 @@ func RunWithConfig(
 	virtualMachine, err := factory.Create(
 		cfg.CPUCores,
 		cfg.MemoryMB,
+		cfg.Architecture,
 		cfg.Resolve(cfg.KernelFilename),
 		cfg.Resolve(cfg.InitFilesystemFilename),
 		"nbd://"+listener.Addr().String(),
@@ -543,6 +550,7 @@ func RunWithConfig(
 		go func() {
 			if err := virtualMachine.Run(nic, debug); err != nil {
 				slog.Error("failed to run virtual machine", "err", err)
+				os.Exit(1)
 			}
 		}()
 		defer virtualMachine.Shutdown()
@@ -566,7 +574,7 @@ func RunWithConfig(
 		}
 	} else if interaction == "serial" {
 		if err := virtualMachine.Run(nic, true); err != nil {
-			slog.Error("failed to run virtual machine", "err", err)
+			return err
 		}
 		defer virtualMachine.Shutdown()
 

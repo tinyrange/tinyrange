@@ -101,6 +101,7 @@ var (
 	buildOs   = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
 	buildArch = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
 	buildDir  = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
+	cross     = flag.String("cross", "", "Specify another init executable architecture to build.")
 	debug     = flag.Bool("debug", false, "Print executed commands.")
 	run       = flag.Bool("run", false, "Run TinyRange with the remaining arguments")
 )
@@ -134,6 +135,50 @@ func buildInitForTarget(buildArch string) error {
 	}
 
 	log.Printf("Build init for target: linux/%s", buildArch)
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func crossArchToGoArch(crossArch string) string {
+	switch crossArch {
+	case "x86_64":
+		return "amd64"
+	case "aarch64":
+		return "arm64"
+	default:
+		panic("unknown cross architecture: " + crossArch)
+	}
+}
+
+func buildInitForCross(crossArch string) error {
+	args := []string{
+		"build",
+		"-o", filepath.Join("build", fmt.Sprintf("tinyrange_init_%s", crossArch)),
+	}
+
+	args = append(args, "github.com/tinyrange/tinyrange/cmd/init")
+
+	cmd := exec.Command("go", args...)
+
+	cmd.Env = cmd.Environ()
+
+	cmd.Env = append(cmd.Env, "CGO_ENABLED=0")
+	cmd.Env = append(cmd.Env, "GOOS=linux")
+	cmd.Env = append(cmd.Env, "GOARCH="+crossArchToGoArch(crossArch))
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if *debug {
+		log.Printf("executing %v", cmd.Args)
+	}
+
+	log.Printf("Build cross init for target: linux/%s", crossArch)
 	err := cmd.Run()
 	if err != nil {
 		return err
@@ -278,6 +323,12 @@ func main() {
 
 	if err := buildInitForTarget(*buildArch); err != nil {
 		log.Fatal(err)
+	}
+
+	if *cross != "" {
+		if err := buildInitForCross(*cross); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	target, _, err := getTargetDir(*buildDir, *buildOs, *buildArch)

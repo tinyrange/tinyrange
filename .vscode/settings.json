@@ -1,6 +1,7 @@
 {
     "cSpell.words": [
-        "starlark"
+        "starlark",
+        "tinyrange"
     ],
     "files.watcherExclude": {
         "**/.git/objects/**": true,

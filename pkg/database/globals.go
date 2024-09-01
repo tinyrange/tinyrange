@@ -9,6 +9,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	starlarkjson "go.starlark.net/lib/json"
@@ -171,6 +172,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 			) (starlark.Value, error) {
 				var (
 					name                string
+					archString          string
 					displayName         string
 					planCallback        starlark.Callable
 					packages            *PackageCollection
@@ -180,12 +182,18 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"name", &name,
+					"arch", &archString,
 					"plan_callback", &planCallback,
 					"packages", &packages,
 					"default_packages?", &defaultPackagesList,
 					"display_name?", &displayName,
 					"metadata?", &metadata,
 				); err != nil {
+					return starlark.None, err
+				}
+
+				arch, err := config.ArchitectureFromString(archString)
+				if err != nil {
 					return starlark.None, err
 				}
 
@@ -209,7 +217,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				filename := thread.CallFrame(1).Pos.Filename()
 
-				return NewContainerBuilder(name, displayName, filename, planCallback.Name(), defaultPackages, packages, metadata)
+				return NewContainerBuilder(name, arch, displayName, filename, planCallback.Name(), defaultPackages, packages, metadata)
 			}),
 			"fetch_http": starlark.NewBuiltin("define.fetch_http", func(
 				thread *starlark.Thread,
@@ -321,6 +329,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					output        string
 					cpuCores      int
 					memoryMb      int
+					archString    string
 					storageSize   int
 					interaction   string
 				)
@@ -330,8 +339,9 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					"kernel?", &kernel,
 					"initramfs?", &initramfs,
 					"output?", &output,
-					"cpu_cores", &cpuCores,
-					"memory_mb", &memoryMb,
+					"cpu_cores?", &cpuCores,
+					"memory_mb?", &memoryMb,
+					"arch?", &archString,
 					"storage_size?", &storageSize,
 					"interaction", &interaction,
 				); err != nil {
@@ -363,6 +373,11 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					}
 				}
 
+				arch, err := config.ArchitectureFromString(archString)
+				if err != nil {
+					return starlark.None, err
+				}
+
 				return builder.NewBuildVmDefinition(
 					directives,
 					kernelDef,
@@ -370,6 +385,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					output,
 					cpuCores,
 					memoryMb,
+					arch,
 					storageSize,
 					interaction,
 					false,
@@ -447,6 +463,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				var (
 					builderName  string
+					archString   string
 					searchListIt starlark.Iterable
 					tagListIt    starlark.Iterable
 				)
@@ -455,6 +472,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					"builder", &builderName,
 					"packages", &searchListIt,
 					"tags", &tagListIt,
+					"arch?", &archString,
 				); err != nil {
 					return starlark.None, err
 				}
@@ -484,7 +502,12 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					}
 				}
 
-				return builder.NewPlanDefinition(builderName, search, tagList)
+				arch, err := config.ArchitectureFromString(archString)
+				if err != nil {
+					return starlark.None, err
+				}
+
+				return builder.NewPlanDefinition(builderName, arch, search, tagList)
 			}),
 		},
 	}
@@ -654,17 +677,25 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				var (
 					name          string
 					guestFilename string
+					archString    string
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"name", &name,
 					"guest_filename", &guestFilename,
+					"arch?", &archString,
 				); err != nil {
+					return starlark.None, err
+				}
+
+				arch, err := config.ArchitectureFromString(archString)
+				if err != nil {
 					return starlark.None, err
 				}
 
 				return &common.StarDirective{Directive: common.DirectiveBuiltin{
 					Name:          name,
+					Architecture:  arch,
 					GuestFilename: guestFilename,
 				}}, nil
 			}),

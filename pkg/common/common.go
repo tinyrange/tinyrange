@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
@@ -81,21 +80,6 @@ func Ensure(path string, mode os.FileMode) error {
 	}
 
 	return nil
-}
-
-type CPUArchitecture string
-
-const (
-	ArchX8664 CPUArchitecture = "x86_64"
-)
-
-func (arch CPUArchitecture) IsNative() bool {
-	switch runtime.GOARCH {
-	case "amd64":
-		return arch == ArchX8664
-	default:
-		panic("unknown architecture: " + arch)
-	}
 }
 
 func getExeDirectory() (string, error) {

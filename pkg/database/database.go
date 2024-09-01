@@ -16,6 +16,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
@@ -176,6 +177,7 @@ var (
 )
 
 type PackageDatabase struct {
+	// keys are name-arch
 	ContainerBuilders map[string]*ContainerBuilder
 
 	RebuildUserDefinitions bool
@@ -318,7 +320,7 @@ func (db *PackageDatabase) AddMirror(name string, options []string) error {
 }
 
 func (db *PackageDatabase) AddContainerBuilder(builder *ContainerBuilder) error {
-	db.ContainerBuilders[builder.Name] = builder
+	db.ContainerBuilders[fmt.Sprintf("%s-%s", builder.Name, builder.Architecture)] = builder
 
 	return nil
 }
@@ -667,8 +669,8 @@ func (db *PackageDatabase) GetBuilder(filename string, builder string) (starlark
 	return callable, nil
 }
 
-func (db *PackageDatabase) GetContainerBuilder(ctx common.BuildContext, name string) (common.ContainerBuilder, error) {
-	builder, ok := db.ContainerBuilders[name]
+func (db *PackageDatabase) GetContainerBuilder(ctx common.BuildContext, name string, arch config.CPUArchitecture) (common.ContainerBuilder, error) {
+	builder, ok := db.ContainerBuilders[fmt.Sprintf("%s-%s", name, arch)]
 	if !ok {
 		return nil, fmt.Errorf("builder %s not found", name)
 	}
@@ -678,7 +680,7 @@ func (db *PackageDatabase) GetContainerBuilder(ctx common.BuildContext, name str
 		if err := builder.Load(ctx); err != nil {
 			return nil, err
 		}
-		slog.Debug("loaded", "builder", builder.DisplayName, "took", time.Since(start))
+		slog.Debug("loaded", "builder", builder.DisplayName, "arch", builder.Architecture, "took", time.Since(start))
 	}
 
 	return builder, nil
@@ -883,18 +885,25 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				name string
+				name       string
+				archString string
 			)
 
 			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 				"name", &name,
+				"arch", &archString,
 			); err != nil {
+				return starlark.None, err
+			}
+
+			arch, err := config.ArchitectureFromString(archString)
+			if err != nil {
 				return starlark.None, err
 			}
 
 			ctx := db.NewBuildContext(nil)
 
-			builder, err := db.GetContainerBuilder(ctx, name)
+			builder, err := db.GetContainerBuilder(ctx, name, arch)
 			if err != nil {
 				return starlark.None, err
 			}
@@ -921,7 +930,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 			}
 
 			if name == "init" {
-				if common.CPUArchitecture(arch).IsNative() {
+				if config.CPUArchitecture(arch).IsNative() {
 					f := filesystem.NewMemoryFile(filesystem.TypeRegular)
 					f.Overwrite(initExec.INIT_EXECUTABLE)
 					return filesystem.NewStarFile(f, "init"), nil
@@ -930,7 +939,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 				}
 			} else if name == "tinyrange" {
 				// Assume that the user wants a Linux executable.
-				if common.CPUArchitecture(arch).IsNative() && runtime.GOOS == "linux" {
+				if config.CPUArchitecture(arch).IsNative() && runtime.GOOS == "linux" {
 					local, err := os.Executable()
 					if err != nil {
 						return nil, err

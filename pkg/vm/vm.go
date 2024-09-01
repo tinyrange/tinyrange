@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"go.starlark.net/starlark"
@@ -39,15 +40,16 @@ var (
 )
 
 type VirtualMachine struct {
-	factory   *VirtualMachineFactory
-	cpuCores  int
-	memoryMb  int
-	kernel    string
-	initrd    string
-	diskImage string
-	nic       *netstack.NetworkInterface
-	cmd       *exec.Cmd
-	mtx       sync.Mutex
+	factory      *VirtualMachineFactory
+	cpuCores     int
+	memoryMb     int
+	architecture config.CPUArchitecture
+	kernel       string
+	initrd       string
+	diskImage    string
+	nic          *netstack.NetworkInterface
+	cmd          *exec.Cmd
+	mtx          sync.Mutex
 }
 
 func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bool) error {
@@ -69,6 +71,10 @@ func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bo
 }
 
 func (vm *VirtualMachine) Accelerate() bool {
+	if !vm.architecture.IsNative() {
+		return false
+	}
+
 	if runtime.GOOS == "linux" {
 		f, err := os.OpenFile("/dev/kvm", os.O_RDWR, os.ModePerm)
 		if err != nil {
@@ -76,6 +82,8 @@ func (vm *VirtualMachine) Accelerate() bool {
 		}
 		defer f.Close()
 
+		return true
+	} else if runtime.GOOS == "darwin" {
 		return true
 	} else {
 		return false
@@ -118,6 +126,8 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 		return starlark.MakeInt(vm.cpuCores), nil
 	} else if name == "memory_mb" {
 		return starlark.MakeInt(vm.memoryMb), nil
+	} else if name == "architecture" {
+		return starlark.String(vm.architecture), nil
 	} else if name == "kernel" {
 		return starlark.String(vm.kernel), nil
 	} else if name == "initrd" {
@@ -142,6 +152,8 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 		} else {
 			return starlark.False, nil
 		}
+	} else if name == "os" {
+		return starlark.String(runtime.GOOS), nil
 	} else {
 		return nil, nil
 	}
@@ -152,6 +164,7 @@ func (vm *VirtualMachine) AttrNames() []string {
 	return []string{
 		"cpu_cores",
 		"memory_mb",
+		"architecture",
 		"kernel",
 		"initrd",
 		"disk_image",
@@ -160,6 +173,7 @@ func (vm *VirtualMachine) AttrNames() []string {
 		"mac_address",
 		"accelerate",
 		"verbose",
+		"os",
 	}
 }
 
@@ -354,17 +368,19 @@ func (factory *VirtualMachineFactory) load(filename string) error {
 func (factory *VirtualMachineFactory) Create(
 	cpuCores int,
 	memoryMb int,
+	architecture config.CPUArchitecture,
 	kernel string,
 	initrd string,
 	diskImage string,
 ) (*VirtualMachine, error) {
 	return &VirtualMachine{
-		factory:   factory,
-		cpuCores:  cpuCores,
-		memoryMb:  memoryMb,
-		kernel:    kernel,
-		initrd:    initrd,
-		diskImage: diskImage,
+		factory:      factory,
+		cpuCores:     cpuCores,
+		memoryMb:     memoryMb,
+		architecture: architecture,
+		kernel:       kernel,
+		initrd:       initrd,
+		diskImage:    diskImage,
 	}, nil
 }
 

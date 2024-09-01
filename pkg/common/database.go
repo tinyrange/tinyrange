@@ -3,6 +3,7 @@ package common
 import (
 	"net/http"
 
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"go.starlark.net/starlark"
 )
@@ -38,7 +39,7 @@ type PackageDatabase interface {
 	UrlsFor(url string) ([]string, error)
 	HttpClient() (*http.Client, error)
 	ShouldRebuildUserDefinitions() bool
-	GetContainerBuilder(ctx BuildContext, name string) (ContainerBuilder, error)
+	GetContainerBuilder(ctx BuildContext, name string, arch config.CPUArchitecture) (ContainerBuilder, error)
 	GetBuilder(filename string, builder string) (starlark.Callable, error)
 	NewThread(filename string) *starlark.Thread
 	HashDefinition(def BuildDefinition) (string, error)

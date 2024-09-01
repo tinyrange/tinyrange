@@ -76,7 +76,10 @@ func (i *initRamFsBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 			c := frag.Builtin
 
 			if c.Name == "init" {
-				buf := initExec.INIT_EXECUTABLE
+				buf, err := initExec.GetInitExecutable(c.Architecture)
+				if err != nil {
+					return 0, err
+				}
 
 				if err := writer.AddSimpleFile(c.GuestFilename, buf, true); err != nil {
 					return 0, fmt.Errorf("failed to add simple file: %s", c.GuestFilename)
@@ -164,7 +167,10 @@ func (i *tarBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 			c := frag.Builtin
 
 			if c.Name == "init" {
-				buf := initExec.INIT_EXECUTABLE
+				buf, err := initExec.GetInitExecutable(c.Architecture)
+				if err != nil {
+					return 0, err
+				}
 
 				if err := writer.WriteHeader(&tar.Header{
 					Typeflag: tar.TypeReg,

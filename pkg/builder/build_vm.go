@@ -24,7 +24,8 @@ func init() {
 	hash.RegisterType(&BuildVmDefinition{})
 }
 
-var OFFICIAL_KERNEL_URL = "https://github.com/tinyrange/linux_build/releases/download/linux_x86_6.6.7/vmlinux_x86_64"
+var OFFICIAL_KERNEL_URL_X86_64 = "https://github.com/tinyrange/linux_build/releases/download/linux_x86_6.6.7/vmlinux_x86_64"
+var OFFICIAL_KERNEL_URL_AARCH64 = "https://github.com/tinyrange/linux_build/releases/download/linux_arm64_6.6.7/vmlinux_arm64"
 
 func runTinyRange(exe string, configFilename string) (*exec.Cmd, error) {
 	cmd := exec.Command(exe, "run", configFilename)
@@ -56,9 +57,23 @@ type BuildVmDefinition struct {
 func (def *BuildVmDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
 	var ret []common.DependencyNode
 
+	arch, err := config.ArchitectureFromString(def.params.Architecture)
+	if err != nil {
+		return nil, err
+	}
+	if arch == config.ArchInvalid {
+		arch = config.HostArchitecture
+	}
+
 	kernelDef := def.params.Kernel
 	if kernelDef == nil {
-		kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL, 0)
+		if arch == config.ArchX8664 {
+			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_X86_64, 0)
+		} else if arch == config.ArchARM64 {
+			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_AARCH64, 0)
+		} else {
+			return nil, fmt.Errorf("no kernel specified and no official kernel available for %s", arch)
+		}
 	}
 
 	ret = append(ret, kernelDef)
@@ -105,6 +120,14 @@ func (def *BuildVmDefinition) WriteTo(w io.Writer) (n int64, err error) {
 
 // Build implements common.BuildDefinition.
 func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+	arch, err := config.ArchitectureFromString(def.params.Architecture)
+	if err != nil {
+		return nil, err
+	}
+	if arch == config.ArchInvalid {
+		arch = config.HostArchitecture
+	}
+
 	builderCfg := config.BuilderConfig{}
 
 	builderCfg.OutputFilename = def.params.OutputFile
@@ -125,7 +148,13 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 
 	kernelDef := def.params.Kernel
 	if kernelDef == nil {
-		kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL, 0)
+		if arch == config.ArchX8664 {
+			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_X86_64, 0)
+		} else if arch == config.ArchARM64 {
+			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_AARCH64, 0)
+		} else {
+			return nil, fmt.Errorf("no kernel specified and no official kernel available for %s", arch)
+		}
 	}
 
 	kernel, err := ctx.BuildChild(kernelDef)
@@ -144,6 +173,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	}
 
 	vmCfg.BaseDirectory = wd
+	vmCfg.Architecture = arch
 	vmCfg.HypervisorScript = hvScript
 	vmCfg.KernelFilename = kernelFilename
 	vmCfg.CPUCores = def.params.CpuCores
@@ -171,7 +201,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 
 	// Hard code the init file and script.
 	vmCfg.RootFsFragments = append(vmCfg.RootFsFragments,
-		config.Fragment{Builtin: &config.BuiltinFragment{Name: "init", GuestFilename: "/init"}},
+		config.Fragment{Builtin: &config.BuiltinFragment{Name: "init", Architecture: arch, GuestFilename: "/init"}},
 		config.Fragment{Builtin: &config.BuiltinFragment{Name: "init.star", GuestFilename: "/init.star"}},
 		// Use init.json to set the builder entry point as the SSH command.
 		config.Fragment{FileContents: &config.FileContentsFragment{
@@ -316,6 +346,7 @@ func NewBuildVmDefinition(
 	output string,
 	cpuCores int,
 	memoryMb int,
+	architecture config.CPUArchitecture,
 	storageSize int,
 	interaction string,
 	debug bool,
@@ -331,15 +362,16 @@ func NewBuildVmDefinition(
 	}
 	return &BuildVmDefinition{
 		params: BuildVmParameters{
-			Directives:  dir,
-			Kernel:      kernel,
-			InitRamFs:   initramfs,
-			OutputFile:  output,
-			CpuCores:    cpuCores,
-			MemoryMB:    memoryMb,
-			StorageSize: storageSize,
-			Interaction: interaction,
-			Debug:       debug,
+			Directives:   dir,
+			Kernel:       kernel,
+			InitRamFs:    initramfs,
+			OutputFile:   output,
+			CpuCores:     cpuCores,
+			MemoryMB:     memoryMb,
+			Architecture: string(architecture),
+			StorageSize:  storageSize,
+			Interaction:  interaction,
+			Debug:        debug,
 		},
 	}
 }

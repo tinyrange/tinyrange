@@ -199,7 +199,7 @@ def parse_alpine_packages(ctx, collection, packages):
             raw = ent,
         )
 
-def make_alpine_repos(only_latest = True):
+def make_alpine_repos(arch, only_latest = True):
     alpine_repos = {}
 
     for version in ALPINE_VERSIONS:
@@ -225,12 +225,12 @@ def make_alpine_repos(only_latest = True):
                 parse_alpine_repo,
                 define.read_archive(
                     define.fetch_http(
-                        "mirror://alpine/{}/{}/{}/APKINDEX.tar.gz".format(server_version, repo, "x86_64"),
+                        "mirror://alpine/{}/{}/{}/APKINDEX.tar.gz".format(server_version, repo, arch),
                         expire_time = duration("8h"),
                     ),
                     ".tar.gz",
                 ),
-                "mirror://alpine/{}/{}/{}".format(server_version, repo, "x86_64"),
+                "mirror://alpine/{}/{}/{}".format(server_version, repo, arch),
             ))
 
         # Define a package collection containing all the repos.
@@ -308,12 +308,13 @@ def build_alpine_directives(builder, plan):
             ),
         ] + plan.directives
 
-def make_alpine_builders(repos):
+def make_alpine_builders(arch, repos):
     ret = []
     for version in repos:
         # Define a container builder for each version.
         ret.append(define.container_builder(
             name = "alpine@" + version,
+            arch = arch,
             display_name = "Alpine " + version,
 
             # Specify a plan callback to add the initial layer.
@@ -339,30 +340,32 @@ def make_alpine_builders(repos):
     return ret
 
 if __name__ == "__main__":
-    for builder in make_alpine_builders(make_alpine_repos(only_latest = False)):
-        db.add_container_builder(builder)
+    for arch in ["x86_64", "aarch64"]:
+        for builder in make_alpine_builders(arch, make_alpine_repos(arch, only_latest = False)):
+            db.add_container_builder(builder)
 
-    db.add_container_builder(define.container_builder(
-        name = "wolfi",
-        display_name = "Wolfi",
-        plan_callback = build_alpine_directives,
-        default_packages = [
-            query("busybox"),
-            query("wolfi-baselayout"),
-        ],
-        packages = define.package_collection(
-            parse_alpine_packages,
-            get_alpine_installer,
-            define.build(
-                parse_alpine_repo,
-                define.read_archive(
-                    define.fetch_http(
-                        "mirror://wolfi/os/x86_64/APKINDEX.tar.gz",
-                        expire_time = duration("8h"),
+        db.add_container_builder(define.container_builder(
+            name = "wolfi",
+            arch = arch,
+            display_name = "Wolfi",
+            plan_callback = build_alpine_directives,
+            default_packages = [
+                query("busybox"),
+                query("wolfi-baselayout"),
+            ],
+            packages = define.package_collection(
+                parse_alpine_packages,
+                get_alpine_installer,
+                define.build(
+                    parse_alpine_repo,
+                    define.read_archive(
+                        define.fetch_http(
+                            "mirror://wolfi/os/{}/APKINDEX.tar.gz".format(arch),
+                            expire_time = duration("8h"),
+                        ),
+                        ".tar.gz",
                     ),
-                    ".tar.gz",
+                    "mirror://wolfi/os/{}".format(arch),
                 ),
-                "mirror://wolfi/os/x86_64",
             ),
-        ),
-    ))
+        ))

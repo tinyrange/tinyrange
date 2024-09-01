@@ -17,8 +17,9 @@ type BuildFsParameters struct {
 // filesystem provided by a list of directives.
 // The output is either nothing or a file from the virtual machine.
 type BuildVmParameters struct {
-	Directives []common.Directive // A list of directives to build the root filesystem from.
-	OutputFile string             // The name inside of the guest of the file to copy as the build result.
+	Directives   []common.Directive // A list of directives to build the root filesystem from.
+	OutputFile   string             // The name inside of the guest of the file to copy as the build result.
+	Architecture string             // The CPU Architecture of the guest. If null defaults to the host architecture.
 
 	// TODO(joshua): Allow customizing the hypervisor, and startup script.
 	Kernel      common.BuildDefinition // A build definition that creates the kernel.
@@ -89,9 +90,10 @@ type ExtractFileParameters struct {
 // Create a installation plan using a given builder.
 // The result is a serialized version of PlanDefinition which contains a list of fragments.
 type PlanParameters struct {
-	Builder string                // A registered builder to use to create the installation plan.
-	Search  []common.PackageQuery // A list of packages to query to make the installation plan.
-	TagList common.TagList        // A list of tags used to modify and configure the plan.
+	Builder      string                // A registered builder to use to create the installation plan.
+	Architecture string                // A CPUArchitecture. If not specified then use the host architecture.
+	Search       []common.PackageQuery // A list of packages to query to make the installation plan.
+	TagList      common.TagList        // A list of tags used to modify and configure the plan.
 }
 
 // Read a archive in a compressed format.

@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
 )
 
 var queryBuilder string
@@ -24,7 +25,7 @@ var queryCmd = &cobra.Command{
 
 		ctx := db.NewBuildContext(nil)
 
-		b, err := db.GetContainerBuilder(ctx, queryBuilder)
+		b, err := db.GetContainerBuilder(ctx, queryBuilder, config.HostArchitecture)
 		if err != nil {
 			return err
 		}

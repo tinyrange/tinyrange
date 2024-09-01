@@ -221,6 +221,7 @@ func (d DirectiveEnvironment) Tag() string {
 
 type DirectiveBuiltin struct {
 	Name          string
+	Architecture  config.CPUArchitecture
 	GuestFilename string
 }
 
@@ -235,7 +236,7 @@ func (d DirectiveBuiltin) SerializableType() string { return "DirectiveFragment"
 // AsFragments implements Directive.
 func (d DirectiveBuiltin) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
 	return []config.Fragment{
-		config.Fragment{Builtin: &config.BuiltinFragment{Name: d.Name, GuestFilename: d.GuestFilename}},
+		config.Fragment{Builtin: &config.BuiltinFragment{Name: d.Name, Architecture: d.Architecture, GuestFilename: d.GuestFilename}},
 	}, nil
 }
 

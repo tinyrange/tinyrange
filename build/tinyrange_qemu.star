@@ -1163,21 +1163,29 @@ wC5mDwEW6f9m6qz///8IAGa4EACO2I7AjuCO6I7Q6gAA//8IAAAAAAAAAAAA//8AAACbzwD//wAA
 AJPPAP//AAAPmw8A//8AAACTDwAnAMH///+Q6Y3/ZpBmkGaQZpBmkGaQkA==
 """
 
+def find_qemu(name):
+    command_name = find_command(name)
+    if command_name == None:
+        command_name = find_local(name)
+        if command_name == None:
+            return error("QEMU not found.")
+
+    return command_name
+
 def main(ctx):
     args = []
     kernel_cmdline = []
 
-    # If acceleration is enabled then enable kvm and pass the host CPU info.
-    if ctx.accelerate:
-        args += ["-enable-kvm", "-cpu", "host"]
+    command_name = ""
 
     # Set the command name.
-    command_name = find_command("qemu-system-x86_64")
-    if command_name == None:
-        command_name = find_local("qemu-system-x86_64")
-        if command_name == None:
-            return error("QEMU not found.")
-
+    if ctx.architecture == "x86_64":
+        command_name = find_qemu("qemu-system-x86_64")
+    elif ctx.architecture == "aarch64":
+        command_name = find_qemu("qemu-system-aarch64")
+    else:
+        return error("unknown architecture: {}".format(ctx.architecture))
+    
     # Add basic flags to disable GUI display, remove defaults, and prevent reboots.
     args += [
         "-nodefaults",
@@ -1185,6 +1193,18 @@ def main(ctx):
         "-nographic",
         "-no-reboot",
     ]
+
+    if ctx.architecture == "aarch64":
+        args += ["-machine", "virt"]
+
+    # If acceleration is enabled then enable kvm and pass the host CPU info.
+    if ctx.accelerate:
+        if ctx.os == "linux":
+            args += ["-enable-kvm", "-cpu", "host"]
+        elif ctx.os == "darwin":
+            args += ["-cpu", "host", "-accel", "hvf"]
+    elif ctx.architecture == "aarch64":
+        args += ["-cpu", "cortex-a57"]
 
     # Configure output using a serial console or virtio-console if supported.
     if CFG_USE_VIRTIO_CONSOLE:
@@ -1235,7 +1255,7 @@ def main(ctx):
     kernel_cmdline.append("init=/init")
 
     if ctx.initrd != "":
-        # Add the initramfs. It's responseable for loading the filesystem.
+        # Add the initramfs. It's responsible for loading the filesystem.
         args += [
             "-initrd",
             ctx.initrd,
@@ -1280,11 +1300,12 @@ def main(ctx):
         " ".join(kernel_cmdline),
     ]
 
-    # Set the bios to use qbios.
-    args += [
-        "-bios",
-        write_file_to_build(BIOS_DATA),
-    ]
+    if ctx.architecture == "x86_64":
+        # Set the bios to use qbios.
+        args += [
+            "-bios",
+            write_file_to_build(BIOS_DATA),
+        ]
 
     return executable(
         command = command_name,

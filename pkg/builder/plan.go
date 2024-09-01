@@ -125,7 +125,15 @@ func (def *PlanDefinition) WriteTo(w io.Writer) (n int64, err error) {
 
 // Build implements common.BuildDefinition.
 func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
-	builder, err := ctx.Database().GetContainerBuilder(ctx, def.params.Builder)
+	arch, err := config.ArchitectureFromString(def.params.Architecture)
+	if err != nil {
+		return nil, err
+	}
+	if arch == config.ArchInvalid {
+		arch = config.HostArchitecture
+	}
+
+	builder, err := ctx.Database().GetContainerBuilder(ctx, def.params.Builder, arch)
 	if err != nil {
 		return nil, err
 	}
@@ -192,16 +200,17 @@ var (
 	_ common.Directive       = &PlanDefinition{}
 )
 
-func NewPlanDefinition(builder string, search []common.PackageQuery, tagList common.TagList) (*PlanDefinition, error) {
+func NewPlanDefinition(builder string, arch config.CPUArchitecture, search []common.PackageQuery, tagList common.TagList) (*PlanDefinition, error) {
 	if builder == "" {
 		return nil, fmt.Errorf("no builder specified")
 	}
 
 	return &PlanDefinition{
 		params: PlanParameters{
-			Builder: builder,
-			Search:  search,
-			TagList: tagList,
+			Builder:      builder,
+			Architecture: string(arch),
+			Search:       search,
+			TagList:      tagList,
 		},
 	}, nil
 }
