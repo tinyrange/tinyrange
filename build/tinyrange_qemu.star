@@ -1168,12 +1168,19 @@ def find_qemu(os, name):
         name += ".exe"
 
     command_name = find_command(name)
-    if command_name == None:
-        command_name = find_local(name)
-        if command_name == None:
-            return error("QEMU not found.")
+    if command_name != None:
+        return command_name
 
-    return command_name
+    command_name = find_local(name)
+    if command_name != None:
+        return command_name
+
+    if os == "windows":
+        command_name = "C:\\Program Files\\qemu\\{}.exe".format(name)
+        if path_exists(command_name):
+            return command_name
+
+    return error("QEMU not found.")
 
 def main(ctx):
     args = []

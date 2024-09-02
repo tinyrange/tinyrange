@@ -279,7 +279,36 @@ func (factory *VirtualMachineFactory) load(filename string) error {
 			return starlark.None, err
 		}
 
-		return starlark.String(filepath.Join(filepath.Dir(filename), file)), nil
+		path := filepath.Join(filepath.Dir(filename), file)
+
+		if ok, _ := common.Exists(path); ok {
+			return starlark.String(path), nil
+		} else {
+			return starlark.None, nil
+		}
+	})
+
+	globals["path_exists"] = starlark.NewBuiltin("path_exists", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			path string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"path", &path,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if ok, _ := common.Exists(path); ok {
+			return starlark.True, nil
+		} else {
+			return starlark.False, nil
+		}
 	})
 
 	globals["write_file_to_build"] = starlark.NewBuiltin("write_file_to_build", func(
