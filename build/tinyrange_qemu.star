@@ -1164,7 +1164,7 @@ AJPPAP//AAAPmw8A//8AAACTDwAnAMH///+Q6Y3/ZpBmkGaQZpBmkGaQkA==
 """
 
 def find_qemu(os, name):
-    if ctx.os == "windows":
+    if os == "windows":
         name += ".exe"
 
     command_name = find_command(name)
