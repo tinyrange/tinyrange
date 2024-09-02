@@ -1176,7 +1176,7 @@ def find_qemu(os, name):
         return command_name
 
     if os == "windows":
-        command_name = "C:\\Program Files\\qemu\\{}.exe".format(name)
+        command_name = "C:\\Program Files\\qemu\\{}".format(name)
         if path_exists(command_name):
             return command_name
 
