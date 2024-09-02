@@ -73,6 +73,11 @@ jobs:
         run: |
           go run ./tools/build.go
 
+      - name: Add QEMU to PATH
+        shell: pwsh
+        run: |
+          echo "Folder C:\Program Files\qemu" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Run Test
         shell: pwsh
         run: |
