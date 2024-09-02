@@ -1,0 +1,6 @@
+version: 1
+builder: alpine@3.20
+commands:
+    - echo "#include <stdio.h>" >> main.c;echo "int main() {printf(\"hello, world\\n\");}" >> main.c;gcc -static -o main main.c;/main
+packages:
+    - build-base

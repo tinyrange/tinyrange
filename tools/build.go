@@ -103,7 +103,8 @@ var (
 	buildDir  = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
 	cross     = flag.String("cross", "", "Specify another init executable architecture to build.")
 	debug     = flag.Bool("debug", false, "Print executed commands.")
-	run       = flag.Bool("run", false, "Run TinyRange with the remaining arguments")
+	run       = flag.Bool("run", false, "Run TinyRange with the remaining arguments.")
+	test      = flag.String("test", "", "Run all .yml files in a subdirectory using TinyRange.")
 )
 
 func buildInitForTarget(buildArch string) error {
@@ -310,6 +311,47 @@ func generateRev() error {
 	return nil
 }
 
+func runTest(filename string) error {
+	cmd := exec.Command("build/tinyrange", "login", "-c", filename)
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	log.Printf("Running Test: %+v", cmd.Args)
+
+	return cmd.Run()
+}
+
+func runTests(filename string) error {
+	info, err := os.Stat(filename)
+	if err != nil {
+		return err
+	}
+
+	if info.IsDir() {
+		ents, err := os.ReadDir(filename)
+		if err != nil {
+			return err
+		}
+
+		for _, ent := range ents {
+			child := filepath.Join(filename, ent.Name())
+
+			if err := runTests(child); err != nil {
+				return err
+			}
+		}
+	} else {
+		if filepath.Ext(filename) == ".yml" {
+			if err := runTest(filename); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func main() {
 	flag.Parse()
 
@@ -341,7 +383,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if *run {
+	if *test != "" {
+		if err := runTests(*test); err != nil {
+			log.Fatal(err)
+		}
+	} else if *run {
 		cmd := exec.Command(filename, flag.Args()...)
 
 		cmd.Stdout = os.Stdout

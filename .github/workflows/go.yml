@@ -10,7 +10,7 @@ on:
     branches: ["alpha"]
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -22,7 +22,7 @@ jobs:
 
       - name: Build
         run: |
-          go run ./tools/build.go -os linux -arch amd64
+          go run ./tools/build.go
 
       - name: Install QEMU
         run: |
@@ -31,4 +31,4 @@ jobs:
 
       - name: Run Test
         run: |
-          ./build/tinyrange login -E "whoami"
+          go run ./tools/build.go -test tests/basic

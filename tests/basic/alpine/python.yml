@@ -1,0 +1,6 @@
+version: 1
+builder: alpine@3.20
+commands:
+    - python3 -c "import matplotlib.pyplot as plt;plt.scatter(range(0, 100), range(0, 100));plt.savefig(\"image.png\")"
+packages:
+    - py3-matplotlib
