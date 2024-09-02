@@ -1284,6 +1284,9 @@ def main(ctx):
     if ctx.verbose:
         kernel_cmdline.append("tinyrange.verbose=on")
 
+    if ctx.experimental != "":
+        kernel_cmdline.append("tinyrange.experimental={}".format(ctx.experimental))
+
     # Add a random number generator using virtio-rng
     args += [
         "-device",

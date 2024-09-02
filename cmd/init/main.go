@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -420,6 +421,9 @@ func initMain() error {
 	}
 
 	if *runScripts != "" {
+		if common.HasExperimentalFlag("translate_shell") {
+			*translateScripts = true
+		}
 		return builderRunScripts(*runScripts, *translateScripts)
 	}
 
@@ -892,14 +896,36 @@ func initMain() error {
 		return starlark.None, nil
 	})
 
-	globals["set_verbose"] = starlark.NewBuiltin("set_verbose", func(
+	globals["parse_commandline"] = starlark.NewBuiltin("parse_commandline", func(
 		thread *starlark.Thread,
 		fn *starlark.Builtin,
 		args starlark.Tuple,
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
-		if err := common.EnableVerbose(); err != nil {
+		var (
+			cmdline string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"cmdline", &cmdline,
+		); err != nil {
 			return starlark.None, err
+		}
+
+		cmdline = strings.TrimSuffix(cmdline, "\n")
+
+		for _, arg := range strings.Split(cmdline, " ") {
+			if arg == "tinyrange.verbose=on" {
+				if err := common.EnableVerbose(); err != nil {
+					return starlark.None, err
+				}
+			} else if strings.HasPrefix(arg, "tinyrange.experimental=") {
+				flags := strings.TrimPrefix(arg, "tinyrange.experimental=")
+
+				if err := common.SetExperimental(strings.Split(flags, ",")); err != nil {
+					return starlark.None, err
+				}
+			}
 		}
 
 		return starlark.None, nil

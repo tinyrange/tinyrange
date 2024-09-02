@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
@@ -172,6 +173,24 @@ func RunCommand(script string) error {
 	} else {
 		return ExecCommand([]string{"/bin/sh", "-lc", script}, nil)
 	}
+}
+
+func SetExperimental(flags []string) error {
+	if err := os.Setenv("TINYRANGE_EXPERIMENTAL", strings.Join(flags, ",")); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func HasExperimentalFlag(flag string) bool {
+	flags := GetExperimentalFlags()
+
+	return slices.Contains(flags, flag)
+}
+
+func GetExperimentalFlags() []string {
+	return strings.Split(os.Getenv("TINYRANGE_EXPERIMENTAL"), ",")
 }
 
 const REPO_PATH = ""

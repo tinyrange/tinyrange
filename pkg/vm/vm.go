@@ -132,6 +132,8 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 		} else {
 			return starlark.False, nil
 		}
+	} else if name == "experimental" {
+		return starlark.String(strings.Join(common.GetExperimentalFlags(), ",")), nil
 	} else if name == "os" {
 		return starlark.String(runtime.GOOS), nil
 	} else {

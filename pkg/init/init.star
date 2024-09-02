@@ -17,8 +17,7 @@ def main():
     # Mount /proc filesystem.
     mount("proc", "proc", "/proc", ensure_path = True)
 
-    if "tinyrange.verbose=on" in file_read("/proc/cmdline"):
-        set_verbose()
+    parse_commandline(file_read("/proc/cmdline"))
 
     # Mount other filesystems.
     mount("devtmpfs", "devtmpfs", "/dev", ensure_path = True, ignore_error = True)

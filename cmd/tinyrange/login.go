@@ -66,13 +66,14 @@ type loginConfig struct {
 	NoScripts    bool     `json:"no_scripts,omitempty" yaml:"no_scripts,omitempty"`
 
 	// private configs that have to be set on the command line.
-	cpuCores     int
-	memorySize   int
-	storageSize  int
-	debug        bool
-	writeRoot    string
-	runRoot      string
-	runContainer bool
+	cpuCores          int
+	memorySize        int
+	storageSize       int
+	debug             bool
+	writeRoot         string
+	runRoot           string
+	runContainer      bool
+	experimentalFlags []string
 }
 
 func (config *loginConfig) run() error {
@@ -326,6 +327,12 @@ var loginCmd = &cobra.Command{
 			defer pprof.StopCPUProfile()
 		}
 
+		if len(currentConfig.experimentalFlags) > 0 {
+			if err := common.SetExperimental(currentConfig.experimentalFlags); err != nil {
+				return err
+			}
+		}
+
 		if currentConfig.runContainer {
 			if os.Getuid() == 0 {
 				tmpDir, err := os.MkdirTemp(os.TempDir(), "tinyrange_rootfs_*")
@@ -410,6 +417,7 @@ func init() {
 	loginCmd.PersistentFlags().IntVar(&currentConfig.storageSize, "storage", 1024, "The amount of storage to allocate in the virtual machine in megabytes.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.debug, "debug", false, "Redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.writeRoot, "write-root", "", "Write the root filesystem as a .tar.gz archive.")
+	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.experimentalFlags, "experimental", []string{}, "Add experimental flags.")
 	if runtime.GOOS == "linux" {
 		if os.Getuid() == 0 {
 			// Needs to be running as root.
