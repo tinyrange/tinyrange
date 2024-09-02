@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
 type CPUArchitecture string
@@ -125,7 +124,8 @@ func (cfg TinyRangeConfig) Resolve(filename string) string {
 		return ""
 	}
 
-	if strings.HasPrefix(filename, "/") {
+	// If the filename is already absolute then just use it.
+	if filepath.IsAbs(filename) {
 		return filename
 	}
 
