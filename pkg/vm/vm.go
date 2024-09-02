@@ -70,26 +70,6 @@ func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bo
 	return vm.cmd.Run()
 }
 
-func (vm *VirtualMachine) Accelerate() bool {
-	if !vm.architecture.IsNative() {
-		return false
-	}
-
-	if runtime.GOOS == "linux" {
-		f, err := os.OpenFile("/dev/kvm", os.O_RDWR, os.ModePerm)
-		if err != nil {
-			return false
-		}
-		defer f.Close()
-
-		return true
-	} else if runtime.GOOS == "darwin" {
-		return true
-	} else {
-		return false
-	}
-}
-
 func (vm *VirtualMachine) Shutdown() error {
 	vm.mtx.Lock()
 	defer vm.mtx.Unlock()
