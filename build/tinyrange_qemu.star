@@ -1163,7 +1163,10 @@ wC5mDwEW6f9m6qz///8IAGa4EACO2I7AjuCO6I7Q6gAA//8IAAAAAAAAAAAA//8AAACbzwD//wAA
 AJPPAP//AAAPmw8A//8AAACTDwAnAMH///+Q6Y3/ZpBmkGaQZpBmkGaQkA==
 """
 
-def find_qemu(name):
+def find_qemu(os, name):
+    if ctx.os == "windows":
+        name += ".exe"
+
     command_name = find_command(name)
     if command_name == None:
         command_name = find_local(name)
@@ -1180,12 +1183,12 @@ def main(ctx):
 
     # Set the command name.
     if ctx.architecture == "x86_64":
-        command_name = find_qemu("qemu-system-x86_64")
+        command_name = find_qemu(ctx.os, "qemu-system-x86_64")
     elif ctx.architecture == "aarch64":
-        command_name = find_qemu("qemu-system-aarch64")
+        command_name = find_qemu(ctx.os, "qemu-system-aarch64")
     else:
         return error("unknown architecture: {}".format(ctx.architecture))
-    
+
     # Add basic flags to disable GUI display, remove defaults, and prevent reboots.
     args += [
         "-nodefaults",
