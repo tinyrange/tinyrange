@@ -42,6 +42,11 @@ jobs:
         with:
           go-version: "1.22.2"
 
+      - name: Install winget
+        uses: Cyberboss/install-winget@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build
         shell: pwsh
         run: |
@@ -50,7 +55,7 @@ jobs:
       - name: Install QEMU
         shell: pwsh
         run: |
-          winget install --id=SoftwareFreedomConservancy.QEMU  -e
+          winget install --id=SoftwareFreedomConservancy.QEMU --disable-interactivity --accept-source-agreements
 
       - name: Run Test
         shell: pwsh
