@@ -71,7 +71,7 @@ jobs:
       - name: Test QEMU
         shell: pwsh
         run: |
-          C:\Program\ Files\qemu\qemu-system-x86_64.exe --help
+          & 'C:\Program Files\qemu\qemu-system-x86_64.exe' --help
 
       - name: Build
         shell: pwsh
