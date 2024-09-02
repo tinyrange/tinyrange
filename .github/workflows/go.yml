@@ -32,3 +32,27 @@ jobs:
       - name: Run Test
         run: |
           go run ./tools/build.go -test tests/basic
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.22.2"
+
+      - name: Build
+        shell: pwsh
+        run: |
+          go run ./tools/build.go
+
+      - name: Install QEMU
+        shell: pwsh
+        run: |
+          winget install --id=SoftwareFreedomConservancy.QEMU  -e
+
+      - name: Run Test
+        shell: pwsh
+        run: |
+          go run ./tools/build.go -test tests/basic
