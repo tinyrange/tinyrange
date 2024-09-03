@@ -108,16 +108,39 @@ def convert_debian_package(ctx, name, version, source):
         ".ar",
     ))
 
-    data = None
+    data_ar = None
     control = None
 
     for f in ar:
         if f.name.startswith("data."):
-            data = filesystem(db.build(define.read_archive(f, f.name)))
+            data_ar = db.build(define.read_archive(f, f.name))
         elif f.name.startswith("control."):
             control = filesystem(db.build(define.read_archive(f, f.name)))
 
+    if data_ar == None or control == None:
+        return error("could not find data and/or control")
+
+    data = filesystem(data_ar)
+
+    file_list = []
+
+    for f in data_ar:
+        filename = f.name.removeprefix(".")
+        if filename == "/":
+            filename = "/."
+        file_list.append(filename)
+
+    file_list.append("")
+
     ret = filesystem()
+
+    for f in control:
+        if f.base == ".":
+            continue
+
+        ret["var/lib/dpkg/info/{}.{}".format(name, f.base)] = f
+
+    ret["var/lib/dpkg/info/{}.list".format(name)] = file("\n".join(file_list))
 
     ret[".pkg/{}".format(name)] = control
     ret[".pkg/{}/version".format(name)] = file(version)
@@ -233,6 +256,8 @@ def build_debian_install_layer(ctx, directives):
     preinst = []
     postinst = []
 
+    status = ""
+
     for pkg in directives:
         if type(pkg) == "common.DirectiveRunCommand":
             continue
@@ -252,6 +277,7 @@ def build_debian_install_layer(ctx, directives):
                         "DPKG_MAINTSCRIPT_NAME": "preinst",
                         "DPKG_ROOT": "",
                         "DEBIAN_FRONTEND": "noninteractive",
+                        "DEBCONF_SYSTEMRC": "/root/.debconfrc",
                     },
                 })
 
@@ -266,10 +292,23 @@ def build_debian_install_layer(ctx, directives):
                         "DPKG_MAINTSCRIPT_PACKAGE": ent.base,
                         "DPKG_MAINTSCRIPT_NAME": "postinst",
                         "DEBIAN_FRONTEND": "noninteractive",
+                        "DEBCONF_SYSTEMRC": "/root/.debconfrc",
                     },
                 })
 
+            status += "\n".join([
+                "Package: {}".format(ent.base),
+                "Status: install ok installed",
+                "Maintainer: TinyRange <tinyrange@tinyrange.dev>",
+                "Version: {}".format(ent["version"].read()),
+                "Architecture: amd64",
+                "Description: TinyRange stub package",
+                "",
+                "",
+            ])
+
     ret[".pkg/scripts.json"] = json.encode(preinst + postinst)
+    ret["var/lib/dpkg/status"] = file(status)
 
     return ctx.archive(ret)
 

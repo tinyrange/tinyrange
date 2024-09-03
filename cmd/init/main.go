@@ -441,7 +441,7 @@ func initMain() error {
 			return err
 		}
 
-		return runWithConfig(cfg)
+		return builderRunWithConfig(cfg)
 	}
 
 	if os.Getpid() != 1 {

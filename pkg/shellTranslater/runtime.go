@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +21,12 @@ import (
 	"go.starlark.net/syntax"
 	"golang.org/x/sys/unix"
 )
+
+type Notifier interface {
+	PreRunShell(args []string)
+	PostRunShell(args []string, exit int, took time.Duration)
+	OnBuiltin(name string, args []string)
+}
 
 type errExitCode int
 
@@ -62,11 +69,12 @@ type command struct {
 	target commandTarget
 	args   starlark.Tuple
 
-	ctx       *shellContext
-	modifiers []func() error
-	onFailure *command
-	onSuccess *command
-	negated   bool
+	ctx        *shellContext
+	modifiers  []func() error
+	onFailure  starlark.Value
+	onSuccess  starlark.Value
+	negated    bool
+	pipeTarget *command
 }
 
 func (c *command) stdin() io.Reader { return c.ctx.stdin }
@@ -74,6 +82,20 @@ func (c *command) stdin() io.Reader { return c.ctx.stdin }
 func (c *command) stdout() io.Writer { return c.ctx.stdout }
 
 func (c *command) stderr() io.Writer { return c.ctx.stderr }
+
+func (c *command) runPipeline(ctx *shellContext, next starlark.Value) (int, error) {
+	if cmd, ok := next.(*command); ok {
+		return cmd.run(ctx)
+	} else if b, ok := next.(starlark.Bool); ok {
+		if b {
+			return 0, nil
+		} else {
+			return 1, nil
+		}
+	} else {
+		return 1, fmt.Errorf("runPipeline not implemented for: %s", next.Type())
+	}
+}
 
 func (c *command) run(ctx *shellContext) (int, error) {
 	c.ctx = ctx
@@ -100,13 +122,13 @@ func (c *command) run(ctx *shellContext) (int, error) {
 				}
 
 				if c.onSuccess != nil {
-					return c.onSuccess.run(ctx)
+					return c.runPipeline(ctx, c.onSuccess)
 				} else {
 					return int(exitCode), nil
 				}
 			} else {
 				if c.onFailure != nil {
-					return c.onFailure.run(ctx)
+					return c.runPipeline(ctx, c.onFailure)
 				} else {
 					return int(exitCode), nil
 				}
@@ -118,13 +140,13 @@ func (c *command) run(ctx *shellContext) (int, error) {
 
 	if c.negated {
 		if c.onFailure != nil {
-			return c.onFailure.run(ctx)
+			return c.runPipeline(ctx, c.onFailure)
 		}
 
 		return 1, nil
 	} else {
 		if c.onSuccess != nil {
-			return c.onSuccess.run(ctx)
+			return c.runPipeline(ctx, c.onSuccess)
 		}
 
 		return 0, nil
@@ -320,8 +342,11 @@ func (c *command) Attr(name string) (starlark.Value, error) {
 					case 2:
 						c.ctx.stderr = c.ctx.stdout
 						return nil
+					case 3:
+						slog.Warn("duplicate_out with destination fd 3")
+						return nil
 					default:
-						return fmt.Errorf("attempt to duplicate_out with unknown destination fd: %s", dst)
+						return fmt.Errorf("attempt to duplicate_out with unknown destination fd: %d->%d", srcFd, dstFd)
 					}
 				case 2:
 					switch dstFd {
@@ -329,8 +354,11 @@ func (c *command) Attr(name string) (starlark.Value, error) {
 						c.ctx.stdout = c.ctx.stderr
 						return nil
 					default:
-						return fmt.Errorf("attempt to duplicate_out with unknown destination fd: %s", dst)
+						return fmt.Errorf("attempt to duplicate_out with unknown destination fd: %d->%d", srcFd, dstFd)
 					}
+				case 3:
+					slog.Warn("duplicate_out with source fd 3")
+					return nil
 				default:
 					return fmt.Errorf("attempt to duplicate_out with unknown src fd: %d", srcFd)
 				}
@@ -371,7 +399,7 @@ func (c *command) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				other *command
+				other starlark.Value
 			)
 
 			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
@@ -392,7 +420,7 @@ func (c *command) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				other *command
+				other starlark.Value
 			)
 
 			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
@@ -413,6 +441,21 @@ func (c *command) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			c.negated = true
+
+			return c, nil
+		}), nil
+	} else if name == "pipe" {
+		return starlark.NewBuiltin("Command.cmp_and", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				other *command
+			)
+
+			c.pipeTarget = other
 
 			return c, nil
 		}), nil
@@ -518,7 +561,7 @@ func (s *shellContext) Close() error {
 }
 
 func (s *shellContext) setArguments(args []string) {
-	slog.Debug("setArguments", "args", args)
+	// slog.Debug("setArguments", "args", args)
 
 	s.setVariable("@", strings.Join(args[1:], " "))
 
@@ -704,9 +747,9 @@ func (ctx *shellContext) Attr(name string) (starlark.Value, error) {
 					return starlark.None, err
 				}
 
-				key, ok := starlark.AsString(k)
-				if !ok {
-					return starlark.None, fmt.Errorf("could not convert %s to string", k.Type())
+				key, err := ctx.getString(k)
+				if err != nil {
+					return starlark.None, err
 				}
 
 				value, err := ctx.getString(val)
@@ -825,18 +868,24 @@ func (ctx *shellContext) Attr(name string) (starlark.Value, error) {
 					return starlark.None, err
 				}
 
-				key, ok := starlark.AsString(k)
-				if !ok {
-					return starlark.None, fmt.Errorf("could not convert %s to string", k.Type())
+				key, err := ctx.getString(k)
+				if err != nil {
+					return starlark.None, err
 				}
 
-				value, ok := starlark.AsString(val)
-				if !ok {
-					return starlark.None, fmt.Errorf("could not convert %s to string", val.Type())
+				value, err := ctx.getString(val)
+				if err != nil {
+					return starlark.None, err
 				}
 
 				if kind == "local" {
 					ctx.setVariable(key, value)
+				} else if kind == "export" {
+					ctx.setVariable(key, value)
+
+					if err := os.Setenv(key, value); err != nil {
+						return starlark.None, err
+					}
 				} else {
 					return starlark.None, fmt.Errorf("unknown declare kind: %s", kind)
 				}
@@ -868,6 +917,7 @@ var (
 type ShellScriptToStarlarkRuntime struct {
 	defs            map[string]starlark.Value
 	mutateHostState bool
+	notifier        Notifier
 }
 
 func (rt *ShellScriptToStarlarkRuntime) newThread(name string) *starlark.Thread {
@@ -877,7 +927,9 @@ func (rt *ShellScriptToStarlarkRuntime) newThread(name string) *starlark.Thread 
 }
 
 func (rt *ShellScriptToStarlarkRuntime) runShell(self *command, args []string) error {
-	slog.Debug("runShell", "args", args)
+	if rt.notifier != nil {
+		rt.notifier.PreRunShell(args)
+	}
 
 	// If it's a local function that's already declared just run that.
 	if def, ok := rt.defs[args[0]]; ok {
@@ -896,17 +948,23 @@ func (rt *ShellScriptToStarlarkRuntime) runShell(self *command, args []string) e
 		cmd.Stderr = self.ctx.stderr
 
 		if err := cmd.Run(); err != nil {
-			slog.Debug("runShell failed", "args", args, "err", err, "took", time.Since(start))
-
 			var exitErr *exec.ExitError
 			if errors.As(err, &exitErr) {
+				if rt.notifier != nil {
+					rt.notifier.PostRunShell(args, exitErr.ExitCode(), time.Since(start))
+				}
+
 				return fmt.Errorf("failed to run %s: %w", args, errExitCode(exitErr.ExitCode()))
 			} else {
+				slog.Debug("runShell failed", "args", args, "err", err, "took", time.Since(start))
+
 				return fmt.Errorf("failed to run %s: %w", args, err)
 			}
 		}
 
-		slog.Debug("runShell", "args", args, "took", time.Since(start))
+		if rt.notifier != nil {
+			rt.notifier.PostRunShell(args, 0, time.Since(start))
+		}
 
 		return nil
 	} else {
@@ -915,7 +973,9 @@ func (rt *ShellScriptToStarlarkRuntime) runShell(self *command, args []string) e
 }
 
 func (rt *ShellScriptToStarlarkRuntime) builtinTest(self *command, args []string) (bool, error) {
-	if args[0] == "!" {
+	if len(args) == 0 || args[0] == "" {
+		return false, nil
+	} else if args[0] == "!" {
 		val, err := rt.builtinTest(self, args[1:])
 		if err != nil {
 			return false, err
@@ -985,9 +1045,11 @@ func (rt *ShellScriptToStarlarkRuntime) builtinTest(self *command, args []string
 		return args[0] == args[2], nil
 	} else if args[1] == "!=" {
 		return args[0] != args[2], nil
-	} else {
+	} else if strings.HasPrefix(args[0], "-") {
 		return false, fmt.Errorf("unimplemented test command: %+v", args)
 	}
+
+	return true, nil
 }
 
 func (rt *ShellScriptToStarlarkRuntime) getGlobals() starlark.StringDict {
@@ -1009,7 +1071,7 @@ func (rt *ShellScriptToStarlarkRuntime) getGlobals() starlark.StringDict {
 				return nil
 			}),
 			"test": makeBuiltin("builtin.test", func(self *command, args []string) error {
-				slog.Debug("builtin test", "args", args)
+				// slog.Debug("builtin test", "args", args)
 
 				val, err := rt.builtinTest(self, args)
 				if err != nil {
@@ -1036,11 +1098,17 @@ func (rt *ShellScriptToStarlarkRuntime) getGlobals() starlark.StringDict {
 				if self.ctx.rt.mutateHostState {
 					slog.Debug("exec", "args", args)
 
-					filename, err := exec.LookPath(args[0])
-					if err != nil {
-						return err
+					if len(args) > 0 {
+						filename, err := exec.LookPath(args[0])
+						if err != nil {
+							return err
+						}
+						return unix.Exec(filename, args, os.Environ())
 					}
-					return unix.Exec(filename, args, os.Environ())
+
+					// exec with no arguments doesn't do anything.
+
+					return nil
 				} else {
 					return fmt.Errorf("exec not implemented for %+v", args)
 				}
@@ -1143,6 +1211,33 @@ func (rt *ShellScriptToStarlarkRuntime) getGlobals() starlark.StringDict {
 			"flow_continue": makeBuiltin("builtin.flow_continue", func(self *command, args []string) error {
 				return errContinue("")
 			}),
+			"btype": makeBuiltin("builtin.btype", func(self *command, args []string) error {
+				target := args[0]
+
+				if ok, _ := common.Exists(target); ok {
+					fmt.Fprintf(os.Stdout, "%s is %s\n", target, target)
+				}
+
+				if path, err := exec.LookPath(target); err != nil {
+					fmt.Fprintf(os.Stdout, "%s is %s\n", target, path)
+				}
+
+				return errExitCode(1)
+			}),
+			"read": makeBuiltin("builtin.read", func(self *command, args []string) error {
+				if args[0] == "-r" {
+					args = args[1:]
+				}
+
+				slog.Debug("read not implemented", "var", args[0])
+
+				return nil
+			}),
+			"unset": makeBuiltin("builtin.unset", func(self *command, args []string) error {
+				delete(self.ctx.values, args[0])
+
+				return nil
+			}),
 		},
 	}
 
@@ -1150,32 +1245,75 @@ func (rt *ShellScriptToStarlarkRuntime) getGlobals() starlark.StringDict {
 		Name: "debian",
 		Members: starlark.StringDict{
 			"dpkg_maintscript_helper": makeBuiltin("debian.dpkg_maintscript_helper", func(self *command, args []string) error {
-				slog.Debug("debian.dpkg_maintscript_helper", "args", args)
+				if rt.notifier != nil {
+					rt.notifier.OnBuiltin("debian.dpkg_maintscript_helper", args)
+				}
 
 				return nil
 			}),
 			"update_rc_d": makeBuiltin("debian.update_rc_d", func(self *command, args []string) error {
-				slog.Debug("debian.update_rc_d", "args", args)
+				if rt.notifier != nil {
+					rt.notifier.OnBuiltin("debian.update_rc_d", args)
+				}
 
 				return nil
 			}),
 			"invoke_rc_d": makeBuiltin("debian.invoke_rc_d", func(self *command, args []string) error {
-				slog.Debug("debian.invoke_rc_d", "args", args)
+				if rt.notifier != nil {
+					rt.notifier.OnBuiltin("debian.invoke_rc_d", args)
+				}
 
 				return nil
 			}),
 			"py3compile": makeBuiltin("debian.py3compile", func(self *command, args []string) error {
-				slog.Debug("debian.py3compile", "args", args)
+				if rt.notifier != nil {
+					rt.notifier.OnBuiltin("debian.py3compile", args)
+				}
 
 				return nil
 			}),
 			"deb_systemd_helper": makeBuiltin("debian.deb_systemd_helper", func(self *command, args []string) error {
-				slog.Debug("debian.deb_systemd_helper", "args", args)
+				if rt.notifier != nil {
+					rt.notifier.OnBuiltin("debian.deb_systemd_helper", args)
+				}
 
 				return nil
 			}),
 			"update_alternatives": makeBuiltin("debian.update_alternatives", func(self *command, args []string) error {
-				slog.Debug("debian.update_alternatives", "args", args)
+				if rt.notifier != nil {
+					rt.notifier.OnBuiltin("debian.update_alternatives", args)
+				}
+
+				if args[0] == "--quiet" {
+					args = args[1:]
+				}
+
+				if args[0] == "--install" {
+					target := args[1]
+					name := args[2]
+					src := args[3]
+
+					if ok, _ := common.Exists(target); !ok {
+						slog.Info("symlink", "src", src, "target", target)
+
+						alternativesName := filepath.Join("/etc/alternatives", name)
+
+						if err := os.Symlink(src, alternativesName); err != nil {
+							return err
+						}
+
+						if err := os.Symlink(alternativesName, target); err != nil {
+							return err
+						}
+					}
+				}
+
+				return nil
+			}),
+			"_db_cmd": makeBuiltin("debian._db_cmd", func(self *command, args []string) error {
+				if rt.notifier != nil {
+					rt.notifier.OnBuiltin("debian._db_cmd", args)
+				}
 
 				return nil
 			}),
@@ -1215,7 +1353,7 @@ func (rt *ShellScriptToStarlarkRuntime) eval(ctx *shellContext, script string) e
 		return err
 	}
 
-	slog.Debug("translated for", "output", string(out), "script", script)
+	// slog.Debug("translated for", "output", string(out), "script", script)
 
 	thread := rt.newThread("__main__")
 
@@ -1272,9 +1410,10 @@ func (rt *ShellScriptToStarlarkRuntime) Run(filename string, contents []byte, ar
 	}
 }
 
-func NewRuntime(mutateHostState bool) *ShellScriptToStarlarkRuntime {
+func NewRuntime(mutateHostState bool, notify Notifier) *ShellScriptToStarlarkRuntime {
 	return &ShellScriptToStarlarkRuntime{
 		defs:            map[string]starlark.Value{},
 		mutateHostState: mutateHostState,
+		notifier:        notify,
 	}
 }

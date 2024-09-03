@@ -200,6 +200,21 @@ func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 			X:    &build.Ident{Name: "builtin"},
 			Name: "cd",
 		}
+	case "type":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "builtin"},
+			Name: "btype",
+		}
+	case "read":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "builtin"},
+			Name: "read",
+		}
+	case "unset":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "builtin"},
+			Name: "unset",
+		}
 	case ".":
 		return sourceBuiltin
 	case "source":
@@ -240,6 +255,11 @@ func (sh *ShellScriptToStarlark) getBuiltin(val build.Expr) build.Expr {
 		return &build.DotExpr{
 			X:    &build.Ident{Name: "debian"},
 			Name: "update_alternatives",
+		}
+	case "_db_cmd":
+		return &build.DotExpr{
+			X:    &build.Ident{Name: "debian"},
+			Name: "_db_cmd",
 		}
 	}
 
@@ -405,6 +425,25 @@ func (sh *ShellScriptToStarlark) translatePart(target block, part syntax.WordPar
 					def,
 					&build.Ident{Name: "True"},
 				}}, nil
+			case syntax.RemLargeSuffix:
+				var def build.Expr = &build.StringExpr{Value: ""}
+
+				if part.Exp.Word != nil {
+					var err error
+					def, err = sh.translateWord(target, part.Exp.Word)
+					if err != nil {
+						return nil, err
+					}
+				}
+
+				return &build.CallExpr{X: &build.DotExpr{
+					X:    &build.Ident{Name: "ctx"},
+					Name: "variable_remove_suffix",
+				}, List: []build.Expr{
+					&build.StringExpr{Value: part.Param.Value},
+					def,
+					&build.Ident{Name: "True"},
+				}}, nil
 			default:
 				return nil, fmt.Errorf("part.Exp.Op %s not implemented", part.Exp.Op)
 			}
@@ -450,6 +489,8 @@ func asString(expr build.Expr) (string, error) {
 	switch expr := expr.(type) {
 	case *build.StringExpr:
 		return expr.Value, nil
+	case *build.CallExpr:
+		return "", fmt.Errorf("asString not implemented for call expressions")
 	default:
 		return "", fmt.Errorf("asString not implemented: %T %+v", expr, expr)
 	}
@@ -528,16 +569,16 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 
 			for _, assign := range cmd.Assigns {
 				if assign.Append {
-					return nil, false, fmt.Errorf("assign.Append not implemented")
+					return nil, false, fmt.Errorf("(cmd) assign.Append not implemented")
 				}
 				if assign.Naked {
-					return nil, false, fmt.Errorf("assign.Naked not implemented")
+					return nil, false, fmt.Errorf("(cmd) assign.Naked not implemented")
 				}
 				if assign.Index != nil {
-					return nil, false, fmt.Errorf("assign.Index not implemented")
+					return nil, false, fmt.Errorf("(cmd) assign.Index not implemented")
 				}
 				if assign.Array != nil {
-					return nil, false, fmt.Errorf("assign.Array not implemented")
+					return nil, false, fmt.Errorf("(cmd) assign.Array not implemented")
 				}
 
 				var val build.Expr
@@ -679,21 +720,21 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 	case *syntax.BinaryCmd:
 		switch cmd.Op {
 		case syntax.OrStmt:
-			lhs, isExpr, err := sh.translateStmt(target, cmd.X)
+			lhs, _, err := sh.translateStmt(target, cmd.X)
 			if err != nil {
 				return nil, false, err
 			}
-			if !isExpr {
-				return nil, false, fmt.Errorf("BinaryCmd lhs is not a expression")
-			}
+			// if !isExpr {
+			// 	return nil, false, fmt.Errorf("(or) BinaryCmd lhs is not a expression: %T", lhs)
+			// }
 
-			rhs, isExpr, err := sh.translateStmt(target, cmd.Y)
+			rhs, _, err := sh.translateStmt(target, cmd.Y)
 			if err != nil {
 				return nil, false, err
 			}
-			if !isExpr {
-				return nil, false, fmt.Errorf("BinaryCmd rhs is not a expression")
-			}
+			// if !isExpr {
+			// 	return nil, false, fmt.Errorf("(or) BinaryCmd rhs is not a expression: %T", rhs)
+			// }
 
 			return &build.CallExpr{
 				X: &build.DotExpr{
@@ -703,21 +744,21 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 				List: []build.Expr{rhs},
 			}, true, nil
 		case syntax.AndStmt:
-			lhs, isExpr, err := sh.translateStmt(target, cmd.X)
+			lhs, _, err := sh.translateStmt(target, cmd.X)
 			if err != nil {
 				return nil, false, err
 			}
-			if !isExpr {
-				return nil, false, fmt.Errorf("BinaryCmd lhs is not a expression")
-			}
+			// if !isExpr {
+			// 	return nil, false, fmt.Errorf("(and) BinaryCmd lhs is not a expression: %T", lhs)
+			// }
 
-			rhs, isExpr, err := sh.translateStmt(target, cmd.Y)
+			rhs, _, err := sh.translateStmt(target, cmd.Y)
 			if err != nil {
 				return nil, false, err
 			}
-			if !isExpr {
-				return nil, false, fmt.Errorf("BinaryCmd rhs is not a expression")
-			}
+			// if !isExpr {
+			// 	return nil, false, fmt.Errorf("(and) BinaryCmd rhs is not a expression: %T", rhs)
+			// }
 
 			return &build.CallExpr{
 				X: &build.DotExpr{
@@ -726,30 +767,30 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 				},
 				List: []build.Expr{rhs},
 			}, true, nil
-		// case syntax.Pipe:
-		// 	lhs, isExpr, err := sh.translateStmt(target, cmd.X)
-		// 	if err != nil {
-		// 		return nil, false, err
-		// 	}
-		// 	if !isExpr {
-		// 		return nil, false, fmt.Errorf("BinaryCmd lhs is not a expression")
-		// 	}
+		case syntax.Pipe:
+			lhs, _, err := sh.translateStmt(target, cmd.X)
+			if err != nil {
+				return nil, false, err
+			}
+			// if !isExpr {
+			// 	return nil, false, fmt.Errorf("(lhs) BinaryCmd lhs is not a expression: %T", lhs)
+			// }
 
-		// 	rhs, isExpr, err := sh.translateStmt(target, cmd.Y)
-		// 	if err != nil {
-		// 		return nil, false, err
-		// 	}
-		// 	if !isExpr {
-		// 		return nil, false, fmt.Errorf("BinaryCmd rhs is not a expression")
-		// 	}
+			rhs, _, err := sh.translateStmt(target, cmd.Y)
+			if err != nil {
+				return nil, false, err
+			}
+			// if !isExpr {
+			// 	return nil, false, fmt.Errorf("(lhs) BinaryCmd rhs is not a expression: %T", rhs)
+			// }
 
-		// 	return &build.CallExpr{
-		// 		X: &build.DotExpr{
-		// 			X:    lhs,
-		// 			Name: "pipe",
-		// 		},
-		// 		List: []build.Expr{rhs},
-		// 	}, true, nil
+			return &build.CallExpr{
+				X: &build.DotExpr{
+					X:    lhs,
+					Name: "pipe",
+				},
+				List: []build.Expr{rhs},
+			}, true, nil
 		default:
 			return nil, false, fmt.Errorf("*syntax.BinaryCmd.Op not implemented: %s", cmd.Op)
 		}
@@ -996,16 +1037,18 @@ func (sh *ShellScriptToStarlark) translateCmd(target block, cmd syntax.Command) 
 
 		for _, assign := range cmd.Args {
 			if assign.Append {
-				return nil, false, fmt.Errorf("assign.Append not implemented")
+				return nil, false, fmt.Errorf("(decl) assign.Append not implemented")
 			}
 			if assign.Naked {
-				return nil, false, fmt.Errorf("assign.Naked not implemented")
+				if assign.Value != nil {
+					return nil, false, fmt.Errorf("(decl) assign.Naked && assign.Value != nil not implemented")
+				}
 			}
 			if assign.Index != nil {
-				return nil, false, fmt.Errorf("assign.Index not implemented")
+				return nil, false, fmt.Errorf("(decl) assign.Index not implemented")
 			}
 			if assign.Array != nil {
-				return nil, false, fmt.Errorf("assign.Array not implemented")
+				return nil, false, fmt.Errorf("(decl) assign.Array not implemented")
 			}
 
 			var val build.Expr

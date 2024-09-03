@@ -14,7 +14,42 @@ import (
 	shelltranslater "github.com/tinyrange/tinyrange/pkg/shellTranslater"
 )
 
-func uploadFile(address string, filename string) error {
+type Builder struct {
+	translateShell bool
+
+	totalTranslate     time.Duration
+	totalRunTranslated time.Duration
+	totalRunCommand    time.Duration
+}
+
+// OnBuiltin implements shelltranslater.Notifier.
+func (b *Builder) OnBuiltin(name string, args []string) {
+	if !common.IsVerbose() {
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "||   builtin.%s(%+v)\n", name, args)
+}
+
+// PostRunShell implements shelltranslater.Notifier.
+func (b *Builder) PostRunShell(args []string, exit int, took time.Duration) {
+	if !common.IsVerbose() {
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "||   < runShell(%+v) = %d [%s]\n", args, exit, took)
+}
+
+// PreRunShell implements shelltranslater.Notifier.
+func (b *Builder) PreRunShell(args []string) {
+	if !common.IsVerbose() {
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "||   > runShell(%+v)\n", args)
+}
+
+func (b *Builder) uploadFile(address string, filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return err
@@ -32,31 +67,7 @@ func uploadFile(address string, filename string) error {
 	return nil
 }
 
-func runWithConfig(cfg config.BuilderConfig) error {
-	for _, env := range cfg.Environment {
-		k, v, _ := strings.Cut(env, "=")
-		if err := os.Setenv(k, v); err != nil {
-			return err
-		}
-	}
-
-	for _, cmd := range cfg.Commands {
-		slog.Debug("running", "cmd", cmd)
-		if err := common.RunCommand(cmd); err != nil {
-			return err
-		}
-	}
-
-	if cfg.OutputFilename != "" {
-		if err := uploadFile(cfg.HostAddress, cfg.OutputFilename); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func translateAndRun(args []string, environment map[string]string) (bool, error) {
+func (b *Builder) translateAndRun(args []string, environment map[string]string) (bool, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return false, err
@@ -82,9 +93,11 @@ func translateAndRun(args []string, environment map[string]string) (bool, error)
 
 	runStart := time.Now()
 
-	rt := shelltranslater.NewRuntime(true)
+	rt := shelltranslater.NewRuntime(true, b)
 
-	slog.Debug("running translated", "prog", args[0])
+	if common.IsVerbose() {
+		fmt.Fprintf(os.Stderr, "|| > translated(%s)\n", args[0])
+	}
 
 	if err := rt.Run(args[0], translated, args, environment); err != nil {
 		return true, err
@@ -92,20 +105,24 @@ func translateAndRun(args []string, environment map[string]string) (bool, error)
 
 	runTime := time.Since(runStart)
 
-	slog.Debug("translated and run", "prog", args[0], "transpile", transpileTime, "run", runTime)
+	if common.IsVerbose() {
+		fmt.Fprintf(os.Stderr, "|| < translated(%s) [transpile=%s, run=%s]\n", args[0], transpileTime, runTime)
+		b.totalTranslate += transpileTime
+		b.totalRunTranslated += runTime
+	}
 
 	return true, nil
 }
 
-func execCommand(translateShell bool, args []string, env map[string]string) error {
-	if translateShell {
-		fatal, err := translateAndRun(args, env)
+func (b *Builder) execCommand(args []string, env map[string]string) error {
+	if b.translateShell {
+		fatal, err := b.translateAndRun(args, env)
 		if err != nil {
 			if fatal {
 				return fmt.Errorf("failed to translate and run: %s", err)
 			} else {
 				if common.IsVerbose() {
-					slog.Warn("failed to translate", "prog", args[0], "err", err)
+					fmt.Fprintf(os.Stderr, "|| W translate(%s) = %s\n", args[0], err)
 				}
 			}
 		} else {
@@ -113,8 +130,14 @@ func execCommand(translateShell bool, args []string, env map[string]string) erro
 		}
 	}
 
+	start := time.Now()
+
 	if err := common.ExecCommand(args, env); err != nil {
-		return fmt.Errorf("failed to run trigger: %s", err)
+		return fmt.Errorf("failed to run command: %s", err)
+	}
+
+	if common.IsVerbose() {
+		b.totalRunCommand += time.Since(start)
 	}
 
 	return nil
@@ -128,7 +151,7 @@ type BuilderScript struct {
 	Environment map[string]string `json:"env"`
 }
 
-func runScript(script BuilderScript, translateShell bool) error {
+func (b *Builder) runScript(script BuilderScript) error {
 	switch script.Kind {
 	case "trigger_on":
 		start := time.Now()
@@ -147,8 +170,7 @@ func runScript(script BuilderScript, translateShell bool) error {
 			return nil
 		}
 
-		if err := execCommand(
-			translateShell,
+		if err := b.execCommand(
 			append([]string{script.Exec}, args...),
 			script.Environment,
 		); err != nil {
@@ -161,15 +183,20 @@ func runScript(script BuilderScript, translateShell bool) error {
 	case "execute":
 		start := time.Now()
 
-		if err := execCommand(
-			translateShell,
+		if common.IsVerbose() {
+			fmt.Fprintf(os.Stderr, "|| > execute(%s, %+v)\n", script.Exec, script.Arguments)
+		}
+
+		if err := b.execCommand(
 			append([]string{script.Exec}, script.Arguments...),
 			script.Environment,
 		); err != nil {
 			return err
 		}
 
-		slog.Debug("ran script", "exec", script.Exec, "took", time.Since(start))
+		if common.IsVerbose() {
+			fmt.Fprintf(os.Stderr, "|| < execute(%s, %+v) [%s]\n", script.Exec, script.Arguments, time.Since(start))
+		}
 
 		return nil
 	default:
@@ -177,7 +204,7 @@ func runScript(script BuilderScript, translateShell bool) error {
 	}
 }
 
-func builderRunScripts(filename string, translateShell bool) error {
+func (b *Builder) RunScripts(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return err
@@ -191,8 +218,63 @@ func builderRunScripts(filename string, translateShell bool) error {
 		return err
 	}
 
+	start := time.Now()
+
+	if common.IsVerbose() {
+		fmt.Fprintf(os.Stderr, "Started running %s at %s\nUsing Basic Environment:\n",
+			filename, time.Now().Format(time.RFC1123))
+
+		for _, val := range os.Environ() {
+			fmt.Fprintf(os.Stderr, "- %s\n", val)
+		}
+
+		fmt.Fprintf(os.Stderr, "\n")
+	}
+
 	for _, script := range scripts {
-		if err := runScript(script, translateShell); err != nil {
+		if err := b.runScript(script); err != nil {
+			return err
+		}
+
+		if common.IsVerbose() {
+			fmt.Fprintf(os.Stderr, "\n\n")
+		}
+	}
+
+	if common.IsVerbose() {
+		fmt.Fprintf(os.Stderr, "Finished running %s at %s [%s]\nTotal Translate Time: %s\nTotal Translated Runtime: %s\nTotal Regular Runtime: %s\n",
+			filename, time.Now().Format(time.RFC1123), time.Since(start),
+			b.totalTranslate, b.totalRunTranslated, b.totalRunCommand)
+	}
+
+	return nil
+}
+
+func builderRunScripts(filename string, translateShell bool) error {
+	builder := &Builder{translateShell: translateShell}
+
+	return builder.RunScripts(filename)
+}
+
+func builderRunWithConfig(cfg config.BuilderConfig) error {
+	builder := &Builder{}
+
+	for _, env := range cfg.Environment {
+		k, v, _ := strings.Cut(env, "=")
+		if err := os.Setenv(k, v); err != nil {
+			return err
+		}
+	}
+
+	for _, cmd := range cfg.Commands {
+		slog.Debug("running", "cmd", cmd)
+		if err := common.RunCommand(cmd); err != nil {
+			return err
+		}
+	}
+
+	if cfg.OutputFilename != "" {
+		if err := builder.uploadFile(cfg.HostAddress, cfg.OutputFilename); err != nil {
 			return err
 		}
 	}
