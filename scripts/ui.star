@@ -39,13 +39,18 @@ tail -f /root/*.log &
 sleep infinity        
 """)
 
-base_packages = [
+base_packages_alpine = [
     query("openrc"),
     query("tigervnc"),
     query("supervisor"),
     query("dbus"),
     query("dbus-x11"),
     query("dbus-openrc"),
+]
+
+base_packages_ubuntu = [
+    query("supervisor"),
+    query("tigervnc-standalone-server"),
 ]
 
 xfce4_packages = [
@@ -69,13 +74,24 @@ openrc_directives = [
 ]
 
 def main(args):
+    builder = "alpine@3.20"
+    base = base_packages_alpine
+    directives = openrc_directives + [
+        directive.run_command("service dbus start"),
+    ]
+
     wm = "xfce4"
     wm_directives = []
     wm_packages = []
     additional_packages = []
 
     for arg in args.args:
-        additional_packages.append(query(arg))
+        if arg == "distro:ubuntu":
+            builder = "ubuntu@jammy"
+            base = base_packages_ubuntu
+            directives = []
+        else:
+            additional_packages.append(query(arg))
 
     if wm == "xfce4":
         wm_packages = xfce4_packages
@@ -90,13 +106,11 @@ def main(args):
     vm = define.build_vm(
         directives = [
             define.plan(
-                builder = "alpine@3.20",
-                packages = base_packages + wm_packages + additional_packages,
+                builder = builder,
+                packages = base + wm_packages + additional_packages,
                 tags = ["level3", "defaults"],
             ),
-        ] + openrc_directives + [
-            directive.run_command("service dbus start"),
-        ] + wm_directives + [
+        ] + directives + wm_directives + [
             supervisor_conf,
             ui_script,
         ],
