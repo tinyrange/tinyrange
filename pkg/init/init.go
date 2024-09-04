@@ -16,6 +16,10 @@ var INIT_EXECUTABLE []byte
 var INIT_SCRIPT []byte
 
 func GetInitExecutable(arch config.CPUArchitecture) ([]byte, error) {
+	if arch == config.ArchInvalid {
+		arch = config.HostArchitecture
+	}
+
 	if arch.IsNative() {
 		return INIT_EXECUTABLE, nil
 	} else {

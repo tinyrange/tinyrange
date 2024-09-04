@@ -695,7 +695,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				return &common.StarDirective{Directive: common.DirectiveBuiltin{
 					Name:          name,
-					Architecture:  arch,
+					Architecture:  string(arch),
 					GuestFilename: guestFilename,
 				}}, nil
 			}),

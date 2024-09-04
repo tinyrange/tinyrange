@@ -187,7 +187,7 @@ func (config *loginConfig) run() error {
 	}
 
 	if config.writeRoot != "" {
-		dir = append(dir, common.DirectiveBuiltin{Name: "init", GuestFilename: "init"})
+		dir = append(dir, common.DirectiveBuiltin{Name: "init", Architecture: string(arch), GuestFilename: "init"})
 
 		def := builder.NewBuildFsDefinition(dir, "tar")
 

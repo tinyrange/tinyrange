@@ -242,6 +242,14 @@ func RunWithConfig(
 					continue
 				}
 
+				dirname := path.Dir(name)
+
+				if !fs.Exists(dirname) && path.Clean(name) != dirname {
+					if err := fs.Mkdir(dirname, true); err != nil {
+						return err
+					}
+				}
+
 				switch ent.Typeflag() {
 				case filesystem.TypeDirectory:
 					// slog.Info("directory", "name", name)
