@@ -55,13 +55,20 @@ func (f *FetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime
 }
 
 // WriteTo implements BuildResult.
-func (f *FetchHttpBuildDefinition) WriteTo(w io.Writer) (n int64, err error) {
+func (f *FetchHttpBuildDefinition) WriteResult(w io.Writer) error {
+	if f.resp == nil {
+		return fmt.Errorf("FetchHttpBuildDefinition: f.resp == nil")
+	}
 	defer f.resp.Body.Close()
 
 	prog := progressbar.DefaultBytes(f.resp.ContentLength, f.params.Url)
 	defer prog.Close()
 
-	return io.Copy(io.MultiWriter(prog, w), f.resp.Body)
+	if _, err := io.Copy(io.MultiWriter(prog, w), f.resp.Body); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Build implements BuildDefinition.
@@ -84,6 +91,12 @@ func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext) (common.BuildR
 		req, err = http.NewRequest("GET", url, nil)
 		if err != nil {
 			return nil, err
+		}
+
+		if f.params.Headers != nil {
+			for k, v := range f.params.Headers {
+				req.Header.Add(k, v)
+			}
 		}
 
 		resp, err := client.Do(req)
@@ -139,6 +152,6 @@ var (
 	_ common.BuildResult     = &FetchHttpBuildDefinition{}
 )
 
-func NewFetchHttpBuildDefinition(url string, expireTime time.Duration) *FetchHttpBuildDefinition {
-	return &FetchHttpBuildDefinition{params: FetchHttpParameters{Url: url, ExpireTime: int64(expireTime)}}
+func NewFetchHttpBuildDefinition(url string, expireTime time.Duration, headers map[string]string) *FetchHttpBuildDefinition {
+	return &FetchHttpBuildDefinition{params: FetchHttpParameters{Url: url, ExpireTime: int64(expireTime), Headers: headers}}
 }

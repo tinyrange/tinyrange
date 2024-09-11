@@ -42,7 +42,7 @@ type initRamFsBuilderResult struct {
 }
 
 // WriteTo implements common.BuildResult.
-func (i *initRamFsBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
+func (i *initRamFsBuilderResult) WriteResult(w io.Writer) error {
 	writer := cpio.New()
 
 	for _, frag := range i.frags {
@@ -51,17 +51,17 @@ func (i *initRamFsBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 
 			ark, err := filesystem.ReadArchiveFromFile(f)
 			if err != nil {
-				return 0, err
+				return err
 			}
 
 			ents, err := ark.Entries()
 			if err != nil {
-				return 0, err
+				return err
 			}
 
 			for _, ent := range ents {
 				if err := writer.AddFromEntry(frag.Archive.Target, ent); err != nil {
-					return 0, err
+					return err
 				}
 			}
 		} else if frag.FileContents != nil {
@@ -70,7 +70,7 @@ func (i *initRamFsBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 			filename := strings.TrimPrefix(c.GuestFilename, "/")
 
 			if err := writer.AddSimpleFile(filename, c.Contents, c.Executable); err != nil {
-				return 0, fmt.Errorf("failed to add simple file: %s", c.GuestFilename)
+				return fmt.Errorf("failed to add simple file: %s", c.GuestFilename)
 			}
 		} else if frag.Builtin != nil {
 			c := frag.Builtin
@@ -78,21 +78,25 @@ func (i *initRamFsBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 			if c.Name == "init" {
 				buf, err := initExec.GetInitExecutable(c.Architecture)
 				if err != nil {
-					return 0, err
+					return err
 				}
 
 				if err := writer.AddSimpleFile(c.GuestFilename, buf, true); err != nil {
-					return 0, fmt.Errorf("failed to add simple file: %s", c.GuestFilename)
+					return fmt.Errorf("failed to add simple file: %s", c.GuestFilename)
 				}
 			} else {
-				return 0, fmt.Errorf("unhandled builtin: %s", c.Name)
+				return fmt.Errorf("unhandled builtin: %s", c.Name)
 			}
 		} else {
-			return 0, fmt.Errorf("unhandled fragment type: %+v", frag)
+			return fmt.Errorf("unhandled fragment type: %+v", frag)
 		}
 	}
 
-	return writer.WriteTo(w)
+	if _, err := writer.WriteTo(w); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 var (
@@ -104,7 +108,7 @@ type tarBuilderResult struct {
 }
 
 // WriteTo implements common.BuildResult.
-func (i *tarBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
+func (i *tarBuilderResult) WriteResult(w io.Writer) error {
 	writer := tar.NewWriter(w)
 
 	written := make(map[string]bool)
@@ -115,12 +119,12 @@ func (i *tarBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 
 			ark, err := filesystem.ReadArchiveFromFile(f)
 			if err != nil {
-				return 0, err
+				return err
 			}
 
 			ents, err := ark.Entries()
 			if err != nil {
-				return 0, err
+				return err
 			}
 
 			for _, ent := range ents {
@@ -146,18 +150,18 @@ func (i *tarBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 					Devmajor: ent.Devmajor(),
 					Devminor: ent.Devminor(),
 				}); err != nil {
-					return 0, err
+					return err
 				}
 
 				if ent.Typeflag() == filesystem.TypeRegular {
 					fh, err := ent.Open()
 					if err != nil {
-						return 0, err
+						return err
 					}
 					defer fh.Close()
 
 					if _, err := io.Copy(writer, fh); err != nil {
-						return 0, err
+						return err
 					}
 				}
 
@@ -169,7 +173,7 @@ func (i *tarBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 			if c.Name == "init" {
 				buf, err := initExec.GetInitExecutable(c.Architecture)
 				if err != nil {
-					return 0, err
+					return err
 				}
 
 				if err := writer.WriteHeader(&tar.Header{
@@ -181,14 +185,14 @@ func (i *tarBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 					Gid:      0,
 					ModTime:  time.UnixMilli(0),
 				}); err != nil {
-					return 0, err
+					return err
 				}
 
 				if _, err := writer.Write(buf); err != nil {
-					return 0, err
+					return err
 				}
 			} else {
-				return 0, fmt.Errorf("unhandled builtin: %s", c.Name)
+				return fmt.Errorf("unhandled builtin: %s", c.Name)
 			}
 		} else if frag.FileContents != nil {
 			c := frag.FileContents
@@ -210,18 +214,18 @@ func (i *tarBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
 				Gid:      0,
 				ModTime:  time.UnixMilli(0),
 			}); err != nil {
-				return 0, err
+				return err
 			}
 
 			if _, err := writer.Write(buf); err != nil {
-				return 0, err
+				return err
 			}
 		} else {
-			return 0, fmt.Errorf("unhandled fragment type: %+v", frag)
+			return fmt.Errorf("unhandled fragment type: %+v", frag)
 		}
 	}
 
-	return 0, nil
+	return nil
 }
 
 var (
@@ -233,16 +237,20 @@ type FragmentsBuilderResult struct {
 }
 
 // WriteTo implements common.BuildResult.
-func (frags *FragmentsBuilderResult) WriteTo(w io.Writer) (n int64, err error) {
+func (frags *FragmentsBuilderResult) WriteResult(w io.Writer) error {
 	buf := new(bytes.Buffer)
 
 	enc := json.NewEncoder(buf)
 
 	if err := enc.Encode(&frags); err != nil {
-		return 0, err
+		return err
 	}
 
-	return io.Copy(w, buf)
+	if _, err := io.Copy(w, buf); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 var (

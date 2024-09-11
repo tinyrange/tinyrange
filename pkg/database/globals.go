@@ -12,6 +12,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/third_party/regexp"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
@@ -71,6 +72,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 	ret["__name__"] = starlark.String(name)
 
 	ret["json"] = starlarkjson.Module
+	ret["re"] = regexp.Module
 
 	ret["db"] = db
 
@@ -228,16 +230,36 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				var (
 					url        string
 					expireTime int64
+					headersVal starlark.IterableMapping
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"url", &url,
 					"expire_time?", &expireTime,
+					"headers?", &headersVal,
 				); err != nil {
 					return starlark.None, err
 				}
 
-				return builder.NewFetchHttpBuildDefinition(url, time.Duration(expireTime)), nil
+				headers := make(map[string]string)
+
+				if headersVal != nil {
+					for _, val := range headersVal.Items() {
+						key, ok := starlark.AsString(val[0])
+						if !ok {
+							return starlark.None, fmt.Errorf("could not convert %s to string", val[0])
+						}
+
+						value, ok := starlark.AsString(val[1])
+						if !ok {
+							return starlark.None, fmt.Errorf("could not convert %s to string", val[1])
+						}
+
+						headers[key] = value
+					}
+				}
+
+				return builder.NewFetchHttpBuildDefinition(url, time.Duration(expireTime), headers), nil
 			}),
 			"read_archive": starlark.NewBuiltin("define.read_archive", func(
 				thread *starlark.Thread,
@@ -994,6 +1016,48 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		}
 
 		return filesystem.NewStarFile(f, name), nil
+	})
+
+	ret["eval_starlark"] = starlark.NewBuiltin("eval_starlark", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			code    string
+			globals starlark.IterableMapping
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"code", &code,
+			"globals", &globals,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		globalsDict := make(starlark.StringDict)
+
+		for _, t := range globals.Items() {
+			key, ok := starlark.AsString(t[0])
+			if !ok {
+				return starlark.None, fmt.Errorf("could not convert %s to string", t[0].Type())
+			}
+
+			globalsDict[key] = t[1]
+		}
+
+		f, err := starlark.ExprFuncOptions(db.getFileOptions(), "<expr>", code, globalsDict)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		ret, err := starlark.Call(thread, f, starlark.Tuple{}, []starlark.Tuple{})
+		if err != nil {
+			return starlark.None, err
+		}
+
+		return ret, nil
 	})
 
 	ret["error"] = starlark.NewBuiltin("error", func(

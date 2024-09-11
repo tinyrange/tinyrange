@@ -135,6 +135,28 @@ func (db *DefinitionDatabase) marshalSerializableValue(params SerializableValue)
 			}
 
 			return ret, nil
+		} else if typ.Kind() == reflect.Map {
+			ret := make(map[string]any)
+
+			if typ.Key() != reflect.TypeFor[string]() {
+				return nil, fmt.Errorf("encoding maps only supports string keys")
+			}
+
+			for _, k := range field.MapKeys() {
+				key, err := encodeValue(k)
+				if err != nil {
+					return nil, err
+				}
+
+				val, err := encodeValue(field.MapIndex(k))
+				if err != nil {
+					return nil, err
+				}
+
+				ret[key.(string)] = val
+			}
+
+			return ret, nil
 		} else {
 			val := field.Interface()
 

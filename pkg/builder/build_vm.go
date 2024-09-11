@@ -68,9 +68,9 @@ func (def *BuildVmDefinition) Dependencies(ctx common.BuildContext) ([]common.De
 	kernelDef := def.params.Kernel
 	if kernelDef == nil {
 		if arch == config.ArchX8664 {
-			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_X86_64, 0)
+			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_X86_64, 0, nil)
 		} else if arch == config.ArchARM64 {
-			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_AARCH64, 0)
+			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_AARCH64, 0, nil)
 		} else {
 			return nil, fmt.Errorf("no kernel specified and no official kernel available for %s", arch)
 		}
@@ -102,20 +102,20 @@ func (def *BuildVmDefinition) ToStarlark(ctx common.BuildContext, result filesys
 }
 
 // WriteTo implements common.BuildResult.
-func (def *BuildVmDefinition) WriteTo(w io.Writer) (n int64, err error) {
+func (def *BuildVmDefinition) WriteResult(w io.Writer) error {
 	if err := def.cmd.Wait(); err != nil {
-		return 0, err
+		return err
 	}
 
 	if !def.gotOutput && def.params.OutputFile != "" {
-		return 0, fmt.Errorf("VM did not write any output")
+		return fmt.Errorf("VM did not write any output")
 	}
 
 	def.server.Shutdown(context.Background())
 
 	def.out.Close()
 
-	return 0, nil
+	return nil
 }
 
 // Build implements common.BuildDefinition.
@@ -149,9 +149,9 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	kernelDef := def.params.Kernel
 	if kernelDef == nil {
 		if arch == config.ArchX8664 {
-			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_X86_64, 0)
+			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_X86_64, 0, nil)
 		} else if arch == config.ArchARM64 {
-			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_AARCH64, 0)
+			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_AARCH64, 0, nil)
 		} else {
 			return nil, fmt.Errorf("no kernel specified and no official kernel available for %s", arch)
 		}

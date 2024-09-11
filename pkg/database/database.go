@@ -1,7 +1,6 @@
 package database
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"log/slog"
@@ -470,174 +469,121 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 
 	status := &common.BuildStatus{Tag: tag}
 
-	if ctx.IsInMemory() {
-		// If this is in memory then check the in-memory cache.
-		if contents, ok := db.memoryCache[hash]; ok {
-			// TODO(joshua): Support needs build for memory cached items.
-			f := filesystem.NewMemoryFile(filesystem.TypeRegular)
+	filename, err := db.FilenameFromHash(hash, ".bin")
+	if err != nil {
+		return nil, err
+	}
 
-			if err := f.Overwrite(contents); err != nil {
-				return nil, err
-			}
+	tmpFilename := filename + ".tmp"
 
-			status.Status = common.BuildStatusCached
+	// Get a child context for the build.
+	child := ctx.ChildContext(def, status, tmpFilename)
 
-			// Write the build status.
-			db.updateBuildStatus(def, status)
-
-			return f, nil
-		}
-
-		// Get a child context for the build.
-		child := ctx.ChildContext(def, status, "")
-
-		// Trigger the build
-		result, err := def.Build(child)
-		if err != nil {
-			return nil, err
-		}
-
-		// Write the build result into a bytes buffer.
-		buf := new(bytes.Buffer)
-		if _, err := result.WriteTo(buf); err != nil {
-			return nil, err
-		}
-
-		// Add the bytes buffer to the in-memory cache.
-		db.memoryCache[hash] = buf.Bytes()
-
-		// Create and return a in-memory file.
-		f := filesystem.NewMemoryFile(filesystem.TypeRegular)
-
-		if err := f.Overwrite(buf.Bytes()); err != nil {
-			return nil, err
-		}
-
-		status.Status = common.BuildStatusBuilt
-
-		db.buildCache[hash] = f
-
-		// Write the build status.
-		db.updateBuildStatus(def, status)
-
-		return f, nil
-	} else {
-		filename, err := db.FilenameFromHash(hash, ".bin")
-		if err != nil {
-			return nil, err
-		}
-
-		tmpFilename := filename + ".tmp"
-
-		// Get a child context for the build.
-		child := ctx.ChildContext(def, status, tmpFilename)
-
-		if !opts.AlwaysRebuild {
-			// Check if the file already exists. If it does then return it.
-			if info, err := os.Stat(filename); err == nil {
-				// If the file has already been created then check if a rebuild is needed.
-				needsRebuild, err := def.NeedsBuild(child, info.ModTime())
-				if err != nil {
-					return nil, err
-				}
-
-				// If no rebuild is necessary then skip it.
-				if !needsRebuild {
-					status.Status = common.BuildStatusCached
-
-					// Write the build status.
-					db.updateBuildStatus(def, status)
-
-					slog.Debug("cached", "Tag", def.Tag(), "filename", filename)
-
-					return filesystem.NewLocalFile(filename, def), nil
-				}
-
-				child.SetHasCached()
-
-				slog.Debug("rebuild requested", "Tag", def.Tag())
-			} else {
-				slog.Debug("building", "Tag", def.Tag())
-			}
-		} else {
-			slog.Debug("building", "Tag", def.Tag())
-		}
-
-		defValue, err := db.defDb.MarshalDefinition(def)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal definition: %s", err)
-		}
-
-		defFilename, err := db.FilenameFromHash(hash, ".def")
-		if err != nil {
-			return nil, err
-		}
-
-		if err := os.WriteFile(defFilename, defValue, os.ModePerm); err != nil {
-			return nil, fmt.Errorf("failed to write definition: %s", err)
-		}
-
-		// If not then trigger the build.
-		result, err := def.Build(child)
-		if err != nil {
-			return nil, err
-		}
-
-		// If the result is nil then the builder is telling us to use the cached version.
-		if result == nil {
-			status.Status = common.BuildStatusCached
-
-			// Write the build status.
-			db.updateBuildStatus(def, status)
-
-			return filesystem.NewLocalFile(filename, def), nil
-		}
-
-		// If the build has already been written then don't write it again.
-		if !child.HasCreatedOutput() {
-			// Once the build is complete then write it to disk.
-			outFile, err := os.Create(tmpFilename)
+	if !opts.AlwaysRebuild {
+		// Check if the file already exists. If it does then return it.
+		if info, err := os.Stat(filename); err == nil {
+			// If the file has already been created then check if a rebuild is needed.
+			needsRebuild, err := def.NeedsBuild(child, info.ModTime())
 			if err != nil {
 				return nil, err
 			}
 
-			// Write the build result to disk. If any of these steps fail then remove the temporary file.
-			if _, err := result.WriteTo(outFile); err != nil {
-				outFile.Close()
-				os.Remove(tmpFilename)
-				return nil, err
+			// If no rebuild is necessary then skip it.
+			if !needsRebuild {
+				status.Status = common.BuildStatusCached
+
+				// Write the build status.
+				db.updateBuildStatus(def, status)
+
+				slog.Debug("cached", "Tag", def.Tag(), "filename", filename)
+
+				return filesystem.NewLocalFile(filename, def), nil
 			}
 
-			if err := outFile.Close(); err != nil {
-				os.Remove(tmpFilename)
-				return nil, err
-			}
+			child.SetHasCached()
+
+			slog.Debug("rebuild requested", "Tag", def.Tag())
 		} else {
-			// Let the result close the file on it's own.
-			if _, err := result.WriteTo(nil); err != nil {
-				os.Remove(tmpFilename)
-				return nil, err
-			}
+			slog.Debug("building", "Tag", def.Tag())
 		}
+	} else {
+		slog.Debug("building", "Tag", def.Tag())
+	}
 
-		// Finally rename the temporary file to the final filename.
-		if err := os.Rename(tmpFilename, filename); err != nil {
-			os.Remove(tmpFilename)
-			return nil, err
-		}
+	defValue, err := db.defDb.MarshalDefinition(def)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal definition: %s", err)
+	}
 
-		status.Status = common.BuildStatusBuilt
+	defFilename, err := db.FilenameFromHash(hash, ".def")
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.WriteFile(defFilename, defValue, os.ModePerm); err != nil {
+		return nil, fmt.Errorf("failed to write definition: %s", err)
+	}
+
+	// If not then trigger the build.
+	result, err := def.Build(child)
+	if err != nil {
+		return nil, err
+	}
+
+	// If the result is nil then the builder is telling us to use the cached version.
+	if result == nil {
+		status.Status = common.BuildStatusCached
 
 		// Write the build status.
 		db.updateBuildStatus(def, status)
 
-		f := filesystem.NewLocalFile(filename, def)
-
-		db.buildCache[hash] = f
-
-		// Return the file.
-		return f, nil
+		return filesystem.NewLocalFile(filename, def), nil
 	}
+
+	// If the build has already been written then don't write it again.
+	if !child.HasCreatedOutput() {
+		// Once the build is complete then write it to disk.
+		outFile, err := os.Create(tmpFilename)
+		if err != nil {
+			return nil, err
+		}
+
+		// Write the build result to disk. If any of these steps fail then remove the temporary file.
+		if err := result.WriteResult(outFile); err != nil {
+			outFile.Close()
+			os.Remove(tmpFilename)
+			return nil, err
+		}
+
+		if err := outFile.Close(); err != nil {
+			os.Remove(tmpFilename)
+			return nil, err
+		}
+	} else {
+		// Let the result close the file on it's own.
+		if err := result.WriteResult(nil); err != nil {
+			os.Remove(tmpFilename)
+			return nil, err
+		}
+	}
+
+	// Finally rename the temporary file to the final filename.
+	if err := os.Rename(tmpFilename, filename); err != nil {
+		os.Remove(tmpFilename)
+		return nil, err
+	}
+
+	status.Status = common.BuildStatusBuilt
+
+	// Write the build status.
+	db.updateBuildStatus(def, status)
+
+	f := filesystem.NewLocalFile(filename, def)
+
+	db.buildCache[hash] = f
+
+	// Return the file.
+	return f, nil
 }
 
 func (db *PackageDatabase) GetBuildStatus(def common.BuildDefinition) (*common.BuildStatus, error) {
@@ -850,23 +796,17 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 		) (starlark.Value, error) {
 			var (
 				def           common.BuildDefinition
-				inMemory      bool
 				alwaysRebuild bool
 			)
 
 			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 				"def", &def,
-				"memory?", &inMemory,
 				"always_rebuild?", &alwaysRebuild,
 			); err != nil {
 				return starlark.None, err
 			}
 
 			ctx := db.NewBuildContext(def)
-
-			if inMemory {
-				ctx.SetInMemory()
-			}
 
 			result, err := db.Build(ctx, def, common.BuildOptions{
 				AlwaysRebuild: alwaysRebuild,

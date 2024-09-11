@@ -23,10 +23,14 @@ type copyFileResult struct {
 }
 
 // WriteTo implements common.BuildResult.
-func (def *copyFileResult) WriteTo(w io.Writer) (n int64, err error) {
+func (def *copyFileResult) WriteResult(w io.Writer) error {
 	defer def.fh.Close()
 
-	return io.Copy(w, def.fh)
+	if _, err := io.Copy(w, def.fh); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 var (
@@ -181,7 +185,7 @@ var (
 func definitionFromSource(source hash.SerializableValue) (common.BuildDefinition, error) {
 	if def, ok := source.(common.BuildDefinition); ok {
 		return def, nil
-	} else if child, ok := source.(*filesystem.ChildSource); ok {
+	} else if child, ok := source.(filesystem.ChildSource); ok {
 		base, err := definitionFromSource(child.Source)
 		if err != nil {
 			return nil, err

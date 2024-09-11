@@ -43,6 +43,8 @@ func GetUidAndGid(ent File) (int, int, error) {
 		return ent.CUid, ent.CGid, nil
 	case SimpleEntry:
 		return ent.uid, ent.gid, nil
+	case *LocalFile:
+		return 0, 0, nil // local files are normally build definitions.
 	default:
 		return -1, -1, fmt.Errorf("GetUidAndGid not implemented: %T", ent)
 	}
@@ -243,12 +245,12 @@ type ChildSource struct {
 }
 
 // SerializableType implements hash.SerializableValue.
-func (c *ChildSource) SerializableType() string {
+func (c ChildSource) SerializableType() string {
 	return "ChildSource"
 }
 
 var (
-	_ hash.SerializableValue = &ChildSource{}
+	_ hash.SerializableValue = ChildSource{}
 )
 
 func SourceFromFile(f File) (hash.SerializableValue, error) {
@@ -259,7 +261,7 @@ func SourceFromFile(f File) (hash.SerializableValue, error) {
 		return SourceFromFile(f.File)
 	case *CacheEntry:
 		if f.underlyingSource != nil {
-			return &ChildSource{
+			return ChildSource{
 				Source: f.underlyingSource,
 				Name:   f.CName,
 			}, nil

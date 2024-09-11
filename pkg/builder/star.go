@@ -41,6 +41,37 @@ func SerializableValueToStarlark(ctx common.BuildContext, val hash.SerializableV
 		}
 
 		return starlark.NewList(ret), nil
+	case filesystem.ChildSource:
+		if def, ok := val.Source.(common.BuildDefinition); ok {
+			result, err := ctx.BuildChild(def)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			starVal, err := def.ToStarlark(ctx, result)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			if ark, ok := starVal.(*filesystem.StarArchive); ok {
+				ents, err := ark.Entries()
+				if err != nil {
+					return starlark.None, err
+				}
+
+				for _, ent := range ents {
+					if ent.Name() == val.Name {
+						return filesystem.NewStarFile(ent, ent.Name()), nil
+					}
+				}
+
+				return nil, fmt.Errorf("file %s not found in %s", val.Name, ark)
+			} else {
+				return starlark.None, fmt.Errorf("SerializableValueToStarlark not implemented: %T %+v", starVal, starVal)
+			}
+		} else {
+			return starlark.None, fmt.Errorf("SerializableValueToStarlark not implemented: %T %+v", val, val)
+		}
 	default:
 		return starlark.None, fmt.Errorf("SerializableValueToStarlark not implemented: %T %+v", val, val)
 	}
@@ -50,6 +81,8 @@ func StarlarkValueToSerializable(val starlark.Value) (hash.SerializableValue, er
 	switch val := val.(type) {
 	case common.BuildDefinition:
 		return val, nil
+	case *filesystem.StarFile:
+		return filesystem.SourceFromFile(val.File)
 	case starlark.String:
 		return hash.SerializableString(val), nil
 	case *starlark.List:
@@ -170,7 +203,19 @@ func (def *StarBuildDefinition) Build(ctx common.BuildContext) (common.BuildResu
 		return nil, err
 	}
 
-	if result, ok := res.(common.BuildResult); ok {
+	if result, ok := res.(common.BuildDefinition); ok {
+		child, err := ctx.BuildChild(result)
+		if err != nil {
+			return nil, err
+		}
+
+		fh, err := child.Open()
+		if err != nil {
+			return nil, err
+		}
+
+		return &copyFileResult{fh: fh}, nil
+	} else if result, ok := res.(common.BuildResult); ok {
 		return result, nil
 	} else if f, ok := res.(filesystem.File); ok {
 		fh, err := f.Open()

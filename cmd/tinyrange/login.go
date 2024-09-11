@@ -140,7 +140,7 @@ func (config *loginConfig) run() error {
 			base := path.Base(parsed.Path)
 
 			dir = append(dir, common.DirectiveAddFile{
-				Definition: builder.NewFetchHttpBuildDefinition(filename, 0),
+				Definition: builder.NewFetchHttpBuildDefinition(filename, 0, nil),
 				Filename:   path.Join("/root", base),
 			})
 		} else {
@@ -159,7 +159,7 @@ func (config *loginConfig) run() error {
 	for _, filename := range config.Archives {
 		var def common.BuildDefinition
 		if strings.HasPrefix(filename, "http://") || strings.HasPrefix(filename, "https://") {
-			def = builder.NewFetchHttpBuildDefinition(filename, 0)
+			def = builder.NewFetchHttpBuildDefinition(filename, 0, nil)
 
 			parsed, err := url.Parse(filename)
 			if err != nil {

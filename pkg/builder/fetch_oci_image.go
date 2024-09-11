@@ -1,7 +1,6 @@
 package builder
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,13 +51,17 @@ type copyResponseResult struct {
 }
 
 // WriteTo implements common.BuildResult.
-func (c *copyResponseResult) WriteTo(w io.Writer) (n int64, err error) {
+func (c *copyResponseResult) WriteResult(w io.Writer) error {
 	defer c.body.Close()
 
 	prog := progressbar.DefaultBytes(c.contentLength, c.url)
 	defer prog.Close()
 
-	return io.Copy(io.MultiWriter(prog, w), c.body)
+	if _, err := io.Copy(io.MultiWriter(prog, w), c.body); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 var (
@@ -490,16 +493,14 @@ func (def *FetchOciImageDefinition) Tag() string {
 }
 
 // WriteTo implements common.BuildResult.
-func (def *FetchOciImageDefinition) WriteTo(w io.Writer) (n int64, err error) {
-	buf := new(bytes.Buffer)
-
-	enc := json.NewEncoder(buf)
+func (def *FetchOciImageDefinition) WriteResult(w io.Writer) error {
+	enc := json.NewEncoder(w)
 
 	if err := enc.Encode(&def); err != nil {
-		return 0, err
+		return err
 	}
 
-	return io.Copy(w, buf)
+	return nil
 }
 
 func (def *FetchOciImageDefinition) String() string { return def.Tag() }

@@ -32,10 +32,10 @@ type directoryToArchiveBuildResult struct {
 	off int64
 }
 
-func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.File, name string) (n int64, err error) {
+func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.File, name string) error {
 	info, err := ent.Stat()
 	if err != nil {
-		return
+		return err
 	}
 
 	var typ filesystem.FileType
@@ -64,7 +64,7 @@ func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.F
 		if info.Mode().Type() == fs.ModeSymlink {
 			linkname, err = filesystem.GetLinkName(ent)
 			if err != nil {
-				return
+				return err
 			}
 			typ = filesystem.TypeSymlink
 		} else if info.Mode().IsDir() {
@@ -75,7 +75,7 @@ func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.F
 
 		uid, gid, err := filesystem.GetUidAndGid(ent)
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		cacheEnt = &filesystem.CacheEntry{
@@ -97,11 +97,11 @@ func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.F
 
 	bytes, err := json.Marshal(&cacheEnt)
 	if err != nil {
-		return -1, err
+		return err
 	}
 
 	if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
-		return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
+		return fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
 	} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
 		tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
 		copy(tmp, bytes)
@@ -110,16 +110,15 @@ func (d *directoryToArchiveBuildResult) writeEntry(w io.Writer, ent filesystem.F
 
 	childN, err := w.Write(bytes)
 	if err != nil {
-		return -1, err
+		return err
 	}
 
-	n += int64(childN)
 	d.off += int64(childN)
 
-	return
+	return nil
 }
 
-func (d *directoryToArchiveBuildResult) writeFileTo(w io.Writer, ent filesystem.File, name string) (n int64, err error) {
+func (d *directoryToArchiveBuildResult) writeFileTo(w io.Writer, ent filesystem.File, name string) error {
 	if starEnt, ok := ent.(*filesystem.StarFile); ok {
 		ent = starEnt.File
 	}
@@ -130,61 +129,56 @@ func (d *directoryToArchiveBuildResult) writeFileTo(w io.Writer, ent filesystem.
 		}
 	}
 
-	n, err = d.writeEntry(w, ent, name)
+	err := d.writeEntry(w, ent, name)
 	if err != nil {
-		return
+		return err
 	}
 
 	contents, err := ent.Open()
 	if err != nil {
-		return
+		return err
 	}
 
 	childN, err := io.Copy(w, contents)
 	if err != nil {
-		return n + childN, err
+		return err
 	}
 
-	n += childN
 	d.off += childN
 
-	return
+	return nil
 }
 
-func (d *directoryToArchiveBuildResult) writeDirTo(w io.Writer, ent filesystem.Directory, name string) (n int64, err error) {
-	n, err = d.writeEntry(w, ent, name)
+func (d *directoryToArchiveBuildResult) writeDirTo(w io.Writer, ent filesystem.Directory, name string) error {
+	err := d.writeEntry(w, ent, name)
 	if err != nil {
-		return
+		return err
 	}
 
 	ents, err := ent.Readdir()
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	for _, ent := range ents {
 		if dir, ok := ent.File.(filesystem.Directory); ok {
-			childN, err := d.writeDirTo(w, dir, path.Join(name, ent.Name))
+			err := d.writeDirTo(w, dir, path.Join(name, ent.Name))
 			if err != nil {
-				return n + childN, fmt.Errorf("failed to write directory %s: %s", ent.Name, err)
+				return fmt.Errorf("failed to write directory %s: %s", ent.Name, err)
 			}
-
-			n += childN
 		} else {
-			childN, err := d.writeFileTo(w, ent.File, path.Join(name, ent.Name))
+			err := d.writeFileTo(w, ent.File, path.Join(name, ent.Name))
 			if err != nil {
-				return n + childN, fmt.Errorf("failed to write file %s: %s", ent.Name, err)
+				return fmt.Errorf("failed to write file %s: %s", ent.Name, err)
 			}
-
-			n += childN
 		}
 	}
 
-	return
+	return nil
 }
 
 // WriteTo implements common.BuildResult.
-func (d *directoryToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
+func (d *directoryToArchiveBuildResult) WriteResult(w io.Writer) error {
 	return d.writeDirTo(w, d.dir, "")
 }
 
@@ -206,7 +200,9 @@ type zipToArchiveBuildResult struct {
 }
 
 // WriteTo implements common.BuildResult.
-func (z *zipToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
+func (z *zipToArchiveBuildResult) WriteResult(w io.Writer) error {
+	var n int64
+
 	for _, file := range z.r.File {
 		var typ filesystem.FileType
 
@@ -232,11 +228,11 @@ func (z *zipToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 
 		bytes, err := json.Marshal(&ent)
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
-			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
+			return fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
 		} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
 			tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
 			copy(tmp, bytes)
@@ -245,25 +241,25 @@ func (z *zipToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 
 		childN, err := w.Write(bytes)
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		n += int64(childN)
 
 		fh, err := file.Open()
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		childN64, err := io.CopyN(w, fh, int64(file.UncompressedSize64))
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		n += childN64
 	}
 
-	return
+	return nil
 }
 
 var (
@@ -275,13 +271,15 @@ type tarToArchiveBuildResult struct {
 }
 
 // WriteTo implements common.BuildResult.
-func (r *tarToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
+func (r *tarToArchiveBuildResult) WriteResult(w io.Writer) error {
+	var n int64
+
 	for {
 		hdr, err := r.r.Next()
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return -1, err
+			return err
 		}
 
 		info := hdr.FileInfo()
@@ -300,7 +298,7 @@ func (r *tarToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 		case tar.TypeXGlobalHeader:
 			continue
 		default:
-			return -1, fmt.Errorf("unknown type flag: %d", hdr.Typeflag)
+			return fmt.Errorf("unknown type flag: %d", hdr.Typeflag)
 		}
 
 		ent := &filesystem.CacheEntry{
@@ -319,11 +317,11 @@ func (r *tarToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 
 		bytes, err := json.Marshal(&ent)
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
-			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
+			return fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
 		} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
 			tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
 			copy(tmp, bytes)
@@ -332,20 +330,20 @@ func (r *tarToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 
 		childN, err := w.Write(bytes)
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		n += int64(childN)
 
 		childN64, err := io.CopyN(w, r.r, hdr.Size)
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		n += childN64
 	}
 
-	return
+	return nil
 }
 
 var (
@@ -357,13 +355,15 @@ type cpioToArchiveBuildResult struct {
 }
 
 // WriteTo implements common.BuildResult.
-func (c *cpioToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
+func (c *cpioToArchiveBuildResult) WriteResult(w io.Writer) error {
+	var n int64
+
 	for {
 		hdr, err := c.r.Next()
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return -1, err
+			return err
 		}
 
 		fileInfo := hdr.FileInfo()
@@ -380,7 +380,7 @@ func (c *cpioToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 		case typ&cpio.TypeSymlink != 0:
 			typeFlag = filesystem.TypeSymlink
 		default:
-			return -1, fmt.Errorf("unknown type flag: %d", typ)
+			return fmt.Errorf("unknown type flag: %d", typ)
 		}
 
 		ent := &filesystem.CacheEntry{
@@ -397,11 +397,11 @@ func (c *cpioToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 
 		bytes, err := json.Marshal(&ent)
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
-			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
+			return fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
 		} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
 			tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
 			copy(tmp, bytes)
@@ -410,20 +410,20 @@ func (c *cpioToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 
 		childN, err := w.Write(bytes)
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		n += int64(childN)
 
 		childN64, err := io.CopyN(w, c.r, hdr.Size)
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		n += childN64
 	}
 
-	return
+	return nil
 }
 
 var (
@@ -435,13 +435,15 @@ type arToArchiveBuildResult struct {
 }
 
 // WriteTo implements common.BuildResult.
-func (c *arToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
+func (c *arToArchiveBuildResult) WriteResult(w io.Writer) error {
+	var n int64
+
 	for {
 		hdr, err := c.r.Next()
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return -1, err
+			return err
 		}
 
 		var typeFlag = filesystem.TypeRegular
@@ -459,11 +461,11 @@ func (c *arToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 
 		bytes, err := json.Marshal(&ent)
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		if len(bytes) > filesystem.CACHE_ENTRY_SIZE {
-			return -1, fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
+			return fmt.Errorf("oversized entry header: %d > %d", len(bytes), filesystem.CACHE_ENTRY_SIZE)
 		} else if len(bytes) < filesystem.CACHE_ENTRY_SIZE {
 			tmp := make([]byte, filesystem.CACHE_ENTRY_SIZE)
 			copy(tmp, bytes)
@@ -472,20 +474,20 @@ func (c *arToArchiveBuildResult) WriteTo(w io.Writer) (n int64, err error) {
 
 		childN, err := w.Write(bytes)
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		n += int64(childN)
 
 		childN64, err := io.CopyN(w, c.r, hdr.Size)
 		if err != nil {
-			return -1, err
+			return err
 		}
 
 		n += childN64
 	}
 
-	return
+	return nil
 }
 
 var (

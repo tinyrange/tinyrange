@@ -50,8 +50,9 @@ type DecompressFileParameters struct {
 
 // Download a file from the internet.
 type FetchHttpParameters struct {
-	Url        string // The URL to download (can start with mirror:// if a mirror is registered)
-	ExpireTime int64  // How long before the file is considered expired and will be redownloaded.
+	Url        string            // The URL to download (can start with mirror:// if a mirror is registered)
+	ExpireTime int64             // How long before the file is considered expired and will be redownloaded.
+	Headers    map[string]string // A collection of headers to send along with the request.
 }
 
 // Make a request to a OCI registry.

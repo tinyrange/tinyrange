@@ -10,7 +10,7 @@ import (
 )
 
 type BuildResult interface {
-	io.WriterTo
+	WriteResult(out io.Writer) error
 }
 
 type BuildSource interface {
@@ -40,8 +40,6 @@ type BuildContext interface {
 	HasCreatedOutput() bool
 	SetHasCached()
 	HasCached() bool
-	SetInMemory()
-	IsInMemory() bool
 	Database() PackageDatabase
 	BuildChild(def BuildDefinition) (filesystem.File, error)
 	NeedsBuild(def BuildDefinition) (bool, error)

@@ -60,8 +60,12 @@ func (def *DecompressFileBuildDefinition) NeedsBuild(ctx common.BuildContext, ca
 }
 
 // WriteTo implements BuildResult.
-func (def *DecompressFileBuildDefinition) WriteTo(w io.Writer) (n int64, err error) {
-	return io.Copy(w, def.r)
+func (def *DecompressFileBuildDefinition) WriteResult(w io.Writer) error {
+	if _, err := io.Copy(w, def.r); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Build implements BuildDefinition.

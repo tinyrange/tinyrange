@@ -102,6 +102,50 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 				starlark.NewList(commands),
 			}, nil
 		}), nil
+	} else if name == "add_packages" {
+		return starlark.NewBuiltin("PlanDefinition.add_packages", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				val starlark.Value
+			)
+
+			var searchListIt starlark.Iterable
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"packages", &searchListIt,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			var search []common.PackageQuery
+
+			{
+				dependencyIter := searchListIt.Iterate()
+				defer dependencyIter.Done()
+
+				for dependencyIter.Next(&val) {
+					dep, ok := val.(common.PackageQuery)
+					if !ok {
+						return nil, fmt.Errorf("could not convert %s to PackageQuery", val.Type())
+					}
+
+					search = append(search, dep)
+				}
+			}
+
+			return &PlanDefinition{
+				params: PlanParameters{
+					Builder:      def.params.Builder,
+					Architecture: def.params.Architecture,
+					Search:       append(def.params.Search, search...),
+					TagList:      def.params.TagList,
+				},
+			}, nil
+		}), nil
 	} else {
 		return nil, nil
 	}
@@ -109,18 +153,18 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (def *PlanDefinition) AttrNames() []string {
-	return []string{"filesystem"}
+	return []string{"filesystem", "add_packages"}
 }
 
 // WriteTo implements common.BuildResult.
-func (def *PlanDefinition) WriteTo(w io.Writer) (n int64, err error) {
-	bytes, err := json.Marshal(&def)
-	if err != nil {
-		return 0, err
+func (def *PlanDefinition) WriteResult(w io.Writer) error {
+	enc := json.NewEncoder(w)
+
+	if err := enc.Encode(&def); err != nil {
+		return err
 	}
 
-	childN, err := w.Write(bytes)
-	return int64(childN), err
+	return nil
 }
 
 // Build implements common.BuildDefinition.

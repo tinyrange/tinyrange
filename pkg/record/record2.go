@@ -275,8 +275,8 @@ func (w *RecordWriter2) Emit(val starlark.Value) error {
 }
 
 // WriteTo implements BuildResult.
-func (r *RecordWriter2) WriteTo(w io.Writer) (n int64, err error) {
-	return 0, r.writer.Close()
+func (r *RecordWriter2) WriteResult(w io.Writer) error {
+	return r.writer.Close()
 }
 
 // Attr implements starlark.HasAttrs.
