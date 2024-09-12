@@ -41,6 +41,12 @@ func SerializableValueToStarlark(ctx common.BuildContext, val hash.SerializableV
 		}
 
 		return starlark.NewList(ret), nil
+	case hash.SerializableBool:
+		if val {
+			return starlark.True, nil
+		} else {
+			return starlark.False, nil
+		}
 	case filesystem.ChildSource:
 		if def, ok := val.Source.(common.BuildDefinition); ok {
 			result, err := ctx.BuildChild(def)
@@ -85,6 +91,8 @@ func StarlarkValueToSerializable(val starlark.Value) (hash.SerializableValue, er
 		return filesystem.SourceFromFile(val.File)
 	case starlark.String:
 		return hash.SerializableString(val), nil
+	case starlark.Bool:
+		return hash.SerializableBool(val), nil
 	case *starlark.List:
 		var ret hash.SerializableList
 

@@ -259,11 +259,20 @@ def evaluate_marker(ctx, base, marker):
         "platform_system": abi["platform_system"],
     })
 
-def _extract_wheel(ctx, base, name, version, filename, contents):
+def _extract_wheel(ctx, base, name, version, include_deps, filename, contents):
     tokens = filename.split("-")
 
     name = tokens[0]
     version = tokens[1]
+
+    if not include_deps:
+        ret = filesystem()
+
+        ret[filename] = contents
+
+        ret["load_order.json"] = json.encode([filename])
+
+        return ctx.archive(ret)
 
     metadata = json.decode(ctx.build(define.build(
         _get_metadata,
@@ -322,6 +331,7 @@ additional_packages = {
 download_overrides = {
     # override this since the version published on pypi has missing header files.
     "pyradiomics@3.1.0": "https://github.com/AIM-Harvard/pyradiomics/archive/refs/tags/v3.1.0.tar.gz",
+    "surfa@0d83332351083b33c4da221e9d10a63a93ae7f52": "https://github.com/freesurfer/surfa/archive/7ca713d2b0c2c9e4f3471cd14ee5e12a00d3b631.tar.gz",
 }
 
 def version_compare(a, b):
@@ -368,7 +378,7 @@ build_packages = [
     query("python3-dev"),
 ]
 
-def _build_sdist(ctx, base, name, version, url):
+def _build_sdist(ctx, base, name, version, include_deps, url):
     build_fs = define.build(
         _get_sdist_build_fs,
         base,
@@ -403,9 +413,17 @@ def _build_sdist(ctx, base, name, version, url):
 
     whl = [f for f in out][0]
 
-    return define.build(_extract_wheel, base, name, version, whl.base, whl)
+    return define.build(
+        _extract_wheel,
+        base,
+        name,
+        version,
+        include_deps,
+        whl.base,
+        whl,
+    )
 
-def _get_wheel(ctx, base, name, version):
+def _get_wheel(ctx, base, name, version, include_deps):
     print("get_wheel", name, version)
 
     # Download the metadata for pypi
@@ -459,7 +477,15 @@ def _get_wheel(ctx, base, name, version):
     # If there is a wheel then use it.
     for f, file in options:
         if f["wheel"]:
-            return define.build(_extract_wheel, base, f["name"], f["version"], file["filename"], define.fetch_http(file["url"]))
+            return define.build(
+                _extract_wheel,
+                base,
+                f["name"],
+                f["version"],
+                include_deps,
+                file["filename"],
+                define.fetch_http(file["url"]),
+            )
 
     # Otherwise look for a source distribution and build it.
 
@@ -476,6 +502,7 @@ def _get_wheel(ctx, base, name, version):
             base,
             f["name"],
             f["version"],
+            include_deps,
             download_overrides[override_key],
         )
     else:
@@ -484,11 +511,56 @@ def _get_wheel(ctx, base, name, version):
             base,
             f["name"],
             f["version"],
+            include_deps,
             file["url"],
         )
 
-def get_wheel(base, name, version):
-    return define.build(_get_wheel, base, name, version)
+def get_wheel(base, name, version, include_deps = True):
+    return define.build(_get_wheel, base, name, version, include_deps)
+
+def _get_wheel_from_url(ctx, base, name, url, include_deps):
+    if not url.startswith("git+"):
+        return error("unsupported url: " + url)
+
+    url = url.removeprefix("git+")
+
+    if not url.startswith("https://github.com/"):
+        return error("unsupported url: " + url)
+
+    repo, rev = url.split("@")
+
+    if not repo.endswith(".git"):
+        return error("unsupported url: " + repo)
+
+    repo = repo.removesuffix(".git")
+
+    url = "{}/archive/{}.tar.gz".format(repo, rev)
+
+    override_key = "{}@{}".format(name, rev)
+
+    if override_key in download_overrides:
+        url = download_overrides[override_key]
+        rev = url.rpartition("/")[2].removesuffix(".tar.gz")
+        return define.build(
+            _build_sdist,
+            base,
+            name,
+            rev,
+            include_deps,
+            url,
+        )
+    else:
+        return define.build(
+            _build_sdist,
+            base,
+            name,
+            rev,
+            include_deps,
+            url,
+        )
+
+def get_wheel_from_url(base, name, url, include_deps = True):
+    return define.build(_get_wheel_from_url, base, name, url, include_deps)
 
 def _build_run_fs(ctx, wheel):
     wheel = filesystem(wheel.read_archive())
@@ -514,3 +586,39 @@ def _build_run_fs(ctx, wheel):
 
 def build_run_fs(wheel):
     return define.build(_build_run_fs, wheel)
+
+def _build_fs_for_requirements(ctx, base, requirements):
+    ret = filesystem()
+
+    requirement_list = requirements.read().splitlines()
+
+    scripts = []
+
+    for requirement in requirement_list:
+        wheel = None
+        if " @ " in requirement:
+            name, _, url = requirement.partition(" @ ")
+
+            wheel = ctx.build(get_wheel_from_url(base, name, url, include_deps = False)).read_archive()
+        else:
+            name, version, _ = parse_depend(requirement)
+
+            wheel = ctx.build(get_wheel(base, name, version, include_deps = False)).read_archive()
+
+        load_order = json.decode(wheel["load_order.json"].read())
+
+        for filename in load_order:
+            ret["wheels/" + filename] = wheel[filename]
+
+            scripts.append({
+                "kind": "execute",
+                "exec": "/usr/bin/pip",
+                "args": ["install", "--no-deps", "/wheels/" + filename],
+            })
+
+    ret["wheels/scripts.json"] = file(json.encode(scripts))
+
+    return ctx.archive(ret)
+
+def build_fs_for_requirements(base, requirements):
+    return define.build(_build_fs_for_requirements, base, requirements)

@@ -30,9 +30,15 @@ type SerializableString string
 // SerializableType implements SerializableValue.
 func (s SerializableString) SerializableType() string { return "SerializableString" }
 
+type SerializableBool bool
+
+// SerializableType implements SerializableValue.
+func (s SerializableBool) SerializableType() string { panic("SerializableString") }
+
 var (
 	_ SerializableValue = SerializableList{}
 	_ SerializableValue = SerializableString("")
+	_ SerializableValue = SerializableBool(false)
 )
 
 type ValueCaster interface {
@@ -181,6 +187,8 @@ func (db *DefinitionDatabase) marshalSerializableValue(params SerializableValue)
 					Hash:     hash,
 				}, nil
 			case SerializableString:
+				return val, nil
+			case SerializableBool:
 				return val, nil
 			case SerializableList:
 				var ret []any
