@@ -146,6 +146,35 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 				},
 			}, nil
 		}), nil
+	} else if name == "set_tags" {
+		return starlark.NewBuiltin("PlanDefinition.add_packages", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var tagListIt starlark.Iterable
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"tags", &tagListIt,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			tagList, err := common.ToStringList(tagListIt)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return &PlanDefinition{
+				params: PlanParameters{
+					Builder:      def.params.Builder,
+					Architecture: def.params.Architecture,
+					Search:       def.params.Search,
+					TagList:      tagList,
+				},
+			}, nil
+		}), nil
 	} else {
 		return nil, nil
 	}

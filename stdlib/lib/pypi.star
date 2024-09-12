@@ -514,30 +514,3 @@ def _build_run_fs(ctx, wheel):
 
 def build_run_fs(wheel):
     return define.build(_build_run_fs, wheel)
-
-base = define.plan(
-    builder = "ubuntu@jammy",
-    packages = [
-        query("python3-pip"),
-        query("python3-packaging"),
-    ],
-    tags = ["level3", "defaults"],
-)
-
-top = get_wheel(base, "radtract", "")
-
-run_fs = build_run_fs(top)
-
-test_vm = define.build_vm(
-    [
-        base.add_packages([
-            query("libglu1-mesa-dev"),
-            query("libxrender1"),
-        ]),
-        run_fs,
-        directive.run_command("/init -run-scripts /wheels/scripts.json"),
-        directive.run_command("pip install --no-deps /wheels/numpy-1.25.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"),
-        directive.run_command("login -f root"),
-    ],
-    storage_size = 4 * 1024,
-)
