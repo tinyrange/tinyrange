@@ -1213,6 +1213,9 @@ def main(ctx):
             args += ["-enable-kvm", "-cpu", "host"]
         elif ctx.os == "darwin":
             args += ["-cpu", "host", "-accel", "hvf"]
+        elif ctx.os == "windows":
+            args += ["-accel", "whpx"]
+
     elif ctx.architecture == "aarch64":
         args += ["-cpu", "cortex-a57"]
 
