@@ -5,6 +5,7 @@ go 1.22.2
 require (
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/basgys/goxml2json v1.1.0
+	github.com/bazelbuild/buildtools v0.0.0-20240823132350-3488089d3661
 	github.com/blakesmith/ar v0.0.0-20190502131153-809d4375e1fb
 	github.com/cavaliergopher/cpio v1.0.1
 	github.com/cavaliergopher/rpm v1.2.0
@@ -13,8 +14,12 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/google/uuid v1.6.0
 	github.com/insomniacslk/dhcp v0.0.0-20240529192340-51bc6136a0a6
+	github.com/jezek/xgb v1.1.0
+	github.com/jezek/xgbutil v0.0.0-20240804174445-e2e9464b6e01
 	github.com/jsimonetti/rtnetlink v1.4.2
 	github.com/klauspost/compress v1.17.9
+	github.com/lmittmann/tint v1.0.5
+	github.com/mattn/go-isatty v0.0.20
 	github.com/miekg/dns v1.1.61
 	github.com/schollz/progressbar/v3 v3.14.4
 	github.com/spf13/cobra v1.8.1
@@ -25,7 +30,7 @@ require (
 	golang.org/x/crypto v0.24.0
 	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090
 	golang.org/x/net v0.26.0
-	golang.org/x/sys v0.21.0
+	golang.org/x/sys v0.25.0
 	golang.org/x/term v0.21.0
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20240607232048-44edc9b3c5c2
@@ -35,17 +40,12 @@ require (
 require (
 	github.com/BurntSushi/freetype-go v0.0.0-20160129220410-b763ddbfe298 // indirect
 	github.com/BurntSushi/graphics-go v0.0.0-20160129215708-b43f31a4a966 // indirect
-	github.com/bazelbuild/buildtools v0.0.0-20240823132350-3488089d3661 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jezek/xgb v1.1.0 // indirect
-	github.com/jezek/xgbutil v0.0.0-20240804174445-e2e9464b6e01 // indirect
 	github.com/josharian/native v1.1.0 // indirect
-	github.com/lmittmann/tint v1.0.5 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mdlayher/netlink v1.7.2 // indirect
 	github.com/mdlayher/socket v0.4.1 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
