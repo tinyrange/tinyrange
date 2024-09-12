@@ -34,7 +34,7 @@ require (
 	golang.org/x/term v0.24.0
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20240607232048-44edc9b3c5c2
-	mvdan.cc/sh/v3 v3.8.0
+	mvdan.cc/sh/v3 v3.9.0
 )
 
 require (
