@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"slices"
+	"strconv"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/builder"
@@ -1058,6 +1060,112 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 		}
 
 		return ret, nil
+	})
+
+	ret["sort"] = starlark.NewBuiltin("sort", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			iter     starlark.Iterable
+			callable starlark.Callable
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"iter", &iter,
+			"callable", &callable,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		var items []starlark.Value
+
+		it := iter.Iterate()
+		defer it.Done()
+
+		var val starlark.Value
+		for it.Next(&val) {
+			items = append(items, val)
+		}
+
+		var sortErr error
+		slices.SortFunc(items, func(a starlark.Value, b starlark.Value) int {
+			if sortErr != nil {
+				return 0
+			}
+
+			ret, err := starlark.Call(thread, callable, starlark.Tuple{a, b}, []starlark.Tuple{})
+			if err != nil {
+				sortErr = err
+				return 0
+			}
+
+			val, err := starlark.AsInt32(ret)
+			if err != nil {
+				sortErr = err
+				return 0
+			}
+
+			return val
+		})
+		if sortErr != nil {
+			return starlark.None, sortErr
+		}
+
+		return starlark.NewList(items), nil
+	})
+
+	ret["parse_int"] = starlark.NewBuiltin("parse_int", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			val string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"val", &val,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if val == "" {
+			return starlark.MakeInt64(0), nil
+		}
+
+		i, err := strconv.ParseInt(val, 10, 64)
+		if err != nil {
+			var new string = ""
+
+			for i, c := range val {
+				if i == 0 && c == '-' {
+					continue
+				}
+				if c >= '0' && c <= '9' {
+					continue
+				}
+				if i == 0 {
+					break
+				}
+				new = val[:i-1]
+				break
+			}
+
+			if new == "" {
+				return starlark.MakeInt64(0), nil
+			}
+
+			i, err = strconv.ParseInt(new, 10, 64)
+			if err != nil {
+				return starlark.None, err
+			}
+		}
+
+		return starlark.MakeInt64(i), nil
 	})
 
 	ret["error"] = starlark.NewBuiltin("error", func(

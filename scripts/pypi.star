@@ -7,11 +7,16 @@ def parse_filename(filename):
         name, _, rest = filename.partition("-")
         version, _, abi = rest.partition("-")
 
+        abi = abi.split("-")
+
+        if len(abi) > 3:
+            abi = abi[len(abi) - 3:]
+
         return {
             "wheel": True,
             "name": name,
             "version": version,
-            "abi": abi.split("-"),
+            "abi": abi,
         }
     elif filename.endswith(".tar.gz"):
         filename = filename.removesuffix(".tar.gz")
@@ -46,9 +51,18 @@ def parse_filename(filename):
     elif filename.endswith(".egg"):
         return {"egg": True}
     elif filename.endswith(".exe"):
-        return {"windows": True}
+        return {"native": True}
+    elif filename.endswith(".msi"):
+        return {"native": True}
+    elif filename.endswith(".dmg"):
+        return {"native": True}
+    elif filename.endswith(".rpm"):
+        return {"native": True}
     else:
         return error("{} not implemented".format(filename))
+
+alpha_version = re.compile(".*a[0-9]+")
+rc_version = re.compile(".*rc[0-9]+")
 
 def satisfies_version(pkg_version, target_version):
     target_version = target_version.strip()
@@ -59,12 +73,43 @@ def satisfies_version(pkg_version, target_version):
     if target_version.startswith("(") and target_version.endswith(")"):
         target_version = target_version[1:-1]
 
+    if "," in target_version:
+        versions = target_version.split(",")
+
+        for ver in versions:
+            if not satisfies_version(pkg_version, ver):
+                return False
+
+        return True
+
+    is_alpha = alpha_version.find(pkg_version) != None
+    is_rc = rc_version.find(pkg_version) != None
+
+    if is_alpha or is_rc:
+        return False
+
     if target_version.startswith(">="):
         target_version = target_version.removeprefix(">=")
         return pkg_version >= target_version
     elif target_version.startswith(">"):
         target_version = target_version.removeprefix(">")
         return pkg_version > target_version
+    elif target_version.startswith("<"):
+        target_version = target_version.removeprefix("<")
+        return pkg_version < target_version
+    elif target_version.startswith("!="):
+        target_version = target_version.removeprefix("!=")
+        return pkg_version != target_version
+    elif target_version.startswith("=="):
+        target_version = target_version.removeprefix("==")
+        if target_version.endswith("*"):
+            target_version = target_version.removesuffix("*")
+            return pkg_version.startswith(target_version)
+        else:
+            return pkg_version == target_version
+    elif target_version.startswith("~="):
+        target_version = target_version.removeprefix("~=")
+        return pkg_version.startswith(target_version)
     else:
         return error("satisfies_version not implemented: {} {}".format(pkg_version, target_version))
 
@@ -96,6 +141,7 @@ def get_python_abi(base):
             directive.add_file("/tags.py", file("""import packaging.tags
 import json
 import sys
+import platform
 
 lst = [[tag.interpreter, tag.abi, tag.platform] for tag in packaging.tags.sys_tags()]
 
@@ -107,6 +153,8 @@ ret = {
     str(sys.version_info.micro),
   ]),
   "platform": sys.platform,
+  "platform_system": platform.system(),
+  "platform_python_implementation": platform.python_implementation(),
 }
 
 for interpreter, abi, platform in lst:
@@ -179,7 +227,7 @@ def _get_metadata(ctx, name, version, ark):
         print([f for f in fs])
         return error("could not find metadata")
 
-pypi_name = re.compile("^[a-z0-9]+(-[a-z0-9]+)*")
+pypi_name = re.compile("^[a-z0-9\\.]+(-[a-z0-9\\.]+)*")
 
 def parse_depend(depend):
     env = ""
@@ -207,10 +255,16 @@ def evaluate_marker(ctx, base, marker):
         "python_version": abi["version"],
         "sys_platform": abi["platform"],
         "extra": "",
-        "platform_python_implementation": "",
+        "platform_python_implementation": abi["platform_python_implementation"],
+        "platform_system": abi["platform_system"],
     })
 
 def _extract_wheel(ctx, base, name, version, filename, contents):
+    tokens = filename.split("-")
+
+    name = tokens[0]
+    version = tokens[1]
+
     metadata = json.decode(ctx.build(define.build(
         _get_metadata,
         name,
@@ -246,21 +300,11 @@ def _extract_wheel(ctx, base, name, version, filename, contents):
     return ctx.archive(ret)
 
 def _get_sdist_build_fs(ctx, base, name, version, contents):
-    metadata = json.decode(ctx.build(define.build(
-        _get_metadata,
-        name,
-        version,
-        define.read_archive(contents, ".tar.gz"),
-    )).read())
-
     in_ark = filesystem(ctx.build(define.read_archive(contents, ".tar.gz")))
 
     ret = filesystem()
 
     ret["source"] = in_ark
-
-    for depend in (metadata["Requires-Dist"] if "Requires-Dist" in metadata else []):
-        return error("depends not implemented")
 
     return ctx.archive(ret)
 
@@ -269,7 +313,60 @@ additional_packages = {
         query("zlib-dev"),
         query("jpeg-dev"),
     ],
+    "scipy": [
+        query("gfortran"),
+        query("openblas-dev"),
+    ],
 }
+
+download_overrides = {
+    # override this since the version published on pypi has missing header files.
+    "pyradiomics@3.1.0": "https://github.com/AIM-Harvard/pyradiomics/archive/refs/tags/v3.1.0.tar.gz",
+}
+
+def version_compare(a, b):
+    if a == b:
+        return 0
+
+    a_tokens = a.split(".")
+    b_tokens = b.split(".")
+
+    for a, b in zip(a_tokens, b_tokens):
+        if "rc" in a or "rc" in b:
+            a1, _, a2 = a.partition("rc")
+            b1, _, b2 = b.partition("rc")
+
+            a_int = parse_int(a1)
+            b_int = parse_int(b1)
+            if a_int < b_int:
+                return 1
+            elif a_int > b_int:
+                if a2 != "":
+                    if b2 != "":
+                        a2_int = parse_int(a2)
+                        b2_int = parse_int(b2)
+                        if a2_int > b2_int:
+                            return -1
+                        elif a2_int < b2_int:
+                            return 1
+                    else:
+                        return 1
+
+                return -1
+        else:
+            a_int = parse_int(a)
+            b_int = parse_int(b)
+            if a_int < b_int:
+                return 1
+            elif a_int > b_int:
+                return -1
+
+    return 0
+
+build_packages = [
+    query("build-essential"),
+    query("python3-dev"),
+]
 
 def _build_sdist(ctx, base, name, version, url):
     build_fs = define.build(
@@ -283,17 +380,23 @@ def _build_sdist(ctx, base, name, version, url):
     vm_def = define.build_vm(
         [
             base.add_packages(
-                [
-                    query("build-base"),
-                    query("python3-dev"),
-                ] + (
+                build_packages + (
                     additional_packages[name] if name in additional_packages else []
                 ),
             ),
             build_fs,
-            directive.run_command("set -e;mkdir /out;cd /source/{}-{};pip wheel -w /out .;tar cf /out.tar /out/{}-{}-*.whl".format(name, version, name, version)),
+            directive.run_command("\n".join([
+                "set -e",
+                "mkdir /out",
+                "cd /source/{}-{}".format(name, version),
+                "pip3 wheel -w /out .",
+                "tar cf /out.tar /out/{}-*.whl".format(name),
+            ])),
         ],
         output = "out.tar",
+        cpu_cores = 2,
+        memory_mb = 4 * 1024,
+        storage_size = 4 * 1024,
     )
 
     out = filesystem(ctx.build(define.read_archive(vm_def, ".tar")))["out"]
@@ -303,6 +406,8 @@ def _build_sdist(ctx, base, name, version, url):
     return define.build(_extract_wheel, base, name, version, whl.base, whl)
 
 def _get_wheel(ctx, base, name, version):
+    print("get_wheel", name, version)
+
     # Download the metadata for pypi
     metadata = json.decode(ctx.build(define.fetch_http(
         "mirror://pypi/{}/".format(name),
@@ -321,6 +426,8 @@ def _get_wheel(ctx, base, name, version):
     if len(versions) == 0:
         return error("could not find version for {}@{}".format(name, version))
 
+    versions = sort(versions, version_compare)
+
     # The target version is the first version.
     target_version = versions[0]
 
@@ -338,7 +445,7 @@ def _get_wheel(ctx, base, name, version):
         if "egg" in f:  # ignore eggs
             continue
 
-        if "windows" in f:  # ignore windows
+        if "native" in f:  # ignore native installers
             continue
 
         if f["version"] != target_version:
@@ -355,30 +462,82 @@ def _get_wheel(ctx, base, name, version):
             return define.build(_extract_wheel, base, f["name"], f["version"], file["filename"], define.fetch_http(file["url"]))
 
     # Otherwise look for a source distribution and build it.
-    # TODO(joshua): Implement this.
 
     if len(options) != 1:
         return error("more than one sdist option or no options found for {}@{}".format(name, version))
 
     f, file = options[0]
 
-    return define.build(_build_sdist, base, f["name"], f["version"], file["url"])
+    override_key = "{}@{}".format(f["name"], f["version"])
+
+    if override_key in download_overrides:
+        return define.build(
+            _build_sdist,
+            base,
+            f["name"],
+            f["version"],
+            download_overrides[override_key],
+        )
+    else:
+        return define.build(
+            _build_sdist,
+            base,
+            f["name"],
+            f["version"],
+            file["url"],
+        )
 
 def get_wheel(base, name, version):
     return define.build(_get_wheel, base, name, version)
 
-def main(args):
-    base = define.plan(
-        builder = "alpine@3.20",
-        packages = [
-            query("py3-pip"),
-        ],
-        tags = ["level3", "defaults"],
-    )
+def _build_run_fs(ctx, wheel):
+    wheel = filesystem(wheel.read_archive())
 
-    top = db.build(get_wheel(base, "matplotlib", ""))
+    ret = filesystem()
 
-    fs = top.read_archive()
+    ret["wheels"] = wheel
 
-    print([f for f in fs])
-    print(json.decode(fs["load_order.json"].read()))
+    scripts = []
+
+    load_order = json.decode(wheel["load_order.json"].read())
+
+    for filename in load_order:
+        scripts.append({
+            "kind": "execute",
+            "exec": "/usr/bin/pip",
+            "args": ["install", "--no-deps", "/wheels/" + filename],
+        })
+
+    ret["wheels/scripts.json"] = file(json.encode(scripts))
+
+    return ctx.archive(ret)
+
+def build_run_fs(wheel):
+    return define.build(_build_run_fs, wheel)
+
+base = define.plan(
+    builder = "ubuntu@jammy",
+    packages = [
+        query("python3-pip"),
+        query("python3-packaging"),
+    ],
+    tags = ["level3", "defaults"],
+)
+
+top = get_wheel(base, "radtract", "")
+
+run_fs = build_run_fs(top)
+
+test_vm = define.build_vm(
+    [
+        base.add_packages([
+            query("libglu1-mesa-dev"),
+            query("libxrender1"),
+        ]),
+        run_fs,
+        directive.run_command("/init -run-scripts /wheels/scripts.json"),
+        directive.run_command("pip install --no-deps /wheels/numpy-1.25.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"),
+        directive.run_command("login -f root"),
+    ],
+    storage_size = 4 * 1024,
+)
