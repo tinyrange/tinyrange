@@ -3,9 +3,11 @@ package filesystem
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"strings"
+	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
@@ -138,4 +140,110 @@ func ArchiveFromFS(eFs embed.FS, base string) (ArrayArchive, error) {
 	}
 
 	return ents, nil
+}
+
+const CACHE_ENTRY_SIZE = 1024
+
+type CacheEntry struct {
+	underlyingFile   io.ReaderAt
+	underlyingSource hash.SerializableValue
+
+	COffset   int64    `json:"o"`
+	CTypeflag FileType `json:"t"`
+	CName     string   `json:"n"`
+	CLinkname string   `json:"l"`
+	CSize     int64    `json:"s"`
+	CMode     int64    `json:"m"`
+	CUid      int      `json:"u"`
+	CGid      int      `json:"g"`
+	CModTime  int64    `json:"e"` // in microseconds since the unix epoch.
+	CDevmajor int64    `json:"a"`
+	CDevminor int64    `json:"i"`
+}
+
+// Digest implements Entry.
+func (e *CacheEntry) Digest() *FileDigest {
+	return nil
+}
+
+// IsDir implements FileInfo.
+func (e *CacheEntry) IsDir() bool {
+	return e.Mode().IsDir()
+}
+
+// Sys implements FileInfo.
+func (e *CacheEntry) Sys() any {
+	return nil
+}
+
+// Open implements Entry.
+func (e *CacheEntry) Open() (FileHandle, error) {
+	if e.CTypeflag != TypeRegular {
+		return nil, fmt.Errorf("file is not a regular file: %s", e.CTypeflag.String())
+	}
+	return NewNopCloserFileHandle(
+		io.NewSectionReader(e.underlyingFile, e.COffset, e.CSize),
+	), nil
+}
+
+// Stat implements Entry.
+func (e *CacheEntry) Stat() (FileInfo, error) {
+	return e, nil
+}
+
+func (e *CacheEntry) Typeflag() FileType { return e.CTypeflag }
+func (e *CacheEntry) Name() string       { return e.CName }
+func (e *CacheEntry) Linkname() string   { return e.CLinkname }
+func (e *CacheEntry) Size() int64        { return e.CSize }
+func (e *CacheEntry) Mode() fs.FileMode  { return fs.FileMode(e.CMode) }
+func (e *CacheEntry) Uid() int           { return e.CUid }
+func (e *CacheEntry) Gid() int           { return e.CGid }
+func (e *CacheEntry) ModTime() time.Time { return time.UnixMicro(e.CModTime) }
+func (e *CacheEntry) Devmajor() int64    { return e.CDevmajor }
+func (e *CacheEntry) Devminor() int64    { return e.CDevminor }
+
+var (
+	_ Entry = &CacheEntry{}
+)
+
+type ArchiveWriter struct {
+	w      io.Writer
+	offset int64
+}
+
+func (w *ArchiveWriter) WriteEntry(ent *CacheEntry, r io.Reader) error {
+	ent.COffset = w.offset + 1024
+
+	bytes, err := json.Marshal(&ent)
+	if err != nil {
+		return err
+	}
+
+	if len(bytes) > CACHE_ENTRY_SIZE {
+		return fmt.Errorf("oversized entry header: %d > %d", len(bytes), CACHE_ENTRY_SIZE)
+	} else if len(bytes) < CACHE_ENTRY_SIZE {
+		tmp := make([]byte, CACHE_ENTRY_SIZE)
+		copy(tmp, bytes)
+		bytes = tmp
+	}
+
+	childN, err := w.w.Write(bytes)
+	if err != nil {
+		return err
+	}
+
+	w.offset += int64(childN)
+
+	childN64, err := io.CopyN(w.w, r, ent.CSize)
+	if err != nil {
+		return err
+	}
+
+	w.offset += childN64
+
+	return nil
+}
+
+func NewArchiveWriter(w io.Writer) *ArchiveWriter {
+	return &ArchiveWriter{w: w}
 }
