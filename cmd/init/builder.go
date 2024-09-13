@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -250,6 +251,180 @@ func (b *Builder) RunScripts(filename string) error {
 	return nil
 }
 
+type changeTracker struct {
+	// unix microseconds since epoch. 0 if this is a directory.
+	ModTime  int64                     `json:"m"`
+	Children map[string]*changeTracker `json:"c"`
+}
+
+func (builder *Builder) writeChangeTracker(outputFilename string) error {
+	mountList, err := common.GetMounts()
+	if err != nil {
+		return err
+	}
+
+	mounts := make(map[string]common.MountInfo)
+
+	for _, mount := range mountList {
+		mounts[mount.Target] = mount
+	}
+
+	var enumerate func(filename string) (*changeTracker, error)
+
+	enumerate = func(filename string) (*changeTracker, error) {
+		mount, ok := mounts[filename]
+		if ok {
+			if mount.Kind != "rootfs" && mount.Kind != "ext4" {
+				return nil, nil
+			}
+		}
+
+		info, err := os.Lstat(filename)
+		if err != nil {
+			return nil, err
+		}
+
+		if info.IsDir() {
+			ret := &changeTracker{
+				ModTime:  0,
+				Children: make(map[string]*changeTracker),
+			}
+
+			ents, err := os.ReadDir(filename)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, ent := range ents {
+				child, err := enumerate(filepath.Join(filename, ent.Name()))
+				if err != nil {
+					return nil, err
+				}
+
+				if child != nil {
+					ret.Children[ent.Name()] = child
+				}
+			}
+
+			return ret, nil
+		} else {
+			return &changeTracker{
+				ModTime: info.ModTime().UnixMicro(),
+			}, nil
+		}
+	}
+
+	top, err := enumerate("/")
+	if err != nil {
+		return err
+	}
+
+	f, err := os.Create(outputFilename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := json.NewEncoder(f)
+
+	if err := w.Encode(&top); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (builder *Builder) uploadChangedArchive(hostAddress string, changeTrackerFilename string) error {
+	mountList, err := common.GetMounts()
+	if err != nil {
+		return err
+	}
+
+	mounts := make(map[string]common.MountInfo)
+
+	for _, mount := range mountList {
+		mounts[mount.Target] = mount
+	}
+
+	var tracker *changeTracker
+
+	in, err := os.Open(changeTrackerFilename)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	dec := json.NewDecoder(in)
+
+	if err := dec.Decode(&tracker); err != nil {
+		return err
+	}
+
+	var enumerate func(tracker *changeTracker, filename string) error
+
+	var changedFiles []string
+
+	enumerate = func(tracker *changeTracker, filename string) error {
+		mount, ok := mounts[filename]
+		if ok {
+			if mount.Kind != "rootfs" && mount.Kind != "ext4" {
+				return nil
+			}
+		}
+
+		if tracker == nil {
+			// If there's no tracker then it's definitely changed.
+			// This is either a new file or a new folder.
+			changedFiles = append(changedFiles, filename)
+			return nil
+		}
+
+		if tracker.ModTime != 0 {
+			// assume this is a file.
+			info, err := os.Lstat(filename)
+			if err != nil {
+				return err
+			}
+
+			if info.ModTime().UnixMicro() > tracker.ModTime {
+				changedFiles = append(changedFiles, filename)
+			}
+
+			return nil
+		}
+
+		// Assume this is a directory.
+		ents, err := os.ReadDir(filename)
+		if err != nil {
+			return err
+		}
+
+		for _, ent := range ents {
+			child := tracker.Children[ent.Name()]
+
+			if err := enumerate(child, filepath.Join(filename, ent.Name())); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	if err := enumerate(tracker, "/"); err != nil {
+		return err
+	}
+
+	for _, file := range changedFiles {
+		if file == changeTrackerFilename {
+			continue // ignore my own file.
+		}
+
+		slog.Info("changed", "filename", file)
+	}
+
+	return nil
+}
+
 func builderRunScripts(filename string, translateShell bool) error {
 	builder := &Builder{translateShell: translateShell}
 
@@ -266,14 +441,29 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 		}
 	}
 
-	for _, cmd := range cfg.Commands {
+	for i, cmd := range cfg.Commands {
+		// Check if this is the last command.
+		if i == len(cfg.Commands)-1 {
+			if cfg.OutputFilename == "/init/changed.archive" {
+				// take a snapshot of the filesystem and store it locally.
+
+				if err := builder.writeChangeTracker("/init.changed"); err != nil {
+					return err
+				}
+			}
+		}
+
 		slog.Debug("running", "cmd", cmd)
 		if err := common.RunCommand(cmd); err != nil {
 			return err
 		}
 	}
 
-	if cfg.OutputFilename != "" {
+	if cfg.OutputFilename == "/init/changed.archive" {
+		if err := builder.uploadChangedArchive(cfg.HostAddress, "/init.changed"); err != nil {
+			return err
+		}
+	} else if cfg.OutputFilename != "" {
 		if err := builder.uploadFile(cfg.HostAddress, cfg.OutputFilename); err != nil {
 			return err
 		}

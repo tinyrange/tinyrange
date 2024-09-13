@@ -7,15 +7,16 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
 
-type mountInfo struct {
-	source  string
-	target  string
-	kind    string
-	options string
+type MountInfo struct {
+	Source  string
+	Target  string
+	Kind    string
+	Options string
 }
 
 type fileInfo struct {
@@ -60,13 +61,17 @@ func (f fileInfo) encode() []string {
 	return []string{f.fullName, kindString, f.mode.String(), fmt.Sprintf("%d", f.size), f.modTime.String()}
 }
 
-func getMounts() ([]mountInfo, error) {
+func GetMounts() ([]MountInfo, error) {
+	if runtime.GOOS != "linux" {
+		return nil, fmt.Errorf("GetMounts only works on Linux")
+	}
+
 	content, err := os.ReadFile("/proc/mounts")
 	if err != nil {
 		return nil, err
 	}
 
-	var ret []mountInfo
+	var ret []MountInfo
 
 	lines := strings.Split(string(content), "\n")
 
@@ -76,11 +81,11 @@ func getMounts() ([]mountInfo, error) {
 			continue
 		}
 
-		ret = append(ret, mountInfo{
-			source:  tokens[0],
-			target:  tokens[1],
-			kind:    tokens[2],
-			options: tokens[3],
+		ret = append(ret, MountInfo{
+			Source:  tokens[0],
+			Target:  tokens[1],
+			Kind:    tokens[2],
+			Options: tokens[3],
 		})
 	}
 
@@ -88,7 +93,7 @@ func getMounts() ([]mountInfo, error) {
 }
 
 type fsWalker struct {
-	mounts map[string]mountInfo
+	mounts map[string]MountInfo
 
 	records []fileInfo
 }
@@ -96,7 +101,7 @@ type fsWalker struct {
 func (w *fsWalker) walk(filename string) error {
 	mount, ok := w.mounts[filename]
 	if ok {
-		if mount.kind != "rootfs" && mount.kind != "ext4" {
+		if mount.Kind != "rootfs" && mount.Kind != "ext4" {
 			return nil
 		}
 	}
@@ -146,15 +151,15 @@ func (w *fsWalker) writeCsv(wr io.Writer) error {
 }
 
 func DumpFs(outputFilename string) error {
-	mountList, err := getMounts()
+	mountList, err := GetMounts()
 	if err != nil {
 		return err
 	}
 
-	fsWalker := &fsWalker{mounts: make(map[string]mountInfo)}
+	fsWalker := &fsWalker{mounts: make(map[string]MountInfo)}
 
 	for _, mount := range mountList {
-		fsWalker.mounts[mount.target] = mount
+		fsWalker.mounts[mount.Target] = mount
 	}
 
 	err = fsWalker.walk("/")
