@@ -40,6 +40,7 @@ def main():
     file_write("/etc/motd", "")
 
     set_env("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+    set_env("HOME", "/root")
 
     if True:
         run_ssh_server(ssh_connect)

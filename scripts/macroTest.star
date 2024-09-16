@@ -11,9 +11,6 @@ def pixi(default):
         directive.archive(define.build_vm(
             [
                 default.with_packages([query("bash"), query("curl")]),
-                directive.environment({
-                    "HOME": "/root",
-                }),
                 directive.run_command("set -e;curl -fsSL https://pixi.sh/install.sh | bash"),
             ],
             output = "/init/changed.archive",
@@ -27,9 +24,6 @@ def uv(default):
         directive.archive(define.build_vm(
             [
                 default.with_packages([query("curl")]),
-                directive.environment({
-                    "HOME": "/root",
-                }),
                 directive.run_command("curl -LsSf https://astral.sh/uv/install.sh | sh"),
             ],
             output = "/init/changed.archive",
