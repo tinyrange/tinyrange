@@ -45,3 +45,7 @@ type PackageDatabase interface {
 	HashDefinition(def BuildDefinition) (string, error)
 	NewBuildContext(source BuildSource) BuildContext
 }
+
+type InstallationPlanBuilder interface {
+	starlark.Value
+}

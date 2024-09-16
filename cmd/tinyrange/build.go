@@ -34,42 +34,46 @@ var buildCmd = &cobra.Command{
 			return err
 		}
 
-		def, err := macro.Call(macroCtx)
+		ret, err := macro.Call(macroCtx)
 		if err != nil {
 			return err
 		}
 
-		if def == nil {
+		if ret == nil {
 			return nil
 		}
 
-		f, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{
-			AlwaysRebuild: true,
-		})
-		if err != nil {
-			slog.Error("fatal", "err", err)
-			os.Exit(1)
-		}
-
-		if buildOutput != "" {
-			fh, err := f.Open()
+		if def, ok := ret.(common.BuildDefinition); ok {
+			f, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{
+				AlwaysRebuild: true,
+			})
 			if err != nil {
-				return err
+				slog.Error("fatal", "err", err)
+				os.Exit(1)
 			}
-			defer fh.Close()
 
-			out, err := os.Create(buildOutput)
-			if err != nil {
-				return err
-			}
-			defer out.Close()
+			if buildOutput != "" {
+				fh, err := f.Open()
+				if err != nil {
+					return err
+				}
+				defer fh.Close()
 
-			if _, err := io.Copy(out, fh); err != nil {
-				return err
+				out, err := os.Create(buildOutput)
+				if err != nil {
+					return err
+				}
+				defer out.Close()
+
+				if _, err := io.Copy(out, fh); err != nil {
+					return err
+				}
 			}
+
+			return nil
+		} else {
+			return fmt.Errorf("could not convert %T to BuildDefinition", ret)
 		}
-
-		return nil
 	},
 }
 

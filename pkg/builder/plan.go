@@ -146,6 +146,50 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 				},
 			}, nil
 		}), nil
+	} else if name == "with_packages" {
+		return starlark.NewBuiltin("PlanDefinition.with_packages", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				val starlark.Value
+			)
+
+			var searchListIt starlark.Iterable
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"packages", &searchListIt,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			var search []common.PackageQuery
+
+			{
+				dependencyIter := searchListIt.Iterate()
+				defer dependencyIter.Done()
+
+				for dependencyIter.Next(&val) {
+					dep, ok := val.(common.PackageQuery)
+					if !ok {
+						return nil, fmt.Errorf("could not convert %s to PackageQuery", val.Type())
+					}
+
+					search = append(search, dep)
+				}
+			}
+
+			return &PlanDefinition{
+				params: PlanParameters{
+					Builder:      def.params.Builder,
+					Architecture: def.params.Architecture,
+					Search:       search,
+					TagList:      def.params.TagList,
+				},
+			}, nil
+		}), nil
 	} else if name == "set_tags" {
 		return starlark.NewBuiltin("PlanDefinition.add_packages", func(
 			thread *starlark.Thread,
@@ -255,6 +299,17 @@ func (def *PlanDefinition) Tag() string {
 		fmt.Sprintf("%+v", def.params.Search),
 		def.params.TagList.String(),
 	}, "_")
+}
+
+func (def *PlanDefinition) AddPackage(name common.PackageQuery) (*PlanDefinition, error) {
+	return &PlanDefinition{
+		params: PlanParameters{
+			Builder:      def.params.Builder,
+			Architecture: def.params.Architecture,
+			Search:       append(def.params.Search, name),
+			TagList:      def.params.TagList,
+		},
+	}, nil
 }
 
 func (def *PlanDefinition) String() string { return def.Tag() }

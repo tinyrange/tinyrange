@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/tinyrange/tinyrange/pkg/common"
 )
 
 var (
@@ -35,16 +36,19 @@ var inspectCmd = &cobra.Command{
 			return err
 		}
 
-		def, err := macro.Call(ctx)
+		ret, err := macro.Call(ctx)
 		if err != nil {
 			return err
 		}
 
-		if err := db.Inspect(def, os.Stdout); err != nil {
-			return err
+		if def, ok := ret.(common.BuildDefinition); ok {
+			if err := db.Inspect(def, os.Stdout); err != nil {
+				return err
+			}
+			return nil
+		} else {
+			return fmt.Errorf("could not convert %T to BuildDefinition", ret)
 		}
-
-		return nil
 	},
 }
 

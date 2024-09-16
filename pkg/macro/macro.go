@@ -1,26 +1,29 @@
-package common
+package macro
 
 import (
 	"fmt"
 	"strings"
 
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"go.starlark.net/starlark"
 )
 
 type MacroContext interface {
 	Thread() *starlark.Thread
+	Builder(name string) (common.InstallationPlanBuilder, error)
+	AddBuilder(name string, builder common.InstallationPlanBuilder)
 }
 
 type Macro interface {
-	Call(ctx MacroContext) (BuildDefinition, error)
+	Call(ctx MacroContext) (common.MacroResult, error)
 }
 
 type DefinitionMacro struct {
-	BuildDefinition
+	common.BuildDefinition
 }
 
 // Call implements Macro.
-func (d DefinitionMacro) Call(ctx MacroContext) (BuildDefinition, error) {
+func (d DefinitionMacro) Call(ctx MacroContext) (common.MacroResult, error) {
 	return d.BuildDefinition, nil
 }
 
@@ -39,8 +42,16 @@ func (s StarlarkMacroString) Value(ctx MacroContext) (starlark.Value, error) {
 	return starlark.String(s), nil
 }
 
+type StarlarkMacroBuilder string
+
+// Value implements StarlarkMacroArgument.
+func (s StarlarkMacroBuilder) Value(ctx MacroContext) (starlark.Value, error) {
+	return ctx.Builder(string(s))
+}
+
 var (
 	_ StarlarkMacroArgument = StarlarkMacroString("")
+	_ StarlarkMacroArgument = StarlarkMacroBuilder("")
 )
 
 type StarlarkMacro struct {
@@ -49,7 +60,7 @@ type StarlarkMacro struct {
 }
 
 // Call implements Macro.
-func (s *StarlarkMacro) Call(ctx MacroContext) (BuildDefinition, error) {
+func (s *StarlarkMacro) Call(ctx MacroContext) (common.MacroResult, error) {
 	var args []starlark.Value
 
 	for _, arg := range s.args {
@@ -70,9 +81,9 @@ func (s *StarlarkMacro) Call(ctx MacroContext) (BuildDefinition, error) {
 		return nil, nil
 	}
 
-	def, ok := ret.(BuildDefinition)
+	def, ok := ret.(common.MacroResult)
 	if !ok {
-		return nil, fmt.Errorf("could not convert %s to BuildDefinition", ret.Type())
+		return nil, fmt.Errorf("could not convert %s to MacroResult", ret.Type())
 	}
 
 	return def, nil
@@ -91,6 +102,10 @@ func parseMacroArgument(desc string, args []string) (StarlarkMacroArgument, []st
 		val := args[0]
 
 		return StarlarkMacroString(val), args[1:], nil
+	case "builder":
+		name := tokens[1]
+
+		return StarlarkMacroBuilder(name), args, nil
 	default:
 		return nil, nil, fmt.Errorf("unknown macro argument type: %s", typ)
 	}

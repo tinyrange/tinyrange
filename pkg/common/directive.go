@@ -12,6 +12,7 @@ import (
 func init() {
 	hash.RegisterType(DirectiveRunCommand{})
 	hash.RegisterType(DirectiveEnvironment{})
+	hash.RegisterType(DirectiveList{})
 }
 
 type Directive interface {
@@ -246,6 +247,73 @@ func (d DirectiveBuiltin) Tag() string {
 	return fmt.Sprintf("BuiltinFrag_%s_%s", d.Name, d.GuestFilename)
 }
 
+type DirectiveList struct {
+	Items []Directive
+}
+
+// AsFragments implements Directive.
+func (d DirectiveList) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+	var ret []config.Fragment
+
+	for _, dir := range d.Items {
+		frags, err := dir.AsFragments(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, frags...)
+	}
+
+	return ret, nil
+}
+
+// Dependencies implements Directive.
+func (d DirectiveList) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	var ret []DependencyNode
+
+	for _, dir := range d.Items {
+		ret = append(ret, dir)
+	}
+
+	return ret, nil
+}
+
+// SerializableType implements Directive.
+func (d DirectiveList) SerializableType() string { return "DirectiveList" }
+
+// Tag implements Directive.
+func (d DirectiveList) Tag() string {
+	var ret []string
+
+	for _, dir := range d.Items {
+		ret = append(ret, dir.Tag())
+	}
+
+	return strings.Join(ret, "_")
+}
+
+type DirectiveAddPackage struct {
+	Name PackageQuery
+}
+
+// AsFragments implements Directive.
+func (d DirectiveAddPackage) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+	return nil, fmt.Errorf("DirectiveAddPackage cannot be represented as a fragment")
+}
+
+// Dependencies implements Directive.
+func (d DirectiveAddPackage) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return nil, nil
+}
+
+// SerializableType implements Directive.
+func (d DirectiveAddPackage) SerializableType() string { return "DirectiveAddPackage" }
+
+// Tag implements Directive.
+func (d DirectiveAddPackage) Tag() string {
+	return d.Name.String()
+}
+
 var (
 	_ Directive = DirectiveRunCommand{}
 	_ Directive = DirectiveAddFile{}
@@ -254,13 +322,15 @@ var (
 	_ Directive = DirectiveExportPort{}
 	_ Directive = DirectiveEnvironment{}
 	_ Directive = DirectiveBuiltin{}
+	_ Directive = DirectiveList{}
+	_ Directive = DirectiveAddPackage{}
 )
 
 type StarDirective struct {
-	Directive
+	Directive Directive
 }
 
-func (d *StarDirective) String() string      { return d.Tag() }
+func (d *StarDirective) String() string      { return d.Directive.Tag() }
 func (d *StarDirective) Type() string        { return fmt.Sprintf("%T", d.Directive) }
 func (*StarDirective) Hash() (uint32, error) { return 0, fmt.Errorf("Directive is not hashable") }
 func (*StarDirective) Truth() starlark.Bool  { return starlark.True }
@@ -269,3 +339,60 @@ func (*StarDirective) Freeze()               {}
 var (
 	_ starlark.Value = &StarDirective{}
 )
+
+type SpecialDirectiveHandlers struct {
+	RunCommand  func(dir DirectiveRunCommand) error
+	AddPackage  func(dir DirectiveAddPackage) error
+	Environment func(dir DirectiveEnvironment) error
+}
+
+func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers) ([]Directive, error) {
+	var ret []Directive
+
+	var recurse func(directives []Directive) error
+
+	recurse = func(directives []Directive) error {
+		for _, dir := range directives {
+			switch dir := dir.(type) {
+			case DirectiveRunCommand:
+				if handlers.RunCommand != nil {
+					if err := handlers.RunCommand(dir); err != nil {
+						return err
+					}
+				} else {
+					ret = append(ret, dir)
+				}
+			case DirectiveAddPackage:
+				if handlers.AddPackage != nil {
+					if err := handlers.AddPackage(dir); err != nil {
+						return err
+					}
+				} else {
+					ret = append(ret, dir)
+				}
+			case DirectiveEnvironment:
+				if handlers.Environment != nil {
+					if err := handlers.Environment(dir); err != nil {
+						return err
+					}
+				} else {
+					ret = append(ret, dir)
+				}
+			case DirectiveList:
+				if err := recurse(dir.Items); err != nil {
+					return err
+				}
+			default:
+				ret = append(ret, dir)
+			}
+		}
+
+		return nil
+	}
+
+	if err := recurse(directives); err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}

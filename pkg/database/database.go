@@ -22,13 +22,30 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
+	"github.com/tinyrange/tinyrange/pkg/macro"
 	"github.com/tinyrange/tinyrange/stdlib"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 )
 
 type macroContext struct {
-	db *PackageDatabase
+	db       *PackageDatabase
+	builders map[string]common.InstallationPlanBuilder
+}
+
+// AddBuilder implements macro.MacroContext.
+func (m *macroContext) AddBuilder(name string, builder common.InstallationPlanBuilder) {
+	m.builders[name] = builder
+}
+
+// Builder implements macro.MacroContext.
+func (m *macroContext) Builder(name string) (common.InstallationPlanBuilder, error) {
+	builder, ok := m.builders[name]
+	if !ok {
+		return nil, fmt.Errorf("builder %s not found", name)
+	}
+
+	return builder, nil
 }
 
 // Thread implements common.MacroContext.
@@ -37,7 +54,7 @@ func (m *macroContext) Thread() *starlark.Thread {
 }
 
 var (
-	_ common.MacroContext = &macroContext{}
+	_ macro.MacroContext = &macroContext{}
 )
 
 type outputFile struct {
@@ -648,7 +665,7 @@ func (db *PackageDatabase) GetContainerBuilder(ctx common.BuildContext, name str
 	return builder, nil
 }
 
-func (db *PackageDatabase) GetMacro(ctx common.MacroContext, name string, args []string) (common.Macro, error) {
+func (db *PackageDatabase) GetMacro(ctx macro.MacroContext, name string, args []string) (macro.Macro, error) {
 	def, ok := db.defs[name]
 	if !ok {
 		return nil, fmt.Errorf("name %s not found", name)
@@ -659,11 +676,11 @@ func (db *PackageDatabase) GetMacro(ctx common.MacroContext, name string, args [
 		return nil, fmt.Errorf("%s is not a valid macro (has type %s)", name, def.Type())
 	}
 
-	return common.ParseMacro(ctx, f, args)
+	return macro.ParseMacro(ctx, f, args)
 }
 
-func (db *PackageDatabase) GetMacroByDeclaredName(ctx common.MacroContext, name string) (common.Macro, error) {
-	filename, macroName, ok := strings.Cut(name, ":")
+func (db *PackageDatabase) GetMacroByDeclaredName(ctx macro.MacroContext, name string) (macro.Macro, error) {
+	filename, defName, ok := strings.Cut(name, ":")
 	if !ok {
 		return nil, fmt.Errorf("misformed declared name: %s", name)
 	}
@@ -673,29 +690,32 @@ func (db *PackageDatabase) GetMacroByDeclaredName(ctx common.MacroContext, name 
 	}
 
 	if _, ok := db.loadedFiles[filename]; !ok {
+		slog.Debug("load file for macro", "filename", filename)
 		if err := db.LoadFile(filename); err != nil {
 			return nil, err
 		}
 	}
 
-	if strings.Contains(macroName, ",") {
-		macroTokens := strings.Split(macroName, ",")
+	var macroArgs []string
 
-		name = fmt.Sprintf("%s:%s", filename, macroTokens[0])
+	if strings.Contains(defName, ",") {
+		macroTokens := strings.Split(defName, ",")
 
-		return db.GetMacro(ctx, name, macroTokens[1:])
+		defName = macroTokens[0]
+		macroArgs = macroTokens[1:]
+	}
+
+	def, ok := db.defs[fmt.Sprintf("%s:%s", filename, defName)]
+	if !ok {
+		return nil, fmt.Errorf("name %s not found in %s", defName, filename)
+	}
+
+	if macroFunc, ok := def.(*starlark.Function); ok {
+		return macro.ParseMacro(ctx, macroFunc, macroArgs)
+	} else if buildDef, ok := def.(common.BuildDefinition); ok {
+		return macro.DefinitionMacro{BuildDefinition: buildDef}, nil
 	} else {
-		def, ok := db.defs[fmt.Sprintf("%s:%s", filename, name)]
-		if !ok {
-			return nil, fmt.Errorf("name %s not found", name)
-		}
-
-		buildDef, ok := def.(common.BuildDefinition)
-		if !ok {
-			return nil, fmt.Errorf("value %s is not a BuildDefinition", def.Type())
-		}
-
-		return common.DefinitionMacro{BuildDefinition: buildDef}, nil
+		return nil, fmt.Errorf("could not interpret %s as macro/definition", def.Type())
 	}
 }
 
@@ -741,21 +761,24 @@ func (db *PackageDatabase) GetDefinitionByHash(hash string) (common.BuildDefinit
 	}
 }
 
-func (db *PackageDatabase) GetMacroByShorthand(ctx common.MacroContext, shorthand string) (common.Macro, error) {
+func (db *PackageDatabase) GetMacroByShorthand(ctx macro.MacroContext, shorthand string) (macro.Macro, error) {
 	if len(shorthand) == 64 && !strings.Contains(shorthand, ":") {
 		def, err := db.GetDefinitionByHash(shorthand)
 		if err != nil {
 			return nil, err
 		}
 
-		return common.DefinitionMacro{BuildDefinition: def}, nil
+		return macro.DefinitionMacro{BuildDefinition: def}, nil
 	}
 
 	return db.GetMacroByDeclaredName(ctx, shorthand)
 }
 
-func (db *PackageDatabase) NewMacroContext() common.MacroContext {
-	return &macroContext{db: db}
+func (db *PackageDatabase) NewMacroContext() macro.MacroContext {
+	return &macroContext{
+		db:       db,
+		builders: make(map[string]common.InstallationPlanBuilder),
+	}
 }
 
 func (db *PackageDatabase) GetAllHashes() ([]string, error) {

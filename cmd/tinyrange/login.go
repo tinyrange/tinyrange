@@ -61,6 +61,7 @@ type loginConfig struct {
 	Archives     []string `json:"archives,omitempty" yaml:"archives,omitempty"`
 	Output       string   `json:"output,omitempty" yaml:"output,omitempty"`
 	Packages     []string `json:"packages,omitempty" yaml:"packages,omitempty"`
+	Macros       []string `json:"macros,omitempty" yaml:"macros,omitempty"`
 	Environment  []string `json:"environment,omitempty" yaml:"environment,omitempty"`
 	NoScripts    bool     `json:"no_scripts,omitempty" yaml:"no_scripts,omitempty"`
 
@@ -92,18 +93,7 @@ func (config *loginConfig) run() error {
 		return nil
 	}
 
-	var pkgs []common.PackageQuery
-
-	for _, arg := range config.Packages {
-		q, err := common.ParsePackageQuery(arg)
-		if err != nil {
-			return err
-		}
-
-		pkgs = append(pkgs, q)
-	}
-
-	var dir []common.Directive
+	var directives []common.Directive
 
 	if config.Builder == "" {
 		return fmt.Errorf("please specify a builder")
@@ -122,13 +112,6 @@ func (config *loginConfig) run() error {
 		return err
 	}
 
-	planDirective, err := builder.NewPlanDefinition(config.Builder, arch, pkgs, tags)
-	if err != nil {
-		return err
-	}
-
-	dir = append(dir, planDirective)
-
 	for _, filename := range config.Files {
 		if strings.HasPrefix(filename, "http://") || strings.HasPrefix(filename, "https://") {
 			parsed, err := url.Parse(filename)
@@ -138,7 +121,7 @@ func (config *loginConfig) run() error {
 
 			base := path.Base(parsed.Path)
 
-			dir = append(dir, common.DirectiveAddFile{
+			directives = append(directives, common.DirectiveAddFile{
 				Definition: builder.NewFetchHttpBuildDefinition(filename, 0, nil),
 				Filename:   path.Join("/root", base),
 			})
@@ -148,7 +131,7 @@ func (config *loginConfig) run() error {
 				return err
 			}
 
-			dir = append(dir, common.DirectiveLocalFile{
+			directives = append(directives, common.DirectiveLocalFile{
 				HostFilename: absPath,
 				Filename:     path.Join("/root", filepath.Base(absPath)),
 			})
@@ -182,13 +165,54 @@ func (config *loginConfig) run() error {
 			return err
 		}
 
-		dir = append(dir, common.DirectiveArchive{Definition: ark, Target: "/root"})
+		directives = append(directives, common.DirectiveArchive{Definition: ark, Target: "/root"})
+	}
+
+	var pkgs []common.PackageQuery
+
+	for _, arg := range config.Packages {
+		q, err := common.ParsePackageQuery(arg)
+		if err != nil {
+			return err
+		}
+
+		pkgs = append(pkgs, q)
+	}
+
+	planDirective, err := builder.NewPlanDefinition(config.Builder, arch, pkgs, tags)
+	if err != nil {
+		return err
+	}
+
+	macroCtx := db.NewMacroContext()
+	macroCtx.AddBuilder("default", planDirective)
+
+	for _, macro := range config.Macros {
+		m, err := db.GetMacroByShorthand(macroCtx, macro)
+		if err != nil {
+			return err
+		}
+
+		def, err := m.Call(macroCtx)
+		if err != nil {
+			return err
+		}
+
+		if star, ok := def.(*common.StarDirective); ok {
+			def = star.Directive
+		}
+
+		if dir, ok := def.(common.Directive); ok {
+			directives = append(directives, dir)
+		} else {
+			return fmt.Errorf("handling of macro def %T not implemented", def)
+		}
 	}
 
 	if config.writeRoot != "" {
-		dir = append(dir, common.DirectiveBuiltin{Name: "init", Architecture: string(arch), GuestFilename: "init"})
+		directives = append(directives, common.DirectiveBuiltin{Name: "init", Architecture: string(arch), GuestFilename: "init"})
 
-		def := builder.NewBuildFsDefinition(dir, "tar")
+		def := builder.NewBuildFsDefinition(directives, "tar")
 
 		ctx := db.NewBuildContext(def)
 
@@ -218,19 +242,35 @@ func (config *loginConfig) run() error {
 	}
 
 	if len(config.Commands) == 0 {
-		dir = append(dir, common.DirectiveRunCommand{Command: "interactive"})
+		directives = append(directives, common.DirectiveRunCommand{Command: "interactive"})
 	} else {
 		for _, cmd := range config.Commands {
-			dir = append(dir, common.DirectiveRunCommand{Command: cmd})
+			directives = append(directives, common.DirectiveRunCommand{Command: cmd})
 		}
 	}
 
 	if len(config.Environment) > 0 {
-		dir = append(dir, common.DirectiveEnvironment{Variables: config.Environment})
+		directives = append(directives, common.DirectiveEnvironment{Variables: config.Environment})
 	}
 
+	directives, err = common.FlattenDirectives(directives, common.SpecialDirectiveHandlers{
+		AddPackage: func(dir common.DirectiveAddPackage) error {
+			planDirective, err = planDirective.AddPackage(dir.Name)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	directives = append([]common.Directive{planDirective}, directives...)
+
 	def := builder.NewBuildVmDefinition(
-		dir,
+		directives,
 		nil, nil,
 		config.Output,
 		config.cpuCores, config.memorySize, arch,
@@ -359,6 +399,7 @@ func init() {
 	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Archives, "archive", "a", []string{}, "Specify archives to be copied into the virtual machine. A copy will be made in the build directory.")
 	loginCmd.PersistentFlags().StringVarP(&currentConfig.Output, "output", "o", "", "Write the specified file from the guest to the host.")
 	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Environment, "environment", "e", []string{}, "Add environment variables to the VM.")
+	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Macros, "macro", "m", []string{}, "Add macros to the VM.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.Architecture, "arch", "", "Override the CPU architecture of the machine. This will use emulation with a performance hit.")
 
 	// private flags (need to set on command line)

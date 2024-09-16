@@ -723,6 +723,47 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					GuestFilename: guestFilename,
 				}}, nil
 			}),
+			"add_package": starlark.NewBuiltin("directive.add_package", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var name common.PackageQuery
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"name", &name,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				return &common.StarDirective{Directive: common.DirectiveAddPackage{
+					Name: name,
+				}}, nil
+			}),
+			"list": starlark.NewBuiltin("directive.list", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var directiveList starlark.Iterable
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"directives", &directiveList,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				directives, err := asDirectiveList(directiveList)
+				if err != nil {
+					return starlark.None, err
+				}
+
+				return &common.StarDirective{
+					Directive: common.DirectiveList{Items: directives},
+				}, nil
+			}),
 		},
 	}
 

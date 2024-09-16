@@ -26,6 +26,7 @@ type BuildDefinition interface {
 	hash.Definition
 	BuildSource
 	DependencyNode
+	MacroResult
 	NeedsBuild(ctx BuildContext, cacheTime time.Time) (bool, error)
 	Build(ctx BuildContext) (BuildResult, error)
 	ToStarlark(ctx BuildContext, result filesystem.File) (starlark.Value, error)
@@ -47,6 +48,9 @@ type BuildContext interface {
 	ChildContext(source BuildSource, status *BuildStatus, filename string) BuildContext
 	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
 	FilenameFromDigest(digest *filesystem.FileDigest) (string, error)
+}
+
+type MacroResult interface {
 }
 
 type BuildStatusKind byte
