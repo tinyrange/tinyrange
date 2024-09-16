@@ -314,6 +314,28 @@ func (d DirectiveAddPackage) Tag() string {
 	return d.Name.String()
 }
 
+type DirectiveInteraction struct {
+	Interaction string
+}
+
+// AsFragments implements Directive.
+func (d DirectiveInteraction) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+	return nil, fmt.Errorf("DirectiveInteraction cannot be represented as a fragment")
+}
+
+// Dependencies implements Directive.
+func (d DirectiveInteraction) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return nil, nil
+}
+
+// SerializableType implements Directive.
+func (d DirectiveInteraction) SerializableType() string { return "DirectiveInteraction" }
+
+// Tag implements Directive.
+func (d DirectiveInteraction) Tag() string {
+	return fmt.Sprintf("DirectiveInteraction_%s", d.Interaction)
+}
+
 var (
 	_ Directive = DirectiveRunCommand{}
 	_ Directive = DirectiveAddFile{}
@@ -344,6 +366,7 @@ type SpecialDirectiveHandlers struct {
 	RunCommand  func(dir DirectiveRunCommand) error
 	AddPackage  func(dir DirectiveAddPackage) error
 	Environment func(dir DirectiveEnvironment) error
+	Interaction func(dir DirectiveInteraction) error
 }
 
 func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers) ([]Directive, error) {
@@ -373,6 +396,14 @@ func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers
 			case DirectiveEnvironment:
 				if handlers.Environment != nil {
 					if err := handlers.Environment(dir); err != nil {
+						return err
+					}
+				} else {
+					ret = append(ret, dir)
+				}
+			case DirectiveInteraction:
+				if handlers.Interaction != nil {
+					if err := handlers.Interaction(dir); err != nil {
 						return err
 					}
 				} else {

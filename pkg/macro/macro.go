@@ -27,8 +27,18 @@ func (d DefinitionMacro) Call(ctx MacroContext) (common.MacroResult, error) {
 	return d.BuildDefinition, nil
 }
 
+type DirectiveMacro struct {
+	common.Directive
+}
+
+// Call implements Macro.
+func (d DirectiveMacro) Call(ctx MacroContext) (common.MacroResult, error) {
+	return d.Directive, nil
+}
+
 var (
 	_ Macro = DefinitionMacro{}
+	_ Macro = DirectiveMacro{}
 )
 
 type StarlarkMacroArgument interface {

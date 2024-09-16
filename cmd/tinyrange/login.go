@@ -254,6 +254,8 @@ func (config *loginConfig) run() error {
 		directives = append(directives, common.DirectiveEnvironment{Variables: config.Environment})
 	}
 
+	interaction := "ssh"
+
 	directives, err = common.FlattenDirectives(directives, common.SpecialDirectiveHandlers{
 		AddPackage: func(dir common.DirectiveAddPackage) error {
 			planDirective, err = planDirective.AddPackage(dir.Name)
@@ -263,14 +265,17 @@ func (config *loginConfig) run() error {
 
 			return nil
 		},
+		Interaction: func(dir common.DirectiveInteraction) error {
+			interaction = dir.Interaction
+
+			return nil
+		},
 	})
 	if err != nil {
 		return err
 	}
 
 	directives = append([]common.Directive{planDirective}, directives...)
-
-	interaction := "ssh"
 
 	if config.Init != "" {
 		interaction = "init," + config.Init

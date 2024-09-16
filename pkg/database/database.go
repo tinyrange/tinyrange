@@ -714,8 +714,10 @@ func (db *PackageDatabase) GetMacroByDeclaredName(ctx macro.MacroContext, name s
 		return macro.ParseMacro(ctx, macroFunc, macroArgs)
 	} else if buildDef, ok := def.(common.BuildDefinition); ok {
 		return macro.DefinitionMacro{BuildDefinition: buildDef}, nil
+	} else if dir, ok := def.(*common.StarDirective); ok {
+		return macro.DirectiveMacro{Directive: dir.Directive}, nil
 	} else {
-		return nil, fmt.Errorf("could not interpret %s as macro/definition", def.Type())
+		return nil, fmt.Errorf("could not interpret %s as macro/directive/definition", def.Type())
 	}
 }
 

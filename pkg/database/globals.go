@@ -741,6 +741,24 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					Name: name,
 				}}, nil
 			}),
+			"interaction": starlark.NewBuiltin("directive.interaction", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var name string
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"name", &name,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				return &common.StarDirective{Directive: common.DirectiveInteraction{
+					Interaction: name,
+				}}, nil
+			}),
 			"list": starlark.NewBuiltin("directive.list", func(
 				thread *starlark.Thread,
 				fn *starlark.Builtin,
