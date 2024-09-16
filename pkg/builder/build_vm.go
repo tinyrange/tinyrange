@@ -172,6 +172,13 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		return nil, fmt.Errorf("could not find default hypervisor tinyrange_qemu.star: %s", hvScript)
 	}
 
+	interaction := def.params.Interaction
+
+	if strings.HasPrefix(interaction, "init,") {
+		builderCfg.ExecInit = strings.TrimPrefix(interaction, "init,")
+		interaction = "serial"
+	}
+
 	vmCfg.BaseDirectory = wd
 	vmCfg.Architecture = arch
 	vmCfg.HypervisorScript = hvScript
@@ -179,7 +186,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 	vmCfg.CPUCores = def.params.CpuCores
 	vmCfg.MemoryMB = def.params.MemoryMB
 	vmCfg.StorageSize = def.params.StorageSize
-	vmCfg.Interaction = def.params.Interaction
+	vmCfg.Interaction = interaction
 	vmCfg.Debug = def.params.Debug
 
 	if def.params.InitRamFs != nil {

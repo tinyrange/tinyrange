@@ -47,6 +47,7 @@ type VirtualMachine struct {
 	kernel       string
 	initrd       string
 	diskImage    string
+	interaction  string
 	nic          *netstack.NetworkInterface
 	cmd          *exec.Cmd
 	mtx          sync.Mutex
@@ -136,6 +137,8 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 		return starlark.String(strings.Join(common.GetExperimentalFlags(), ",")), nil
 	} else if name == "os" {
 		return starlark.String(runtime.GOOS), nil
+	} else if name == "interaction" {
+		return starlark.String(vm.interaction), nil
 	} else {
 		return nil, nil
 	}
@@ -383,6 +386,7 @@ func (factory *VirtualMachineFactory) Create(
 	kernel string,
 	initrd string,
 	diskImage string,
+	interaction string,
 ) (*VirtualMachine, error) {
 	return &VirtualMachine{
 		factory:      factory,
@@ -392,6 +396,7 @@ func (factory *VirtualMachineFactory) Create(
 		kernel:       kernel,
 		initrd:       initrd,
 		diskImage:    diskImage,
+		interaction:  interaction,
 	}, nil
 }
 

@@ -411,6 +411,7 @@ func RunWithConfig(
 		cfg.Resolve(cfg.KernelFilename),
 		cfg.Resolve(cfg.InitFilesystemFilename),
 		"nbd://"+listener.Addr().String(),
+		cfg.Interaction,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to make virtual machine: %w", err)

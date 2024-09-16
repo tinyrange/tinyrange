@@ -1290,6 +1290,8 @@ def main(ctx):
     if ctx.experimental != "":
         kernel_cmdline.append("tinyrange.experimental={}".format(ctx.experimental))
 
+    kernel_cmdline.append("tinyrange.interaction={}".format(ctx.interaction))
+
     # Add a random number generator using virtio-rng
     args += [
         "-device",

@@ -42,9 +42,10 @@ def main():
     set_env("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
     set_env("HOME", "/root")
 
-    if True:
-        run_ssh_server(ssh_connect)
-    elif "ssh_command" in args:
-        run(*args["ssh_command"])
+    if get_env("TINYRANGE_INTERACTION") != "ssh":
+        if "ssh_command" in args:
+            exec(*args["ssh_command"])
+        else:
+            exec("/bin/login", "-pf", "root")
     else:
-        run("/bin/login", "-pf", "root")
+        run_ssh_server(ssh_connect)

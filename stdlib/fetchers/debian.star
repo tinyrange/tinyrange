@@ -307,7 +307,11 @@ def build_debian_install_layer(ctx, directives):
                 "",
             ])
 
-    ret[".pkg/scripts.json"] = json.encode(preinst + postinst)
+    ret[".pkg/scripts.json"] = json.encode(preinst + postinst + [{
+        "kind": "execute",
+        "exec": "/bin/bash",
+        "args": ["-c", "echo root:root | chpasswd"],
+    }])
     ret["var/lib/dpkg/status"] = file(status)
 
     return ctx.archive(ret)

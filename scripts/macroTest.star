@@ -29,3 +29,17 @@ def uv(default):
             output = "/init/changed.archive",
         )),
     ])
+
+def nix(default):
+    "#macro builder,default"
+    return directive.list([
+        directive.archive(define.build_vm(
+            [
+                default.with_packages([query("curl")]),
+                directive.run_command(
+                    "curl -sSf -L https://install.lix.systems/lix | sh -s -- install linux --no-confirm --init none",
+                ),
+            ],
+            output = "/init/changed.archive",
+        )),
+    ])

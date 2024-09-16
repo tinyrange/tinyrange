@@ -853,17 +853,12 @@ func initMain() error {
 		args starlark.Tuple,
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
-		var (
-			filename string
-		)
-
-		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-			"filename", &filename,
-		); err != nil {
-			return starlark.None, err
+		cmdArgs, err := ToStringList(args)
+		if err != nil {
+			return nil, err
 		}
 
-		if err := unix.Exec(filename, []string{filename}, os.Environ()); err != nil {
+		if err := unix.Exec(cmdArgs[0], cmdArgs, os.Environ()); err != nil {
 			return starlark.None, err
 		}
 
@@ -925,6 +920,12 @@ func initMain() error {
 				if err := common.SetExperimental(strings.Split(flags, ",")); err != nil {
 					return starlark.None, err
 				}
+			} else if strings.HasPrefix(arg, "tinyrange.interaction=") {
+				interaction := strings.TrimPrefix(arg, "tinyrange.interaction=")
+
+				if err := os.Setenv("TINYRANGE_INTERACTION", interaction); err != nil {
+					return starlark.None, err
+				}
 			}
 		}
 
@@ -954,6 +955,25 @@ func initMain() error {
 		}
 
 		return starlark.None, nil
+	})
+
+	globals["get_env"] = starlark.NewBuiltin("get_env", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			key string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"key", &key,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.String(os.Getenv(key)), nil
 	})
 
 	globals["json"] = starlarkjson.Module

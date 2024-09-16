@@ -18,6 +18,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	shelltranslater "github.com/tinyrange/tinyrange/pkg/shellTranslater"
+	"golang.org/x/sys/unix"
 )
 
 type Builder struct {
@@ -590,6 +591,10 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 		if err := common.RunCommand(cmd); err != nil {
 			return err
 		}
+	}
+
+	if cfg.ExecInit != "" {
+		return unix.Exec(cfg.ExecInit, []string{cfg.ExecInit}, os.Environ())
 	}
 
 	if cfg.OutputFilename == "/init/changed.archive" {

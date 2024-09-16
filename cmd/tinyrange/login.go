@@ -64,6 +64,7 @@ type loginConfig struct {
 	Macros       []string `json:"macros,omitempty" yaml:"macros,omitempty"`
 	Environment  []string `json:"environment,omitempty" yaml:"environment,omitempty"`
 	NoScripts    bool     `json:"no_scripts,omitempty" yaml:"no_scripts,omitempty"`
+	Init         string   `json:"init,omitempty" yaml:"init,omitempty"`
 
 	// private configs that have to be set on the command line.
 	cpuCores          int
@@ -241,7 +242,7 @@ func (config *loginConfig) run() error {
 		return nil
 	}
 
-	if len(config.Commands) == 0 {
+	if len(config.Commands) == 0 && config.Init == "" {
 		directives = append(directives, common.DirectiveRunCommand{Command: "interactive"})
 	} else {
 		for _, cmd := range config.Commands {
@@ -269,13 +270,19 @@ func (config *loginConfig) run() error {
 
 	directives = append([]common.Directive{planDirective}, directives...)
 
+	interaction := "ssh"
+
+	if config.Init != "" {
+		interaction = "init," + config.Init
+	}
+
 	def := builder.NewBuildVmDefinition(
 		directives,
 		nil, nil,
 		config.Output,
 		config.cpuCores, config.memorySize, arch,
 		config.storageSize,
-		"ssh", config.debug,
+		interaction, config.debug,
 	)
 
 	if config.Output != "" {
@@ -309,7 +316,7 @@ func (config *loginConfig) run() error {
 			return err
 		}
 
-		if currentConfig.hash {
+		if config.hash {
 			slog.Info("wrote output", "filename", path.Base(config.Output), "hash", defHash)
 		}
 
@@ -394,6 +401,7 @@ func init() {
 	// public flags (saved to config)
 	loginCmd.PersistentFlags().StringVarP(&currentConfig.Builder, "builder", "b", DEFAuLT_BUILDER, "The container builder used to construct the virtual machine.")
 	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Commands, "exec", "E", []string{}, "Run a different command rather than dropping into a shell.")
+	loginCmd.PersistentFlags().StringVar(&currentConfig.Init, "init", "", "Replace the init system with a different command.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.NoScripts, "no-scripts", false, "Disable script execution.")
 	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Files, "file", "f", []string{}, "Specify local files/URLs to be copied into the virtual machine. URLs will be downloaded to the build directory first.")
 	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Archives, "archive", "a", []string{}, "Specify archives to be copied into the virtual machine. A copy will be made in the build directory.")
