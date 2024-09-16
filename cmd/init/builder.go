@@ -3,15 +3,20 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	shelltranslater "github.com/tinyrange/tinyrange/pkg/shellTranslater"
 )
 
@@ -414,15 +419,143 @@ func (builder *Builder) uploadChangedArchive(hostAddress string, changeTrackerFi
 		return err
 	}
 
-	for _, file := range changedFiles {
-		if file == changeTrackerFilename {
-			continue // ignore my own file.
+	errors := make(chan error)
+	done := make(chan bool)
+	wg := sync.WaitGroup{}
+
+	pipeOut, pipeIn := io.Pipe()
+
+	wg.Add(1)
+	go func() {
+		defer close(errors)
+		defer wg.Done()
+
+		url := fmt.Sprintf("http://%s/upload_output", hostAddress)
+
+		resp, err := http.Post(url, "application/binary", pipeOut)
+		if err != nil {
+			errors <- err
+			return
+		}
+		defer resp.Body.Close()
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer pipeIn.Close()
+		defer wg.Done()
+
+		ark := filesystem.NewArchiveWriter(pipeIn)
+
+		var writeFile func(filename string) error
+
+		writeFile = func(filename string) error {
+			info, err := os.Lstat(filename)
+			if err != nil {
+				return err
+			}
+
+			sys := info.Sys().(*syscall.Stat_t)
+
+			switch info.Mode().Type() {
+			case 0: // regular file
+				contents, err := os.Open(filename)
+				if err != nil {
+					return err
+				}
+				defer contents.Close()
+
+				if err := ark.WriteEntry(&filesystem.CacheEntry{
+					CTypeflag: filesystem.TypeRegular,
+					CName:     filename,
+					CSize:     info.Size(),
+					CMode:     int64(info.Mode()),
+					CUid:      int(sys.Uid),
+					CGid:      int(sys.Gid),
+					CModTime:  info.ModTime().UnixMicro(),
+				}, contents); err != nil {
+					return err
+				}
+
+				return nil
+			case fs.ModeDir:
+				if err := ark.WriteEntry(&filesystem.CacheEntry{
+					CTypeflag: filesystem.TypeDirectory,
+					CName:     filename,
+					CSize:     0,
+					CMode:     int64(info.Mode()),
+					CUid:      int(sys.Uid),
+					CGid:      int(sys.Gid),
+					CModTime:  info.ModTime().UnixMicro(),
+				}, nil); err != nil {
+					return err
+				}
+
+				ents, err := os.ReadDir(filename)
+				if err != nil {
+					return err
+				}
+
+				for _, ent := range ents {
+					child := filepath.Join(filename, ent.Name())
+
+					if err := writeFile(child); err != nil {
+						return err
+					}
+				}
+
+				return nil
+			case fs.ModeSymlink:
+				linkName, err := os.Readlink(filename)
+				if err != nil {
+					return err
+				}
+
+				if err := ark.WriteEntry(&filesystem.CacheEntry{
+					CTypeflag: filesystem.TypeSymlink,
+					CName:     filename,
+					CLinkname: linkName,
+					CSize:     0,
+					CMode:     int64(info.Mode()),
+					CUid:      int(sys.Uid),
+					CGid:      int(sys.Gid),
+					CModTime:  info.ModTime().UnixMicro(),
+				}, nil); err != nil {
+					return err
+				}
+
+				return nil
+			default:
+				return fmt.Errorf("unknown file type: %s", info.Mode())
+			}
 		}
 
-		slog.Info("changed", "filename", file)
-	}
+		for _, file := range changedFiles {
+			if file == changeTrackerFilename {
+				continue
+			}
 
-	return nil
+			if err := writeFile(file); err != nil {
+				errors <- err
+				return
+			}
+		}
+	}()
+
+	go func() {
+		wg.Wait()
+
+		done <- true
+	}()
+
+	for {
+		select {
+		case err := <-errors:
+			return err
+		case <-done:
+			return nil
+		}
+	}
 }
 
 func builderRunScripts(filename string, translateShell bool) error {

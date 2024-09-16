@@ -234,12 +234,14 @@ func (w *ArchiveWriter) WriteEntry(ent *CacheEntry, r io.Reader) error {
 
 	w.offset += int64(childN)
 
-	childN64, err := io.CopyN(w.w, r, ent.CSize)
-	if err != nil {
-		return err
-	}
+	if r != nil {
+		childN64, err := io.CopyN(w.w, r, ent.CSize)
+		if err != nil {
+			return err
+		}
 
-	w.offset += childN64
+		w.offset += childN64
+	}
 
 	return nil
 }
