@@ -9,7 +9,7 @@ require (
 	github.com/blakesmith/ar v0.0.0-20190502131153-809d4375e1fb
 	github.com/cavaliergopher/cpio v1.0.1
 	github.com/cavaliergopher/rpm v1.2.0
-	github.com/creack/pty v1.1.21
+	github.com/creack/pty v1.1.23
 	github.com/fatih/color v1.17.0
 	github.com/google/gopacket v1.1.19
 	github.com/google/uuid v1.6.0
