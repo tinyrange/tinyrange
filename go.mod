@@ -20,7 +20,7 @@ require (
 	github.com/klauspost/compress v1.17.9
 	github.com/lmittmann/tint v1.0.5
 	github.com/mattn/go-isatty v0.0.20
-	github.com/miekg/dns v1.1.61
+	github.com/miekg/dns v1.1.62
 	github.com/schollz/progressbar/v3 v3.15.0
 	github.com/spf13/cobra v1.8.1
 	github.com/tinyrange/vm v0.0.0-20240616031946-b46d8ccc03db
