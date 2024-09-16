@@ -21,7 +21,7 @@ require (
 	github.com/lmittmann/tint v1.0.5
 	github.com/mattn/go-isatty v0.0.20
 	github.com/miekg/dns v1.1.61
-	github.com/schollz/progressbar/v3 v3.14.4
+	github.com/schollz/progressbar/v3 v3.15.0
 	github.com/spf13/cobra v1.8.1
 	github.com/tinyrange/vm v0.0.0-20240616031946-b46d8ccc03db
 	github.com/wader/readline v0.0.0-20230307172220-bcb7158e7448
