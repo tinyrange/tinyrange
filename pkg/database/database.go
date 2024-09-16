@@ -1,6 +1,9 @@
 package database
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -771,6 +774,65 @@ func (db *PackageDatabase) GetAllHashes() ([]string, error) {
 	}
 
 	return ret, nil
+}
+
+func (db *PackageDatabase) Inspect(def common.BuildDefinition, out io.Writer) error {
+	defBytes, err := db.defDb.MarshalDefinition(def)
+	if err != nil {
+		return err
+	}
+
+	buf := new(bytes.Buffer)
+
+	if err := json.Indent(buf, defBytes, "", "  "); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(out, "definition JSON:\n%s\n\n", buf.String())
+
+	hash, err := db.HashDefinition(def)
+	if err != nil {
+		return err
+	}
+
+	filename, err := db.FilenameFromHash(hash, ".bin")
+	if err != nil {
+		return err
+	}
+
+	_, err = os.Stat(filename)
+	if errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintf(out, "built definition does not exist at: %s\n", filename)
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	// assume it's an archive.
+	fmt.Fprintf(out, "archive entries:\n")
+
+	ark, err := filesystem.ReadArchiveFromFile(filesystem.NewLocalFile(filename, nil))
+	if err != nil {
+		return err
+	}
+
+	ents, err := ark.Entries()
+	if err != nil {
+		return err
+	}
+
+	for _, ent := range ents {
+		switch ent.Typeflag() {
+		case filesystem.TypeDirectory:
+			fmt.Fprintf(out, "D %04d:%04d % 10d %s %s\n", ent.Uid(), ent.Gid(), ent.Size(), ent.ModTime(), ent.Name())
+		case filesystem.TypeRegular:
+			fmt.Fprintf(out, "R %04d:%04d % 10d %s %s\n", ent.Uid(), ent.Gid(), ent.Size(), ent.ModTime(), ent.Name())
+		case filesystem.TypeSymlink:
+			fmt.Fprintf(out, "S %04d:%04d % 10d %s %s -> %s\n", ent.Uid(), ent.Gid(), ent.Size(), ent.Name(), ent.ModTime(), ent.Linkname())
+		}
+	}
+
+	return nil
 }
 
 func (db *PackageDatabase) LoadBuiltinBuilders() error {

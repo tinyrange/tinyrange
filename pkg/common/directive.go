@@ -11,6 +11,7 @@ import (
 
 func init() {
 	hash.RegisterType(DirectiveRunCommand{})
+	hash.RegisterType(DirectiveEnvironment{})
 }
 
 type Directive interface {

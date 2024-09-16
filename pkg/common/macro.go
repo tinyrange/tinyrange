@@ -83,11 +83,8 @@ var (
 )
 
 func parseMacroArgument(desc string, args []string) (StarlarkMacroArgument, []string, error) {
-	tokens := strings.Split(desc, ":")
-	name := tokens[0]
-	typ := tokens[1]
-
-	_ = name
+	tokens := strings.Split(desc, ",")
+	typ := tokens[0]
 
 	switch typ {
 	case "string":

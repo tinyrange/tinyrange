@@ -74,6 +74,7 @@ type loginConfig struct {
 	runRoot           string
 	runContainer      bool
 	experimentalFlags []string
+	hash              bool
 }
 
 func (config *loginConfig) run() error {
@@ -267,6 +268,12 @@ func (config *loginConfig) run() error {
 	if config.Output != "" {
 		ctx := db.NewBuildContext(def)
 
+		defHash, err := db.HashDefinition(def)
+		if err != nil {
+			slog.Error("fatal", "err", err)
+			os.Exit(1)
+		}
+
 		f, err := db.Build(ctx, def, common.BuildOptions{})
 		if err != nil {
 			slog.Error("fatal", "err", err)
@@ -287,6 +294,10 @@ func (config *loginConfig) run() error {
 
 		if _, err := io.Copy(out, fh); err != nil {
 			return err
+		}
+
+		if currentConfig.hash {
+			slog.Info("wrote output", "filename", path.Base(config.Output), "hash", defHash)
 		}
 
 		return nil
@@ -417,6 +428,7 @@ func init() {
 	loginCmd.PersistentFlags().IntVar(&currentConfig.storageSize, "storage", 1024, "The amount of storage to allocate in the virtual machine in megabytes.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.debug, "debug", false, "Redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.writeRoot, "write-root", "", "Write the root filesystem as a .tar.gz archive.")
+	loginCmd.PersistentFlags().BoolVar(&currentConfig.hash, "hash", false, "print the hash of the definition generated after the machine has exited.")
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.experimentalFlags, "experimental", []string{}, "Add experimental flags.")
 	if runtime.GOOS == "linux" {
 		if os.Getuid() == 0 {
