@@ -27,9 +27,20 @@ var buildCmd = &cobra.Command{
 			return err
 		}
 
-		def, err := db.GetDefinitionByShorthand(args[0])
+		macroCtx := db.NewMacroContext()
+
+		macro, err := db.GetMacroByShorthand(macroCtx, args[0])
 		if err != nil {
 			return err
+		}
+
+		def, err := macro.Call(macroCtx)
+		if err != nil {
+			return err
+		}
+
+		if def == nil {
+			return nil
 		}
 
 		f, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{

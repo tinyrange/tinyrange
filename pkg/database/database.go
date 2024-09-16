@@ -24,6 +24,19 @@ import (
 	"go.starlark.net/syntax"
 )
 
+type macroContext struct {
+	db *PackageDatabase
+}
+
+// Thread implements common.MacroContext.
+func (m *macroContext) Thread() *starlark.Thread {
+	return m.db.NewThread("__macro__")
+}
+
+var (
+	_ common.MacroContext = &macroContext{}
+)
+
 type outputFile struct {
 	f io.Writer
 }
@@ -632,10 +645,28 @@ func (db *PackageDatabase) GetContainerBuilder(ctx common.BuildContext, name str
 	return builder, nil
 }
 
-func (db *PackageDatabase) GetDefinitionByDeclaredName(name string) (common.BuildDefinition, error) {
-	filename, _, ok := strings.Cut(name, ":")
+func (db *PackageDatabase) GetMacro(ctx common.MacroContext, name string, args []string) (common.Macro, error) {
+	def, ok := db.defs[name]
+	if !ok {
+		return nil, fmt.Errorf("name %s not found", name)
+	}
+
+	f, ok := def.(*starlark.Function)
+	if !ok {
+		return nil, fmt.Errorf("%s is not a valid macro (has type %s)", name, def.Type())
+	}
+
+	return common.ParseMacro(ctx, f, args)
+}
+
+func (db *PackageDatabase) GetMacroByDeclaredName(ctx common.MacroContext, name string) (common.Macro, error) {
+	filename, macroName, ok := strings.Cut(name, ":")
 	if !ok {
 		return nil, fmt.Errorf("misformed declared name: %s", name)
+	}
+
+	if !strings.HasSuffix(filename, ".star") {
+		filename = filename + ".star"
 	}
 
 	if _, ok := db.loadedFiles[filename]; !ok {
@@ -644,17 +675,25 @@ func (db *PackageDatabase) GetDefinitionByDeclaredName(name string) (common.Buil
 		}
 	}
 
-	def, ok := db.defs[name]
-	if !ok {
-		return nil, fmt.Errorf("name %s not found", name)
-	}
+	if strings.Contains(macroName, ",") {
+		macroTokens := strings.Split(macroName, ",")
 
-	buildDef, ok := def.(common.BuildDefinition)
-	if !ok {
-		return nil, fmt.Errorf("value %s is not a BuildDefinition", def.Type())
-	}
+		name = fmt.Sprintf("%s:%s", filename, macroTokens[0])
 
-	return buildDef, nil
+		return db.GetMacro(ctx, name, macroTokens[1:])
+	} else {
+		def, ok := db.defs[fmt.Sprintf("%s:%s", filename, name)]
+		if !ok {
+			return nil, fmt.Errorf("name %s not found", name)
+		}
+
+		buildDef, ok := def.(common.BuildDefinition)
+		if !ok {
+			return nil, fmt.Errorf("value %s is not a BuildDefinition", def.Type())
+		}
+
+		return common.DefinitionMacro{BuildDefinition: buildDef}, nil
+	}
 }
 
 func (db *PackageDatabase) missDefinitionCache(hash string) (io.ReadCloser, error) {
@@ -699,12 +738,21 @@ func (db *PackageDatabase) GetDefinitionByHash(hash string) (common.BuildDefinit
 	}
 }
 
-func (db *PackageDatabase) GetDefinitionByShorthand(shorthand string) (common.BuildDefinition, error) {
+func (db *PackageDatabase) GetMacroByShorthand(ctx common.MacroContext, shorthand string) (common.Macro, error) {
 	if len(shorthand) == 64 && !strings.Contains(shorthand, ":") {
-		return db.GetDefinitionByHash(shorthand)
+		def, err := db.GetDefinitionByHash(shorthand)
+		if err != nil {
+			return nil, err
+		}
+
+		return common.DefinitionMacro{BuildDefinition: def}, nil
 	}
 
-	return db.GetDefinitionByDeclaredName(shorthand)
+	return db.GetMacroByDeclaredName(ctx, shorthand)
+}
+
+func (db *PackageDatabase) NewMacroContext() common.MacroContext {
+	return &macroContext{db: db}
 }
 
 func (db *PackageDatabase) GetAllHashes() ([]string, error) {
