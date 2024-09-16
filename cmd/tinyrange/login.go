@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"runtime/pprof"
 	"strings"
 
@@ -71,8 +70,6 @@ type loginConfig struct {
 	storageSize       int
 	debug             bool
 	writeRoot         string
-	runRoot           string
-	runContainer      bool
 	experimentalFlags []string
 	hash              bool
 }
@@ -91,6 +88,7 @@ func (config *loginConfig) run() error {
 		for name, builder := range db.ContainerBuilders {
 			fmt.Printf(" - %s - %s\n", name, builder.DisplayName)
 		}
+
 		return nil
 	}
 
@@ -227,33 +225,8 @@ func (config *loginConfig) run() error {
 		}
 	}
 
-	dir = append(dir, common.DirectiveEnvironment{Variables: config.Environment})
-
-	if config.runRoot != "" {
-		dir = append(dir, common.DirectiveBuiltin{Name: "init", GuestFilename: "init"})
-
-		def := builder.NewBuildFsDefinition(dir, "fragments")
-
-		ctx := db.NewBuildContext(def)
-
-		f, err := db.Build(ctx, def, common.BuildOptions{})
-		if err != nil {
-			slog.Error("fatal", "err", err)
-			os.Exit(1)
-		}
-
-		frags, err := builder.ParseFragmentsBuilderResult(f)
-		if err != nil {
-			slog.Error("fatal", "err", err)
-			os.Exit(1)
-		}
-
-		if err := frags.ExtractAndRunScripts(config.runRoot); err != nil {
-			slog.Error("fatal", "err", err)
-			os.Exit(1)
-		}
-
-		return nil
+	if len(config.Environment) > 0 {
+		dir = append(dir, common.DirectiveEnvironment{Variables: config.Environment})
 	}
 
 	def := builder.NewBuildVmDefinition(
@@ -344,40 +317,6 @@ var loginCmd = &cobra.Command{
 			}
 		}
 
-		if currentConfig.runContainer {
-			if os.Getuid() == 0 {
-				tmpDir, err := os.MkdirTemp(os.TempDir(), "tinyrange_rootfs_*")
-				if err != nil {
-					return err
-				}
-				defer os.RemoveAll(tmpDir)
-
-				if err := common.MountTempFilesystem(tmpDir); err != nil {
-					return err
-				}
-
-				currentConfig.runRoot = tmpDir
-			} else {
-				return common.EscalateToRoot()
-			}
-		}
-
-		if currentConfig.runRoot != "" {
-			uid := os.Getuid()
-			if uid != 0 {
-				return fmt.Errorf("run-root needs to run as UID 0")
-			}
-
-			ents, err := os.ReadDir(currentConfig.runRoot)
-			if err != nil {
-				return err
-			}
-
-			if len(ents) != 0 {
-				return fmt.Errorf("run-root target is not empty")
-			}
-		}
-
 		currentConfig.Packages = args
 
 		if loginLoadConfig != "" {
@@ -430,12 +369,5 @@ func init() {
 	loginCmd.PersistentFlags().StringVar(&currentConfig.writeRoot, "write-root", "", "Write the root filesystem as a .tar.gz archive.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.hash, "hash", false, "print the hash of the definition generated after the machine has exited.")
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.experimentalFlags, "experimental", []string{}, "Add experimental flags.")
-	if runtime.GOOS == "linux" {
-		if os.Getuid() == 0 {
-			// Needs to be running as root.
-			loginCmd.PersistentFlags().StringVar(&currentConfig.runRoot, "run-root", "", "Extract the generated root filesystem to a given path and run init scripts. This should only be run in a fresh container filesystem.")
-		}
-		loginCmd.PersistentFlags().BoolVar(&currentConfig.runContainer, "run-container", false, "use a user namespace to escalate to root privileges so run-root can be used. Also creates a tmpfs for run-root.")
-	}
 	rootCmd.AddCommand(loginCmd)
 }
