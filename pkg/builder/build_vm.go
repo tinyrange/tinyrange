@@ -28,7 +28,7 @@ var OFFICIAL_KERNEL_URL_X86_64 = "https://github.com/tinyrange/linux_build/relea
 var OFFICIAL_KERNEL_URL_AARCH64 = "https://github.com/tinyrange/linux_build/releases/download/linux_arm64_6.6.7/vmlinux_arm64"
 
 func runTinyRange(exe string, configFilename string) (*exec.Cmd, error) {
-	cmd := exec.Command(exe, "run", configFilename)
+	cmd := exec.Command(exe, "run-vm", configFilename)
 
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -206,13 +206,24 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		vmCfg.InitFilesystemFilename = initRamFsFilename
 	}
 
+	initJson := struct {
+		SSHCommand []string `json:"ssh_command"`
+	}{
+		SSHCommand: []string{"/init", "-run-config", "/builder.json"},
+	}
+
+	initJsonBytes, err := json.Marshal(&initJson)
+	if err != nil {
+		return nil, err
+	}
+
 	// Hard code the init file and script.
 	vmCfg.RootFsFragments = append(vmCfg.RootFsFragments,
 		config.Fragment{Builtin: &config.BuiltinFragment{Name: "init", Architecture: arch, GuestFilename: "/init"}},
 		config.Fragment{Builtin: &config.BuiltinFragment{Name: "init.star", GuestFilename: "/init.star"}},
 		// Use init.json to set the builder entry point as the SSH command.
 		config.Fragment{FileContents: &config.FileContentsFragment{
-			Contents:      []byte("{\"ssh_command\": [\"/init\", \"-run-config\", \"/builder.json\"]}"),
+			Contents:      initJsonBytes,
 			GuestFilename: "/init.json",
 		}},
 	)

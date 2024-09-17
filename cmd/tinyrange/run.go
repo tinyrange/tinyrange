@@ -20,11 +20,11 @@ var (
 )
 
 var runCmd = &cobra.Command{
-	Use:   "run <config>",
+	Use:   "run-vm <config>",
 	Short: "Run a virtual machine from a configuration file",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
-			return fmt.Errorf("run requires a configuration file")
+			return fmt.Errorf("run-vm requires a configuration file")
 		}
 
 		if rootCpuProfile != "" {
@@ -45,7 +45,6 @@ var runCmd = &cobra.Command{
 		var cfg config.TinyRangeConfig
 
 		if strings.HasSuffix(f.Name(), ".json") {
-
 			dec := json.NewDecoder(f)
 
 			if err := dec.Decode(&cfg); err != nil {
