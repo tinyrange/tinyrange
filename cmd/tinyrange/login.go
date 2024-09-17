@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"archive/tar"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,6 +16,8 @@ import (
 	"runtime/pprof"
 	"strings"
 
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/client"
 	"github.com/spf13/cobra"
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -72,6 +77,7 @@ type loginConfig struct {
 	storageSize       int
 	debug             bool
 	writeRoot         string
+	writeDocker       string
 	experimentalFlags []string
 	hash              bool
 }
@@ -210,6 +216,43 @@ func (config *loginConfig) run() error {
 		}
 	}
 
+	if config.writeRoot != "" && config.writeDocker != "" {
+		if len(config.Commands) == 0 && config.Init == "" {
+			directives = append(directives, common.DirectiveRunCommand{Command: "interactive"})
+		} else {
+			for _, cmd := range config.Commands {
+				directives = append(directives, common.DirectiveRunCommand{Command: cmd})
+			}
+		}
+	}
+
+	if len(config.Environment) > 0 {
+		directives = append(directives, common.DirectiveEnvironment{Variables: config.Environment})
+	}
+
+	interaction := "ssh"
+
+	directives, err = common.FlattenDirectives(directives, common.SpecialDirectiveHandlers{
+		AddPackage: func(dir common.DirectiveAddPackage) error {
+			planDirective, err = planDirective.AddPackage(dir.Name)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		},
+		Interaction: func(dir common.DirectiveInteraction) error {
+			interaction = dir.Interaction
+
+			return nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	directives = append([]common.Directive{planDirective}, directives...)
+
 	if config.writeRoot != "" {
 		directives = append(directives, common.DirectiveBuiltin{Name: "init", Architecture: string(arch), GuestFilename: "init"})
 
@@ -240,42 +283,115 @@ func (config *loginConfig) run() error {
 		}
 
 		return nil
-	}
+	} else if config.writeDocker != "" {
+		ctx := context.Background()
 
-	if len(config.Commands) == 0 && config.Init == "" {
-		directives = append(directives, common.DirectiveRunCommand{Command: "interactive"})
-	} else {
-		for _, cmd := range config.Commands {
-			directives = append(directives, common.DirectiveRunCommand{Command: cmd})
+		apiClient, err := client.NewClientWithOpts(client.FromEnv)
+		if err != nil {
+			slog.Error("fatal", "err", err)
+			os.Exit(1)
 		}
-	}
+		defer apiClient.Close()
 
-	if len(config.Environment) > 0 {
-		directives = append(directives, common.DirectiveEnvironment{Variables: config.Environment})
-	}
+		directives = append(directives, common.DirectiveBuiltin{Name: "init", Architecture: string(arch), GuestFilename: "init"})
 
-	interaction := "ssh"
+		def := builder.NewBuildFsDefinition(directives, "tar")
 
-	directives, err = common.FlattenDirectives(directives, common.SpecialDirectiveHandlers{
-		AddPackage: func(dir common.DirectiveAddPackage) error {
-			planDirective, err = planDirective.AddPackage(dir.Name)
+		buildCtx := db.NewBuildContext(def)
+
+		f, err := db.Build(buildCtx, def, common.BuildOptions{})
+		if err != nil {
+			slog.Error("fatal", "err", err)
+			os.Exit(1)
+		}
+
+		buildCtxOut, buildCtxIn := io.Pipe()
+
+		go func() {
+			err := func() error {
+				defer buildCtxIn.Close()
+
+				w := tar.NewWriter(buildCtxIn)
+
+				fh, err := f.Open()
+				if err != nil {
+					return err
+				}
+				defer fh.Close()
+
+				info, err := f.Stat()
+				if err != nil {
+					return err
+				}
+
+				if err := w.WriteHeader(&tar.Header{
+					Typeflag: tar.TypeReg,
+					Name:     "rootfs.tar",
+					Size:     info.Size(),
+					Mode:     int64(info.Mode()),
+				}); err != nil {
+					return err
+				}
+
+				if _, err := io.Copy(w, fh); err != nil {
+					return err
+				}
+
+				dockerfile := "FROM scratch\nADD rootfs.tar .\nRUN /init -run-basic-scripts /init.commands.json"
+
+				if err := w.WriteHeader(&tar.Header{
+					Typeflag: tar.TypeReg,
+					Name:     "Dockerfile",
+					Size:     int64(len(dockerfile)),
+					Mode:     int64(os.ModePerm),
+				}); err != nil {
+					return err
+				}
+
+				if _, err := w.Write([]byte(dockerfile)); err != nil {
+					return err
+				}
+
+				return nil
+			}()
 			if err != nil {
+				slog.Error("fatal", "err", err)
+				os.Exit(1)
+			}
+		}()
+
+		resp, err := apiClient.ImageBuild(ctx, buildCtxOut, types.ImageBuildOptions{
+			Tags:       []string{config.writeDocker},
+			Dockerfile: "Dockerfile",
+		})
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		dec := json.NewDecoder(resp.Body)
+
+		var item map[string]any
+
+		for {
+			item = nil
+
+			err := dec.Decode(&item)
+			if err == io.EOF {
+				break
+			} else if err != nil {
 				return err
 			}
 
-			return nil
-		},
-		Interaction: func(dir common.DirectiveInteraction) error {
-			interaction = dir.Interaction
+			if stream, ok := item["stream"]; ok {
+				fmt.Fprintf(os.Stdout, "%s", stream)
+			} else {
+				slog.Info("", "item", item)
+			}
+		}
 
-			return nil
-		},
-	})
-	if err != nil {
-		return err
+		return nil
 	}
-
-	directives = append([]common.Directive{planDirective}, directives...)
 
 	if config.Init != "" {
 		interaction = "init," + config.Init
@@ -421,6 +537,7 @@ func init() {
 	loginCmd.PersistentFlags().IntVar(&currentConfig.storageSize, "storage", 1024, "The amount of storage to allocate in the virtual machine in megabytes.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.debug, "debug", false, "Redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.writeRoot, "write-root", "", "Write the root filesystem as a .tar.gz archive.")
+	loginCmd.PersistentFlags().StringVar(&currentConfig.writeDocker, "write-docker", "", "Write the root filesystem to a docker tag on the local docker daemon.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.hash, "hash", false, "print the hash of the definition generated after the machine has exited.")
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.experimentalFlags, "experimental", []string{}, "Add experimental flags.")
 	rootCmd.AddCommand(loginCmd)

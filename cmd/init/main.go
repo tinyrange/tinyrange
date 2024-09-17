@@ -375,6 +375,7 @@ var (
 	runSshServer     = flag.String("ssh", "", "run a ssh server that executes the argument on connection")
 	downloadFile     = flag.String("download", "", "download a file from the specified server")
 	runScripts       = flag.String("run-scripts", "", "run a JSON file of scripts")
+	runBasicScripts  = flag.String("run-basic-scripts", "", "run a JSON file containing an array of commands")
 	translateScripts = flag.Bool("translate-scripts", false, "translate scripts into starlark before running them")
 	runConfig        = flag.String("run-config", "", "run a JSON file with a given builder config")
 	dumpFs           = flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
@@ -425,6 +426,27 @@ func initMain() error {
 			*translateScripts = true
 		}
 		return builderRunScripts(*runScripts, *translateScripts)
+	}
+
+	if *runBasicScripts != "" {
+		bytes, err := os.ReadFile(*runBasicScripts)
+		if err != nil {
+			return err
+		}
+
+		var scripts []string
+
+		if err := json.Unmarshal(bytes, &scripts); err != nil {
+			return err
+		}
+
+		for _, script := range scripts {
+			if err := common.RunCommand(script); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	}
 
 	if *runConfig != "" {

@@ -2,8 +2,10 @@ package builder
 
 import (
 	"archive/tar"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -110,6 +112,8 @@ func (i *tarBuilderResult) WriteResult(w io.Writer) error {
 	writer := tar.NewWriter(w)
 
 	written := make(map[string]bool)
+
+	var commands []string
 
 	for _, frag := range i.frags {
 		if frag.Archive != nil {
@@ -218,9 +222,32 @@ func (i *tarBuilderResult) WriteResult(w io.Writer) error {
 			if _, err := writer.Write(buf); err != nil {
 				return err
 			}
+		} else if frag.RunCommand != nil {
+			commands = append(commands, frag.RunCommand.Command)
 		} else {
 			return fmt.Errorf("unhandled fragment type: %+v", frag)
 		}
+	}
+
+	commandsJson, err := json.Marshal(commands)
+	if err != nil {
+		return err
+	}
+
+	if err := writer.WriteHeader(&tar.Header{
+		Typeflag: tar.TypeReg,
+		Name:     "/init.commands.json",
+		Size:     int64(len(commandsJson)),
+		Mode:     int64(os.ModePerm),
+		Uid:      0,
+		Gid:      0,
+		ModTime:  time.UnixMilli(0),
+	}); err != nil {
+		return err
+	}
+
+	if _, err := writer.Write(commandsJson); err != nil {
+		return err
 	}
 
 	return nil
@@ -268,13 +295,7 @@ func (def *BuildFsDefinition) Build(ctx common.BuildContext) (common.BuildResult
 			return nil, err
 		}
 
-		for _, frag := range frags {
-			if frag.RunCommand != nil && def.params.Kind != "fragments" {
-				return nil, fmt.Errorf("build_fs does not support running commands")
-			} else {
-				def.frags = append(def.frags, frag)
-			}
-		}
+		def.frags = append(def.frags, frags...)
 	}
 
 	if def.params.Kind == "initramfs" {
