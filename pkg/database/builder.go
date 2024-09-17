@@ -11,15 +11,16 @@ import (
 )
 
 type ContainerBuilder struct {
-	Name             string
-	Architecture     config.CPUArchitecture
-	DisplayName      string
-	Filename         string
-	PlanCallbackName string
-	DefaultPackages  []common.PackageQuery
-	Packages         *PackageCollection
-	Metadata         starlark.Value
-	db               common.PackageDatabase
+	Name                 string
+	Architecture         config.CPUArchitecture
+	DisplayName          string
+	Filename             string
+	PlanCallbackName     string
+	DefaultPackages      []common.PackageQuery
+	Packages             *PackageCollection
+	Metadata             starlark.Value
+	SplitDefaultPackages bool
+	db                   common.PackageDatabase
 
 	loaded bool
 }
@@ -147,7 +148,7 @@ func (builder *ContainerBuilder) Plan(
 
 	if tags.Contains("defaults") {
 		for _, pkg := range builder.DefaultPackages {
-			if err := plan.Add(ctx, builder, pkg); err != nil {
+			if err := plan.Add(ctx, builder, pkg, builder.SplitDefaultPackages); err != nil {
 				return nil, err
 			}
 		}
@@ -155,7 +156,7 @@ func (builder *ContainerBuilder) Plan(
 
 	// Add all the requested packages.
 	for _, pkg := range packages {
-		if err := plan.Add(ctx, builder, pkg); err != nil {
+		if err := plan.Add(ctx, builder, pkg, false); err != nil {
 			return nil, err
 		}
 	}
@@ -246,15 +247,17 @@ func NewContainerBuilder(
 	defaultPackages []common.PackageQuery,
 	packages *PackageCollection,
 	metadata starlark.Value,
+	splitDefaultPackages bool,
 ) (*ContainerBuilder, error) {
 	return &ContainerBuilder{
-		Name:             name,
-		Architecture:     arch,
-		DisplayName:      displayName,
-		Filename:         filename,
-		PlanCallbackName: planCallbackName,
-		DefaultPackages:  defaultPackages,
-		Packages:         packages,
-		Metadata:         metadata,
+		Name:                 name,
+		Architecture:         arch,
+		DisplayName:          displayName,
+		Filename:             filename,
+		PlanCallbackName:     planCallbackName,
+		DefaultPackages:      defaultPackages,
+		Packages:             packages,
+		Metadata:             metadata,
+		SplitDefaultPackages: splitDefaultPackages,
 	}, nil
 }

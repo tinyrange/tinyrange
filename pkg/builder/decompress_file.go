@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"compress/gzip"
 	"fmt"
 	"io"
 	"strings"
@@ -83,6 +84,13 @@ func (def *DecompressFileBuildDefinition) Build(ctx common.BuildContext) (common
 	switch def.params.Kind {
 	case ".xz":
 		reader, err := xz.NewReader(fh, xz.DefaultDictMax)
+		if err != nil {
+			return nil, err
+		}
+
+		def.r = io.NopCloser(reader)
+	case ".gz":
+		reader, err := gzip.NewReader(fh)
 		if err != nil {
 			return nil, err
 		}

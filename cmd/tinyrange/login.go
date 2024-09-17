@@ -216,7 +216,7 @@ func (config *loginConfig) run() error {
 		}
 	}
 
-	if config.writeRoot != "" && config.writeDocker != "" {
+	if config.writeRoot == "" && config.writeDocker == "" {
 		if len(config.Commands) == 0 && config.Init == "" {
 			directives = append(directives, common.DirectiveRunCommand{Command: "interactive"})
 		} else {
@@ -391,71 +391,71 @@ func (config *loginConfig) run() error {
 		}
 
 		return nil
-	}
-
-	if config.Init != "" {
-		interaction = "init," + config.Init
-	}
-
-	def := builder.NewBuildVmDefinition(
-		directives,
-		nil, nil,
-		config.Output,
-		config.cpuCores, config.memorySize, arch,
-		config.storageSize,
-		interaction, config.debug,
-	)
-
-	if config.Output != "" {
-		ctx := db.NewBuildContext(def)
-
-		defHash, err := db.HashDefinition(def)
-		if err != nil {
-			slog.Error("fatal", "err", err)
-			os.Exit(1)
-		}
-
-		f, err := db.Build(ctx, def, common.BuildOptions{})
-		if err != nil {
-			slog.Error("fatal", "err", err)
-			os.Exit(1)
-		}
-
-		fh, err := f.Open()
-		if err != nil {
-			return err
-		}
-		defer fh.Close()
-
-		out, err := os.Create(path.Base(config.Output))
-		if err != nil {
-			return err
-		}
-		defer out.Close()
-
-		if _, err := io.Copy(out, fh); err != nil {
-			return err
-		}
-
-		if config.hash {
-			slog.Info("wrote output", "filename", path.Base(config.Output), "hash", defHash)
-		}
-
-		return nil
 	} else {
-		ctx := db.NewBuildContext(def)
-		if _, err := db.Build(ctx, def, common.BuildOptions{
-			AlwaysRebuild: true,
-		}); err != nil {
-			slog.Error("fatal", "err", err)
-			os.Exit(1)
+		if config.Init != "" {
+			interaction = "init," + config.Init
 		}
 
-		// if common.IsVerbose() {
-		// 	ctx.DisplayTree()
-		// }
+		def := builder.NewBuildVmDefinition(
+			directives,
+			nil, nil,
+			config.Output,
+			config.cpuCores, config.memorySize, arch,
+			config.storageSize,
+			interaction, config.debug,
+		)
 
-		return nil
+		if config.Output != "" {
+			ctx := db.NewBuildContext(def)
+
+			defHash, err := db.HashDefinition(def)
+			if err != nil {
+				slog.Error("fatal", "err", err)
+				os.Exit(1)
+			}
+
+			f, err := db.Build(ctx, def, common.BuildOptions{})
+			if err != nil {
+				slog.Error("fatal", "err", err)
+				os.Exit(1)
+			}
+
+			fh, err := f.Open()
+			if err != nil {
+				return err
+			}
+			defer fh.Close()
+
+			out, err := os.Create(path.Base(config.Output))
+			if err != nil {
+				return err
+			}
+			defer out.Close()
+
+			if _, err := io.Copy(out, fh); err != nil {
+				return err
+			}
+
+			if config.hash {
+				slog.Info("wrote output", "filename", path.Base(config.Output), "hash", defHash)
+			}
+
+			return nil
+		} else {
+			ctx := db.NewBuildContext(def)
+			if _, err := db.Build(ctx, def, common.BuildOptions{
+				AlwaysRebuild: true,
+			}); err != nil {
+				slog.Error("fatal", "err", err)
+				os.Exit(1)
+			}
+
+			// if common.IsVerbose() {
+			// 	ctx.DisplayTree()
+			// }
+
+			return nil
+		}
 	}
 }
 

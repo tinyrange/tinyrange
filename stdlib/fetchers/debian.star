@@ -1,5 +1,6 @@
 db.add_mirror("ubuntu", ["https://mirror.aarnet.edu.au/pub/ubuntu/archive"])
 db.add_mirror("neurodebian", ["https://mirror.aarnet.edu.au/pub/neurodebian"])
+db.add_mirror("kali", ["https://mirror.aarnet.edu.au/pub/kali/kali"])
 
 LATEST_UBUNTU_VERSION = "jammy"
 
@@ -45,10 +46,10 @@ def parse_debian_release(ctx, release_file, mirror):
         contents = ctx.build(
             define.decompress_file(
                 define.fetch_http(
-                    "{}/{}/binary-amd64/Packages.xz".format(base, component),
+                    "{}/{}/binary-amd64/Packages.gz".format(base, component),
                     expire_time = duration("8h"),
                 ),
-                ".xz",
+                ".gz",
             ),
         )
 
@@ -248,7 +249,7 @@ def make_ubuntu_repos(only_latest = True, include_neurodebian = False):
 
     return ubuntu_repos
 
-def build_debian_install_layer(ctx, directives):
+def build_debian_install_layer(ctx, base_directives, directives):
     ret = filesystem()
 
     ret["usr/local/.keep"] = file("hello")
@@ -257,6 +258,24 @@ def build_debian_install_layer(ctx, directives):
     postinst = []
 
     status = ""
+
+    for pkg in base_directives:
+        if type(pkg) == "common.DirectiveRunCommand":
+            continue
+
+        fs = filesystem(pkg.read_archive())
+
+        for ent in fs[".pkg"]:
+            status += "\n".join([
+                "Package: {}".format(ent.base),
+                "Status: install ok installed",
+                "Maintainer: TinyRange <tinyrange@tinyrange.dev>",
+                "Version: {}".format(ent["version"].read()),
+                "Architecture: amd64",
+                "Description: TinyRange stub package",
+                "",
+                "",
+            ])
 
     for pkg in directives:
         if type(pkg) == "common.DirectiveRunCommand":
@@ -318,9 +337,21 @@ def build_debian_install_layer(ctx, directives):
 
 def build_debian_directives(builder, plan):
     if plan.tags.contains("level3"):
-        directives = [
+        directives = plan.base_directives + [
+            directive.archive(define.build_vm(
+                plan.base_directives + [
+                    define.build(
+                        build_debian_install_layer,
+                        [],
+                        plan.base_directives,
+                    ),
+                    directive.run_command("/init -run-scripts /.pkg/scripts.json"),
+                ],
+                output = "/init/changed.archive",
+            )),
             define.build(
                 build_debian_install_layer,
+                plan.base_directives,
                 plan.directives,
             ),
         ] + plan.directives
@@ -351,6 +382,7 @@ def make_ubuntu_builders(repos):
                 query("*", tags = ["priority:important"]),
                 query("*", tags = ["priority:standard"]),
             ],
+            split_default_packages = True,
             # This builder is scoped to just the packages in this repo.
             packages = repos[version],
             metadata = {
@@ -366,3 +398,30 @@ if __name__ == "__main__":
         include_neurodebian = True,
     )):
         db.add_container_builder(builder)
+
+    # db.add_container_builder(define.container_builder(
+    #     name = "kali",
+    #     arch = "x86_64",
+    #     display_name = "Kali Linux",
+    #     plan_callback = build_debian_directives,
+    #     # Packages with a high priority need to be installed.
+    #     default_packages = [
+    #         query("*", tags = ["priority:required"]),
+    #         query("*", tags = ["priority:important"]),
+    #         query("*", tags = ["priority:standard"]),
+    #     ],
+    #     split_default_packages = True,
+    #     # This builder is scoped to just the packages in this repo.
+    #     packages = define.package_collection(
+    #         parse_debian_package,
+    #         get_debian_installer,
+    #         define.build(
+    #             parse_debian_release,
+    #             define.fetch_http(
+    #                 url = "mirror://kali/dists/kali-rolling/Release",
+    #                 expire_time = duration("8h"),
+    #             ),
+    #             "mirror://kali/",
+    #         ),
+    #     ),
+    # ))

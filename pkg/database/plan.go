@@ -74,10 +74,11 @@ type installInfo struct {
 }
 
 type InstallationPlan struct {
-	trees      []*installationTree
-	directives []common.Directive
-	tags       common.TagList
-	options    common.PlanOptions
+	trees          []*installationTree
+	directives     []common.Directive
+	baseDirectives []common.Directive
+	tags           common.TagList
+	options        common.PlanOptions
 
 	installedNames map[string]*installInfo // map of names and versions.
 }
@@ -128,6 +129,18 @@ func (plan *InstallationPlan) Attr(name string) (starlark.Value, error) {
 		}
 
 		return starlark.NewList(elems), nil
+	} else if name == "base_directives" {
+		var elems []starlark.Value
+
+		for _, directive := range plan.baseDirectives {
+			if val, ok := directive.(starlark.Value); ok {
+				elems = append(elems, val)
+			} else {
+				elems = append(elems, &common.StarDirective{Directive: directive})
+			}
+		}
+
+		return starlark.NewList(elems), nil
 	} else if name == "tags" {
 		return plan.tags, nil
 	} else {
@@ -137,7 +150,7 @@ func (plan *InstallationPlan) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (plan *InstallationPlan) AttrNames() []string {
-	return []string{"packages", "directives", "tags"}
+	return []string{"packages", "directives", "base_directives", "tags"}
 }
 
 func (plan *InstallationPlan) checkName(name common.PackageName) (*common.Package, bool) {
@@ -166,6 +179,7 @@ func (plan *InstallationPlan) addInternal(
 	query common.PackageQuery,
 	options []installOption,
 	option installOption,
+	isDefault bool,
 ) (ret *installationTree) {
 	ret = &installationTree{Query: query}
 
@@ -200,7 +214,7 @@ func (plan *InstallationPlan) addInternal(
 
 	// For each dependency add it.
 	for _, depend := range option.install.Dependencies {
-		child := plan.add(ctx, builder, depend)
+		child := plan.add(ctx, builder, depend, isDefault)
 		if child.Error != nil && !plan.options.Debug {
 			ret.Error = fmt.Errorf("error adding dependency for package %s: %s", query, child.Error)
 			return
@@ -211,12 +225,16 @@ func (plan *InstallationPlan) addInternal(
 
 	// Add the directives for the installer.
 	// This is after the dependencies are added first.
-	plan.directives = append(plan.directives, option.install.Directives...)
+	if isDefault {
+		plan.baseDirectives = append(plan.baseDirectives, option.install.Directives...)
+	} else {
+		plan.directives = append(plan.directives, option.install.Directives...)
+	}
 
 	return
 }
 
-func (plan *InstallationPlan) add(ctx common.BuildContext, builder *ContainerBuilder, query common.PackageQuery) (ret *installationTree) {
+func (plan *InstallationPlan) add(ctx common.BuildContext, builder *ContainerBuilder, query common.PackageQuery, isDefault bool) (ret *installationTree) {
 	ret = &installationTree{Query: query}
 
 	// Query for any packages matching the query.
@@ -258,7 +276,7 @@ func (plan *InstallationPlan) add(ctx common.BuildContext, builder *ContainerBui
 
 	if len(query.Tags) > 0 {
 		for _, option := range options {
-			child := plan.addInternal(ctx, builder, query, options, option)
+			child := plan.addInternal(ctx, builder, query, options, option, isDefault)
 			if child.Error != nil && !plan.options.Debug {
 				ret.Error = fmt.Errorf("error adding dependency for query %s: %s", query, child.Error)
 				return
@@ -270,12 +288,12 @@ func (plan *InstallationPlan) add(ctx common.BuildContext, builder *ContainerBui
 		return ret
 	} else {
 		option := options[0]
-		return plan.addInternal(ctx, builder, query, options, option)
+		return plan.addInternal(ctx, builder, query, options, option, isDefault)
 	}
 }
 
-func (plan *InstallationPlan) Add(ctx common.BuildContext, builder *ContainerBuilder, query common.PackageQuery) error {
-	tree := plan.add(ctx, builder, query)
+func (plan *InstallationPlan) Add(ctx common.BuildContext, builder *ContainerBuilder, query common.PackageQuery, isDefault bool) error {
+	tree := plan.add(ctx, builder, query, isDefault)
 	if tree.Error != nil && !plan.options.Debug {
 		return tree.Error
 	}

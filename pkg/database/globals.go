@@ -175,13 +175,14 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
 				var (
-					name                string
-					archString          string
-					displayName         string
-					planCallback        starlark.Callable
-					packages            *PackageCollection
-					defaultPackagesList starlark.Iterable
-					metadata            starlark.Value
+					name                 string
+					archString           string
+					displayName          string
+					planCallback         starlark.Callable
+					packages             *PackageCollection
+					defaultPackagesList  starlark.Iterable
+					metadata             starlark.Value
+					splitDefaultPackages bool
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
@@ -192,6 +193,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					"default_packages?", &defaultPackagesList,
 					"display_name?", &displayName,
 					"metadata?", &metadata,
+					"split_default_packages?", &splitDefaultPackages,
 				); err != nil {
 					return starlark.None, err
 				}
@@ -221,7 +223,14 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				filename := thread.CallFrame(1).Pos.Filename()
 
-				return NewContainerBuilder(name, arch, displayName, filename, planCallback.Name(), defaultPackages, packages, metadata)
+				return NewContainerBuilder(
+					name, arch, displayName,
+					filename, planCallback.Name(),
+					defaultPackages,
+					packages,
+					metadata,
+					splitDefaultPackages,
+				)
 			}),
 			"fetch_http": starlark.NewBuiltin("define.fetch_http", func(
 				thread *starlark.Thread,
