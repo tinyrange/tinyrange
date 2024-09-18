@@ -66,6 +66,9 @@ def split_debian_name(q):
     if " | " in q:
         options = q.split(" | ")
 
+        if options[0] == "usrmerge":
+            options = options[1:]
+
     # TODO(joshua): Support multiple options in the query.
     q = options[0]
 
@@ -399,29 +402,32 @@ if __name__ == "__main__":
     )):
         db.add_container_builder(builder)
 
-    # db.add_container_builder(define.container_builder(
-    #     name = "kali",
-    #     arch = "x86_64",
-    #     display_name = "Kali Linux",
-    #     plan_callback = build_debian_directives,
-    #     # Packages with a high priority need to be installed.
-    #     default_packages = [
-    #         query("*", tags = ["priority:required"]),
-    #         query("*", tags = ["priority:important"]),
-    #         query("*", tags = ["priority:standard"]),
-    #     ],
-    #     split_default_packages = True,
-    #     # This builder is scoped to just the packages in this repo.
-    #     packages = define.package_collection(
-    #         parse_debian_package,
-    #         get_debian_installer,
-    #         define.build(
-    #             parse_debian_release,
-    #             define.fetch_http(
-    #                 url = "mirror://kali/dists/kali-rolling/Release",
-    #                 expire_time = duration("8h"),
-    #             ),
-    #             "mirror://kali/",
-    #         ),
-    #     ),
-    # ))
+    db.add_container_builder(define.container_builder(
+        name = "kali",
+        arch = "x86_64",
+        display_name = "Kali Linux",
+        plan_callback = build_debian_directives,
+        # Packages with a high priority need to be installed.
+        default_packages = [
+            query("usr-is-merged"),
+            query("*", tags = ["priority:required"]),
+            query("*", tags = ["priority:important"]),
+            query("*", tags = ["priority:standard"]),
+            query("kali-linux-core"),
+            query("build-essential"),
+        ],
+        split_default_packages = True,
+        # This builder is scoped to just the packages in this repo.
+        packages = define.package_collection(
+            parse_debian_package,
+            get_debian_installer,
+            define.build(
+                parse_debian_release,
+                define.fetch_http(
+                    url = "mirror://kali/dists/kali-rolling/Release",
+                    expire_time = duration("8h"),
+                ),
+                "mirror://kali/",
+            ),
+        ),
+    ))
