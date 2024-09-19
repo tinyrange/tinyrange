@@ -56,7 +56,7 @@ func (def *FileDefinition) Create(params hash.SerializableValue) hash.Definition
 }
 
 // AsFragments implements common.Directive.
-func (def *FileDefinition) AsFragments(ctx common.BuildContext) ([]config.Fragment, error) {
+func (def *FileDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(def)
 	if err != nil {
 		return nil, err

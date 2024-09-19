@@ -59,7 +59,7 @@ func (def *BuildEmulatorDefinition) Build(ctx common.BuildContext) (common.Build
 
 	// Launch child builds for each directive.
 	for _, directive := range def.params.Directives {
-		frags, err := directive.AsFragments(ctx)
+		frags, err := directive.AsFragments(ctx, common.SpecialDirectiveHandlers{})
 		if err != nil {
 			return nil, err
 		}

@@ -228,7 +228,7 @@ func (def *FetchOciImageDefinition) Create(params hash.SerializableValue) hash.D
 }
 
 // AsFragments implements common.Directive.
-func (def *FetchOciImageDefinition) AsFragments(ctx common.BuildContext) ([]config.Fragment, error) {
+func (def *FetchOciImageDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(def)
 	if err != nil {
 		return nil, err

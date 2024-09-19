@@ -418,7 +418,7 @@ func (def *ReadArchiveBuildDefinition) Create(params hash.SerializableValue) has
 }
 
 // AsFragments implements common.Directive.
-func (r *ReadArchiveBuildDefinition) AsFragments(ctx common.BuildContext) ([]config.Fragment, error) {
+func (r *ReadArchiveBuildDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(r)
 	if err != nil {
 		return nil, err

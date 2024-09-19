@@ -18,7 +18,7 @@ func init() {
 type Directive interface {
 	DependencyNode
 	Tag() string
-	AsFragments(ctx BuildContext) ([]config.Fragment, error)
+	AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error)
 }
 
 type DirectiveRunCommand struct {
@@ -34,7 +34,7 @@ func (d DirectiveRunCommand) Dependencies(ctx BuildContext) ([]DependencyNode, e
 func (d DirectiveRunCommand) SerializableType() string { return "DirectiveRunCommand" }
 
 // AsFragments implements Directive.
-func (d DirectiveRunCommand) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+func (d DirectiveRunCommand) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	return []config.Fragment{
 		{RunCommand: &config.RunCommandFragment{Command: string(d.Command)}},
 	}, nil
@@ -61,7 +61,7 @@ func (d DirectiveAddFile) Dependencies(ctx BuildContext) ([]DependencyNode, erro
 func (d DirectiveAddFile) SerializableType() string { return "DirectiveAddFile" }
 
 // AsFragments implements Directive.
-func (d DirectiveAddFile) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+func (d DirectiveAddFile) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	if d.Definition != nil {
 		res, err := ctx.BuildChild(d.Definition)
 		if err != nil {
@@ -110,7 +110,7 @@ type DirectiveLocalFile struct {
 }
 
 // AsFragments implements Directive.
-func (d DirectiveLocalFile) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+func (d DirectiveLocalFile) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	return []config.Fragment{
 		{LocalFile: &config.LocalFileFragment{
 			HostFilename:  d.HostFilename,
@@ -146,7 +146,7 @@ func (d DirectiveArchive) Dependencies(ctx BuildContext) ([]DependencyNode, erro
 func (d DirectiveArchive) SerializableType() string { return "DirectiveArchive" }
 
 // AsFragments implements Directive.
-func (d DirectiveArchive) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+func (d DirectiveArchive) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(d.Definition)
 	if err != nil {
 		return nil, err
@@ -186,7 +186,7 @@ func (d DirectiveExportPort) Dependencies(ctx BuildContext) ([]DependencyNode, e
 func (d DirectiveExportPort) SerializableType() string { return "DirectiveExportPort" }
 
 // AsFragments implements Directive.
-func (d DirectiveExportPort) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+func (d DirectiveExportPort) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	return []config.Fragment{
 		{ExportPort: &config.ExportPortFragment{Name: d.Name, Port: d.Port}},
 	}, nil
@@ -210,7 +210,7 @@ func (d DirectiveEnvironment) Dependencies(ctx BuildContext) ([]DependencyNode, 
 func (d DirectiveEnvironment) SerializableType() string { return "DirectiveEnvironment" }
 
 // AsFragments implements Directive.
-func (d DirectiveEnvironment) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+func (d DirectiveEnvironment) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	return []config.Fragment{
 		{Environment: &config.EnvironmentFragment{Variables: d.Variables}},
 	}, nil
@@ -236,7 +236,7 @@ func (d DirectiveBuiltin) Dependencies(ctx BuildContext) ([]DependencyNode, erro
 func (d DirectiveBuiltin) SerializableType() string { return "DirectiveFragment" }
 
 // AsFragments implements Directive.
-func (d DirectiveBuiltin) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+func (d DirectiveBuiltin) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	return []config.Fragment{
 		{Builtin: &config.BuiltinFragment{Name: d.Name, Architecture: config.CPUArchitecture(d.Architecture), GuestFilename: d.GuestFilename}},
 	}, nil
@@ -252,11 +252,11 @@ type DirectiveList struct {
 }
 
 // AsFragments implements Directive.
-func (d DirectiveList) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+func (d DirectiveList) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	var ret []config.Fragment
 
 	for _, dir := range d.Items {
-		frags, err := dir.AsFragments(ctx)
+		frags, err := dir.AsFragments(ctx, special)
 		if err != nil {
 			return nil, err
 		}
@@ -297,7 +297,7 @@ type DirectiveAddPackage struct {
 }
 
 // AsFragments implements Directive.
-func (d DirectiveAddPackage) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+func (d DirectiveAddPackage) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	return nil, fmt.Errorf("DirectiveAddPackage cannot be represented as a fragment")
 }
 
@@ -319,7 +319,7 @@ type DirectiveInteraction struct {
 }
 
 // AsFragments implements Directive.
-func (d DirectiveInteraction) AsFragments(ctx BuildContext) ([]config.Fragment, error) {
+func (d DirectiveInteraction) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	return nil, fmt.Errorf("DirectiveInteraction cannot be represented as a fragment")
 }
 
@@ -334,6 +334,37 @@ func (d DirectiveInteraction) SerializableType() string { return "DirectiveInter
 // Tag implements Directive.
 func (d DirectiveInteraction) Tag() string {
 	return fmt.Sprintf("DirectiveInteraction_%s", d.Interaction)
+}
+
+type DirectiveDefaultInteractive struct {
+	InteractiveCommand []string
+}
+
+// AsFragments implements Directive.
+func (d DirectiveDefaultInteractive) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
+	if special.DefaultInteractive != nil {
+		if err := special.DefaultInteractive(d); err != nil {
+			return nil, nil
+		}
+
+		return nil, nil
+	}
+	return []config.Fragment{
+		{DefaultInteractive: &config.DefaultInteractiveFragment{Args: d.InteractiveCommand}},
+	}, nil
+}
+
+// Dependencies implements Directive.
+func (d DirectiveDefaultInteractive) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return nil, nil
+}
+
+// SerializableType implements Directive.
+func (d DirectiveDefaultInteractive) SerializableType() string { return "DirectiveDefaultInteractive" }
+
+// Tag implements Directive.
+func (d DirectiveDefaultInteractive) Tag() string {
+	return fmt.Sprintf("DirectiveDefaultInteractive_%+v", d.InteractiveCommand)
 }
 
 var (
@@ -363,10 +394,11 @@ var (
 )
 
 type SpecialDirectiveHandlers struct {
-	RunCommand  func(dir DirectiveRunCommand) error
-	AddPackage  func(dir DirectiveAddPackage) error
-	Environment func(dir DirectiveEnvironment) error
-	Interaction func(dir DirectiveInteraction) error
+	RunCommand         func(dir DirectiveRunCommand) error
+	AddPackage         func(dir DirectiveAddPackage) error
+	Environment        func(dir DirectiveEnvironment) error
+	Interaction        func(dir DirectiveInteraction) error
+	DefaultInteractive func(dir DirectiveDefaultInteractive) error
 }
 
 func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers) ([]Directive, error) {
@@ -404,6 +436,14 @@ func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers
 			case DirectiveInteraction:
 				if handlers.Interaction != nil {
 					if err := handlers.Interaction(dir); err != nil {
+						return err
+					}
+				} else {
+					ret = append(ret, dir)
+				}
+			case DirectiveDefaultInteractive:
+				if handlers.DefaultInteractive != nil {
+					if err := handlers.DefaultInteractive(dir); err != nil {
 						return err
 					}
 				} else {

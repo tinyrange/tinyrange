@@ -160,6 +160,12 @@ func ExecCommand(args []string, environment map[string]string) error {
 	return nil
 }
 
+var DefaultInteractiveCommand = []string{"/bin/sh"}
+
+func SetDefaultInteractive(args []string) {
+	DefaultInteractiveCommand = args
+}
+
 func RunCommand(script string) error {
 	if strings.HasPrefix(script, "/init") {
 		tokens, err := shlex.Split(script, true)
@@ -169,7 +175,7 @@ func RunCommand(script string) error {
 
 		return ExecCommand(tokens, nil)
 	} else if script == "interactive" {
-		return ExecCommand([]string{"/bin/login", "-pf", "root"}, nil)
+		return ExecCommand(DefaultInteractiveCommand, nil)
 	} else {
 		return ExecCommand([]string{"/bin/sh", "-lc", script}, nil)
 	}

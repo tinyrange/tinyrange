@@ -566,6 +566,10 @@ func builderRunScripts(filename string, translateShell bool) error {
 }
 
 func builderRunWithConfig(cfg config.BuilderConfig) error {
+	if len(cfg.DefaultInteractive) > 0 {
+		common.SetDefaultInteractive(cfg.DefaultInteractive)
+	}
+
 	builder := &Builder{}
 
 	for _, env := range cfg.Environment {

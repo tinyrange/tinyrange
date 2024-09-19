@@ -80,15 +80,20 @@ type ExportPortFragment struct {
 	Port int    `json:"port" yaml:"port"`
 }
 
+type DefaultInteractiveFragment struct {
+	Args []string `json:"args"`
+}
+
 type Fragment struct {
 	// Not supported by TinyRange directly.
-	RunCommand   *RunCommandFragment   `json:"run_command,omitempty" yaml:"run_command"`
-	Environment  *EnvironmentFragment  `json:"environment,omitempty" yaml:"environment"`
-	LocalFile    *LocalFileFragment    `json:"local_file,omitempty" yaml:"local_file"`
-	FileContents *FileContentsFragment `json:"file_contents,omitempty" yaml:"file_contents"`
-	Archive      *ArchiveFragment      `json:"archive,omitempty" yaml:"archive"`
-	Builtin      *BuiltinFragment      `json:"builtin,omitempty" yaml:"builtin"`
-	ExportPort   *ExportPortFragment   `json:"export_port,omitempty" yaml:"export_port"`
+	RunCommand         *RunCommandFragment         `json:"run_command,omitempty" yaml:"run_command"`
+	DefaultInteractive *DefaultInteractiveFragment `json:"interactive,omitempty" yaml:"interactive"`
+	Environment        *EnvironmentFragment        `json:"environment,omitempty" yaml:"environment"`
+	LocalFile          *LocalFileFragment          `json:"local_file,omitempty" yaml:"local_file"`
+	FileContents       *FileContentsFragment       `json:"file_contents,omitempty" yaml:"file_contents"`
+	Archive            *ArchiveFragment            `json:"archive,omitempty" yaml:"archive"`
+	Builtin            *BuiltinFragment            `json:"builtin,omitempty" yaml:"builtin"`
+	ExportPort         *ExportPortFragment         `json:"export_port,omitempty" yaml:"export_port"`
 }
 
 // A config file that can be passed to TinyRange to configure and execute a virtual machine.

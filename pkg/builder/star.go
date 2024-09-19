@@ -136,7 +136,7 @@ func (def *StarBuildDefinition) Create(params hash.SerializableValue) hash.Defin
 }
 
 // AsFragments implements common.Directive.
-func (def *StarBuildDefinition) AsFragments(ctx common.BuildContext) ([]config.Fragment, error) {
+func (def *StarBuildDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(def)
 	if err != nil {
 		return nil, err

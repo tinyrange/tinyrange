@@ -363,6 +363,7 @@ def build_debian_directives(builder, plan):
             return directives
 
         return directives + [
+            directive.default_interactive("/bin/login -f root"),
             directive.run_command("/init -run-scripts /.pkg/scripts.json"),
         ]
     else:

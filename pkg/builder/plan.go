@@ -38,7 +38,7 @@ func (def *PlanDefinition) Create(params hash.SerializableValue) hash.Definition
 }
 
 // AsFragments implements common.Directive.
-func (def *PlanDefinition) AsFragments(ctx common.BuildContext) ([]config.Fragment, error) {
+func (def *PlanDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(def)
 	if err != nil {
 		return nil, err
@@ -48,7 +48,23 @@ func (def *PlanDefinition) AsFragments(ctx common.BuildContext) ([]config.Fragme
 		return nil, err
 	}
 
-	return def.Fragments, nil
+	var ret []config.Fragment
+
+	for _, frag := range def.Fragments {
+		if interactive := frag.DefaultInteractive; interactive != nil {
+			if special.DefaultInteractive != nil {
+				if err := special.DefaultInteractive(
+					common.DirectiveDefaultInteractive{InteractiveCommand: interactive.Args},
+				); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			ret = append(ret, frag)
+		}
+	}
+
+	return ret, nil
 }
 
 // ToStarlark implements common.BuildDefinition.
@@ -271,7 +287,7 @@ func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, e
 	}
 
 	for _, dir := range plan.Directives() {
-		frags, err := dir.AsFragments(ctx)
+		frags, err := dir.AsFragments(ctx, common.SpecialDirectiveHandlers{})
 		if err != nil {
 			return nil, err
 		}

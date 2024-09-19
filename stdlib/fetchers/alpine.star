@@ -296,6 +296,8 @@ def build_alpine_directives(builder, plan):
         if not plan.tags.contains("noScripts"):
             directives.append(directive.run_command("/init -run-scripts /.pkg/scripts.json"))
 
+        directives.append(directive.default_interactive("/bin/login -pf root"))
+
         return directives
     elif plan.tags.contains("download"):
         return plan.directives

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/anmitsu/go-shlex"
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -766,6 +767,29 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 
 				return &common.StarDirective{Directive: common.DirectiveInteraction{
 					Interaction: name,
+				}}, nil
+			}),
+			"default_interactive": starlark.NewBuiltin("directive.default_interactive", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var name string
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"name", &name,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				cmdArgs, err := shlex.Split(name, true)
+				if err != nil {
+					return starlark.None, err
+				}
+
+				return &common.StarDirective{Directive: common.DirectiveDefaultInteractive{
+					InteractiveCommand: cmdArgs,
 				}}, nil
 			}),
 			"list": starlark.NewBuiltin("directive.list", func(

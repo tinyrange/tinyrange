@@ -230,7 +230,13 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 
 	// Launch child builds for each directive.
 	for _, directive := range def.params.Directives {
-		frags, err := directive.AsFragments(ctx)
+		frags, err := directive.AsFragments(ctx, common.SpecialDirectiveHandlers{
+			DefaultInteractive: func(dir common.DirectiveDefaultInteractive) error {
+				builderCfg.DefaultInteractive = dir.InteractiveCommand
+
+				return nil
+			},
+		})
 		if err != nil {
 			return nil, err
 		}
