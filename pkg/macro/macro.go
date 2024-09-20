@@ -109,6 +109,9 @@ func parseMacroArgument(desc string, args []string) (StarlarkMacroArgument, []st
 
 	switch typ {
 	case "string":
+		if len(args) == 0 {
+			return nil, nil, fmt.Errorf("macro expects more arguments")
+		}
 		val := args[0]
 
 		return StarlarkMacroString(val), args[1:], nil

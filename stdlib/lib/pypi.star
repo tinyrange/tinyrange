@@ -64,6 +64,45 @@ def parse_filename(filename):
 alpha_version = re.compile(".*a[0-9]+")
 rc_version = re.compile(".*rc[0-9]+")
 
+def version_compare(a, b):
+    if a == b:
+        return 0
+
+    a_tokens = a.split(".")
+    b_tokens = b.split(".")
+
+    for a, b in zip(a_tokens, b_tokens):
+        if "rc" in a or "rc" in b:
+            a1, _, a2 = a.partition("rc")
+            b1, _, b2 = b.partition("rc")
+
+            a_int = parse_int(a1)
+            b_int = parse_int(b1)
+            if a_int < b_int:
+                return 1
+            elif a_int > b_int:
+                if a2 != "":
+                    if b2 != "":
+                        a2_int = parse_int(a2)
+                        b2_int = parse_int(b2)
+                        if a2_int > b2_int:
+                            return -1
+                        elif a2_int < b2_int:
+                            return 1
+                    else:
+                        return 1
+
+                return -1
+        else:
+            a_int = parse_int(a)
+            b_int = parse_int(b)
+            if a_int < b_int:
+                return 1
+            elif a_int > b_int:
+                return -1
+
+    return 0
+
 def satisfies_version(pkg_version, target_version):
     target_version = target_version.strip()
 
@@ -90,16 +129,16 @@ def satisfies_version(pkg_version, target_version):
 
     if target_version.startswith(">="):
         target_version = target_version.removeprefix(">=")
-        return pkg_version >= target_version
+        return version_compare(pkg_version, target_version) <= 0
     elif target_version.startswith(">"):
         target_version = target_version.removeprefix(">")
-        return pkg_version > target_version
+        return version_compare(pkg_version, target_version) < 0
     elif target_version.startswith("<"):
         target_version = target_version.removeprefix("<")
-        return pkg_version < target_version
+        return version_compare(pkg_version, target_version) > 0
     elif target_version.startswith("!="):
         target_version = target_version.removeprefix("!=")
-        return pkg_version != target_version
+        return version_compare(pkg_version, target_version) != 0
     elif target_version.startswith("=="):
         target_version = target_version.removeprefix("==")
         if target_version.endswith("*"):
@@ -142,6 +181,7 @@ def get_python_abi(base):
 import json
 import sys
 import platform
+import sysconfig
 
 lst = [[tag.interpreter, tag.abi, tag.platform] for tag in packaging.tags.sys_tags()]
 
@@ -155,6 +195,7 @@ ret = {
   "platform": sys.platform,
   "platform_system": platform.system(),
   "platform_python_implementation": platform.python_implementation(),
+  "site_packages": sysconfig.get_paths()["purelib"],
 }
 
 for interpreter, abi, platform in lst:
@@ -334,47 +375,9 @@ download_overrides = {
     "surfa@0d83332351083b33c4da221e9d10a63a93ae7f52": "https://github.com/freesurfer/surfa/archive/7ca713d2b0c2c9e4f3471cd14ee5e12a00d3b631.tar.gz",
 }
 
-def version_compare(a, b):
-    if a == b:
-        return 0
-
-    a_tokens = a.split(".")
-    b_tokens = b.split(".")
-
-    for a, b in zip(a_tokens, b_tokens):
-        if "rc" in a or "rc" in b:
-            a1, _, a2 = a.partition("rc")
-            b1, _, b2 = b.partition("rc")
-
-            a_int = parse_int(a1)
-            b_int = parse_int(b1)
-            if a_int < b_int:
-                return 1
-            elif a_int > b_int:
-                if a2 != "":
-                    if b2 != "":
-                        a2_int = parse_int(a2)
-                        b2_int = parse_int(b2)
-                        if a2_int > b2_int:
-                            return -1
-                        elif a2_int < b2_int:
-                            return 1
-                    else:
-                        return 1
-
-                return -1
-        else:
-            a_int = parse_int(a)
-            b_int = parse_int(b)
-            if a_int < b_int:
-                return 1
-            elif a_int > b_int:
-                return -1
-
-    return 0
-
 build_packages = [
-    query("build-essential"),
+    # query("build-essential"),
+    query("build-base"),
     query("python3-dev"),
 ]
 
@@ -400,7 +403,7 @@ def _build_sdist(ctx, base, name, version, include_deps, url):
                 "mkdir /out",
                 "cd /source/{}-{}".format(name, version),
                 "pip3 wheel -w /out .",
-                "tar cf /out.tar /out/{}-*.whl".format(name),
+                "tar cf /out.tar /out/{}-*.whl".format(name.replace("-", "_")),
             ])),
         ],
         output = "out.tar",
@@ -577,7 +580,15 @@ def _build_run_fs(ctx, wheel):
         scripts.append({
             "kind": "execute",
             "exec": "/usr/bin/pip",
-            "args": ["install", "--no-deps", "/wheels/" + filename],
+            "args": [
+                "install",
+                "--disable-pip-version-check",  # disable the version check.
+                "--no-compile",  # don't compile bytecode.
+                "-qq",  # quiet output
+                "--no-deps",  # don't install dependencies.
+                "--break-system-packages",  # break already installed system packages.
+                "/wheels/" + filename,
+            ],
         })
 
     ret["wheels/scripts.json"] = file(json.encode(scripts))
@@ -613,7 +624,7 @@ def _build_fs_for_requirements(ctx, base, requirements):
             scripts.append({
                 "kind": "execute",
                 "exec": "/usr/bin/pip",
-                "args": ["install", "--no-deps", "/wheels/" + filename],
+                "args": ["install", "--no-deps", "--break-system-packages", "/wheels/" + filename],
             })
 
     ret["wheels/scripts.json"] = file(json.encode(scripts))
@@ -622,3 +633,16 @@ def _build_fs_for_requirements(ctx, base, requirements):
 
 def build_fs_for_requirements(base, requirements):
     return define.build(_build_fs_for_requirements, base, requirements)
+
+def pypi(default, name, version):
+    "#macro builder,default string string"
+
+    base = default.with_packages([
+        query("py3-pip"),
+    ])
+
+    return directive.list([
+        directive.add_package(query("py3-pip")),
+        build_run_fs(get_wheel(base, name, version)),
+        directive.run_command("/init -run-scripts /wheels/scripts.json"),
+    ])
