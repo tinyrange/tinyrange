@@ -5,7 +5,6 @@ package ext4
 import (
 	"fmt"
 	"io"
-	"io/fs"
 	goFs "io/fs"
 	"log/slog"
 	"math"
@@ -965,17 +964,17 @@ func (i *InodeWrapper) addContents(contents vm.MemoryRegion, symlink bool) error
 	return nil
 }
 
-func (i *InodeWrapper) chmod(mode fs.FileMode) error {
+func (i *InodeWrapper) chmod(mode goFs.FileMode) error {
 	oldMode := i.node.Mode()
 
 	sysPart := oldMode & ^uint16(0777)
 
 	newMode := sysPart | uint16(mode&goFs.ModePerm)
 
-	if mode&fs.ModeSetuid != 0 {
+	if mode&goFs.ModeSetuid != 0 {
 		newMode |= S_ISUID
 	}
-	if mode&fs.ModeSetgid != 0 {
+	if mode&goFs.ModeSetgid != 0 {
 		newMode |= S_ISGID
 	}
 
