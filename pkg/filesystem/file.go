@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/hash"
@@ -18,7 +19,7 @@ func GetLinkName(ent File) (string, error) {
 	case *CacheEntry:
 		return ent.CLinkname, nil
 	case *memoryFile:
-		if ent.kind != TypeSymlink {
+		if ent.kind != TypeSymlink && ent.kind != TypeLink {
 			return "", fs.ErrInvalid
 		}
 		return string(ent.contents), nil
@@ -83,6 +84,8 @@ func NewNopCloserFileHandle(fh BasicFileHandle) FileHandle {
 
 type FileInfo interface {
 	fs.FileInfo
+
+	Kind() FileType
 }
 
 type FileDigest struct {
@@ -149,6 +152,25 @@ type Entry interface {
 	Devminor() int64 // Minor device number (valid for TypeChar or TypeBlock)
 }
 
+type osStat struct {
+	fs.FileInfo
+}
+
+// Kind implements FileInfo.
+func (o *osStat) Kind() FileType {
+	if o.IsDir() {
+		return TypeDirectory
+	} else if o.Mode().Type() == fs.ModeSymlink {
+		return TypeSymlink
+	} else {
+		return TypeRegular
+	}
+}
+
+var (
+	_ FileInfo = &osStat{}
+)
+
 type LocalFile struct {
 	filename string
 	source   hash.SerializableValue
@@ -166,7 +188,12 @@ func (l *LocalFile) Open() (FileHandle, error) {
 
 // Stat implements File.
 func (l *LocalFile) Stat() (FileInfo, error) {
-	return os.Stat(l.filename)
+	s, err := os.Stat(l.filename)
+	if err != nil {
+		return nil, err
+	}
+
+	return &osStat{FileInfo: s}, nil
 }
 
 var (
@@ -175,6 +202,79 @@ var (
 
 func NewLocalFile(filename string, source hash.SerializableValue) File {
 	return &LocalFile{filename: filename, source: source}
+}
+
+type overlayFile struct {
+	File
+
+	kind     FileType
+	size     int64
+	mTime    time.Time
+	mode     fs.FileMode
+	uid      int
+	gid      int
+	contents []byte
+}
+
+func (m *overlayFile) Kind() FileType      { return m.kind }
+func (m *overlayFile) Digest() *FileDigest { return nil }
+func (m *overlayFile) IsDir() bool         { return false }
+func (m *overlayFile) ModTime() time.Time  { return m.mTime }
+func (m *overlayFile) Mode() fs.FileMode   { return m.mode }
+func (m *overlayFile) Name() string        { return "" }
+func (m *overlayFile) Size() int64         { return int64(len(m.contents)) }
+func (m *overlayFile) Sys() any            { return m }
+
+// Chmod implements MutableFile.
+func (m *overlayFile) Chmod(mode fs.FileMode) error {
+	m.mode = mode
+
+	return nil
+}
+
+// Chown implements MutableFile.
+func (m *overlayFile) Chown(uid int, gid int) error {
+	m.uid = uid
+	m.gid = gid
+
+	return nil
+}
+
+// Chtimes implements MutableFile.
+func (m *overlayFile) Chtimes(mtime time.Time) error {
+	m.mTime = mtime
+
+	return nil
+}
+
+// Overwrite implements MutableFile.
+func (o *overlayFile) Overwrite(contents []byte) error {
+	return fmt.Errorf("OverlayFiles do not support being overwritten")
+}
+
+// Stat implements MutableFile.
+// Subtle: this method shadows the method (File).Stat of OverlayFile.File.
+func (o *overlayFile) Stat() (FileInfo, error) {
+	return o, nil
+}
+
+var (
+	_ MutableFile = &overlayFile{}
+)
+
+func NewOverlayFile(underlying File) (MutableFile, error) {
+	info, err := underlying.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	return &overlayFile{
+		File:  underlying,
+		mode:  fs.FileMode(0755),
+		mTime: time.Now(),
+		kind:  info.Kind(),
+		size:  info.Size(),
+	}, nil
 }
 
 type ChildSource struct {
@@ -220,40 +320,14 @@ type memoryFile struct {
 	contents []byte
 }
 
-// Digest implements MutableFile.
-func (m *memoryFile) Digest() *FileDigest {
-	return nil
-}
-
-// IsDir implements FileInfo.
-func (m *memoryFile) IsDir() bool {
-	return false
-}
-
-// ModTime implements FileInfo.
-func (m *memoryFile) ModTime() time.Time {
-	return m.mTime
-}
-
-// Mode implements FileInfo.
-func (m *memoryFile) Mode() fs.FileMode {
-	return m.mode
-}
-
-// Name implements FileInfo.
-func (m *memoryFile) Name() string {
-	return ""
-}
-
-// Size implements FileInfo.
-func (m *memoryFile) Size() int64 {
-	return int64(len(m.contents))
-}
-
-// Sys implements FileInfo.
-func (m *memoryFile) Sys() any {
-	return m
-}
+func (m *memoryFile) Kind() FileType      { return m.kind }
+func (m *memoryFile) Digest() *FileDigest { return nil }
+func (m *memoryFile) IsDir() bool         { return false }
+func (m *memoryFile) ModTime() time.Time  { return m.mTime }
+func (m *memoryFile) Mode() fs.FileMode   { return m.mode }
+func (m *memoryFile) Name() string        { return "" }
+func (m *memoryFile) Size() int64         { return int64(len(m.contents)) }
+func (m *memoryFile) Sys() any            { return m }
 
 // Chmod implements MutableFile.
 func (m *memoryFile) Chmod(mode fs.FileMode) error {
@@ -300,6 +374,7 @@ var (
 
 func NewMemoryFile(kind FileType) MutableFile {
 	return &memoryFile{
+		kind:  kind,
 		mode:  fs.FileMode(0755),
 		mTime: time.Now(),
 	}
@@ -311,6 +386,19 @@ func NewSymlink(target string) MutableFile {
 		mode:     fs.FileMode(0755),
 		contents: []byte(target),
 	}
+}
+
+func NewHardLink(target string) (MutableFile, error) {
+	target = strings.TrimPrefix(target, ".")
+	if !strings.HasPrefix(target, "/") {
+		target = "/" + target
+	}
+
+	return &memoryFile{
+		kind:     TypeLink,
+		mode:     fs.FileMode(0755),
+		contents: []byte(target),
+	}, nil
 }
 
 type SimpleEntry struct {

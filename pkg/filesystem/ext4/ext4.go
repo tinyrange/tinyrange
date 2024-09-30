@@ -1490,7 +1490,7 @@ func (fs *Ext4Filesystem) CreateFile(filename string, content vm.MemoryRegion) e
 
 func (fs *Ext4Filesystem) Link(filename string, target string) error {
 	if !strings.HasPrefix(target, "/") {
-		return fmt.Errorf("hard links must use absolute paths")
+		return fmt.Errorf("hard links must use absolute paths: %s", target)
 	}
 
 	node, err := fs.getNode(path.Dir(filename), false, false, true)

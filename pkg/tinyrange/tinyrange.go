@@ -72,6 +72,282 @@ func (*vmBackend) Sync() error {
 	return nil
 }
 
+func fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
+	if localFile := frag.LocalFile; localFile != nil {
+		file := filesystem.NewLocalFile(cfg.Resolve(localFile.HostFilename), nil)
+
+		overlay, err := filesystem.NewOverlayFile(file)
+		if err != nil {
+			return err
+		}
+
+		if localFile.Executable {
+			if err := overlay.Chmod(goFs.FileMode(0755)); err != nil {
+				return err
+			}
+		}
+
+		if err := filesystem.CreateChild(dir, localFile.GuestFilename, overlay); err != nil {
+			return err
+		}
+
+		return nil
+	} else if fileContents := frag.FileContents; fileContents != nil {
+		file := filesystem.NewMemoryFile(filesystem.TypeRegular)
+
+		if err := file.Overwrite(fileContents.Contents); err != nil {
+			return err
+		}
+
+		if fileContents.Executable {
+			if err := file.Chmod(goFs.FileMode(0755)); err != nil {
+				return err
+			}
+		}
+
+		if err := filesystem.CreateChild(dir, fileContents.GuestFilename, file); err != nil {
+			return err
+		}
+
+		return nil
+	} else if builtin := frag.Builtin; builtin != nil {
+		if builtin.Name == "init" {
+			exec, err := initExec.GetInitExecutable(builtin.Architecture)
+			if err != nil {
+				return err
+			}
+
+			file := filesystem.NewMemoryFile(filesystem.TypeRegular)
+
+			if err := file.Overwrite(exec); err != nil {
+				return err
+			}
+
+			if err := file.Chmod(goFs.FileMode(0755)); err != nil {
+				return err
+			}
+
+			if err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
+				return err
+			}
+
+			return nil
+		} else if builtin.Name == "init.star" {
+			file := filesystem.NewMemoryFile(filesystem.TypeRegular)
+
+			if err := file.Overwrite(initExec.INIT_SCRIPT); err != nil {
+				return err
+			}
+
+			if err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
+				return err
+			}
+
+			return nil
+		} else if builtin.Name == "tinyrange" {
+			exe, err := os.Executable()
+			if err != nil {
+				return fmt.Errorf("failed to get executable: %w", err)
+			}
+
+			file := filesystem.NewLocalFile(exe, nil)
+
+			if err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
+				return err
+			}
+
+			return nil
+		} else if builtin.Name == "tinyrange_qemu.star" {
+			local, err := common.GetAdjacentExecutable("tinyrange_qemu.star")
+			if err != nil {
+				return fmt.Errorf("failed to get tinyrange_qemu.star: %w", err)
+			}
+
+			file := filesystem.NewLocalFile(local, nil)
+
+			if err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
+				return err
+			}
+
+			return nil
+		} else {
+			return fmt.Errorf("unknown builtin: %s", builtin.Name)
+		}
+	} else if ark := frag.Archive; ark != nil {
+		f := filesystem.NewLocalFile(cfg.Resolve(ark.HostFilename), nil)
+
+		archive, err := filesystem.ReadArchiveFromFile(f)
+		if err != nil {
+			return fmt.Errorf("failed to read archive: %w", err)
+		}
+
+		entries, err := archive.Entries()
+		if err != nil {
+			return fmt.Errorf("failed to read archive: %w", err)
+		}
+
+		for _, ent := range entries {
+			// TODO(joshua): Why is this not filepath.join?
+			name := ark.Target + "/" + ent.Name()
+
+			var file filesystem.MutableFile
+
+			if name != "/" {
+				if filesystem.Exists(dir, name) {
+					continue
+				}
+
+				dirname := path.Dir(name)
+
+				if !filesystem.Exists(dir, dirname) && path.Clean(name) != dirname {
+					// slog.Info("mkdir", "dirname", dirname)
+					if _, err := filesystem.Mkdir(dir, dirname); err != nil {
+						return err
+					}
+				}
+
+				switch ent.Typeflag() {
+				case filesystem.TypeDirectory:
+					// slog.Info("directory", "name", name)
+					name = strings.TrimSuffix(name, "/")
+
+					file, err = filesystem.Mkdir(dir, name)
+					if err != nil {
+						return err
+					}
+				case filesystem.TypeSymlink:
+					// slog.Info("symlink", "name", name)
+					symlink := filesystem.NewSymlink(ent.Linkname())
+
+					file = symlink
+
+					if err := filesystem.CreateChild(dir, name, symlink); err != nil {
+						return err
+					}
+				case filesystem.TypeLink:
+					// slog.Info("link", "name", name, "target", ent.Linkname())
+					link, err := filesystem.NewHardLink(ent.Linkname())
+					if err != nil {
+						return err
+					}
+
+					file = link
+
+					if err := filesystem.CreateChild(dir, name, link); err != nil {
+						return err
+					}
+				case filesystem.TypeRegular:
+					// slog.Info("reg", "name", name)
+
+					file, err = filesystem.NewOverlayFile(ent)
+					if err != nil {
+						return err
+					}
+
+					if err := filesystem.CreateChild(dir, name, ent); err != nil {
+						return err
+					}
+				default:
+					return fmt.Errorf("unimplemented entry type: %s", ent.Typeflag())
+				}
+			} else {
+				file = dir
+			}
+
+			if err := file.Chown(ent.Uid(), ent.Gid()); err != nil {
+				return fmt.Errorf("failed to chown in guest: %w", err)
+			}
+
+			if err := file.Chmod(goFs.FileMode(ent.Mode())); err != nil {
+				return fmt.Errorf("failed to chmod in guest: %w", err)
+			}
+		}
+
+		return nil
+	} else {
+		return fmt.Errorf("unknown fragment kind")
+	}
+}
+
+// Recurse into an filesystem.Directory and put all it's contents into a ext4 filesystem.
+func filesystemToExt4(dir filesystem.Directory, fs *ext4.Ext4Filesystem, name string) error {
+	ents, err := dir.Readdir()
+	if err != nil {
+		return fmt.Errorf("failed to readdir: %w", err)
+	}
+
+	for _, ent := range ents {
+		info, err := ent.File.Stat()
+		if err != nil {
+			return fmt.Errorf("failed to stat: %w", err)
+		}
+
+		name := path.Join(name, path.Base(ent.Name))
+
+		switch info.Kind() {
+		case filesystem.TypeDirectory:
+			if err := fs.Mkdir(name, false); err != nil {
+				return fmt.Errorf("failed to mkdir %s: %w", name, err)
+			}
+
+			child, ok := ent.File.(filesystem.Directory)
+			if !ok {
+				return fmt.Errorf("directory does not implement Directory: %T", ent.File)
+			}
+
+			if err := filesystemToExt4(child, fs, name); err != nil {
+				return err
+			}
+		case filesystem.TypeLink:
+			target, err := filesystem.GetLinkName(ent.File)
+			if err != nil {
+				return fmt.Errorf("failed to get linkname: %w", err)
+			}
+
+			if err := fs.Link(name, target); err != nil {
+				return fmt.Errorf("failed to make hard link: %w", err)
+			}
+		case filesystem.TypeSymlink:
+			target, err := filesystem.GetLinkName(ent.File)
+			if err != nil {
+				return fmt.Errorf("failed to get linkname: %w", err)
+			}
+
+			if err := fs.Symlink(name, target); err != nil {
+				return fmt.Errorf("failed to make symlink: %w", err)
+			}
+		case filesystem.TypeRegular:
+			f, err := ent.File.Open()
+			if err != nil {
+				return fmt.Errorf("failed to open file for guest: %T %w", ent.File, err)
+			}
+
+			region := vm.NewReaderRegion(f, info.Size())
+
+			if err := fs.CreateFile(name, region); err != nil {
+				return fmt.Errorf("failed to create file in guest %s: %w", name, err)
+			}
+		default:
+			return fmt.Errorf("unimplmented kind: %s", info.Kind())
+		}
+
+		if err := fs.Chmod(name, info.Mode()); err != nil {
+			return fmt.Errorf("failed to chmod: %w", err)
+		}
+
+		uid, gid, err := filesystem.GetUidAndGid(ent.File)
+		if err != nil {
+			return fmt.Errorf("failed to GetUidAndGid: %w", err)
+		}
+
+		if err := fs.Chown(name, uint16(uid), uint16(gid)); err != nil {
+			return fmt.Errorf("failed to chown: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func RunWithConfig(
 	buildDir string,
 	cfg config.TinyRangeConfig,
@@ -100,207 +376,38 @@ func RunWithConfig(
 
 	start := time.Now()
 
+	var exportedPorts []int
+
+	root := filesystem.NewMemoryDirectory()
+
+	for _, frag := range cfg.RootFsFragments {
+		if port := frag.ExportPort; port != nil {
+			exportedPorts = append(exportedPorts, port.Port)
+		} else {
+			if err := fragmentToFilesystem(cfg, frag, root); err != nil {
+				return fmt.Errorf("failed to extract fragment to filesystem: %w", err)
+			}
+		}
+	}
+
+	slog.Debug("built filesystem tree", "took", time.Since(start))
+
+	start = time.Now()
+
 	fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
 	if err != nil {
 		return fmt.Errorf("failed to create ext4 filesystem: %w", err)
 	}
 
-	var exportedPorts []int
-
-	for _, frag := range cfg.RootFsFragments {
-		if localFile := frag.LocalFile; localFile != nil {
-			file, err := os.Open(cfg.Resolve(localFile.HostFilename))
-			if err != nil {
-				return fmt.Errorf("failed to load local file: %w", err)
-			}
-
-			region, err := vm.NewFileRegion(file)
-			if err != nil {
-				return fmt.Errorf("failed to create file region: %w", err)
-			}
-
-			dirName := path.Dir(localFile.GuestFilename)
-
-			if !fs.Exists(dirName) {
-				if err := fs.Mkdir(dirName, true); err != nil {
-					return fmt.Errorf("failed to mkdir %s: %w", dirName, err)
-				}
-			}
-
-			if err := fs.CreateFile(localFile.GuestFilename, region); err != nil {
-				return fmt.Errorf("failed to create file %s: %w", localFile.GuestFilename, err)
-			}
-
-			if localFile.Executable {
-				if err := fs.Chmod(localFile.GuestFilename, goFs.FileMode(0755)); err != nil {
-					return err
-				}
-			}
-		} else if fileContents := frag.FileContents; fileContents != nil {
-			dirName := path.Dir(fileContents.GuestFilename)
-
-			if !fs.Exists(dirName) {
-				if err := fs.Mkdir(dirName, true); err != nil {
-					return err
-				}
-			}
-
-			if err := fs.CreateFile(fileContents.GuestFilename, vm.RawRegion(fileContents.Contents)); err != nil {
-				return err
-			}
-
-			if fileContents.Executable {
-				if err := fs.Chmod(fileContents.GuestFilename, goFs.FileMode(0755)); err != nil {
-					return err
-				}
-			}
-		} else if builtin := frag.Builtin; builtin != nil {
-			dirName := path.Dir(builtin.GuestFilename)
-
-			if !fs.Exists(dirName) {
-				if err := fs.Mkdir(dirName, true); err != nil {
-					return err
-				}
-			}
-
-			if builtin.Name == "init" {
-				exec, err := initExec.GetInitExecutable(builtin.Architecture)
-				if err != nil {
-					return err
-				}
-
-				if err := fs.CreateFile(builtin.GuestFilename, vm.RawRegion(exec)); err != nil {
-					return err
-				}
-
-				if err := fs.Chmod(builtin.GuestFilename, goFs.FileMode(0755)); err != nil {
-					return err
-				}
-			} else if builtin.Name == "init.star" {
-				if err := fs.CreateFile(builtin.GuestFilename, vm.RawRegion(initExec.INIT_SCRIPT)); err != nil {
-					return err
-				}
-			} else if builtin.Name == "tinyrange" {
-				exe, err := os.Executable()
-				if err != nil {
-					return fmt.Errorf("failed to get executable: %w", err)
-				}
-
-				file, err := os.Open(exe)
-				if err != nil {
-					return fmt.Errorf("failed to load executable: %w", err)
-				}
-
-				region, err := vm.NewFileRegion(file)
-				if err != nil {
-					return fmt.Errorf("failed to create file region: %w", err)
-				}
-
-				if err := fs.CreateFile(builtin.GuestFilename, region); err != nil {
-					return fmt.Errorf("failed to create file %s: %w", builtin.GuestFilename, err)
-				}
-			} else if builtin.Name == "tinyrange_qemu.star" {
-				local, err := common.GetAdjacentExecutable("tinyrange_qemu.star")
-				if err != nil {
-					return fmt.Errorf("failed to get tinyrange_qemu.star: %w", err)
-				}
-
-				file, err := os.Open(local)
-				if err != nil {
-					return fmt.Errorf("failed to load executable: %w", err)
-				}
-
-				region, err := vm.NewFileRegion(file)
-				if err != nil {
-					return fmt.Errorf("failed to create file region: %w", err)
-				}
-
-				if err := fs.CreateFile(builtin.GuestFilename, region); err != nil {
-					return fmt.Errorf("failed to create file %s: %w", builtin.GuestFilename, err)
-				}
-			} else {
-				return fmt.Errorf("unknown builtin: %s", builtin.Name)
-			}
-		} else if ark := frag.Archive; ark != nil {
-			f := filesystem.NewLocalFile(cfg.Resolve(ark.HostFilename), nil)
-
-			archive, err := filesystem.ReadArchiveFromFile(f)
-			if err != nil {
-				return fmt.Errorf("failed to read archive: %w", err)
-			}
-
-			entries, err := archive.Entries()
-			if err != nil {
-				return fmt.Errorf("failed to read archive: %w", err)
-			}
-
-			for _, ent := range entries {
-				// TODO(joshua): Why is this not filepath.join?
-				name := ark.Target + "/" + ent.Name()
-
-				if fs.Exists(name) {
-					continue
-				}
-
-				dirname := path.Dir(name)
-
-				if !fs.Exists(dirname) && path.Clean(name) != dirname {
-					if err := fs.Mkdir(dirname, true); err != nil {
-						return err
-					}
-				}
-
-				switch ent.Typeflag() {
-				case filesystem.TypeDirectory:
-					// slog.Info("directory", "name", name)
-					name = strings.TrimSuffix(name, "/")
-					if err := fs.Mkdir(name, true); err != nil {
-						return fmt.Errorf("failed to mkdir in guest %s: %w", name, err)
-					}
-				case filesystem.TypeSymlink:
-					// slog.Info("symlink", "name", name)
-					if err := fs.Symlink(name, ent.Linkname()); err != nil {
-						return fmt.Errorf("failed to symlink in guest: %w", err)
-					}
-				case filesystem.TypeLink:
-					// slog.Info("link", "name", name)
-					if err := fs.Link(name, "/"+ent.Linkname()); err != nil {
-						return fmt.Errorf("failed to link in guest: %w", err)
-					}
-				case filesystem.TypeRegular:
-					// slog.Info("reg", "name", name)
-					f, err := ent.Open()
-					if err != nil {
-						return fmt.Errorf("failed to open file for guest: %w", err)
-					}
-
-					region := vm.NewReaderRegion(f, ent.Size())
-
-					if err := fs.CreateFile(name, region); err != nil {
-						return fmt.Errorf("failed to create file in guest %s: %w", name, err)
-					}
-				default:
-					return fmt.Errorf("unimplemented entry type: %s", ent.Typeflag())
-				}
-
-				if err := fs.Chown(name, uint16(ent.Uid()), uint16(ent.Gid())); err != nil {
-					return fmt.Errorf("failed to chown in guest: %w", err)
-				}
-
-				if err := fs.Chmod(name, goFs.FileMode(ent.Mode())); err != nil {
-					return fmt.Errorf("failed to chmod in guest: %w", err)
-				}
-			}
-		} else if port := frag.ExportPort; port != nil {
-			exportedPorts = append(exportedPorts, port.Port)
-		} else {
-			return fmt.Errorf("unknown fragment kind")
-		}
+	if err := filesystemToExt4(root, fs, "/"); err != nil {
+		return fmt.Errorf("failed to convert filesystem to ext4: %w", err)
 	}
 
 	slog.Debug("built filesystem", "took", time.Since(start))
 
 	if exportFilesystem != "" {
+		start := time.Now()
+
 		out, err := os.Create(exportFilesystem)
 		if err != nil {
 			return err
@@ -310,6 +417,8 @@ func RunWithConfig(
 		if _, err := io.Copy(out, io.NewSectionReader(vmem, 0, fsSize)); err != nil {
 			return err
 		}
+
+		slog.Debug("exported filesystem", "took", time.Since(start))
 
 		return nil
 	}

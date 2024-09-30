@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime/pprof"
+	"slices"
 	"strings"
 
 	"github.com/docker/docker/api/types"
@@ -145,6 +146,10 @@ func (config *loginConfig) getDirectives(db *database.PackageDatabase) ([]common
 	var tags common.TagList
 
 	tags = append(tags, "level3", "defaults")
+
+	if slices.Contains(common.GetExperimentalFlags(), "slowBoot") {
+		tags = append(tags, "slowBoot")
+	}
 
 	if config.NoScripts || config.writeRoot != "" {
 		tags = append(tags, "noScripts")

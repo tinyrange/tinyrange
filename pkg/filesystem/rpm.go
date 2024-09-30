@@ -174,6 +174,11 @@ type starRpm struct {
 	openedPayload bool
 }
 
+// Kind implements FileInfo.
+func (s *starRpm) Kind() FileType {
+	return TypeRegular
+}
+
 // IsDir implements FileInfo.
 func (s *starRpm) IsDir() bool {
 	return false

@@ -82,9 +82,13 @@ func ExtractArchive(ark Archive, mut MutableDirectory) error {
 
 	for _, ent := range ents {
 		if err := ExtractEntry(ent, mut); err != nil {
-			return err
+			return fmt.Errorf("failed to extract archive: %w", err)
 		}
 	}
+
+	// if err := ValidateAndDump(os.Stdout, mut); err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
@@ -191,6 +195,7 @@ func (e *CacheEntry) Stat() (FileInfo, error) {
 	return e, nil
 }
 
+func (e *CacheEntry) Kind() FileType     { return e.CTypeflag }
 func (e *CacheEntry) Typeflag() FileType { return e.CTypeflag }
 func (e *CacheEntry) Name() string       { return e.CName }
 func (e *CacheEntry) Linkname() string   { return e.CLinkname }

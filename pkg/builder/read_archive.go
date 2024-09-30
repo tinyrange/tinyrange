@@ -241,11 +241,11 @@ func (r *tarToArchiveBuildResult) WriteResult(w io.Writer) error {
 
 		info := hdr.FileInfo()
 
-		var typeFlag = filesystem.TypeRegular
+		var typeFlag filesystem.FileType
 
 		switch hdr.Typeflag {
 		case tar.TypeReg:
-			// pass
+			typeFlag = filesystem.TypeRegular
 		case tar.TypeDir:
 			typeFlag = filesystem.TypeDirectory
 		case tar.TypeSymlink:

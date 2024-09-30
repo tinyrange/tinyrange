@@ -2,7 +2,8 @@ db.add_mirror("ubuntu", ["https://mirror.aarnet.edu.au/pub/ubuntu/archive"])
 db.add_mirror("neurodebian", ["https://mirror.aarnet.edu.au/pub/neurodebian"])
 db.add_mirror("kali", ["https://mirror.aarnet.edu.au/pub/kali/kali"])
 
-LATEST_UBUNTU_VERSION = "jammy"
+LATEST_UBUNTU_VERSION = "noble"
+UBUNTU_VERSIONS = ["noble", "jammy", "focal"]
 
 def parse_debian_index(base, contents):
     lines = contents.splitlines()
@@ -138,6 +139,9 @@ def convert_debian_package(ctx, name, version, source):
 
     ret = filesystem()
 
+    for top in data:
+        ret[top.name] = top
+
     for f in control:
         if f.base == ".":
             continue
@@ -148,9 +152,6 @@ def convert_debian_package(ctx, name, version, source):
 
     ret[".pkg/{}".format(name)] = control
     ret[".pkg/{}/version".format(name)] = file(version)
-
-    for top in data:
-        ret[top.name] = top
 
     return ctx.archive(ret)
 
@@ -213,7 +214,7 @@ def parse_debian_package(ctx, collection, packages):
 def make_ubuntu_repos(only_latest = True, include_neurodebian = False):
     ubuntu_repos = {}
 
-    for version in ["jammy", "focal"]:
+    for version in UBUNTU_VERSIONS:
         if only_latest and version != LATEST_UBUNTU_VERSION:
             continue
 
@@ -252,13 +253,66 @@ def make_ubuntu_repos(only_latest = True, include_neurodebian = False):
 
     return ubuntu_repos
 
+BASE_PASSWD = """root:*:0:0:root:/root:/bin/bash
+daemon:*:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+bin:*:2:2:bin:/bin:/usr/sbin/nologin
+sys:*:3:3:sys:/dev:/usr/sbin/nologin
+sync:*:4:65534:sync:/bin:/bin/sync
+games:*:5:60:games:/usr/games:/usr/sbin/nologin
+man:*:6:12:man:/var/cache/man:/usr/sbin/nologin
+lp:*:7:7:lp:/var/spool/lpd:/usr/sbin/nologin
+mail:*:8:8:mail:/var/mail:/usr/sbin/nologin
+news:*:9:9:news:/var/spool/news:/usr/sbin/nologin
+uucp:*:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin
+proxy:*:13:13:proxy:/bin:/usr/sbin/nologin
+www-data:*:33:33:www-data:/var/www:/usr/sbin/nologin
+backup:*:34:34:backup:/var/backups:/usr/sbin/nologin
+list:*:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin
+irc:*:39:39:ircd:/run/ircd:/usr/sbin/nologin
+_apt:*:42:65534::/nonexistent:/usr/sbin/nologin
+nobody:*:65534:65534:nobody:/nonexistent:/usr/sbin/nologin"""
+
+BASE_GROUP = """root:*:0:
+daemon:*:1:
+bin:*:2:
+sys:*:3:
+adm:*:4:
+tty:*:5:
+disk:*:6:
+lp:*:7:
+mail:*:8:
+news:*:9:
+uucp:*:10:
+man:*:12:
+proxy:*:13:
+kmem:*:15:
+dialout:*:20:
+fax:*:21:
+voice:*:22:
+cdrom:*:24:
+floppy:*:25:
+tape:*:26:
+sudo:*:27:
+audio:*:29:
+dip:*:30:
+www-data:*:33:
+backup:*:34:
+operator:*:37:
+list:*:38:
+irc:*:39:
+src:*:40:
+shadow:*:42:
+utmp:*:43:
+video:*:44:
+sasl:*:45:
+plugdev:*:46:
+staff:*:50:
+games:*:60:
+users:*:100:
+nogroup:*:65534:"""
+
 def build_debian_install_layer(ctx, base_directives, directives):
     ret = filesystem()
-
-    ret["usr/local/.keep"] = file("hello")
-
-    preinst = []
-    postinst = []
 
     status = ""
 
@@ -269,16 +323,8 @@ def build_debian_install_layer(ctx, base_directives, directives):
         fs = filesystem(pkg.read_archive())
 
         for ent in fs[".pkg"]:
-            status += "\n".join([
-                "Package: {}".format(ent.base),
-                "Status: install ok installed",
-                "Maintainer: TinyRange <tinyrange@tinyrange.dev>",
-                "Version: {}".format(ent["version"].read()),
-                "Architecture: amd64",
-                "Description: TinyRange stub package",
-                "",
-                "",
-            ])
+            control = ent["control"].read().strip()
+            status += control + "\nStatus: install ok installed\n\n"
 
     for pkg in directives:
         if type(pkg) == "common.DirectiveRunCommand":
@@ -287,77 +333,63 @@ def build_debian_install_layer(ctx, base_directives, directives):
         fs = filesystem(pkg.read_archive())
 
         for ent in fs[".pkg"]:
-            if "preinst" in ent:
-                f = ent["preinst"]
-                preinst.append({
-                    "kind": "execute",
-                    "exec": f.name,
-                    "args": ["install", ""],
-                    "env": {
-                        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                        "DPKG_MAINTSCRIPT_PACKAGE": ent.base,
-                        "DPKG_MAINTSCRIPT_NAME": "preinst",
-                        "DPKG_ROOT": "",
-                        "DEBIAN_FRONTEND": "noninteractive",
-                        "DEBCONF_SYSTEMRC": "/root/.debconfrc",
-                    },
-                })
+            control = ent["control"].read().strip()
+            status += control + "\nStatus: install ok unpacked\n\n"
 
-            if "postinst" in ent:
-                f = ent["postinst"]
-                postinst.append({
-                    "kind": "execute",
-                    "exec": f.name,
-                    "args": ["configure", ""],
-                    "env": {
-                        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                        "DPKG_MAINTSCRIPT_PACKAGE": ent.base,
-                        "DPKG_MAINTSCRIPT_NAME": "postinst",
-                        "DEBIAN_FRONTEND": "noninteractive",
-                        "DEBCONF_SYSTEMRC": "/root/.debconfrc",
-                    },
-                })
+    ret[".pkg/scripts.json"] = json.encode([
+        {
+            "kind": "execute",
+            "exec": "/usr/bin/dpkg",
+            "args": ["--configure", "--pending"],
+            "env": {
+                "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "DEBIAN_FRONTEND": "noninteractive",
+            },
+        },
+        {
+            "kind": "execute",
+            "exec": "/bin/bash",
+            "args": ["-c", "echo root:root | chpasswd"],
+        },
+    ])
 
-            status += "\n".join([
-                "Package: {}".format(ent.base),
-                "Status: install ok installed",
-                "Maintainer: TinyRange <tinyrange@tinyrange.dev>",
-                "Version: {}".format(ent["version"].read()),
-                "Architecture: amd64",
-                "Description: TinyRange stub package",
-                "",
-                "",
-            ])
-
-    ret[".pkg/scripts.json"] = json.encode(preinst + postinst + [{
-        "kind": "execute",
-        "exec": "/bin/bash",
-        "args": ["-c", "echo root:root | chpasswd"],
-    }])
     ret["var/lib/dpkg/status"] = file(status)
+    ret["var/log/dpkg.log"] = file("")
+    ret["usr/local"] = filesystem()
+    ret["etc/passwd"] = file(BASE_PASSWD)
+    ret["etc/group"] = file(BASE_GROUP)
 
     return ctx.archive(ret)
 
 def build_debian_directives(builder, plan):
     if plan.tags.contains("level3"):
-        directives = plan.base_directives + [
-            directive.archive(define.build_vm(
-                plan.base_directives + [
-                    define.build(
-                        build_debian_install_layer,
-                        [],
-                        plan.base_directives,
-                    ),
-                    directive.run_command("/init -run-scripts /.pkg/scripts.json"),
-                ],
-                output = "/init/changed.archive",
-            )),
-            define.build(
-                build_debian_install_layer,
-                plan.base_directives,
-                plan.directives,
-            ),
-        ] + plan.directives
+        if plan.tags.contains("slowBoot"):
+            directives = plan.base_directives + [
+                define.build(
+                    build_debian_install_layer,
+                    [],
+                    plan.base_directives + plan.directives,
+                ),
+            ] + plan.directives
+        else:
+            directives = plan.base_directives + [
+                directive.archive(define.build_vm(
+                    plan.base_directives + [
+                        define.build(
+                            build_debian_install_layer,
+                            [],
+                            plan.base_directives,
+                        ),
+                        directive.run_command("/init -run-scripts /.pkg/scripts.json"),
+                    ],
+                    output = "/init/changed.archive",
+                )),
+                define.build(
+                    build_debian_install_layer,
+                    plan.base_directives,
+                    plan.directives,
+                ),
+            ] + plan.directives
 
         if plan.tags.contains("noScripts"):
             return directives
@@ -374,6 +406,19 @@ def build_debian_directives(builder, plan):
 def make_ubuntu_builders(repos):
     ret = []
     for version in repos:
+        defaults = [
+            query("cdebconf"),
+            query("dpkg"),
+            query("*", tags = ["priority:required"]),
+            query("*", tags = ["priority:important"]),
+            query("*", tags = ["priority:standard"]),
+        ]
+
+        if version == "noble":
+            defaults = [
+                query("usr-is-merged"),
+            ] + defaults
+
         # Define a container builder for each version.
         ret.append(define.container_builder(
             name = "ubuntu@" + version,
@@ -381,11 +426,7 @@ def make_ubuntu_builders(repos):
             display_name = "Ubuntu " + version,
             plan_callback = build_debian_directives,
             # Packages with a high priority need to be installed.
-            default_packages = [
-                query("*", tags = ["priority:required"]),
-                query("*", tags = ["priority:important"]),
-                query("*", tags = ["priority:standard"]),
-            ],
+            default_packages = defaults,
             split_default_packages = True,
             # This builder is scoped to just the packages in this repo.
             packages = repos[version],
