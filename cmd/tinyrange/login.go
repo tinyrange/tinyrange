@@ -22,6 +22,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	cfg "github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/database"
 	"gopkg.in/yaml.v3"
 )
 
@@ -82,28 +83,63 @@ type loginConfig struct {
 	hash              bool
 }
 
-func (config *loginConfig) run() error {
-	if config.Version > CURRENT_CONFIG_VERSION {
-		return fmt.Errorf("attempt to run config version %d on TinyRange version %d", config.Version, CURRENT_CONFIG_VERSION)
+func (config *loginConfig) parseInclusion(db *database.PackageDatabase, inclusion string) (common.Directive, error) {
+	if !strings.HasSuffix(inclusion, ".yaml") {
+		return nil, nil
 	}
 
-	db, err := newDb()
+	subConfig := loginConfig{Version: CURRENT_CONFIG_VERSION}
+
+	f, err := os.Open(inclusion)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	defer f.Close()
+
+	dec := yaml.NewDecoder(f)
+
+	if err := dec.Decode(&subConfig); err != nil {
+		return nil, err
 	}
 
-	if config.Builder == "list" {
-		for name, builder := range db.ContainerBuilders {
-			fmt.Printf(" - %s - %s\n", name, builder.DisplayName)
-		}
-
-		return nil
+	if subConfig.Output == "" {
+		return nil, fmt.Errorf("inclusions must have an output file declared")
 	}
 
+	directives, interaction, err := subConfig.getDirectives(db)
+	if err != nil {
+		return nil, err
+	}
+
+	arch, err := cfg.ArchitectureFromString(subConfig.Architecture)
+	if err != nil {
+		return nil, err
+	}
+
+	if config.Init != "" {
+		interaction = "init," + config.Init
+	}
+
+	def := builder.NewBuildVmDefinition(
+		directives,
+		nil, nil,
+		subConfig.Output,
+		subConfig.cpuCores, subConfig.memorySize, arch,
+		subConfig.storageSize,
+		interaction, subConfig.debug,
+	)
+
+	return common.DirectiveAddFile{
+		Filename:   subConfig.Output,
+		Definition: def,
+	}, nil
+}
+
+func (config *loginConfig) getDirectives(db *database.PackageDatabase) ([]common.Directive, string, error) {
 	var directives []common.Directive
 
 	if config.Builder == "" {
-		return fmt.Errorf("please specify a builder")
+		return nil, "", fmt.Errorf("please specify a builder")
 	}
 
 	var tags common.TagList
@@ -116,14 +152,14 @@ func (config *loginConfig) run() error {
 
 	arch, err := cfg.ArchitectureFromString(config.Architecture)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 
 	for _, filename := range config.Files {
 		if strings.HasPrefix(filename, "http://") || strings.HasPrefix(filename, "https://") {
 			parsed, err := url.Parse(filename)
 			if err != nil {
-				return err
+				return nil, "", err
 			}
 
 			base := path.Base(parsed.Path)
@@ -135,7 +171,7 @@ func (config *loginConfig) run() error {
 		} else {
 			absPath, err := filepath.Abs(filename)
 			if err != nil {
-				return err
+				return nil, "", err
 			}
 
 			directives = append(directives, common.DirectiveLocalFile{
@@ -152,14 +188,14 @@ func (config *loginConfig) run() error {
 
 			parsed, err := url.Parse(filename)
 			if err != nil {
-				return err
+				return nil, "", err
 			}
 
 			filename = parsed.Path
 		} else {
 			hash, err := sha256HashFromFile(filename)
 			if err != nil {
-				return err
+				return nil, "", err
 			}
 
 			def = builder.NewConstantHashDefinition(hash, func() (io.ReadCloser, error) {
@@ -169,7 +205,7 @@ func (config *loginConfig) run() error {
 
 		ark, err := detectArchiveExtractor(def, filename)
 		if err != nil {
-			return err
+			return nil, "", err
 		}
 
 		directives = append(directives, common.DirectiveArchive{Definition: ark, Target: "/root"})
@@ -180,7 +216,7 @@ func (config *loginConfig) run() error {
 	for _, arg := range config.Packages {
 		q, err := common.ParsePackageQuery(arg)
 		if err != nil {
-			return err
+			return nil, "", err
 		}
 
 		pkgs = append(pkgs, q)
@@ -188,31 +224,40 @@ func (config *loginConfig) run() error {
 
 	planDirective, err := builder.NewPlanDefinition(config.Builder, arch, pkgs, tags)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 
 	macroCtx := db.NewMacroContext()
 	macroCtx.AddBuilder("default", planDirective)
 
 	for _, macro := range config.Macros {
-		m, err := db.GetMacroByShorthand(macroCtx, macro)
+		vm, err := config.parseInclusion(db, macro)
 		if err != nil {
-			return err
+			return nil, "", err
 		}
 
-		def, err := m.Call(macroCtx)
-		if err != nil {
-			return err
-		}
-
-		if star, ok := def.(*common.StarDirective); ok {
-			def = star.Directive
-		}
-
-		if dir, ok := def.(common.Directive); ok {
-			directives = append(directives, dir)
+		if vm != nil {
+			directives = append(directives, vm)
 		} else {
-			return fmt.Errorf("handling of macro def %T not implemented", def)
+			m, err := db.GetMacroByShorthand(macroCtx, macro)
+			if err != nil {
+				return nil, "", err
+			}
+
+			def, err := m.Call(macroCtx)
+			if err != nil {
+				return nil, "", err
+			}
+
+			if star, ok := def.(*common.StarDirective); ok {
+				def = star.Directive
+			}
+
+			if dir, ok := def.(common.Directive); ok {
+				directives = append(directives, dir)
+			} else {
+				return nil, "", fmt.Errorf("handling of macro def %T not implemented", def)
+			}
 		}
 	}
 
@@ -248,10 +293,41 @@ func (config *loginConfig) run() error {
 		},
 	})
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 
 	directives = append([]common.Directive{planDirective}, directives...)
+
+	return directives, interaction, nil
+}
+
+func (config *loginConfig) run() error {
+	if config.Version > CURRENT_CONFIG_VERSION {
+		return fmt.Errorf("attempt to run config version %d on TinyRange version %d", config.Version, CURRENT_CONFIG_VERSION)
+	}
+
+	db, err := newDb()
+	if err != nil {
+		return err
+	}
+
+	if config.Builder == "list" {
+		for name, builder := range db.ContainerBuilders {
+			fmt.Printf(" - %s - %s\n", name, builder.DisplayName)
+		}
+
+		return nil
+	}
+
+	directives, interaction, err := config.getDirectives(db)
+	if err != nil {
+		return err
+	}
+
+	arch, err := cfg.ArchitectureFromString(config.Architecture)
+	if err != nil {
+		return err
+	}
 
 	if config.writeRoot != "" {
 		directives = append(directives, common.DirectiveBuiltin{Name: "init", Architecture: string(arch), GuestFilename: "init"})
