@@ -18,7 +18,7 @@ require (
 	github.com/jezek/xgb v1.1.1
 	github.com/jezek/xgbutil v0.0.0-20240804174445-e2e9464b6e01
 	github.com/jsimonetti/rtnetlink v1.4.2
-	github.com/klauspost/compress v1.17.9
+	github.com/klauspost/compress v1.17.10
 	github.com/lmittmann/tint v1.0.5
 	github.com/mattn/go-isatty v0.0.20
 	github.com/miekg/dns v1.1.62
