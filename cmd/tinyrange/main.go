@@ -11,10 +11,11 @@ import (
 )
 
 var (
-	rootBuildDir   string
-	rootRebuild    bool
-	rootCpuProfile string
-	rootVerbose    bool
+	rootBuildDir     string
+	rootRebuild      bool
+	rootCpuProfile   string
+	rootVerbose      bool
+	rootDistribution string
 )
 
 var rootCmd = &cobra.Command{
@@ -37,6 +38,12 @@ Complete documentation is available at https://github.com/tinyrange/tinyrange`, 
 func newDb() (*database.PackageDatabase, error) {
 	db := database.New(rootBuildDir)
 
+	if rootDistribution != "" {
+		if err := db.SetDistributionServer(rootDistribution); err != nil {
+			return nil, err
+		}
+	}
+
 	// Check with Exists first so it doesn't have issues if the build dir is behind a symlink.
 	if ok, _ := common.Exists(rootBuildDir); !ok {
 		if err := common.Ensure(rootBuildDir, os.ModePerm); err != nil {
@@ -58,6 +65,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&rootRebuild, "rebuild", false, "should user package definitions be rebuilt even if we already have built them previously")
 	rootCmd.PersistentFlags().StringVar(&rootCpuProfile, "cpuprofile", "", "write cpu profile to file")
 	rootCmd.PersistentFlags().BoolVar(&rootVerbose, "verbose", false, "enable debugging output")
+	rootCmd.PersistentFlags().StringVar(&rootDistribution, "distribution", "", "The HTTP/HTTPS address of a distribution server to copy build results from")
 }
 
 func Run() {

@@ -155,6 +155,9 @@ def convert_debian_package(ctx, name, version, source):
 
     return ctx.archive(ret)
 
+def is_redistributable(license):
+    return True
+
 def get_debian_installer(pkg, tags):
     ent = pkg.raw
 
@@ -187,7 +190,7 @@ def get_debian_installer(pkg, tags):
                     ent["package"],
                     ent["version"],
                     download_archive,
-                ),
+                ).set_redistributable(is_redistributable("")),
             ],
             dependencies = deps,
         )

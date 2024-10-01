@@ -112,7 +112,46 @@ func StarlarkValueToSerializable(val starlark.Value) (hash.SerializableValue, er
 }
 
 type StarBuildDefinition struct {
-	params StarParameters
+	params          StarParameters
+	redistributable bool
+}
+
+// Redistributable implements common.RedistributableDefinition.
+func (def *StarBuildDefinition) Redistributable() bool {
+	return def.redistributable
+}
+
+// Attr implements starlark.HasAttrs.
+func (def *StarBuildDefinition) Attr(name string) (starlark.Value, error) {
+	if name == "set_redistributable" {
+		return starlark.NewBuiltin("BuildDefinition.set_redistributable", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				value bool
+			)
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"value", &value,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			def.redistributable = value
+
+			return def, nil
+		}), nil
+	} else {
+		return nil, nil
+	}
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (def *StarBuildDefinition) AttrNames() []string {
+	return []string{"set_redistributable"}
 }
 
 // Dependencies implements common.BuildDefinition.
@@ -246,10 +285,12 @@ func (*StarBuildDefinition) Truth() starlark.Bool { return starlark.True }
 func (*StarBuildDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value         = &StarBuildDefinition{}
-	_ common.BuildSource     = &StarBuildDefinition{}
-	_ common.BuildDefinition = &StarBuildDefinition{}
-	_ common.Directive       = &StarBuildDefinition{}
+	_ starlark.Value                   = &StarBuildDefinition{}
+	_ starlark.HasAttrs                = &StarBuildDefinition{}
+	_ common.BuildSource               = &StarBuildDefinition{}
+	_ common.BuildDefinition           = &StarBuildDefinition{}
+	_ common.RedistributableDefinition = &StarBuildDefinition{}
+	_ common.Directive                 = &StarBuildDefinition{}
 )
 
 func NewStarBuildDefinition(filename string, builder string, args []hash.SerializableValue) (*StarBuildDefinition, error) {

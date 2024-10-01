@@ -12,10 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -229,7 +231,8 @@ type PackageDatabase struct {
 
 	defDb *hash.DefinitionDatabase
 
-	buildDir string
+	buildDir           string
+	distributionServer string
 }
 
 // HashDefinition implements common.PackageDatabase.
@@ -488,6 +491,71 @@ func (db *PackageDatabase) FilenameFromHash(hash string, suffix string) (string,
 	return filepath.Join(db.buildDir, hash+suffix), nil
 }
 
+func (db *PackageDatabase) downloadFromDistributionServer(hash string, def common.BuildDefinition) (bool, error) {
+	if redistributable, ok := def.(common.RedistributableDefinition); !ok || !redistributable.Redistributable() {
+		return false, nil // not redistributable
+	}
+
+	client, err := db.HttpClient()
+	if err != nil {
+		return false, err
+	}
+
+	url := fmt.Sprintf("%s/result/%s", db.distributionServer, hash)
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	} else if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("bad status %s", resp.Status)
+	}
+
+	filename, err := db.FilenameFromHash(hash, ".bin")
+	if err != nil {
+		return false, err
+	}
+
+	tmpFilename := filename + ".tmp"
+
+	f, err := os.Create(tmpFilename)
+	if err != nil {
+		return false, err
+	}
+
+	pb := progressbar.DefaultBytes(resp.ContentLength, url)
+	defer pb.Close()
+
+	if _, err := io.Copy(io.MultiWriter(f, pb), resp.Body); err != nil {
+		f.Close()
+		os.Remove(tmpFilename)
+		return false, err
+	}
+
+	if err := f.Close(); err != nil {
+		return false, err
+	}
+
+	if err := os.Rename(tmpFilename, filename); err != nil {
+		return false, err
+	}
+
+	downloadedTag, err := db.FilenameFromHash(hash, ".downloaded")
+	if err != nil {
+		return false, err
+	}
+
+	if err := os.WriteFile(downloadedTag, []byte(""), os.ModePerm); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (filesystem.File, error) {
 	tag := def.Tag()
 
@@ -507,6 +575,11 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 		return nil, err
 	}
 
+	downloadedTag, err := db.FilenameFromHash(hash, ".downloaded")
+	if err != nil {
+		return nil, err
+	}
+
 	tmpFilename := filename + ".tmp"
 
 	// Get a child context for the build.
@@ -515,10 +588,20 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 	if !opts.AlwaysRebuild {
 		// Check if the file already exists. If it does then return it.
 		if info, err := os.Stat(filename); err == nil {
-			// If the file has already been created then check if a rebuild is needed.
-			needsRebuild, err := def.NeedsBuild(child, info.ModTime())
-			if err != nil {
-				return nil, err
+			var needsRebuild = false
+
+			// Only check for rebuilds if the child is not downloaded.
+			if exists, _ := common.Exists(downloadedTag); !exists {
+				// If the file has already been created then check if a rebuild is needed.
+				needsRebuild, err = def.NeedsBuild(child, info.ModTime())
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				// Redistributed results are considered user definitions.
+				if db.RebuildUserDefinitions {
+					needsRebuild = true
+				}
 			}
 
 			// If no rebuild is necessary then skip it.
@@ -556,6 +639,39 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 	if err := os.WriteFile(defFilename, defValue, os.ModePerm); err != nil {
 		return nil, fmt.Errorf("failed to write definition: %s", err)
 	}
+
+	if db.distributionServer != "" {
+		// If we have a distribution server then check it first.
+		ok, err := db.downloadFromDistributionServer(hash, def)
+		if err != nil {
+			return nil, err
+		}
+
+		if ok {
+			status.Status = common.BuildStatusBuilt
+
+			db.updateBuildStatus(def, status)
+
+			// This definition is redistributable so write a manifest.
+			redistributableTag, err := db.FilenameFromHash(hash, ".redistributable")
+			if err != nil {
+				return nil, err
+			}
+
+			if err := os.WriteFile(redistributableTag, []byte(""), os.ModePerm); err != nil {
+				return nil, err
+			}
+
+			f := filesystem.NewLocalFile(filename, def)
+
+			db.buildCache[hash] = f
+
+			// Return the file.
+			return f, nil
+		}
+	}
+
+	// If the downloaded tag exists then remove it.
 
 	// If not then trigger the build.
 	result, err := def.Build(child)
@@ -610,6 +726,19 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 
 	// Write the build status.
 	db.updateBuildStatus(def, status)
+
+	if redistributable, ok := def.(common.RedistributableDefinition); ok && redistributable.Redistributable() {
+		// This definition is redistributable so write a manifest.
+
+		redistributableTag, err := db.FilenameFromHash(hash, ".redistributable")
+		if err != nil {
+			return nil, err
+		}
+
+		if err := os.WriteFile(redistributableTag, []byte(""), os.ModePerm); err != nil {
+			return nil, err
+		}
+	}
 
 	f := filesystem.NewLocalFile(filename, def)
 
@@ -871,6 +1000,32 @@ func (db *PackageDatabase) LoadBuiltinBuilders() error {
 			return err
 		}
 	}
+
+	return nil
+}
+
+func (db *PackageDatabase) SetDistributionServer(server string) error {
+	client, err := db.HttpClient()
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Get(server + "/health")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if !slices.Equal(content, []byte("OK")) {
+		return fmt.Errorf("bad response from distribution server")
+	}
+
+	db.distributionServer = server
 
 	return nil
 }

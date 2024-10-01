@@ -32,6 +32,11 @@ type BuildDefinition interface {
 	ToStarlark(ctx BuildContext, result filesystem.File) (starlark.Value, error)
 }
 
+type RedistributableDefinition interface {
+	BuildDefinition
+	Redistributable() bool
+}
+
 type BuildContext interface {
 	starlark.Value
 

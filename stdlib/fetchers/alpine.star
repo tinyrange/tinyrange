@@ -131,12 +131,15 @@ def apk_download(ctx, name, fs):
 
     return ctx.archive(ret)
 
+def is_redistributable(license):
+    return True
+
 def get_alpine_installer(pkg, tags):
     ent = pkg.raw
 
     if tags.contains("level1"):
         return installer(
-            # This is a basic package defintion that just uses apk to install the package.
+            # This is a basic package definition that just uses apk to install the package.
             directives = [
                 directive.run_command("apk add {}".format(ent["P"])),
             ],
@@ -168,7 +171,7 @@ def get_alpine_installer(pkg, tags):
                     apk_download,
                     ent["P"],
                     download_archive,
-                ),
+                ).set_redistributable(is_redistributable(ent["L"])),
             ],
             dependencies = deps,
         )
@@ -179,7 +182,7 @@ def get_alpine_installer(pkg, tags):
                     apk_download,
                     ent["P"],
                     download_archive,
-                ),
+                ).set_redistributable(is_redistributable(ent["L"])),
             ],
         )
     else:
@@ -252,6 +255,8 @@ def build_alpine_install_layer(ctx, directives):
             continue
 
         fs = filesystem(pkg.read_archive())
+
+        print(fs)
 
         for ent in fs[".pkg"]:
             if "pre-install.sh" in ent:
@@ -346,6 +351,7 @@ if __name__ == "__main__":
         for builder in make_alpine_builders(arch, make_alpine_repos(arch, only_latest = False)):
             db.add_container_builder(builder)
 
+        # Add wolfi as well.
         db.add_container_builder(define.container_builder(
             name = "wolfi",
             arch = arch,
