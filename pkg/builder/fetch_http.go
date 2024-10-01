@@ -27,6 +27,11 @@ type FetchHttpBuildDefinition struct {
 	resp *http.Response
 }
 
+// Redistributable implements common.RedistributableDefinition.
+func (def *FetchHttpBuildDefinition) Redistributable() bool {
+	return true
+}
+
 // Dependencies implements common.BuildDefinition.
 func (def *FetchHttpBuildDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
 	return []common.DependencyNode{}, nil
@@ -147,9 +152,10 @@ func (*FetchHttpBuildDefinition) Truth() starlark.Bool { return starlark.True }
 func (*FetchHttpBuildDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value         = &FetchHttpBuildDefinition{}
-	_ common.BuildDefinition = &FetchHttpBuildDefinition{}
-	_ common.BuildResult     = &FetchHttpBuildDefinition{}
+	_ starlark.Value                   = &FetchHttpBuildDefinition{}
+	_ common.BuildDefinition           = &FetchHttpBuildDefinition{}
+	_ common.RedistributableDefinition = &FetchHttpBuildDefinition{}
+	_ common.BuildResult               = &FetchHttpBuildDefinition{}
 )
 
 func NewFetchHttpBuildDefinition(url string, expireTime time.Duration, headers map[string]string) *FetchHttpBuildDefinition {

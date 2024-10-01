@@ -256,8 +256,6 @@ def build_alpine_install_layer(ctx, directives):
 
         fs = filesystem(pkg.read_archive())
 
-        print(fs)
-
         for ent in fs[".pkg"]:
             if "pre-install.sh" in ent:
                 file = ent["pre-install.sh"]
