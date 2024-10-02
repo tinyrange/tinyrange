@@ -67,7 +67,11 @@ def split_debian_name(q):
     if " | " in q:
         options = q.split(" | ")
 
+        # TODO(joshua): This is a hack since the planner doesn't currently support multiple options.
+        # This will be supported in the second version of the planner.
         if options[0] == "usrmerge":
+            options = options[1:]
+        elif options[0] == "luit":
             options = options[1:]
 
     # TODO(joshua): Support multiple options in the query.
@@ -339,7 +343,7 @@ def build_debian_install_layer(ctx, base_directives, directives):
             control = ent["control"].read().strip()
             status += control + "\nStatus: install ok unpacked\n\n"
 
-    ret[".pkg/scripts.json"] = json.encode([
+    commands = [
         {
             "kind": "execute",
             "exec": "/usr/bin/dpkg",
@@ -354,7 +358,17 @@ def build_debian_install_layer(ctx, base_directives, directives):
             "exec": "/bin/bash",
             "args": ["-c", "echo root:root | chpasswd"],
         },
-    ])
+    ]
+
+    # Remove the status file so it's not included in the changed archive.
+    if len(base_directives) == 0:
+        commands.append({
+            "kind": "execute",
+            "exec": "/bin/bash",
+            "args": ["-c", "rm var/lib/dpkg/status"],
+        })
+
+    ret[".pkg/scripts.json"] = json.encode(commands)
 
     ret["var/lib/dpkg/status"] = file(status)
     ret["var/log/dpkg.log"] = file("")
