@@ -188,6 +188,13 @@ func (config *loginConfig) getDirectives(db *database.PackageDatabase) ([]common
 
 	for _, filename := range config.Archives {
 		var def common.BuildDefinition
+
+		filename, target, ok := strings.Cut(filename, ",")
+
+		if !ok {
+			target = "/root"
+		}
+
 		if strings.HasPrefix(filename, "http://") || strings.HasPrefix(filename, "https://") {
 			def = builder.NewFetchHttpBuildDefinition(filename, 0, nil)
 
@@ -213,7 +220,7 @@ func (config *loginConfig) getDirectives(db *database.PackageDatabase) ([]common
 			return nil, "", err
 		}
 
-		directives = append(directives, common.DirectiveArchive{Definition: ark, Target: "/root"})
+		directives = append(directives, common.DirectiveArchive{Definition: ark, Target: target})
 	}
 
 	var pkgs []common.PackageQuery
