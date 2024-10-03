@@ -182,7 +182,7 @@ def get_debian_installer(pkg, tags):
         deps += [parse_debian_query(q) for q in ent["depends"].split(", ")]
 
     if "recommends" in ent:
-        deps += [parse_debian_query(q) for q in ent["recommends"].split(", ")]
+        deps += [parse_debian_query(q) for q in ent["recommends"].split(", ") if q != "luit"]
 
     if tags.contains("level3"):
         download_archive = define.fetch_http(ent["$base"] + ent["filename"])
