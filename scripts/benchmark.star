@@ -8,7 +8,7 @@ vm_params = {
     "initramfs": alpine_initramfs(kernel_fs_320),
     "kernel": alpine_kernel(kernel_fs_320),
     "cpu_cores": 1,
-    "memory_mb": 2048,
+    "memory_mb": 4096,
     "storage_size": 2048,
 }
 
@@ -133,11 +133,79 @@ bench_startup_tinyrange = define.build_vm(
     **vm_params
 )
 
-# bench_startup = define.group(
-#     bench_startup_docker,
-#     bench_startup_podman,
-#     bench_startup_tinyrange,
-# )
+fio_args = "--randrepeat=1 --ioengine=libaio --direct=1 --name=test --filename=test --bs=4k --size=1G --readwrite=readwrite --ramp_time=4"
+
+bench_cpu_docker = define.build_vm(
+    directives = docker_base_directives + [
+        directive.run_command("docker run --rm zyclonite/sysbench cpu run > /output.txt"),
+    ],
+    output = "/output.txt",
+    **vm_params
+)
+
+bench_memory_docker = define.build_vm(
+    directives = docker_base_directives + [
+        directive.run_command("docker run --rm zyclonite/sysbench memory run > /output.txt"),
+    ],
+    output = "/output.txt",
+    **vm_params
+)
+
+bench_fileio_docker = define.build_vm(
+    directives = docker_base_directives + [
+        directive.run_command("docker run --rm xridge/fio " + fio_args + " > /output.txt"),
+    ],
+    output = "/output.txt",
+    **vm_params
+)
+
+bench_cpu_podman = define.build_vm(
+    directives = podman_base_directives + [
+        directive.run_command("source /etc/profile; podman run --rm zyclonite/sysbench cpu run > /output.txt"),
+    ],
+    output = "/output.txt",
+    **vm_params
+)
+
+bench_memory_podman = define.build_vm(
+    directives = podman_base_directives + [
+        directive.run_command("source /etc/profile; podman run --rm zyclonite/sysbench memory run > /output.txt"),
+    ],
+    output = "/output.txt",
+    **vm_params
+)
+
+bench_fileio_podman = define.build_vm(
+    directives = podman_base_directives + [
+        directive.run_command("source /etc/profile; podman run --rm xridge/fio " + fio_args + " > /output.txt"),
+    ],
+    output = "/output.txt",
+    **vm_params
+)
+
+bench_cpu_tinyrange = define.build_vm(
+    directives = tinyrange_base_directives + [
+        directive.run_command("source /etc/profile; cd /root; ./tinyrange login sysbench -E \"sysbench cpu run\" > /output.txt"),
+    ],
+    output = "/output.txt",
+    **vm_params
+)
+
+bench_memory_tinyrange = define.build_vm(
+    directives = tinyrange_base_directives + [
+        directive.run_command("source /etc/profile; cd /root; ./tinyrange login sysbench -E \"sysbench memory run\" > /output.txt"),
+    ],
+    output = "/output.txt",
+    **vm_params
+)
+
+bench_fileio_tinyrange = define.build_vm(
+    directives = tinyrange_base_directives + [
+        directive.run_command("source /etc/profile; cd /root; ./tinyrange login --storage 2048 fio -E \"fio " + fio_args + "\" > /output.txt"),
+    ],
+    output = "/output.txt",
+    **vm_params
+)
 
 def main(args):
     output = args.output()
