@@ -23,6 +23,8 @@ func GetLinkName(ent File) (string, error) {
 			return "", fs.ErrInvalid
 		}
 		return string(ent.contents), nil
+	case *overlayFile:
+		return GetLinkName(ent.File)
 	case SimpleEntry:
 		return ent.linkName, nil
 	default:
@@ -39,6 +41,8 @@ func GetUidAndGid(ent File) (int, int, error) {
 	case *memoryDirectory:
 		return GetUidAndGid(ent.memoryFile)
 	case *memoryFile:
+		return ent.uid, ent.gid, nil
+	case *overlayFile:
 		return ent.uid, ent.gid, nil
 	case *CacheEntry:
 		return ent.CUid, ent.CGid, nil
@@ -207,13 +211,12 @@ func NewLocalFile(filename string, source hash.SerializableValue) File {
 type overlayFile struct {
 	File
 
-	kind     FileType
-	size     int64
-	mTime    time.Time
-	mode     fs.FileMode
-	uid      int
-	gid      int
-	contents []byte
+	kind  FileType
+	size  int64
+	mTime time.Time
+	mode  fs.FileMode
+	uid   int
+	gid   int
 }
 
 func (m *overlayFile) Kind() FileType      { return m.kind }
@@ -222,7 +225,7 @@ func (m *overlayFile) IsDir() bool         { return false }
 func (m *overlayFile) ModTime() time.Time  { return m.mTime }
 func (m *overlayFile) Mode() fs.FileMode   { return m.mode }
 func (m *overlayFile) Name() string        { return "" }
-func (m *overlayFile) Size() int64         { return int64(len(m.contents)) }
+func (m *overlayFile) Size() int64         { return m.size }
 func (m *overlayFile) Sys() any            { return m }
 
 // Chmod implements MutableFile.
