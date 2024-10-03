@@ -30,6 +30,10 @@ func (t *installationTree) writeTree(prefix string) error {
 	}
 
 	if t.Installer == nil {
+		if !common.IsVerbose() {
+			return nil
+		}
+
 		if t.Package == nil {
 			color.New(color.Faint).Printf("%s- %s (installed)\n", prefix, t.Query)
 		} else {
