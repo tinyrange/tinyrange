@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"slices"
 	"strings"
 )
 
@@ -200,6 +199,7 @@ type MutableDirectory interface {
 type memoryDirectory struct {
 	*memoryFile
 
+	names   []string
 	entries map[string]File
 }
 
@@ -238,6 +238,7 @@ func (m *memoryDirectory) Create(name string, f File) error {
 		return nil
 	}
 
+	m.names = append(m.names, name)
 	m.entries[name] = f
 
 	return nil
@@ -307,14 +308,7 @@ func (m *memoryDirectory) Overwrite(contents []byte) error {
 func (m *memoryDirectory) Readdir() ([]DirectoryEntry, error) {
 	var ret []DirectoryEntry
 
-	var names []string
-	for name := range m.entries {
-		names = append(names, name)
-	}
-
-	slices.Sort(names)
-
-	for _, name := range names {
+	for _, name := range m.names {
 		file := m.entries[name]
 		ret = append(ret, DirectoryEntry{File: file, Name: name})
 	}
