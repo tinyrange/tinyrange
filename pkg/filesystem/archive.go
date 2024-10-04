@@ -1,14 +1,21 @@
 package filesystem
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	goHash "hash"
 	"io"
 	"io/fs"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
 
@@ -74,6 +81,40 @@ func ReadArchiveFromFile(f File) (Archive, error) {
 	return ret, nil
 }
 
+func ReadArchiveFromStreamingServer(client *http.Client, server string, f File) (Archive, error) {
+	fh, err := f.Open()
+	if err != nil {
+		return nil, err
+	}
+
+	dec := json.NewDecoder(fh)
+	if err != nil {
+		return nil, err
+	}
+
+	var ret ArrayArchive
+
+	for {
+		var cacheEnt CacheEntry
+
+		err := dec.Decode(&cacheEnt)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+
+		if cacheEnt.ContentsFilename != "" {
+			cacheEnt.COffset = 0
+			cacheEnt.underlyingFile = NewLazyRemoteFile(client, server+cacheEnt.ContentsFilename, cacheEnt.CSize)
+		}
+
+		ret = append(ret, &cacheEnt)
+	}
+
+	return ret, nil
+}
+
 func ExtractArchive(ark Archive, mut MutableDirectory) error {
 	ents, err := ark.Entries()
 	if err != nil {
@@ -89,6 +130,156 @@ func ExtractArchive(ark Archive, mut MutableDirectory) error {
 	// if err := ValidateAndDump(os.Stdout, mut); err != nil {
 	// 	return err
 	// }
+
+	return nil
+}
+
+type StreamableTempFile interface {
+	io.WriteCloser
+	FilenameAndHash() (string, string)
+}
+
+type StreamableWriter interface {
+	Writer() (StreamableTempFile, error)
+}
+
+type tempFile struct {
+	file     *os.File
+	hashObj  goHash.Hash
+	filename string
+	hash     string
+	fs       *filesystemStreamableWriter
+	writer   io.Writer
+}
+
+// Filename implements StreamableTempFile.
+func (t *tempFile) FilenameAndHash() (string, string) {
+	return t.filename, t.hash
+}
+
+// Close implements StreamableTempFile.
+func (t *tempFile) Close() error {
+	if err := t.file.Close(); err != nil {
+		return err
+	}
+
+	filename, hash, err := t.fs.complete(t.file.Name(), t.hashObj.Sum(nil))
+	if err != nil {
+		return err
+	}
+
+	t.filename = filename
+	t.hash = hash
+
+	return nil
+}
+
+// Write implements StreamableTempFile.
+func (t *tempFile) Write(p []byte) (n int, err error) {
+	if t.writer == nil {
+		t.writer = io.MultiWriter(t.file, t.hashObj)
+	}
+
+	return t.writer.Write(p)
+}
+
+var (
+	_ StreamableTempFile = &tempFile{}
+)
+
+type filesystemStreamableWriter struct {
+	outputPath string
+}
+
+// Writer implements StreamableWriter.
+func (f *filesystemStreamableWriter) Writer() (StreamableTempFile, error) {
+	// make a temporary file.
+	tmp, err := os.CreateTemp(f.outputPath, "temp.*.bin")
+	if err != nil {
+		return nil, err
+	}
+
+	return &tempFile{
+		fs:      f,
+		file:    tmp,
+		hashObj: sha256.New(),
+	}, nil
+}
+
+func (f *filesystemStreamableWriter) complete(oldFilename string, hash []byte) (string, string, error) {
+	hashString := hex.EncodeToString(hash)
+
+	relPath := filepath.Join(hashString[:2], hashString+".bin")
+
+	filename := filepath.Join(f.outputPath, relPath)
+
+	if err := os.MkdirAll(filepath.Dir(filename), os.ModePerm); err != nil {
+		return "", "", err
+	}
+
+	if err := os.Rename(oldFilename, filename); err != nil {
+		return "", "", err
+	}
+
+	return relPath, hashString, nil
+}
+
+var (
+	_ StreamableWriter = &filesystemStreamableWriter{}
+)
+
+func NewFilesystemStreamableWriter(outputPath string) StreamableWriter {
+	return &filesystemStreamableWriter{outputPath: outputPath}
+}
+
+func ExtractArchiveToStreamableIndex(file File, idx io.Writer, w StreamableWriter) error {
+	ark, err := ReadArchiveFromFile(file)
+	if err != nil {
+		return err
+	}
+
+	ents, err := ark.Entries()
+	if err != nil {
+		return err
+	}
+
+	idxWriter := json.NewEncoder(idx)
+
+	pb := progressbar.Default(int64(len(ents)), file.Digest().Hash)
+	defer pb.Close()
+
+	for _, ent := range ents {
+		cacheEnt := *ent.(*CacheEntry)
+
+		if ent.Typeflag() == TypeRegular {
+			f, err := ent.Open()
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+
+			out, err := w.Writer()
+			if err != nil {
+				return err
+			}
+
+			if _, err := io.CopyN(out, f, ent.Size()); err != nil {
+				return err
+			}
+
+			if err := out.Close(); err != nil {
+				return err
+			}
+
+			cacheEnt.ContentsFilename, cacheEnt.Hash = out.FilenameAndHash()
+		}
+
+		if err := idxWriter.Encode(&cacheEnt); err != nil {
+			return err
+		}
+
+		pb.Add(1)
+	}
 
 	return nil
 }
@@ -163,6 +354,10 @@ type CacheEntry struct {
 	CModTime  int64    `json:"e"` // in microseconds since the unix epoch.
 	CDevmajor int64    `json:"a"`
 	CDevminor int64    `json:"i"`
+
+	// Used for streaming files only.
+	Hash             string `json:"hash,omitempty"`
+	ContentsFilename string `json:"contents,omitempty"`
 }
 
 // Digest implements Entry.

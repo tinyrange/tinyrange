@@ -72,9 +72,20 @@ func (*vmBackend) Sync() error {
 	return nil
 }
 
-func fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
+type TinyRange struct {
+	buildDir         string
+	cfg              config.TinyRangeConfig
+	debug            bool
+	forwardSsh       bool
+	exportFilesystem string
+	listenNbd        string
+	streamingServer  string
+	client           *http.Client
+}
+
+func (tr *TinyRange) fragmentToFilesystem(frag config.Fragment, dir filesystem.MutableDirectory) error {
 	if localFile := frag.LocalFile; localFile != nil {
-		file := filesystem.NewLocalFile(cfg.Resolve(localFile.HostFilename), nil)
+		file := filesystem.NewLocalFile(tr.cfg.Resolve(localFile.HostFilename), nil)
 
 		overlay, err := filesystem.NewOverlayFile(file)
 		if err != nil {
@@ -174,11 +185,25 @@ func fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir 
 			return fmt.Errorf("unknown builtin: %s", builtin.Name)
 		}
 	} else if ark := frag.Archive; ark != nil {
-		f := filesystem.NewLocalFile(cfg.Resolve(ark.HostFilename), nil)
+		var (
+			archive filesystem.Archive
+			err     error
+		)
 
-		archive, err := filesystem.ReadArchiveFromFile(f)
-		if err != nil {
-			return fmt.Errorf("failed to read archive: %w", err)
+		if tr.streamingServer != "" {
+			f := filesystem.NewRemoteFile(tr.client, tr.streamingServer+ark.HostFilename)
+
+			archive, err = filesystem.ReadArchiveFromStreamingServer(tr.client, tr.streamingServer, f)
+			if err != nil {
+				return fmt.Errorf("failed to download archive: %w", err)
+			}
+		} else {
+			f := filesystem.NewLocalFile(tr.cfg.Resolve(ark.HostFilename), nil)
+
+			archive, err = filesystem.ReadArchiveFromFile(f)
+			if err != nil {
+				return fmt.Errorf("failed to read archive: %w", err)
+			}
 		}
 
 		entries, err := archive.Entries()
@@ -270,7 +295,7 @@ func fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir 
 }
 
 // Recurse into an filesystem.Directory and put all it's contents into a ext4 filesystem.
-func filesystemToExt4(dir filesystem.Directory, fs *ext4.Ext4Filesystem, name string) error {
+func (tr *TinyRange) filesystemToExt4(dir filesystem.Directory, fs *ext4.Ext4Filesystem, name string) error {
 	ents, err := dir.Readdir()
 	if err != nil {
 		return fmt.Errorf("failed to readdir: %w", err)
@@ -295,7 +320,7 @@ func filesystemToExt4(dir filesystem.Directory, fs *ext4.Ext4Filesystem, name st
 				return fmt.Errorf("directory does not implement Directory: %T", ent.File)
 			}
 
-			if err := filesystemToExt4(child, fs, name); err != nil {
+			if err := tr.filesystemToExt4(child, fs, name); err != nil {
 				return err
 			}
 		case filesystem.TypeLink:
@@ -348,29 +373,22 @@ func filesystemToExt4(dir filesystem.Directory, fs *ext4.Ext4Filesystem, name st
 	return nil
 }
 
-func RunWithConfig(
-	buildDir string,
-	cfg config.TinyRangeConfig,
-	debug bool,
-	forwardSsh bool,
-	exportFilesystem string,
-	listenNbd string,
-) error {
-	if cfg.StorageSize == 0 || cfg.CPUCores == 0 || cfg.MemoryMB == 0 {
+func (tr *TinyRange) runWithConfig() error {
+	if tr.cfg.StorageSize == 0 || tr.cfg.CPUCores == 0 || tr.cfg.MemoryMB == 0 {
 		return fmt.Errorf("invalid config")
 	}
 
-	if cfg.Debug {
+	if tr.cfg.Debug {
 		slog.Warn("enabling hypervisor debug mode")
-		debug = true
+		tr.debug = true
 	}
 
-	interaction := cfg.Interaction
+	interaction := tr.cfg.Interaction
 	if interaction == "" {
 		interaction = "ssh"
 	}
 
-	fsSize := int64(cfg.StorageSize * 1024 * 1024)
+	fsSize := int64(tr.cfg.StorageSize * 1024 * 1024)
 
 	vmem := vm.NewVirtualMemory(fsSize, 4096)
 
@@ -380,11 +398,11 @@ func RunWithConfig(
 
 	root := filesystem.NewMemoryDirectory()
 
-	for _, frag := range cfg.RootFsFragments {
+	for _, frag := range tr.cfg.RootFsFragments {
 		if port := frag.ExportPort; port != nil {
 			exportedPorts = append(exportedPorts, port.Port)
 		} else {
-			if err := fragmentToFilesystem(cfg, frag, root); err != nil {
+			if err := tr.fragmentToFilesystem(frag, root); err != nil {
 				return fmt.Errorf("failed to extract fragment to filesystem: %w", err)
 			}
 		}
@@ -399,16 +417,16 @@ func RunWithConfig(
 		return fmt.Errorf("failed to create ext4 filesystem: %w", err)
 	}
 
-	if err := filesystemToExt4(root, fs, "/"); err != nil {
+	if err := tr.filesystemToExt4(root, fs, "/"); err != nil {
 		return fmt.Errorf("failed to convert filesystem to ext4: %w", err)
 	}
 
 	slog.Debug("built filesystem", "took", time.Since(start))
 
-	if exportFilesystem != "" {
+	if tr.exportFilesystem != "" {
 		start := time.Now()
 
-		out, err := os.Create(exportFilesystem)
+		out, err := os.Create(tr.exportFilesystem)
 		if err != nil {
 			return err
 		}
@@ -423,8 +441,8 @@ func RunWithConfig(
 		return nil
 	}
 
-	if listenNbd != "" {
-		listener, err := net.Listen("tcp", listenNbd)
+	if tr.listenNbd != "" {
+		listener, err := net.Listen("tcp", tr.listenNbd)
 		if err != nil {
 			return fmt.Errorf("failed to listen: %v", err)
 		}
@@ -508,19 +526,19 @@ func RunWithConfig(
 
 	// ns.OpenPacketCapture(out)
 
-	factory, err := virtualMachine.LoadVirtualMachineFactory(buildDir, cfg.Resolve(cfg.HypervisorScript))
+	factory, err := virtualMachine.LoadVirtualMachineFactory(tr.buildDir, tr.cfg.Resolve(tr.cfg.HypervisorScript))
 	if err != nil {
 		return fmt.Errorf("failed to load virtual machine factory: %w", err)
 	}
 
 	virtualMachine, err := factory.Create(
-		cfg.CPUCores,
-		cfg.MemoryMB,
-		cfg.Architecture,
-		cfg.Resolve(cfg.KernelFilename),
-		cfg.Resolve(cfg.InitFilesystemFilename),
+		tr.cfg.CPUCores,
+		tr.cfg.MemoryMB,
+		tr.cfg.Architecture,
+		tr.cfg.Resolve(tr.cfg.KernelFilename),
+		tr.cfg.Resolve(tr.cfg.InitFilesystemFilename),
 		"nbd://"+listener.Addr().String(),
-		cfg.Interaction,
+		tr.cfg.Interaction,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to make virtual machine: %w", err)
@@ -596,7 +614,7 @@ func RunWithConfig(
 	}
 
 	// Create forwarder for SSH connection.
-	if forwardSsh {
+	if tr.forwardSsh {
 		sshListen, err := net.Listen("tcp", "localhost:2222")
 		if err != nil {
 			return err
@@ -666,7 +684,7 @@ func RunWithConfig(
 
 	if interaction == "ssh" || interaction == "vnc" {
 		go func() {
-			if err := virtualMachine.Run(nic, debug); err != nil {
+			if err := virtualMachine.Run(nic, tr.debug); err != nil {
 				slog.Error("failed to run virtual machine", "err", err)
 				os.Exit(1)
 			}
@@ -700,4 +718,27 @@ func RunWithConfig(
 	} else {
 		return fmt.Errorf("unknown interaction: %s", interaction)
 	}
+}
+
+func RunWithConfig(
+	buildDir string,
+	cfg config.TinyRangeConfig,
+	debug bool,
+	forwardSsh bool,
+	exportFilesystem string,
+	listenNbd string,
+	streamingServer string,
+) error {
+	tr := &TinyRange{
+		buildDir:         buildDir,
+		cfg:              cfg,
+		debug:            debug,
+		forwardSsh:       forwardSsh,
+		exportFilesystem: exportFilesystem,
+		listenNbd:        listenNbd,
+		streamingServer:  streamingServer,
+		client:           http.DefaultClient,
+	}
+
+	return tr.runWithConfig()
 }

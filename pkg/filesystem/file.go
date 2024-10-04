@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/vm"
 )
 
 func GetLinkName(ent File) (string, error) {
@@ -206,6 +209,112 @@ var (
 
 func NewLocalFile(filename string, source hash.SerializableValue) File {
 	return &LocalFile{filename: filename, source: source}
+}
+
+type RemoteFile struct {
+	client   *http.Client
+	url      string
+	contents MutableFile
+}
+
+func (r *RemoteFile) loadContents() error {
+	resp, err := r.client.Get(r.url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	contents, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	r.contents = NewMemoryFile(TypeRegular)
+
+	if err := r.contents.Overwrite(contents); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Digest implements File.
+func (r *RemoteFile) Digest() *FileDigest {
+	return nil
+}
+
+// Open implements File.
+func (r *RemoteFile) Open() (FileHandle, error) {
+	if r.contents == nil {
+		if err := r.loadContents(); err != nil {
+			return nil, err
+		}
+	}
+
+	return r.contents.Open()
+}
+
+// Stat implements File.
+func (r *RemoteFile) Stat() (FileInfo, error) {
+	if r.contents == nil {
+		if err := r.loadContents(); err != nil {
+			return nil, err
+		}
+	}
+
+	return r.contents.Stat()
+}
+
+var (
+	_ File = &RemoteFile{}
+)
+
+func NewRemoteFile(client *http.Client, url string) File {
+	return &RemoteFile{client: client, url: url}
+}
+
+type lazyRemoteFile struct {
+	client       *http.Client
+	url          string
+	expectedSize int64
+	region       vm.RawRegion
+}
+
+// ReadAt implements io.ReaderAt.
+func (l *lazyRemoteFile) ReadAt(p []byte, off int64) (n int, err error) {
+	if l.region == nil {
+		resp, err := l.client.Get(l.url)
+		if err != nil {
+			slog.Error("failed to read", "err", err)
+			return -1, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			return -1, fmt.Errorf("bad status: %s", resp.Status)
+		}
+
+		l.region = make(vm.RawRegion, l.expectedSize)
+
+		if _, err = io.ReadFull(resp.Body, l.region); err != nil {
+			slog.Error("failed to read", "err", err)
+			return -1, err
+		}
+	}
+
+	return l.region.ReadAt(p, off)
+}
+
+var (
+	_ io.ReaderAt = &lazyRemoteFile{}
+)
+
+func NewLazyRemoteFile(client *http.Client, url string, expectedSize int64) io.ReaderAt {
+	return &lazyRemoteFile{client: client, url: url, expectedSize: expectedSize}
 }
 
 type overlayFile struct {
