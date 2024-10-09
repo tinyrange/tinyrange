@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime/pprof"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/docker/docker/api/types"
@@ -72,6 +73,7 @@ type loginConfig struct {
 	Environment  []string `json:"environment,omitempty" yaml:"environment,omitempty"`
 	NoScripts    bool     `json:"no_scripts,omitempty" yaml:"no_scripts,omitempty"`
 	Init         string   `json:"init,omitempty" yaml:"init,omitempty"`
+	ForwardPorts []string `json:"forward_ports,omitempty" yaml:"forward_ports,omitempty"`
 
 	// private configs that have to be set on the command line.
 	cpuCores          int
@@ -285,6 +287,15 @@ func (config *loginConfig) getDirectives(db *database.PackageDatabase) ([]common
 
 	if len(config.Environment) > 0 {
 		directives = append(directives, common.DirectiveEnvironment{Variables: config.Environment})
+	}
+
+	for _, port := range config.ForwardPorts {
+		portNum, err := strconv.Atoi(port)
+		if err != nil {
+			return nil, "", err
+		}
+
+		directives = append(directives, common.DirectiveExportPort{Name: "forward", Port: portNum})
 	}
 
 	interaction := "ssh"
@@ -618,6 +629,7 @@ func init() {
 	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Environment, "environment", "e", []string{}, "Add environment variables to the VM.")
 	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Macros, "macro", "m", []string{}, "Add macros to the VM.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.Architecture, "arch", "", "Override the CPU architecture of the machine. This will use emulation with a performance hit.")
+	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ForwardPorts, "forward", []string{}, "Forward a port from the guest to the host.")
 
 	// private flags (need to set on command line)
 	loginCmd.PersistentFlags().IntVar(&currentConfig.cpuCores, "cpu", 1, "The number of CPU cores to allocate to the virtual machine.")
