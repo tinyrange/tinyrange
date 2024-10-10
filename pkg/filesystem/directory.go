@@ -187,6 +187,43 @@ func CreateChild(dir Directory, p string, f File) error {
 	return mut.Create(tokens[len(tokens)-1], f)
 }
 
+func GetTotalSize(dir Directory) (int64, error) {
+	ents, err := dir.Readdir()
+	if err != nil {
+		return -1, err
+	}
+
+	var total int64 = 0
+
+	for _, child := range ents {
+		info, err := child.Stat()
+		if err != nil {
+			return -1, err
+		}
+
+		switch info.Kind() {
+		case TypeRegular:
+			total += info.Size()
+		case TypeDirectory:
+			dir, ok := child.File.(Directory)
+			if !ok {
+				return -1, fmt.Errorf("child is not a directory %T", child.File)
+			}
+
+			childTotal, err := GetTotalSize(dir)
+			if err != nil {
+				return -1, err
+			}
+
+			total += childTotal
+		default:
+			continue
+		}
+	}
+
+	return total, nil
+}
+
 type MutableDirectory interface {
 	Directory
 	MutableFile

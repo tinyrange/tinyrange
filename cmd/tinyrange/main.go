@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/tinyrange/tinyrange/pkg/buildinfo"
@@ -16,6 +17,7 @@ var (
 	rootCpuProfile   string
 	rootVerbose      bool
 	rootDistribution string
+	rootMirrors      []string
 )
 
 var rootCmd = &cobra.Command{
@@ -57,6 +59,15 @@ func newDb() (*database.PackageDatabase, error) {
 		return nil, err
 	}
 
+	for _, mirror := range rootMirrors {
+		name, url, ok := strings.Cut(mirror, "=")
+		if !ok {
+			return nil, fmt.Errorf("invalid mirror syntax (name=url)")
+		}
+
+		db.AddMirror(name, []string{url})
+	}
+
 	return db, nil
 }
 
@@ -66,6 +77,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&rootCpuProfile, "cpuprofile", "", "write cpu profile to file")
 	rootCmd.PersistentFlags().BoolVar(&rootVerbose, "verbose", false, "enable debugging output")
 	rootCmd.PersistentFlags().StringVar(&rootDistribution, "distribution", "", "The HTTP/HTTPS address of a distribution server to copy build results from")
+	rootCmd.PersistentFlags().StringArrayVar(&rootMirrors, "mirror", []string{}, "Specify mirrors to override the default mirror settings")
 }
 
 func Run() {

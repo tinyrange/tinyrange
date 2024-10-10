@@ -413,10 +413,6 @@ func (tr *TinyRange) runWithConfig() error {
 		interaction = "ssh"
 	}
 
-	fsSize := int64(tr.cfg.StorageSize * 1024 * 1024)
-
-	vmem := vm.NewVirtualMemory(fsSize, 4096)
-
 	start := time.Now()
 
 	var exportedPorts []int
@@ -435,7 +431,20 @@ func (tr *TinyRange) runWithConfig() error {
 
 	slog.Debug("built filesystem tree", "took", time.Since(start))
 
+	totalSize, err := filesystem.GetTotalSize(root)
+	if err != nil {
+		return fmt.Errorf("could not compute total size")
+	}
+
+	fsSize := int64(tr.cfg.StorageSize * 1024 * 1024)
+
+	if int64(float64(totalSize)*1.1) > fsSize {
+		return fmt.Errorf("filesystem is too small to fit all files")
+	}
+
 	start = time.Now()
+
+	vmem := vm.NewVirtualMemory(fsSize, 4096)
 
 	fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
 	if err != nil {

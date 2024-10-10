@@ -1,6 +1,8 @@
-db.add_mirror("ubuntu", ["https://mirror.aarnet.edu.au/pub/ubuntu/archive"])
-db.add_mirror("neurodebian", ["https://mirror.aarnet.edu.au/pub/neurodebian"])
-db.add_mirror("kali", ["https://mirror.aarnet.edu.au/pub/kali/kali"])
+BASE_MIRROR = "https://mirror.aarnet.edu.au/pub"
+
+db.add_mirror("ubuntu", [BASE_MIRROR+"/ubuntu/archive"])
+db.add_mirror("neurodebian", [BASE_MIRROR+"/neurodebian"])
+db.add_mirror("kali", [BASE_MIRROR+"/kali/kali"])
 
 LATEST_UBUNTU_VERSION = "noble"
 UBUNTU_VERSIONS = ["noble", "jammy", "focal"]
