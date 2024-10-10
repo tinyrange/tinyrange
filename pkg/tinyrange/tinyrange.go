@@ -438,8 +438,12 @@ func (tr *TinyRange) runWithConfig() error {
 
 	fsSize := int64(tr.cfg.StorageSize * 1024 * 1024)
 
-	if int64(float64(totalSize)*1.1) > fsSize {
-		return fmt.Errorf("filesystem is too small to fit all files")
+	if int64(float64(totalSize)*1.5) > fsSize {
+		targetSize := int64(float64(totalSize)*1.5) / 128 / 1024 / 1024
+
+		slog.Debug("resize filesystem", "new", fmt.Sprintf("%dmb", targetSize*128))
+
+		fsSize = targetSize * 128 * 1024 * 1024
 	}
 
 	start = time.Now()
