@@ -73,14 +73,15 @@ func (*vmBackend) Sync() error {
 }
 
 type TinyRange struct {
-	buildDir         string
-	cfg              config.TinyRangeConfig
-	debug            bool
-	forwardSsh       bool
-	exportFilesystem string
-	listenNbd        string
-	streamingServer  string
-	client           *http.Client
+	buildDir           string
+	cfg                config.TinyRangeConfig
+	debug              bool
+	forwardSsh         bool
+	exportFilesystem   string
+	listenNbd          string
+	streamingServer    string
+	client             *http.Client
+	deferredFilesystem []func() error
 }
 
 func (tr *TinyRange) fragmentToFilesystem(frag config.Fragment, dir filesystem.MutableDirectory) error {
@@ -263,7 +264,6 @@ func (tr *TinyRange) fragmentToFilesystem(frag config.Fragment, dir filesystem.M
 					}
 				case filesystem.TypeRegular:
 					// slog.Info("reg", "name", name)
-
 					file, err = filesystem.NewOverlayFile(ent)
 					if err != nil {
 						return err
@@ -309,6 +309,8 @@ func (tr *TinyRange) filesystemToExt4(dir filesystem.Directory, fs *ext4.Ext4Fil
 
 		name := path.Join(name, path.Base(ent.Name))
 
+		skip := false
+
 		switch info.Kind() {
 		case filesystem.TypeDirectory:
 			if err := fs.Mkdir(name, false); err != nil {
@@ -330,7 +332,28 @@ func (tr *TinyRange) filesystemToExt4(dir filesystem.Directory, fs *ext4.Ext4Fil
 			}
 
 			if err := fs.Link(name, target); err != nil {
-				return fmt.Errorf("failed to make hard link: %w", err)
+				tr.deferredFilesystem = append(tr.deferredFilesystem, func() error {
+					if err := fs.Link(name, target); err != nil {
+						return fmt.Errorf("failed to make hard link: %w", err)
+					}
+
+					if err := fs.Chmod(name, info.Mode()); err != nil {
+						return fmt.Errorf("failed to chmod: %w", err)
+					}
+
+					uid, gid, err := filesystem.GetUidAndGid(ent.File)
+					if err != nil {
+						return fmt.Errorf("failed to GetUidAndGid: %w", err)
+					}
+
+					if err := fs.Chown(name, uint16(uid), uint16(gid)); err != nil {
+						return fmt.Errorf("failed to chown: %w", err)
+					}
+
+					return nil
+				})
+
+				skip = true
 			}
 		case filesystem.TypeSymlink:
 			target, err := filesystem.GetLinkName(ent.File)
@@ -353,20 +376,22 @@ func (tr *TinyRange) filesystemToExt4(dir filesystem.Directory, fs *ext4.Ext4Fil
 				return fmt.Errorf("failed to create file in guest %s: %w", name, err)
 			}
 		default:
-			return fmt.Errorf("unimplmented kind: %s", info.Kind())
+			return fmt.Errorf("unimplemented kind: %s", info.Kind())
 		}
 
-		if err := fs.Chmod(name, info.Mode()); err != nil {
-			return fmt.Errorf("failed to chmod: %w", err)
-		}
+		if !skip {
+			if err := fs.Chmod(name, info.Mode()); err != nil {
+				return fmt.Errorf("failed to chmod: %w", err)
+			}
 
-		uid, gid, err := filesystem.GetUidAndGid(ent.File)
-		if err != nil {
-			return fmt.Errorf("failed to GetUidAndGid: %w", err)
-		}
+			uid, gid, err := filesystem.GetUidAndGid(ent.File)
+			if err != nil {
+				return fmt.Errorf("failed to GetUidAndGid: %w", err)
+			}
 
-		if err := fs.Chown(name, uint16(uid), uint16(gid)); err != nil {
-			return fmt.Errorf("failed to chown: %w", err)
+			if err := fs.Chown(name, uint16(uid), uint16(gid)); err != nil {
+				return fmt.Errorf("failed to chown: %w", err)
+			}
 		}
 	}
 
@@ -419,6 +444,12 @@ func (tr *TinyRange) runWithConfig() error {
 
 	if err := tr.filesystemToExt4(root, fs, "/"); err != nil {
 		return fmt.Errorf("failed to convert filesystem to ext4: %w", err)
+	}
+
+	for _, deferred := range tr.deferredFilesystem {
+		if err := deferred(); err != nil {
+			return err
+		}
 	}
 
 	slog.Debug("built filesystem", "took", time.Since(start))
