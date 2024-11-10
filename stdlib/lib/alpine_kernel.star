@@ -113,7 +113,7 @@ def alpine_modules_fs(kernel_fs):
 def alpine_initramfs(kernel_fs):
     return define.build_fs(
         directives = [
-            define.build(get_inital_modules, kernel_fs_320),
+            define.build(get_inital_modules, kernel_fs),
             directive.builtin("init", "init"),
             directive.add_file("/init.star", file(INIT_STAR)),
         ],
