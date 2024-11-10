@@ -150,6 +150,8 @@ func crossArchToGoArch(crossArch string) string {
 		return "amd64"
 	case "aarch64":
 		return "arm64"
+	case "riscv64":
+		return "riscv64"
 	default:
 		panic("unknown cross architecture: " + crossArch)
 	}
