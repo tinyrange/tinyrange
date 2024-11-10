@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	SFTP_DEBUG = true
+	SFTP_DEBUG = false
 )
 
 type fileHandle struct {
@@ -29,16 +29,16 @@ type directoryHandle struct {
 	off     int
 }
 
-func (d *directoryHandle) next() (filesystem.File, error) {
+func (d *directoryHandle) next() (filesystem.DirectoryEntry, error) {
 	if d.off >= len(d.entries) {
-		return nil, io.EOF
+		return filesystem.DirectoryEntry{}, io.EOF
 	}
 
 	ent := d.entries[d.off]
 
 	d.off += 1
 
-	return ent.File, nil
+	return ent, nil
 }
 
 func asDirectory(f filesystem.File) (filesystem.Directory, error) {
@@ -491,7 +491,7 @@ func (s *SSHFSServer) PktReadDir(ctx sftpContext, pkt *pktReadDir) (ResponsePack
 			return nil, err
 		}
 
-		uid, gid, err := filesystem.GetUidAndGid(f)
+		uid, gid, err := filesystem.GetUidAndGid(f.File)
 		if err != nil {
 			return nil, err
 		}
@@ -499,8 +499,8 @@ func (s *SSHFSServer) PktReadDir(ctx sftpContext, pkt *pktReadDir) (ResponsePack
 		attr := s.infoToAttrs(info, uid, gid)
 
 		ret.Names = append(ret.Names, name{
-			Filename: info.Name(),
-			Longname: info.Name(),
+			Filename: f.Name,
+			Longname: f.Name,
 			Attrs:    attr,
 		})
 

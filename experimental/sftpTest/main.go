@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log/slog"
 	"net"
@@ -14,29 +15,34 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/sftp"
 )
 
+var (
+	buildDir = flag.String("build-dir", common.GetDefaultBuildDir(), "build directory")
+)
+
 func appMain() error {
+	flag.Parse()
+
 	if err := common.EnableVerbose(); err != nil {
 		return err
 	}
 
-	db := database.New(common.GetDefaultBuildDir())
+	db := database.New(*buildDir)
 
 	// Just fetch ubuntu.
 	def := builder.NewFetchOCIImageDefinition("", "library/ubuntu", "", "")
 
 	// Get all the fragments/layers from the docker image.
-	frags, err := def.AsFragments(db.NewBuildContext(def))
+	frags, err := def.AsFragments(db.NewBuildContext(def), common.SpecialDirectiveHandlers{
+		Environment: func(dir common.DirectiveEnvironment) error {
+			return nil
+		},
+	})
 	if err != nil {
 		return err
 	}
 
 	// Create a directory and extract all archives into it.
 	dir := filesystem.NewMemoryDirectory()
-
-	dir2, err := dir.Mkdir("name")
-	if err != nil {
-		return err
-	}
 
 	for _, frag := range frags {
 		if frag.Archive != nil {
@@ -45,9 +51,11 @@ func appMain() error {
 				return err
 			}
 
-			if err := filesystem.ExtractArchive(ark, dir2); err != nil {
+			if err := filesystem.ExtractArchive(ark, dir); err != nil {
 				return err
 			}
+		} else if frag.Environment != nil {
+			// Do nothing.
 		} else {
 			return fmt.Errorf("unimplemented fragment: %+v", frag)
 		}
