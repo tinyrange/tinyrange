@@ -13,6 +13,10 @@ func init() {
 	hash.RegisterType(DirectiveRunCommand{})
 	hash.RegisterType(DirectiveEnvironment{})
 	hash.RegisterType(DirectiveList{})
+	hash.RegisterType(DirectiveAddPackage{})
+	hash.RegisterType(DirectiveInteraction{})
+	hash.RegisterType(DirectiveDefaultInteractive{})
+	hash.RegisterType(DirectiveMountHostDirectory{})
 }
 
 type Directive interface {
@@ -367,6 +371,30 @@ func (d DirectiveDefaultInteractive) Tag() string {
 	return fmt.Sprintf("DirectiveDefaultInteractive_%+v", d.InteractiveCommand)
 }
 
+type DirectiveMountHostDirectory struct {
+	HostDirectory string
+}
+
+// AsFragments implements Directive.
+func (d DirectiveMountHostDirectory) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
+	return []config.Fragment{
+		{MountHostDirectory: &config.MountHostDirectoryFragment{HostDirectory: d.HostDirectory}},
+	}, nil
+}
+
+// Dependencies implements Directive.
+func (d DirectiveMountHostDirectory) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return nil, nil
+}
+
+// SerializableType implements Directive.
+func (d DirectiveMountHostDirectory) SerializableType() string { return "DirectiveMountHostDirectory" }
+
+// Tag implements Directive.
+func (d DirectiveMountHostDirectory) Tag() string {
+	return fmt.Sprintf("DirectiveMountHostDirectory_%s", d.HostDirectory)
+}
+
 var (
 	_ Directive = DirectiveRunCommand{}
 	_ Directive = DirectiveAddFile{}
@@ -377,6 +405,9 @@ var (
 	_ Directive = DirectiveBuiltin{}
 	_ Directive = DirectiveList{}
 	_ Directive = DirectiveAddPackage{}
+	_ Directive = DirectiveInteraction{}
+	_ Directive = DirectiveDefaultInteractive{}
+	_ Directive = DirectiveMountHostDirectory{}
 )
 
 type StarDirective struct {
@@ -399,6 +430,7 @@ type SpecialDirectiveHandlers struct {
 	Environment        func(dir DirectiveEnvironment) error
 	Interaction        func(dir DirectiveInteraction) error
 	DefaultInteractive func(dir DirectiveDefaultInteractive) error
+	MountHostDirectory func(dir DirectiveMountHostDirectory) error
 }
 
 func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers) ([]Directive, error) {
@@ -444,6 +476,14 @@ func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers
 			case DirectiveDefaultInteractive:
 				if handlers.DefaultInteractive != nil {
 					if err := handlers.DefaultInteractive(dir); err != nil {
+						return err
+					}
+				} else {
+					ret = append(ret, dir)
+				}
+			case DirectiveMountHostDirectory:
+				if handlers.MountHostDirectory != nil {
+					if err := handlers.MountHostDirectory(dir); err != nil {
 						return err
 					}
 				} else {

@@ -102,5 +102,7 @@ func init() {
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ExperimentalFlags, "experimental", []string{}, "Add experimental flags.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.WebSSH, "web", "", "Start a web interface on the given port.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.WriteTemplate, "template", false, "If true then just generate the config and don't run the VM.")
+	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.Mounts, "mount", []string{}, "Mount a host directory into the VM using SFTP.")
+	// loginCmd.PersistentFlags().BoolVar(&currentConfig.NoNetwork, "no-network", false, "Disable network access.")
 	rootCmd.AddCommand(loginCmd)
 }

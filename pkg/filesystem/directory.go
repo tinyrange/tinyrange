@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 )
 
@@ -369,6 +370,66 @@ func NewMemoryDirectory() MutableDirectory {
 		memoryFile: f,
 		entries:    make(map[string]File),
 	}
+}
+
+type LocalDirectory struct {
+	*LocalFile
+}
+
+// GetChild implements Directory.
+func (l *LocalDirectory) GetChild(name string) (DirectoryEntry, error) {
+	if name == "" || name == "." {
+		return DirectoryEntry{File: l}, nil
+	}
+
+	if path.Base(name) != name {
+		return DirectoryEntry{}, fmt.Errorf("LocalDirectory methods can not handle paths: %s", name)
+	}
+
+	childName := filepath.Join(l.filename, name)
+
+	info, err := os.Stat(childName)
+	if err != nil {
+		return DirectoryEntry{}, err
+	}
+
+	if info.IsDir() {
+		return DirectoryEntry{File: NewLocalDirectory(childName), Name: name}, nil
+	} else {
+		return DirectoryEntry{File: NewLocalFile(childName, nil), Name: name}, nil
+	}
+}
+
+// Readdir implements Directory.
+func (l *LocalDirectory) Readdir() ([]DirectoryEntry, error) {
+	ents, err := os.ReadDir(l.filename)
+	if err != nil {
+		return nil, err
+	}
+
+	var ret []DirectoryEntry
+
+	for _, ent := range ents {
+		var f File
+
+		if ent.IsDir() {
+			f = NewLocalDirectory(filepath.Join(l.filename, ent.Name()))
+		} else {
+			f = NewLocalFile(filepath.Join(l.filename, ent.Name()), nil)
+		}
+
+		ret = append(ret, DirectoryEntry{File: f, Name: ent.Name()})
+	}
+
+	return ret, nil
+}
+
+var (
+	_ Directory = &LocalDirectory{}
+)
+
+func NewLocalDirectory(filename string) *LocalDirectory {
+	return &LocalDirectory{LocalFile: NewLocalFile(filename, nil).(*LocalFile)}
 }
 
 func ExtractEntry(ent Entry, dir MutableDirectory) error {

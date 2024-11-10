@@ -882,8 +882,12 @@ func (s *SSHFSServer) ServeSftp(channel ssh.Channel) error {
 
 		ret, err := handlePacket(s, channel, pkt)
 		if err != nil {
-			slog.Warn("failed to handle packet", "kind", rawPkt.kind, "error", err)
-			continue
+			slog.Debug("failed to handle packet", "kind", rawPkt.kind, "error", err)
+			ret = &pktStatus{
+				Code:     errFailure,
+				Message:  err.Error(),
+				Language: "en",
+			}
 		}
 
 		err = writePacket(channel, id, ret)

@@ -124,6 +124,7 @@ type Config struct {
 	Hash              bool     `json:"-" yaml:"-"`
 	WebSSH            string   `json:"-" yaml:"-"`
 	WriteTemplate     bool     `json:"-" yaml:"-"`
+	Mounts            []string `json:"-" yaml:"-"`
 }
 
 func (config *Config) parseInclusion(db *database.PackageDatabase, inclusion string) (common.Directive, error) {
@@ -335,6 +336,25 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 				return nil, "", fmt.Errorf("handling of macro def %T not implemented", def)
 			}
 		}
+	}
+
+	for _, mount := range config.Mounts {
+		p, err := filepath.Abs(mount)
+		if err != nil {
+			return nil, "", err
+		}
+
+		directives = append(directives, common.DirectiveMountHostDirectory{HostDirectory: p})
+	}
+
+	if len(config.Mounts) > 0 && strings.HasPrefix(config.Builder, "alpine@") && config.OciImage == "" {
+		directives = append(directives, common.DirectiveAddPackage{Name: common.PackageQuery{Name: "sshfs"}})
+		directives = append(directives, common.DirectiveRunCommand{Command: strings.Join([]string{
+			"mkdir /share",
+			"mkdir /root/.ssh",
+			"ssh-keyscan host.internal > /root/.ssh/known_hosts 2> /dev/null",
+			"echo 'password' | sshfs -o password_stdin host.internal:/ /share",
+		}, "\n")})
 	}
 
 	if config.WriteRoot == "" && config.WriteDocker == "" {

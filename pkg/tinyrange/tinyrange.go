@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	_ "github.com/tinyrange/tinyrange/pkg/platform"
+	"github.com/tinyrange/tinyrange/pkg/sftp"
 	virtualMachine "github.com/tinyrange/tinyrange/pkg/vm"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"github.com/tinyrange/vm"
@@ -416,12 +418,15 @@ func (tr *TinyRange) runWithConfig() error {
 	start := time.Now()
 
 	var exportedPorts []int
+	var mountedHostDirectories []string
 
 	root := filesystem.NewMemoryDirectory()
 
 	for _, frag := range tr.cfg.RootFsFragments {
 		if port := frag.ExportPort; port != nil {
 			exportedPorts = append(exportedPorts, port.Port)
+		} else if mount := frag.MountHostDirectory; mount != nil {
+			mountedHostDirectories = append(mountedHostDirectories, mount.HostDirectory)
 		} else {
 			if err := tr.fragmentToFilesystem(frag, root); err != nil {
 				return fmt.Errorf("failed to extract fragment to filesystem: %w", err)
@@ -720,6 +725,33 @@ func (tr *TinyRange) runWithConfig() error {
 						return
 					}
 				}()
+			}
+		}()
+	}
+
+	if len(mountedHostDirectories) > 0 {
+		top := filesystem.NewMemoryDirectory()
+
+		for _, dir := range mountedHostDirectories {
+			name := filepath.Base(dir)
+
+			hostDir := filesystem.NewLocalDirectory(dir)
+
+			if err := filesystem.CreateChild(top, name, hostDir); err != nil {
+				return fmt.Errorf("failed to create child: %w", err)
+			}
+		}
+
+		slog.Info("host directories avalible via SFTP on sftp://host.internal")
+
+		svr := sftp.NewInternalServer(top, ":22")
+
+		go func() {
+			if err := svr.Run(func(network, addr string) (net.Listener, error) {
+				slog.Debug("listening", "addr", addr)
+				return ns.ListenInternal("tcp", addr)
+			}); err != nil {
+				slog.Error("failed to run sftp server", "err", err)
 			}
 		}()
 	}

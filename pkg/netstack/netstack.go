@@ -19,6 +19,7 @@ import (
 	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
+	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/link/channel"
 	"gvisor.dev/gvisor/pkg/tcpip/network/arp"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
@@ -247,19 +248,7 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 		return nil, fmt.Errorf("tcpip error: %v", err)
 	}
 
-	subnet, addrErr := tcpip.NewSubnet(
-		tcpip.AddrFromSlice(make([]byte, 4)),
-		tcpip.MaskFromBytes(make([]byte, 4)),
-	)
-	if addrErr != nil {
-		return nil, addrErr
-	}
-
-	ns.nStack.AddRoute(tcpip.Route{
-		Destination: subnet,
-		// Gateway:     subnet.ID(),
-		NIC: nicId,
-	})
+	ns.nStack.AddRoute(tcpip.Route{Destination: header.IPv4EmptySubnet, NIC: 1})
 
 	// Maybe needed due to https://github.com/google/gvisor/issues/3876
 	// seems to break the networking with it enabled though.

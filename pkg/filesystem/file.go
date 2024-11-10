@@ -52,7 +52,9 @@ func GetUidAndGid(ent File) (int, int, error) {
 	case SimpleEntry:
 		return ent.uid, ent.gid, nil
 	case *LocalFile:
-		return 0, 0, nil // local files are normally build definitions.
+		return 0, 0, nil
+	case *LocalDirectory:
+		return 0, 0, nil
 	default:
 		return -1, -1, fmt.Errorf("GetUidAndGid not implemented: %T", ent)
 	}
