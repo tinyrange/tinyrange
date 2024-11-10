@@ -101,7 +101,7 @@ func (ctx *ociRegistryContext) responseHandler(resp *http.Response) (bool, error
 			authenticate["service"],
 			authenticate["scope"])
 
-		slog.Info("registry auth", "url", tokenUrl)
+		slog.Debug("registry auth", "url", tokenUrl)
 
 		resp, err := http.Get(tokenUrl)
 		if err != nil {
@@ -174,6 +174,14 @@ func (r *registryRequestDefinition) Build(ctx common.BuildContext) (common.Build
 		return nil, err
 	}
 	if !ok {
+		defer resp.Body.Close()
+		content, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		slog.Debug("registry request failed", "url", r.ctx.registry+r.params.Url, "content", string(content))
+
 		return r.Build(ctx)
 	}
 

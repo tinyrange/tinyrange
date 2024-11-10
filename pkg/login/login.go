@@ -56,11 +56,51 @@ func sha256HashFromFile(filename string) (string, error) {
 	return sha256HashFromReader(f)
 }
 
+func parseOciImage(ociImage string) (registry string, image string, tag string, err error) {
+	var ok bool
+
+	image, tag, ok = strings.Cut(ociImage, ":")
+	if !ok {
+		tag = "latest"
+	}
+
+	if strings.Contains(image, ".") {
+		registry, image, ok = strings.Cut(image, "/")
+		if !ok {
+			return "", "", "", fmt.Errorf("invalid OCI image format %s", ociImage)
+		}
+	}
+
+	if registry == "" {
+		registry = builder.DEFAULT_REGISTRY
+	}
+
+	if registry == builder.DEFAULT_REGISTRY && !strings.Contains(image, "/") {
+		image = "library/" + image
+	}
+
+	return
+}
+
+func toOciArchitecture(arch cfg.CPUArchitecture) (string, error) {
+	switch arch {
+	case cfg.ArchX8664:
+		return "amd64", nil
+	case cfg.ArchARM64:
+		return "arm64", nil
+	case cfg.ArchInvalid:
+		return toOciArchitecture(cfg.HostArchitecture)
+	default:
+		return "", fmt.Errorf("unsupported architecture: %s", arch)
+	}
+}
+
 var CURRENT_CONFIG_VERSION = 1
 
 type Config struct {
 	Version      int      `json:"version" yaml:"version"`
 	Builder      string   `json:"builder" yaml:"builder"`
+	OciImage     string   `json:"oci_image,omitempty" yaml:"oci_image,omitempty"`
 	Architecture string   `json:"architecture,omitempty" yaml:"architecture,omitempty"`
 	Commands     []string `json:"commands,omitempty" yaml:"commands,omitempty"`
 	Files        []string `json:"files,omitempty" yaml:"files,omitempty"`
@@ -240,13 +280,31 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 		pkgs = append(pkgs, q)
 	}
 
-	planDirective, err := builder.NewPlanDefinition(config.Builder, arch, pkgs, tags)
-	if err != nil {
-		return nil, "", err
-	}
-
 	macroCtx := db.NewMacroContext()
-	macroCtx.AddBuilder("default", planDirective)
+
+	var planDirective *builder.PlanDefinition
+	if config.OciImage != "" {
+		registry, image, tag, err := parseOciImage(config.OciImage)
+		if err != nil {
+			return nil, "", err
+		}
+
+		ociArch, err := toOciArchitecture(arch)
+		if err != nil {
+			return nil, "", err
+		}
+
+		ociDef := builder.NewFetchOCIImageDefinition(registry, image, tag, ociArch)
+
+		directives = append(directives, ociDef)
+	} else {
+		planDirective, err = builder.NewPlanDefinition(config.Builder, arch, pkgs, tags)
+		if err != nil {
+			return nil, "", err
+		}
+
+		macroCtx.AddBuilder("default", planDirective)
+	}
 
 	for _, macro := range config.Macros {
 		vm, err := config.parseInclusion(db, macro)
@@ -323,7 +381,9 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 		return nil, "", err
 	}
 
-	directives = append([]common.Directive{planDirective}, directives...)
+	if planDirective != nil {
+		directives = append([]common.Directive{planDirective}, directives...)
+	}
 
 	return directives, interaction, nil
 }
