@@ -624,9 +624,24 @@ func (config *Config) Run(db *database.PackageDatabase) error {
 			interaction = "webssh," + config.WebSSH
 		}
 
+		var kernel common.BuildDefinition
+		var initramfs common.BuildDefinition
+
+		directives, err = common.FlattenDirectives(directives, common.SpecialDirectiveHandlers{
+			Kernel: func(dir common.DirectiveKernel) error {
+				kernel = dir.Kernel
+				initramfs = dir.Initramfs
+
+				return nil
+			},
+		})
+		if err != nil {
+			return err
+		}
+
 		def := builder.NewBuildVmDefinition(
 			directives,
-			nil, nil,
+			kernel, initramfs,
 			config.Output,
 			config.CpuCores, config.MemorySize, arch,
 			config.StorageSize,

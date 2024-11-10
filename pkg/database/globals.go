@@ -815,6 +815,27 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					Directive: common.DirectiveList{Items: directives},
 				}, nil
 			}),
+			"kernel": starlark.NewBuiltin("directive.kernel", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var kernel common.BuildDefinition
+				var initramfs common.BuildDefinition
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"kernel", &kernel,
+					"initramfs?", &initramfs,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				return &common.StarDirective{Directive: common.DirectiveKernel{
+					Kernel:    kernel,
+					Initramfs: initramfs,
+				}}, nil
+			}),
 		},
 	}
 

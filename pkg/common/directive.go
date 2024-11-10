@@ -395,6 +395,58 @@ func (d DirectiveMountHostDirectory) Tag() string {
 	return fmt.Sprintf("DirectiveMountHostDirectory_%s", d.HostDirectory)
 }
 
+type DirectiveKernel struct {
+	Kernel    BuildDefinition
+	Initramfs BuildDefinition
+}
+
+// AsFragments implements Directive.
+func (d DirectiveKernel) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
+	kernelRes, err := ctx.BuildChild(d.Kernel)
+	if err != nil {
+		return nil, err
+	}
+
+	kernelDigest := kernelRes.Digest()
+
+	kernelFilename, err := ctx.FilenameFromDigest(kernelDigest)
+	if err != nil {
+		return nil, err
+	}
+
+	initramfsRes, err := ctx.BuildChild(d.Initramfs)
+	if err != nil {
+		return nil, err
+	}
+
+	initramfsDigest := initramfsRes.Digest()
+
+	initramfsFilename, err := ctx.FilenameFromDigest(initramfsDigest)
+	if err != nil {
+		return nil, err
+	}
+
+	return []config.Fragment{
+		{Kernel: &config.KernelFragment{
+			KernelFilename:    kernelFilename,
+			InitramfsFilename: initramfsFilename,
+		}},
+	}, nil
+}
+
+// Dependencies implements Directive.
+func (d DirectiveKernel) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return []DependencyNode{d.Kernel, d.Initramfs}, nil
+}
+
+// SerializableType implements Directive.
+func (d DirectiveKernel) SerializableType() string { return "DirectiveKernel" }
+
+// Tag implements Directive.
+func (d DirectiveKernel) Tag() string {
+	return fmt.Sprintf("DirectiveKernel_%s_%s", d.Kernel.Tag(), d.Initramfs.Tag())
+}
+
 var (
 	_ Directive = DirectiveRunCommand{}
 	_ Directive = DirectiveAddFile{}
@@ -431,6 +483,7 @@ type SpecialDirectiveHandlers struct {
 	Interaction        func(dir DirectiveInteraction) error
 	DefaultInteractive func(dir DirectiveDefaultInteractive) error
 	MountHostDirectory func(dir DirectiveMountHostDirectory) error
+	Kernel             func(dir DirectiveKernel) error
 }
 
 func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers) ([]Directive, error) {
@@ -484,6 +537,14 @@ func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers
 			case DirectiveMountHostDirectory:
 				if handlers.MountHostDirectory != nil {
 					if err := handlers.MountHostDirectory(dir); err != nil {
+						return err
+					}
+				} else {
+					ret = append(ret, dir)
+				}
+			case DirectiveKernel:
+				if handlers.Kernel != nil {
+					if err := handlers.Kernel(dir); err != nil {
 						return err
 					}
 				} else {

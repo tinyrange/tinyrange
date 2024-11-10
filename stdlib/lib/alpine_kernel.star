@@ -140,3 +140,16 @@ vm_320 = define.build_vm(
     ],
     # interaction = "serial",
 )
+
+def kernel(version):
+    "#macro string"
+
+    kernel_fs = alpine_kernel_fs(version)
+
+    return directive.list([
+        directive.kernel(
+            kernel = alpine_kernel(kernel_fs),
+            initramfs = alpine_initramfs(kernel_fs),
+        ),
+        alpine_modules_fs(kernel_fs),
+    ])

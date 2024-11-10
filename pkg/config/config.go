@@ -88,6 +88,11 @@ type MountHostDirectoryFragment struct {
 	HostDirectory string `json:"host_directory" yaml:"host_directory"`
 }
 
+type KernelFragment struct {
+	KernelFilename    string `json:"kernel_filename" yaml:"kernel_filename"`
+	InitramfsFilename string `json:"initramfs_filename" yaml:"initramfs_filename"`
+}
+
 type Fragment struct {
 	// Not supported by TinyRange directly.
 	RunCommand         *RunCommandFragment         `json:"run_command,omitempty" yaml:"run_command"`
@@ -99,6 +104,7 @@ type Fragment struct {
 	Builtin            *BuiltinFragment            `json:"builtin,omitempty" yaml:"builtin"`
 	ExportPort         *ExportPortFragment         `json:"export_port,omitempty" yaml:"export_port"`
 	MountHostDirectory *MountHostDirectoryFragment `json:"mount_host_directory,omitempty" yaml:"mount_host_directory"`
+	Kernel             *KernelFragment             `json:"kernel,omitempty" yaml:"kernel"`
 }
 
 // A config file that can be passed to TinyRange to configure and execute a virtual machine.
