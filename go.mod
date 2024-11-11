@@ -3,6 +3,7 @@ module github.com/tinyrange/tinyrange
 go 1.22.2
 
 require (
+	github.com/agnivade/levenshtein v1.2.0
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/basgys/goxml2json v1.1.0
 	github.com/bazelbuild/buildtools v0.0.0-20240823132350-3488089d3661
@@ -24,7 +25,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/miekg/dns v1.1.62
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
-	github.com/schollz/progressbar/v3 v3.17.0
+	github.com/schollz/progressbar/v3 v3.17.1
 	github.com/spf13/cobra v1.8.1
 	github.com/tinyrange/vm v0.0.0-20240616031946-b46d8ccc03db
 	github.com/wader/readline v0.0.0-20230307172220-bcb7158e7448
@@ -33,8 +34,8 @@ require (
 	golang.org/x/crypto v0.28.0
 	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090
 	golang.org/x/net v0.30.0
-	golang.org/x/sys v0.26.0
-	golang.org/x/term v0.25.0
+	golang.org/x/sys v0.27.0
+	golang.org/x/term v0.26.0
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20240607232048-44edc9b3c5c2
 	mvdan.cc/sh/v3 v3.10.0
@@ -44,7 +45,6 @@ require (
 	github.com/BurntSushi/freetype-go v0.0.0-20160129220410-b763ddbfe298 // indirect
 	github.com/BurntSushi/graphics-go v0.0.0-20160129215708-b43f31a4a966 // indirect
 	github.com/Microsoft/go-winio v0.6.0 // indirect
-	github.com/agnivade/levenshtein v1.2.0 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
