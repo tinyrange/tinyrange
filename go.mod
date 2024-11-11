@@ -33,7 +33,7 @@ require (
 	go.starlark.net v0.0.0-20240520160348-046347dcd104
 	golang.org/x/crypto v0.29.0
 	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090
-	golang.org/x/net v0.30.0
+	golang.org/x/net v0.31.0
 	golang.org/x/sys v0.27.0
 	golang.org/x/term v0.26.0
 	gopkg.in/yaml.v3 v3.0.1
