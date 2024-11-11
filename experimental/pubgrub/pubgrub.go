@@ -150,14 +150,27 @@ type CombinedSource []Source
 
 // GetVersions satisfies Source.
 func (s CombinedSource) GetVersions(name Name) ([]Version, error) {
+	var ret []Version
 	for _, source := range s {
 		versions, err := source.GetVersions(name)
 		if err == nil {
-			return versions, nil
+			ret = append(ret, versions...)
 		}
 	}
 
-	return nil, fmt.Errorf("package %s not found", name)
+	if len(ret) == 0 {
+		return nil, fmt.Errorf("package %s not found", name)
+	}
+
+	// sort the versions
+	slices.SortFunc(ret, func(a Version, b Version) int {
+		return a.Sort(b)
+	})
+
+	// Reverse so the newest version is first.
+	slices.Reverse(ret)
+
+	return ret, nil
 }
 
 // GetDependencies satisfies Source.
@@ -170,6 +183,43 @@ func (s CombinedSource) GetDependencies(name Name, version Version) ([]Term, err
 	}
 
 	return nil, fmt.Errorf("package %s version %s not found", name, version)
+}
+
+type RootSource []Term
+
+// GetVersions satisfies Source.
+func (s RootSource) GetVersions(name Name) ([]Version, error) {
+	if name != "$$root" {
+		return nil, fmt.Errorf("package %s not found", name)
+	}
+
+	return []Version{SimpleVersion("1")}, nil
+}
+
+// GetDependencies satisfies Source.
+func (s RootSource) GetDependencies(name Name, version Version) ([]Term, error) {
+	if name != "$$root" {
+		return nil, fmt.Errorf("package %s not found", name)
+	}
+
+	if version != SimpleVersion("1") {
+		return nil, fmt.Errorf("package %s version %s not found", name, version)
+	}
+
+	return s, nil
+}
+
+// AddPackage adds a single term to the source.
+func (s *RootSource) AddPackage(name Name, condition Condition) {
+	*s = append(*s, NewTerm(name, condition))
+}
+
+func (s *RootSource) Term() Term {
+	return NewTerm("$$root", EqualsCondition{SimpleVersion("1")})
+}
+
+func NewRootSource() *RootSource {
+	return &RootSource{}
 }
 
 var (
@@ -212,6 +262,11 @@ func (s *Solver) getVersions(t Term) ([]Version, error) {
 }
 
 func (s *Solver) solve(next Term, partial Solution) (Solution, error) {
+	// Check if the term is already in the partial solution.
+	if _, ok := partial.GetVersion(next.Name); ok {
+		return partial, nil
+	}
+
 	// Get a list of versions for the next term.
 	versions, err := s.getVersions(next)
 	if err != nil {
@@ -233,6 +288,8 @@ outer:
 				if !dep.Condition.Satisfies(ver) {
 					// conflict found
 
+					// slog.Info("conflict", "dep", dep, "ver", ver)
+
 					continue outer
 				}
 			}
@@ -252,9 +309,15 @@ outer:
 		return partial, nil
 	}
 
+	// slog.Info("no solution found", "next", next)
+
 	return nil, ErrNoSolutionFound{Term: next}
 }
 
 func (s *Solver) Solve(root Term) (Solution, error) {
 	return s.solve(root, Solution{})
+}
+
+func NewSolver(sources ...Source) *Solver {
+	return &Solver{Source: CombinedSource(sources)}
 }

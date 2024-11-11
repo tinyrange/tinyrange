@@ -3,12 +3,14 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
+	"runtime/pprof"
 	"slices"
 	"strings"
 
-	"github.com/tinyrange/tinyrange/experimental/planner2"
+	"github.com/tinyrange/tinyrange/experimental/pubgrub"
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
@@ -21,16 +23,11 @@ func (req condaRequirement) Key() string {
 	return string(req)
 }
 
-// Satisfies implements planner2.Condition.
-func (req condaRequirement) Satisfies(name planner2.PackageName) (planner2.MatchResult, error) {
-	if req.Matches(name.Version) {
-		return planner2.MatchResultMatched, nil
+func (req condaRequirement) Matches(ver string) bool {
+	if req == "" {
+		return true
 	}
 
-	return planner2.MatchResultNoMatch, nil
-}
-
-func (req condaRequirement) Matches(ver string) bool {
 	if strings.HasPrefix(string(req), ">=") {
 		reqString := strings.TrimPrefix(string(req), ">=")
 		return strings.Compare(ver, reqString) >= 0
@@ -39,17 +36,63 @@ func (req condaRequirement) Matches(ver string) bool {
 		return strings.Compare(ver, reqString) < 0
 	} else if strings.HasSuffix(string(req), "*") {
 		reqString := strings.TrimSuffix(string(req), "*")
+		reqString = strings.TrimSuffix(reqString, ".")
+
 		return strings.HasPrefix(ver, reqString)
 	} else {
 		return ver == string(req)
 	}
 }
 
-var (
-	_ planner2.Condition = condaRequirement("")
-)
-
 type condaDepend string
+
+func (dep condaDepend) requirements() string {
+	_, requirements, ok := strings.Cut(string(dep), " ")
+	if !ok {
+		return ""
+	}
+
+	// Discard build.
+	requirements, _, _ = strings.Cut(requirements, " ")
+
+	return requirements
+}
+
+// Satisfies implements pubgrub.Condition.
+func (dep condaDepend) Satisfies(ver pubgrub.Version) bool {
+	requirements := dep.requirements()
+
+	if requirements == "*" {
+		return true
+	}
+
+	if strings.Contains(requirements, ",") {
+		for _, requirement := range strings.Split(requirements, ",") {
+			if !condaRequirement(requirement).Matches(ver.String()) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	if strings.Contains(requirements, "|") {
+		for _, requirement := range strings.Split(requirements, "|") {
+			if condaRequirement(requirement).Matches(ver.String()) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	return condaRequirement(dep.requirements()).Matches(ver.String())
+}
+
+// String implements pubgrub.Condition.
+func (dep condaDepend) String() string {
+	return dep.requirements()
+}
 
 func (dep condaDepend) Name() string {
 	name, _, _ := strings.Cut(string(dep), " ")
@@ -57,37 +100,37 @@ func (dep condaDepend) Name() string {
 	return name
 }
 
-func (dep condaDepend) Requirements() planner2.Condition {
-	_, requirements, ok := strings.Cut(string(dep), " ")
-	if !ok {
-		return nil
-	}
+// func (dep condaDepend) Requirements() planner2.Condition {
+// 	_, requirements, ok := strings.Cut(string(dep), " ")
+// 	if !ok {
+// 		return nil
+// 	}
 
-	// Remove build.
-	requirements, _, _ = strings.Cut(requirements, " ")
+// 	// Remove build.
+// 	requirements, _, _ = strings.Cut(requirements, " ")
 
-	if requirements == "*" {
-		return planner2.IdentityCondition{}
-	} else if strings.Contains(requirements, ",") {
-		var ret planner2.AndCondition
+// 	if requirements == "*" {
+// 		return planner2.IdentityCondition{}
+// 	} else if strings.Contains(requirements, ",") {
+// 		var ret planner2.AndCondition
 
-		for _, requirement := range strings.Split(requirements, ",") {
-			ret = append(ret, condaRequirement(requirement))
-		}
+// 		for _, requirement := range strings.Split(requirements, ",") {
+// 			ret = append(ret, condaRequirement(requirement))
+// 		}
 
-		return ret
-	} else if strings.Contains(requirements, "|") {
-		var ret planner2.OrCondition
+// 		return ret
+// 	} else if strings.Contains(requirements, "|") {
+// 		var ret planner2.OrCondition
 
-		for _, requirement := range strings.Split(requirements, "|") {
-			ret = append(ret, condaRequirement(requirement))
-		}
+// 		for _, requirement := range strings.Split(requirements, "|") {
+// 			ret = append(ret, condaRequirement(requirement))
+// 		}
 
-		return ret
-	} else {
-		return planner2.AndCondition{condaRequirement(requirements)}
-	}
-}
+// 		return ret
+// 	} else {
+// 		return planner2.AndCondition{condaRequirement(requirements)}
+// 	}
+// }
 
 func (dep condaDepend) Build() string {
 	_, requirements, ok := strings.Cut(string(dep), " ")
@@ -100,6 +143,10 @@ func (dep condaDepend) Build() string {
 	return build
 }
 
+var (
+	_ pubgrub.Condition = condaDepend("")
+)
+
 type condaPackage struct {
 	Build       string        `json:"build"`
 	PropName    string        `json:"name"`
@@ -110,64 +157,47 @@ type condaPackage struct {
 	filename string
 }
 
-// Conflicts implements planner2.Installer.
-func (c condaPackage) Conflicts() ([]planner2.PackageQuery, error) {
-	return []planner2.PackageQuery{}, nil
-}
-
-// Dependencies implements planner2.Installer.
-func (c condaPackage) Dependencies() ([]planner2.PackageOptions, error) {
-	var ret []planner2.PackageOptions
-
-	for _, dep := range c.Depends {
-		ret = append(ret, planner2.PackageOptions{
-			planner2.PackageQuery{
-				Name:      dep.Name(),
-				Condition: dep.Requirements(),
-			},
-		})
-	}
-
-	return ret, nil
-}
-
-// Directives implements planner2.Installer.
-func (c condaPackage) Directives() ([]planner2.Directive, error) {
-	return []planner2.Directive{}, nil
-}
-
-// Tags implements planner2.Installer.
-func (c condaPackage) Tags() planner2.TagList {
-	return planner2.TagList{}
-}
-
-// Aliases implements planner2.Package.
-func (c condaPackage) Aliases() []planner2.PackageName {
-	return []planner2.PackageName{c.Name()}
-}
-
-// Installers implements planner2.Package.
-func (c condaPackage) Installers() ([]planner2.Installer, error) {
-	return []planner2.Installer{c}, nil
-}
-
-// Name implements planner2.Package.
-func (c condaPackage) Name() planner2.PackageName {
-	return planner2.PackageName{
-		Name:    c.PropName,
-		Version: c.PropVersion,
-	}
-}
-
-var (
-	_ planner2.Package   = condaPackage{}
-	_ planner2.Installer = condaPackage{}
-)
-
 type condaRepoData struct {
 	Packages map[string]condaPackage `json:"packages"`
 
 	index map[string][]condaPackage
+}
+
+// GetDependencies implements pubgrub.Source.
+func (repo *condaRepoData) GetDependencies(name pubgrub.Name, version pubgrub.Version) ([]pubgrub.Term, error) {
+	pkgs, ok := repo.index[string(name)]
+	if !ok {
+		return nil, fmt.Errorf("package %s not found", name)
+	}
+
+	for _, pkg := range pkgs {
+		if pkg.PropVersion == version.String() {
+			var terms []pubgrub.Term
+
+			for _, dep := range pkg.Depends {
+				terms = append(terms, pubgrub.NewTerm(pubgrub.Name(dep.Name()), dep))
+			}
+
+			return terms, nil
+		}
+	}
+
+	return nil, nil
+}
+
+// GetVersions implements pubgrub.Source.
+func (repo *condaRepoData) GetVersions(name pubgrub.Name) ([]pubgrub.Version, error) {
+	pkgs, ok := repo.index[string(name)]
+	if !ok {
+		return nil, fmt.Errorf("package %s not found", name)
+	}
+
+	var versions []pubgrub.Version
+	for _, pkg := range pkgs {
+		versions = append(versions, pubgrub.SimpleVersion(pkg.PropVersion))
+	}
+
+	return versions, nil
 }
 
 func (repo *condaRepoData) createIndex() {
@@ -189,120 +219,84 @@ func (repo *condaRepoData) createIndex() {
 	}
 }
 
-// Find implements planner2.PackageSource.
-func (repo *condaRepoData) Find(q planner2.PackageQuery) ([]planner2.Package, error) {
-	var ret []planner2.Package
-
-	pkgs, ok := repo.index[q.Name]
-	if !ok {
-		return nil, nil
-	}
-
-	for _, pkg := range pkgs {
-		if q.Condition != nil {
-			match, err := q.Condition.Satisfies(pkg.Name())
-			if err != nil {
-				return nil, err
-			}
-
-			if match != planner2.MatchResultMatched {
-				continue
-			}
-		}
-
-		ret = append(ret, pkg)
-	}
-
-	// Sort the results to ensure the same order of results is always returned.
-	slices.SortStableFunc(ret, func(a planner2.Package, b planner2.Package) int {
-		return strings.Compare(a.Name().Name, b.Name().Name)
-	})
-
-	return ret, nil
-}
-
 var (
-	_ planner2.PackageSource = &condaRepoData{}
+	_ pubgrub.Source = &condaRepoData{}
 )
 
-func fromCondaQuery(query string) planner2.PackageQuery {
-	q := condaDepend(query)
-
-	return planner2.PackageQuery{
-		Name:      q.Name(),
-		Condition: q.Requirements(),
-	}
-}
-
 var (
-	doQuery = flag.String("query", "", "Query to run")
+	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 )
 
 func appMain() error {
 	flag.Parse()
 
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return err
+		}
+		defer pprof.StopCPUProfile()
+	}
+
 	db := database.New("build/build")
 
-	def := builder.NewFetchHttpBuildDefinition("https://conda.anaconda.org/conda-forge/linux-64/repodata.json", 0, nil)
+	var sources []pubgrub.Source
 
-	ctx := db.NewBuildContext(def)
+	for _, url := range []string{
+		"https://conda.anaconda.org/conda-forge/linux-64/repodata.json",
+		"https://conda.anaconda.org/conda-forge/noarch/repodata.json",
+	} {
+		def := builder.NewFetchHttpBuildDefinition(url, 0, nil)
 
-	f, err := db.Build(ctx, def, common.BuildOptions{})
-	if err != nil {
-		return err
-	}
+		ctx := db.NewBuildContext(def)
 
-	fh, err := f.Open()
-	if err != nil {
-		return err
-	}
-	defer fh.Close()
-
-	var data condaRepoData
-
-	if err := json.NewDecoder(fh).Decode(&data); err != nil {
-		return err
-	}
-
-	data.createIndex()
-
-	slog.Info("loaded", "pkgs", len(data.Packages))
-
-	if *doQuery != "" {
-		q := fromCondaQuery(*doQuery)
-
-		pkgs, err := data.Find(q)
+		f, err := db.Build(ctx, def, common.BuildOptions{})
 		if err != nil {
 			return err
 		}
 
-		for _, pkg := range pkgs {
-			slog.Info("found", "pkg", pkg)
+		fh, err := f.Open()
+		if err != nil {
+			return err
 		}
+		defer fh.Close()
 
-		return nil
-	} else {
-		// Make a plan.
+		var data condaRepoData
 
-		plan := NewPlan()
-
-		for _, pkg := range flag.Args() {
-			if err := plan.Add(
-				[]planner2.PackageSource{&data},
-				planner2.PackageOptions{fromCondaQuery(pkg)},
-			); err != nil {
-				return err
-			}
-		}
-
-		if err := plan.ResolveConstraints(); err != nil {
+		if err := json.NewDecoder(fh).Decode(&data); err != nil {
 			return err
 		}
 
-		// plan.DumpTree(os.Stdout)
+		data.createIndex()
 
-		return nil
+		slog.Info("loaded", "pkgs", len(data.Packages))
+
+		sources = append(sources, &data)
 	}
+
+	root := pubgrub.NewRootSource()
+
+	root.AddPackage("matplotlib", nil)
+
+	sources = append(sources, root)
+
+	solver := pubgrub.NewSolver(sources...)
+
+	versions, err := solver.Solve(root.Term())
+	if err != nil {
+		return err
+	}
+
+	for _, version := range versions {
+		slog.Info("version", "version", version)
+	}
+
+	return nil
 }
 
 func main() {
