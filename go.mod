@@ -25,7 +25,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/miekg/dns v1.1.62
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
-	github.com/schollz/progressbar/v3 v3.17.0
+	github.com/schollz/progressbar/v3 v3.17.1
 	github.com/spf13/cobra v1.8.1
 	github.com/tinyrange/vm v0.0.0-20240616031946-b46d8ccc03db
 	github.com/wader/readline v0.0.0-20230307172220-bcb7158e7448
