@@ -1188,7 +1188,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 					return starlark.None, fmt.Errorf("invalid architecture for tinyrange: %s", arch)
 				}
 			} else if name == "tinyrange_qemu.star" {
-				local, err := common.GetAdjacentExecutable("tinyrange_qemu.star")
+				local, err := common.GetAdjacentExecutable("tinyrange_qemu.star", "tinyqemu/tinyrange_qemu.star")
 				if err != nil {
 					return nil, err
 				}

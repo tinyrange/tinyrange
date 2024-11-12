@@ -176,7 +176,7 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		return config.TinyRangeConfig{}, err
 	}
 
-	hvScript, err := common.GetAdjacentExecutable("tinyrange_qemu.star")
+	hvScript, err := common.GetAdjacentExecutable("tinyrange_qemu.star", "tinyqemu/tinyrange_qemu.star")
 	if err != nil {
 		return config.TinyRangeConfig{}, fmt.Errorf("could not find default hypervisor tinyrange_qemu.star: %s", hvScript)
 	}

@@ -27,3 +27,5 @@ release
 benchmarks
 
 .venv/
+
+.DS_Store

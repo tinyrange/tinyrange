@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path"
@@ -24,6 +25,20 @@ type ZipArchive struct {
 
 func (z *ZipArchive) Close() error {
 	return z.writer.Close()
+}
+
+func (z *ZipArchive) CopyFromReader(filename string, r io.Reader) error {
+	f, err := z.writer.Create(z.prefix + filename)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(f, r)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (z *ZipArchive) WriteFile(filename string, content []byte) error {
@@ -105,6 +120,7 @@ var (
 	debug     = flag.Bool("debug", false, "Print executed commands.")
 	run       = flag.Bool("run", false, "Run TinyRange with the remaining arguments.")
 	test      = flag.String("test", "", "Run all .yml files in a subdirectory using TinyRange.")
+	release   = flag.Bool("release", false, "Build a release version of TinyRange.")
 )
 
 func buildInitForTarget(buildArch string) error {
@@ -352,6 +368,85 @@ func runTests(filename string) error {
 	return nil
 }
 
+func buildRelease(buildOs string, buildArch string) error {
+	if err := os.MkdirAll("release", os.ModePerm); err != nil {
+		return err
+	}
+
+	archiveName := fmt.Sprintf("release/tinyrange-%s-%s.zip", buildOs, buildArch)
+
+	f, err := os.Create(archiveName)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	archive := NewArchive(f, "tinyrange/")
+	defer archive.Close()
+
+	// copy tinyrange
+	exeSuffix := ""
+	if buildOs == "windows" {
+		exeSuffix = ".exe"
+	}
+
+	targetDir, _, err := getTargetDir(*buildDir, buildOs, buildArch)
+	if err != nil {
+		return err
+	}
+
+	if err := archive.CopyFile(getTarget(targetDir, buildOs, "tinyrange"), "tinyrange"+exeSuffix); err != nil {
+		return err
+	}
+
+	// create tinyrange.portable
+	if err := archive.WriteFile("tinyrange.portable", []byte("")); err != nil {
+		return err
+	}
+
+	// copy tinyrange_qemu.star to tinyqemu/tinyrange_qemu.star
+	if err := archive.CopyFile("build/tinyrange_qemu.star", "tinyqemu/tinyrange_qemu.star"); err != nil {
+		return err
+	}
+
+	// If this is windows and local/tinyqemu.zip exists, extract it to the archive.
+	if buildOs == "windows" {
+		if _, err := os.Stat("local/tinyqemu.zip"); err == nil {
+			zf, err := os.Open("local/tinyqemu.zip")
+			if err != nil {
+				return err
+			}
+			defer zf.Close()
+
+			fi, err := zf.Stat()
+			if err != nil {
+				return err
+			}
+
+			zr, err := zip.NewReader(zf, fi.Size())
+			if err != nil {
+				return err
+			}
+
+			for _, file := range zr.File {
+				rc, err := file.Open()
+				if err != nil {
+					return err
+				}
+				defer rc.Close()
+
+				if err := archive.CopyFromReader(file.Name, rc); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	slog.Info("built release", "os", buildOs, "arch", buildArch, "archive", archiveName)
+
+	return nil
+}
+
 func main() {
 	flag.Parse()
 
@@ -383,7 +478,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if *test != "" {
+	if *release {
+		if err := buildRelease(*buildOs, *buildArch); err != nil {
+			log.Fatal(err)
+		}
+	} else if *test != "" {
 		if err := runTests(*test); err != nil {
 			log.Fatal(err)
 		}

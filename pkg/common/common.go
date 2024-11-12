@@ -92,19 +92,25 @@ func getExeDirectory() (string, error) {
 	return filepath.Dir(exePath), nil
 }
 
-func GetAdjacentExecutable(name string) (string, error) {
+func GetAdjacentExecutable(names ...string) (string, error) {
 	exeDir, err := getExeDirectory()
 	if err != nil {
 		return "", err
 	}
 
-	localPath := filepath.Join(exeDir, name)
+	for _, name := range names {
+		localPath := filepath.Join(exeDir, name)
 
-	if ok, _ := Exists(localPath); ok {
-		return localPath, nil
+		if ok, _ := Exists(localPath); ok {
+			return localPath, nil
+		}
+
+		if path, err := exec.LookPath(name); err == nil {
+			return path, nil
+		}
 	}
 
-	return exec.LookPath(name)
+	return "", fmt.Errorf("could not find any of the executables: %v", names)
 }
 
 func GetDefaultBuildDir() string {
