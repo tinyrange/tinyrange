@@ -1,0 +1,18 @@
+version: 1
+builder: alpine@3.20
+commands:
+    - cd /root; 7z x qemu-w64-setup-20240903.exe
+    - cd /root; mkdir tinyqemu tinyqemu/share
+    - cd /root; cp qemu-system-x86_64.exe qemu-system-aarch64.exe tinyqemu/
+    - cd /root; cp *.dll tinyqemu/
+    - cd /root; cp share/vgabios-stdvga.bin tinyqemu/share/
+    - cd /root; cp share/efi-e1000.rom share/linuxboot_dma.bin share/bios-256k.bin share/efi-virtio.rom share/kvmvapic.bin  tinyqemu/share/
+    - cd /root; cp COPYING COPYING.LIB README.rst tinyqemu/
+    - cd /root; tar czf tinyqemu.tar.gz tinyqemu
+files:
+    - https://qemu.weilnetz.de/w64/2024/qemu-w64-setup-20240903.exe
+output: /root/tinyqemu.tar.gz
+packages:
+    - 7zip
+min_spec:
+    disk: 2048
