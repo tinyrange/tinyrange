@@ -97,6 +97,12 @@ func toOciArchitecture(arch cfg.CPUArchitecture) (string, error) {
 
 var CURRENT_CONFIG_VERSION = 1
 
+type VMSpec struct {
+	CpuCores    int `json:"cpu" yaml:"cpu"`
+	MemorySize  int `json:"memory" yaml:"memory"`
+	StorageSize int `json:"disk" yaml:"disk"`
+}
+
 type Config struct {
 	Version      int      `json:"version" yaml:"version"`
 	Builder      string   `json:"builder" yaml:"builder"`
@@ -112,6 +118,7 @@ type Config struct {
 	NoScripts    bool     `json:"no_scripts,omitempty" yaml:"no_scripts,omitempty"`
 	Init         string   `json:"init,omitempty" yaml:"init,omitempty"`
 	ForwardPorts []string `json:"forward_ports,omitempty" yaml:"forward_ports,omitempty"`
+	MinSpec      VMSpec   `json:"min_spec,omitempty" yaml:"min_spec,omitempty"`
 
 	// secure configs that have to be set on the command line.
 	CpuCores          int      `json:"-" yaml:"-"`
@@ -130,6 +137,18 @@ type Config struct {
 }
 
 func (config *Config) SetLocalConfig() { config.localConfig = true }
+
+func (config *Config) SetVmSpec() {
+	if config.CpuCores < config.MinSpec.CpuCores {
+		config.CpuCores = config.MinSpec.CpuCores
+	}
+	if config.MemorySize < config.MinSpec.MemorySize {
+		config.MemorySize = config.MinSpec.MemorySize
+	}
+	if config.StorageSize < config.MinSpec.StorageSize {
+		config.StorageSize = config.MinSpec.StorageSize
+	}
+}
 
 func (config *Config) parseInclusion(db *database.PackageDatabase, inclusion string) (common.Directive, error) {
 	if !strings.HasSuffix(inclusion, ".yaml") {
@@ -167,6 +186,8 @@ func (config *Config) parseInclusion(db *database.PackageDatabase, inclusion str
 	if config.Init != "" {
 		interaction = "init," + config.Init
 	}
+
+	subConfig.SetVmSpec()
 
 	def := builder.NewBuildVmDefinition(
 		directives,
@@ -445,6 +466,8 @@ func (config *Config) MakeTemplate(db *database.PackageDatabase) (string, error)
 		interaction = "webssh," + config.WebSSH
 	}
 
+	config.SetVmSpec()
+
 	def := builder.NewBuildVmDefinition(
 		directives,
 		nil, nil,
@@ -652,6 +675,8 @@ func (config *Config) Run(db *database.PackageDatabase) error {
 		if err != nil {
 			return err
 		}
+
+		config.SetVmSpec()
 
 		def := builder.NewBuildVmDefinition(
 			directives,
