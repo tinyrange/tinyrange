@@ -29,7 +29,7 @@ var buildCmd = &cobra.Command{
 
 		macroCtx := db.NewMacroContext()
 
-		macro, err := db.GetMacroByShorthand(macroCtx, args[0])
+		macro, err := db.GetMacroByShorthand(macroCtx, args[0], true)
 		if err != nil {
 			return err
 		}

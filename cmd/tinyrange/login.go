@@ -3,8 +3,11 @@ package cli
 import (
 	"os"
 	"runtime/pprof"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/login"
 	"gopkg.in/yaml.v3"
@@ -40,20 +43,6 @@ var loginCmd = &cobra.Command{
 
 		currentConfig.Packages = args
 
-		if loginLoadConfig != "" {
-			f, err := os.Open(loginLoadConfig)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-
-			dec := yaml.NewDecoder(f)
-
-			if err := dec.Decode(&currentConfig); err != nil {
-				return err
-			}
-		}
-
 		if loginSaveConfig != "" {
 			cfg, err := yaml.Marshal(&currentConfig)
 			if err != nil {
@@ -65,6 +54,43 @@ var loginCmd = &cobra.Command{
 			db, err := newDb()
 			if err != nil {
 				return err
+			}
+
+			if loginLoadConfig != "" {
+				// check if loginLoadConfig is a URL
+				if strings.HasPrefix(loginLoadConfig, "http://") || strings.HasPrefix(loginLoadConfig, "https://") {
+					// expire after 1 hour
+					def := builder.NewFetchHttpBuildDefinition(loginLoadConfig, 1*time.Hour, nil)
+
+					f, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{})
+					if err != nil {
+						return err
+					}
+
+					fh, err := f.Open()
+					if err != nil {
+						return err
+					}
+					defer fh.Close()
+
+					if err := yaml.NewDecoder(fh).Decode(&currentConfig); err != nil {
+						return err
+					}
+				} else {
+					f, err := os.Open(loginLoadConfig)
+					if err != nil {
+						return err
+					}
+					defer f.Close()
+
+					dec := yaml.NewDecoder(f)
+
+					if err := dec.Decode(&currentConfig); err != nil {
+						return err
+					}
+
+					currentConfig.SetLocalConfig()
+				}
 			}
 
 			return currentConfig.Run(db)

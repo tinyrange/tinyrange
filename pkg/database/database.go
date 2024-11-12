@@ -245,7 +245,7 @@ func (db *PackageDatabase) ShouldRebuildUserDefinitions() bool {
 	return db.RebuildUserDefinitions
 }
 
-func (db *PackageDatabase) getFileContents(name string) (string, error) {
+func (db *PackageDatabase) getFileContents(name string, allowLocal bool) (string, error) {
 	if strings.HasPrefix(name, "//") {
 		f, err := stdlib.STDLIB.Open(strings.TrimPrefix(name, "//"))
 		if err != nil {
@@ -259,6 +259,10 @@ func (db *PackageDatabase) getFileContents(name string) (string, error) {
 		}
 
 		return string(contents), nil
+	}
+
+	if !allowLocal {
+		return "", fmt.Errorf("local files are not allowed in remote configs")
 	}
 
 	contents, err := os.ReadFile(name)
@@ -285,7 +289,7 @@ func (db *PackageDatabase) NewThread(filename string) *starlark.Thread {
 		Load: func(thread *starlark.Thread, module string) (starlark.StringDict, error) {
 			globals := db.getGlobals(module)
 
-			contents, err := db.getFileContents(module)
+			contents, err := db.getFileContents(module, true)
 			if err != nil {
 				return nil, err
 			}
@@ -360,13 +364,13 @@ func (db *PackageDatabase) AddContainerBuilder(builder *ContainerBuilder) error 
 	return nil
 }
 
-func (db *PackageDatabase) LoadFile(filename string) error {
+func (db *PackageDatabase) LoadFile(filename string, allowLocal bool) error {
 	thread := db.NewThread(filename)
 
 	globals := db.getGlobals("__main__")
 
 	// Execute the file.
-	contents, err := db.getFileContents(filename)
+	contents, err := db.getFileContents(filename, allowLocal)
 	if err != nil {
 		return err
 	}
@@ -393,7 +397,7 @@ func (db *PackageDatabase) RunScript(filename string, files map[string]filesyste
 	globals := db.getGlobals("__main__")
 
 	// Execute the script.
-	contents, err := db.getFileContents(filename)
+	contents, err := db.getFileContents(filename, true)
 	if err != nil {
 		return err
 	}
@@ -808,7 +812,7 @@ func (db *PackageDatabase) GetMacro(ctx macro.MacroContext, name string, args []
 	return macro.ParseMacro(ctx, f, args)
 }
 
-func (db *PackageDatabase) GetMacroByDeclaredName(ctx macro.MacroContext, name string) (macro.Macro, error) {
+func (db *PackageDatabase) GetMacroByDeclaredName(ctx macro.MacroContext, name string, allowLocal bool) (macro.Macro, error) {
 	filename, defName, ok := strings.Cut(name, ":")
 	if !ok {
 		return nil, fmt.Errorf("misformed declared name: %s", name)
@@ -820,7 +824,7 @@ func (db *PackageDatabase) GetMacroByDeclaredName(ctx macro.MacroContext, name s
 
 	if _, ok := db.loadedFiles[filename]; !ok {
 		slog.Debug("load file for macro", "filename", filename)
-		if err := db.LoadFile(filename); err != nil {
+		if err := db.LoadFile(filename, allowLocal); err != nil {
 			return nil, err
 		}
 	}
@@ -892,8 +896,12 @@ func (db *PackageDatabase) GetDefinitionByHash(hash string) (common.BuildDefinit
 	}
 }
 
-func (db *PackageDatabase) GetMacroByShorthand(ctx macro.MacroContext, shorthand string) (macro.Macro, error) {
+func (db *PackageDatabase) GetMacroByShorthand(ctx macro.MacroContext, shorthand string, allowLocal bool) (macro.Macro, error) {
 	if len(shorthand) == 64 && !strings.Contains(shorthand, ":") {
+		if !allowLocal {
+			return nil, fmt.Errorf("local definitions are not allowed in remote configs")
+		}
+
 		def, err := db.GetDefinitionByHash(shorthand)
 		if err != nil {
 			return nil, err
@@ -902,7 +910,7 @@ func (db *PackageDatabase) GetMacroByShorthand(ctx macro.MacroContext, shorthand
 		return macro.DefinitionMacro{BuildDefinition: def}, nil
 	}
 
-	return db.GetMacroByDeclaredName(ctx, shorthand)
+	return db.GetMacroByDeclaredName(ctx, shorthand, allowLocal)
 }
 
 func (db *PackageDatabase) NewMacroContext() macro.MacroContext {
@@ -996,7 +1004,7 @@ func (db *PackageDatabase) LoadBuiltinBuilders() error {
 		"//fetchers/debian.star",
 		"//fetchers/arch.star",
 	} {
-		if err := db.LoadFile(builder); err != nil {
+		if err := db.LoadFile(builder, true); err != nil {
 			return err
 		}
 	}

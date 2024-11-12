@@ -31,7 +31,7 @@ var inspectCmd = &cobra.Command{
 
 		ctx := db.NewMacroContext()
 
-		macro, err := db.GetMacroByShorthand(ctx, args[0])
+		macro, err := db.GetMacroByShorthand(ctx, args[0], true)
 		if err != nil {
 			return err
 		}

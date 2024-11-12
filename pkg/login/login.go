@@ -125,7 +125,11 @@ type Config struct {
 	WebSSH            string   `json:"-" yaml:"-"`
 	WriteTemplate     bool     `json:"-" yaml:"-"`
 	Mounts            []string `json:"-" yaml:"-"`
+
+	localConfig bool
 }
+
+func (config *Config) SetLocalConfig() { config.localConfig = true }
 
 func (config *Config) parseInclusion(db *database.PackageDatabase, inclusion string) (common.Directive, error) {
 	if !strings.HasSuffix(inclusion, ".yaml") {
@@ -217,6 +221,10 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 				Filename:   path.Join("/root", base),
 			})
 		} else {
+			if !config.localConfig {
+				return nil, "", fmt.Errorf("remote configs can't include local files")
+			}
+
 			absPath, err := filepath.Abs(filename)
 			if err != nil {
 				return nil, "", err
@@ -252,6 +260,10 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 
 			filename = parsed.Path
 		} else {
+			if !config.localConfig {
+				return nil, "", fmt.Errorf("remote configs can't include local files")
+			}
+
 			hash, err := sha256HashFromFile(filename)
 			if err != nil {
 				return nil, "", err
@@ -316,7 +328,7 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 		if vm != nil {
 			directives = append(directives, vm)
 		} else {
-			m, err := db.GetMacroByShorthand(macroCtx, macro)
+			m, err := db.GetMacroByShorthand(macroCtx, macro, config.localConfig)
 			if err != nil {
 				return nil, "", err
 			}
@@ -339,6 +351,8 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 	}
 
 	for _, mount := range config.Mounts {
+		// Mounts are private so we don't need to check if they're remote.
+
 		p, err := filepath.Abs(mount)
 		if err != nil {
 			return nil, "", err

@@ -95,7 +95,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 			return starlark.None, err
 		}
 
-		if err := db.LoadFile(filename); err != nil {
+		if err := db.LoadFile(filename, true); err != nil {
 			return starlark.None, err
 		}
 
