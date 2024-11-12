@@ -44,8 +44,13 @@ func (s *SSHFSInternalServer) handleConnection(sshConn *ssh.ServerConn, channels
 					}
 				}()
 				req.Reply(true, nil)
+			case req.Type == "shell":
+				req.Reply(false, nil)
 			default:
 				slog.Debug("ssh: unknown request", "type", req.Type, "reply", req.WantReply, "data", req.Payload)
+				if req.WantReply {
+					req.Reply(false, nil)
+				}
 			}
 		}
 	}

@@ -729,32 +729,32 @@ func (tr *TinyRange) runWithConfig() error {
 		}()
 	}
 
-	if len(mountedHostDirectories) > 0 {
-		top := filesystem.NewMemoryDirectory()
+	top := filesystem.NewMemoryDirectory()
 
-		for _, dir := range mountedHostDirectories {
-			name := filepath.Base(dir)
+	for _, dir := range mountedHostDirectories {
+		name := filepath.Base(dir)
 
-			hostDir := filesystem.NewLocalDirectory(dir)
+		hostDir := filesystem.NewLocalDirectory(dir)
 
-			if err := filesystem.CreateChild(top, name, hostDir); err != nil {
-				return fmt.Errorf("failed to create child: %w", err)
-			}
+		if err := filesystem.CreateChild(top, name, hostDir); err != nil {
+			return fmt.Errorf("failed to create child: %w", err)
 		}
-
-		slog.Info("host directories avalible via SFTP on sftp://host.internal")
-
-		svr := sftp.NewInternalServer(top, ":22")
-
-		go func() {
-			if err := svr.Run(func(network, addr string) (net.Listener, error) {
-				slog.Debug("listening", "addr", addr)
-				return ns.ListenInternal("tcp", addr)
-			}); err != nil {
-				slog.Error("failed to run sftp server", "err", err)
-			}
-		}()
 	}
+
+	if len(mountedHostDirectories) > 0 {
+		slog.Info("host directories avalible via SFTP on sftp://host.internal")
+	}
+
+	svr := sftp.NewInternalServer(top, ":22")
+
+	go func() {
+		if err := svr.Run(func(network, addr string) (net.Listener, error) {
+			slog.Debug("listening", "addr", addr)
+			return ns.ListenInternal("tcp", addr)
+		}); err != nil {
+			slog.Error("failed to run sftp server", "err", err)
+		}
+	}()
 
 	slog.Debug("starting virtual machine", "took", time.Since(start))
 

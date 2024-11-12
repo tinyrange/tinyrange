@@ -386,24 +386,29 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 		return
 	}
 
+	conn := gonet.NewTCPConn(&wq, ep)
+	defer conn.Close()
+
+	loc := &net.TCPAddr{
+		IP:   net.IP(id.LocalAddress.AsSlice()),
+		Port: int(id.LocalPort),
+	}
+
+	if id.LocalAddress.As4() == [4]byte{10, 42, 0, 1} {
+		// Connections to the host should have already been handled.
+		r.Complete(true)
+		return
+	}
+
+	// Proxy connections to 10.42.0.100 to localhost.
+	if id.LocalAddress.As4() == [4]byte{10, 42, 0, 100} {
+		loc.IP = net.IPv4(127, 0, 0, 1)
+	}
+
 	r.Complete(false)
 	ep.SocketOptions().SetDelayOption(true)
 
-	conn := gonet.NewTCPConn(&wq, ep)
-
 	go func() {
-		defer conn.Close()
-
-		loc := &net.TCPAddr{
-			IP:   net.IP(id.LocalAddress.AsSlice()),
-			Port: int(id.LocalPort),
-		}
-
-		// Proxy connections to 10.42.0.100 to localhost.
-		if id.LocalAddress.As4() == [4]byte{10, 42, 0, 100} {
-			loc.IP = net.IPv4(127, 0, 0, 1)
-		}
-
 		slog.Debug("dialing remote host", "addr", loc.String())
 
 		outbound, err := net.DialTCP("tcp", nil, loc)
