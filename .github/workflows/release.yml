@@ -1,0 +1,40 @@
+name: Publish Release
+on:
+  push:
+    tags:
+      - "v*"
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.23.3"
+
+      - name: Setup tinyQemu
+        run: |
+          mkdir release
+          ./tools/build.go -run -- login -c tools/tinyqemu.yml
+          mv tinyqemu.zip local/
+
+      - name: Build Releases
+        run: |
+          ./tools/build.go -release -os linux -arch arm64
+          ./tools/build.go -release -os linux -arch amd64
+          ./tools/build.go -release -os windows -arch amd64
+          ./tools/build.go -release -os darwin -arch arm64
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            release/tinyrange-linux-arm64.zip
+            release/tinyrange-linux-amd64.zip
+            release/tinyrange-windows-amd64.zip
+            release/tinyrange-darwin-arm64.zip
