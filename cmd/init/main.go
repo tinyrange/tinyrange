@@ -304,6 +304,10 @@ func (s *sshServer) handleRequests(conn ssh.Conn, connection ssh.Channel, reques
 			}
 		default:
 			slog.Debug("unknown request", "type", req.Type, "reply", req.WantReply, "data", req.Payload)
+
+			if req.WantReply {
+				req.Reply(false, nil)
+			}
 		}
 	}
 }
