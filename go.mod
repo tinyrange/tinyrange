@@ -88,5 +88,3 @@ require (
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 )
-
-replace github.com/tinyrange/wireguard => ../wireguard
