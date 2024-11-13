@@ -82,6 +82,7 @@ type TinyRange struct {
 	exportFilesystem   string
 	listenNbd          string
 	streamingServer    string
+	wireguardUrl       string
 	client             *http.Client
 	deferredFilesystem []func() error
 }
@@ -567,6 +568,27 @@ func (tr *TinyRange) runWithConfig() error {
 
 	ns := netstack.New()
 
+	if tr.wireguardUrl != "" {
+		resp, err := tr.client.Get(tr.wireguardUrl)
+		if err != nil {
+			return fmt.Errorf("failed to get wireguard config: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("failed to get wireguard config from %s: %s", tr.wireguardUrl, resp.Status)
+		}
+
+		config, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read wireguard config: %w", err)
+		}
+
+		if err := ns.SetupWireguard(string(config)); err != nil {
+			return fmt.Errorf("failed to setup wireguard: %w", err)
+		}
+	}
+
 	// out, err := os.Create("local/network.pcap")
 	// if err != nil {
 	// 	return err
@@ -814,6 +836,7 @@ func RunWithConfig(
 	exportFilesystem string,
 	listenNbd string,
 	streamingServer string,
+	wireguardUrl string,
 ) error {
 	tr := &TinyRange{
 		buildDir:         buildDir,
@@ -823,6 +846,7 @@ func RunWithConfig(
 		exportFilesystem: exportFilesystem,
 		listenNbd:        listenNbd,
 		streamingServer:  streamingServer,
+		wireguardUrl:     wireguardUrl,
 		client:           http.DefaultClient,
 	}
 

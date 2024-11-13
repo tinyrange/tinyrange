@@ -21,6 +21,7 @@ var (
 	runExportFilesystem string
 	runListenNbd        string
 	runStreamingServer  string
+	runWireguardUrl     string
 )
 
 var runCmd = &cobra.Command{
@@ -85,7 +86,7 @@ var runCmd = &cobra.Command{
 			}
 		}
 
-		return tinyrange.RunWithConfig(rootBuildDir, cfg, runDebug, false, runExportFilesystem, runListenNbd, runStreamingServer)
+		return tinyrange.RunWithConfig(rootBuildDir, cfg, runDebug, false, runExportFilesystem, runListenNbd, runStreamingServer, runWireguardUrl)
 	},
 }
 
@@ -94,5 +95,6 @@ func init() {
 	runCmd.PersistentFlags().StringVar(&runExportFilesystem, "export-filesystem", "", "write the filesystem to the host filesystem")
 	runCmd.PersistentFlags().StringVar(&runListenNbd, "listen-nbd", "", "Listen with an NBD server on the given address and port")
 	runCmd.PersistentFlags().StringVar(&runStreamingServer, "stream", "", "Specify a server to download the config from.")
+	runCmd.PersistentFlags().StringVar(&runWireguardUrl, "wireguard", "", "Specify a WireGuard server to download a config from.")
 	rootCmd.AddCommand(runCmd)
 }

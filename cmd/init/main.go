@@ -211,6 +211,50 @@ func (s *sshServer) handleChannel(conn ssh.Conn, newChannel ssh.NewChannel) {
 	go s.handleRequests(conn, connection, requests)
 }
 
+func (s *sshServer) handleExec(conn ssh.Conn, ch ssh.Channel, req *ssh.Request, env []string) error {
+	// Parse the command
+	command := string(req.Payload[4:])
+
+	args, err := shlex.Split(command, true)
+	if err != nil {
+		return fmt.Errorf("failed to parse command: %s", err)
+	}
+
+	cmd := exec.Command(args[0], args[1:]...)
+
+	cmd.Env = env
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	input, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to run command: %s", err)
+	}
+
+	req.Reply(true, nil)
+	go io.Copy(input, ch)
+	io.Copy(ch, stdout)
+	io.Copy(ch.Stderr(), stderr)
+
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("failed to wait for command: %s", err)
+	}
+
+	ch.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+
+	return nil
+}
+
 func (s *sshServer) handleRequests(conn ssh.Conn, connection ssh.Channel, requests <-chan *ssh.Request) {
 	// prepare to handle client requests
 	env := os.Environ()
@@ -250,7 +294,14 @@ func (s *sshServer) handleRequests(conn ssh.Conn, connection ssh.Channel, reques
 
 			_ = req.Reply(err == nil, nil)
 		case "exec":
-			slog.Debug("ignored exec", "payload", req.Payload)
+			err := s.handleExec(conn, connection, req, env)
+			if err != nil {
+				slog.Warn("failed to handle exec", "error", err)
+			}
+
+			if err := connection.Close(); err != nil {
+				slog.Warn("failed to close connection", "error", err)
+			}
 		default:
 			slog.Debug("unknown request", "type", req.Type, "reply", req.WantReply, "data", req.Payload)
 		}

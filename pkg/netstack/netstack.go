@@ -16,6 +16,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/wireguard"
 	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
@@ -99,6 +100,7 @@ type NetStack struct {
 	interfaces []*NetworkInterface
 	nextNicId  int
 	packetDump *pcapgo.Writer
+	wg         *wireguard.Wireguard
 }
 
 func (ns *NetStack) splitAddress(addr string) (tcpip.FullAddress, error) {
@@ -397,6 +399,8 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 
 	conn := gonet.NewTCPConn(&wq, ep)
 	go func() {
+		var err error
+
 		defer conn.Close()
 
 		loc := &net.TCPAddr{
@@ -411,7 +415,13 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 
 		slog.Debug("dialing remote host", "addr", loc.String())
 
-		outbound, err := net.DialTCP("tcp", nil, loc)
+		var outbound net.Conn
+
+		if ns.wg != nil {
+			outbound, err = ns.wg.Dial("tcp", loc.String())
+		} else {
+			outbound, err = net.DialTCP("tcp", nil, loc)
+		}
 		if err != nil {
 			return
 		}
@@ -421,6 +431,57 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 			return
 		}
 	}()
+}
+
+func (ns *NetStack) SetupWireguard(config string) error {
+	slog.Info("setting up wireguard")
+
+	wg, err := wireguard.NewFromConfig("10.40.0.2", config)
+	if err != nil {
+		return err
+	}
+
+	ns.wg = wg
+
+	// Use the connection so it establishes with the server.
+	go func() {
+		conn, _ := ns.wg.Dial("tcp", "8.8.8.8:80")
+		if conn != nil {
+			conn.Close()
+		}
+	}()
+
+	listen, err := ns.wg.ListenTCPAddr("10.42.0.2:0")
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for {
+			conn, err := listen.Accept()
+			if err != nil {
+				slog.Error("failed to accept connection", "err", err)
+				return
+			}
+
+			go func() {
+				defer conn.Close()
+
+				backend, err := ns.DialInternalContext(context.Background(), "tcp", conn.LocalAddr().String())
+				if err != nil {
+					slog.Error("failed to dial backend", "err", err)
+					return
+				}
+				defer backend.Close()
+
+				if err := common.Proxy(backend, conn, 1400); err != nil {
+					slog.Error("proxy error", "err", err)
+				}
+			}()
+		}
+	}()
+
+	return nil
 }
 
 // func (ns *NetStack) handleUdpForward(r *udp.ForwarderRequest) {
