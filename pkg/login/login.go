@@ -316,6 +316,8 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 
 	macroCtx := db.NewMacroContext()
 
+	macroCtx.AddVariable("arch", string(arch))
+
 	var planDirective *builder.PlanDefinition
 	if config.OciImage != "" {
 		registry, image, tag, err := parseOciImage(config.OciImage)

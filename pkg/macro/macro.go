@@ -12,6 +12,8 @@ type MacroContext interface {
 	Thread() *starlark.Thread
 	Builder(name string) (common.InstallationPlanBuilder, error)
 	AddBuilder(name string, builder common.InstallationPlanBuilder)
+	Variable(name string) string
+	AddVariable(name string, value string)
 }
 
 type Macro interface {
@@ -59,9 +61,17 @@ func (s StarlarkMacroBuilder) Value(ctx MacroContext) (starlark.Value, error) {
 	return ctx.Builder(string(s))
 }
 
+type StarlarkMacroVariable string
+
+// Value implements StarlarkMacroArgument.
+func (s StarlarkMacroVariable) Value(ctx MacroContext) (starlark.Value, error) {
+	return starlark.String(ctx.Variable(string(s))), nil
+}
+
 var (
 	_ StarlarkMacroArgument = StarlarkMacroString("")
 	_ StarlarkMacroArgument = StarlarkMacroBuilder("")
+	_ StarlarkMacroArgument = StarlarkMacroVariable("")
 )
 
 type StarlarkMacro struct {
@@ -119,6 +129,10 @@ func parseMacroArgument(desc string, args []string) (StarlarkMacroArgument, []st
 		name := tokens[1]
 
 		return StarlarkMacroBuilder(name), args, nil
+	case "variable":
+		name := tokens[1]
+
+		return StarlarkMacroVariable(name), args, nil
 	default:
 		return nil, nil, fmt.Errorf("unknown macro argument type: %s", typ)
 	}

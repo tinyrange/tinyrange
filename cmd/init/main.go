@@ -425,110 +425,7 @@ func getFd(reader io.Reader) (fd int, ok bool) {
 	return fd, term.IsTerminal(fd)
 }
 
-var (
-	execShell        = flag.Bool("shell", false, "start the shell instead of running /init.sh")
-	runSshServer     = flag.String("ssh", "", "run a ssh server that executes the argument on connection")
-	downloadFile     = flag.String("download", "", "download a file from the specified server")
-	runScripts       = flag.String("run-scripts", "", "run a JSON file of scripts")
-	runBasicScripts  = flag.String("run-basic-scripts", "", "run a JSON file containing an array of commands")
-	translateScripts = flag.Bool("translate-scripts", false, "translate scripts into starlark before running them")
-	runConfig        = flag.String("run-config", "", "run a JSON file with a given builder config")
-	dumpFs           = flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
-)
-
-func initMain() error {
-	flag.Parse()
-	if *execShell {
-		return shellMain()
-	}
-
-	if *runSshServer != "" {
-		cmd, err := shlex.Split(*runSshServer, true)
-		if err != nil {
-			return err
-		}
-
-		sshServer := &sshServer{command: cmd}
-
-		return sshServer.run("insecurepassword", nil)
-	}
-
-	if *downloadFile != "" {
-		resp, err := http.Get(*downloadFile)
-		if err != nil {
-			return err
-		}
-		defer resp.Body.Close()
-
-		pb := progressbar.DefaultBytes(resp.ContentLength)
-
-		out, err := os.Create("out.bin")
-		if err != nil {
-			return err
-		}
-
-		if _, err := io.Copy(io.MultiWriter(pb, out), resp.Body); err != nil {
-			return err
-		}
-	}
-
-	if *dumpFs != "" {
-		return common.DumpFs(*dumpFs)
-	}
-
-	if *runScripts != "" {
-		if common.HasExperimentalFlag("translate_shell") {
-			*translateScripts = true
-		}
-		return builderRunScripts(*runScripts, *translateScripts)
-	}
-
-	if *runBasicScripts != "" {
-		bytes, err := os.ReadFile(*runBasicScripts)
-		if err != nil {
-			return err
-		}
-
-		var scripts []string
-
-		if err := json.Unmarshal(bytes, &scripts); err != nil {
-			return err
-		}
-
-		for _, script := range scripts {
-			if err := common.RunCommand(script); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}
-
-	if *runConfig != "" {
-		f, err := os.Open(*runConfig)
-		if err != nil {
-			return err
-		}
-
-		dec := json.NewDecoder(f)
-
-		var cfg config.BuilderConfig
-
-		if err := dec.Decode(&cfg); err != nil {
-			return err
-		}
-
-		return builderRunWithConfig(cfg)
-	}
-
-	if os.Getpid() != 1 {
-		return fmt.Errorf("/init must run as PID 1")
-	}
-
-	if os.Getuid() != 0 {
-		return fmt.Errorf("/init must be run as root")
-	}
-
+func runStarlark(filename string) error {
 	var args starlark.Value = starlark.NewDict(0)
 
 	if ok, _ := common.Exists("/init.json"); ok {
@@ -1086,7 +983,7 @@ func initMain() error {
 
 	thread := &starlark.Thread{Name: "init"}
 
-	decls, err := starlark.ExecFileOptions(&syntax.FileOptions{Set: true, While: true, TopLevelControl: true}, thread, "/init.star", nil, globals)
+	decls, err := starlark.ExecFileOptions(&syntax.FileOptions{Set: true, While: true, TopLevelControl: true}, thread, filename, nil, globals)
 	if err != nil {
 		return err
 	}
@@ -1098,6 +995,122 @@ func initMain() error {
 
 	_, err = starlark.Call(thread, mainFunc, starlark.Tuple{}, []starlark.Tuple{})
 	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+var (
+	execShell         = flag.Bool("shell", false, "start the shell instead of running /init.sh")
+	runSshServer      = flag.String("ssh", "", "run a ssh server that executes the argument on connection")
+	downloadFile      = flag.String("download", "", "download a file from the specified server")
+	runScripts        = flag.String("run-scripts", "", "run a JSON file of scripts")
+	runBasicScripts   = flag.String("run-basic-scripts", "", "run a JSON file containing an array of commands")
+	translateScripts  = flag.Bool("translate-scripts", false, "translate scripts into starlark before running them")
+	runConfig         = flag.String("run-config", "", "run a JSON file with a given builder config")
+	dumpFs            = flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
+	runStarlarkScript = flag.String("star", "", "run a starlark script")
+)
+
+func initMain() error {
+	flag.Parse()
+	if *execShell {
+		return shellMain()
+	}
+
+	if *runSshServer != "" {
+		cmd, err := shlex.Split(*runSshServer, true)
+		if err != nil {
+			return err
+		}
+
+		sshServer := &sshServer{command: cmd}
+
+		return sshServer.run("insecurepassword", nil)
+	}
+
+	if *downloadFile != "" {
+		resp, err := http.Get(*downloadFile)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		pb := progressbar.DefaultBytes(resp.ContentLength)
+
+		out, err := os.Create("out.bin")
+		if err != nil {
+			return err
+		}
+
+		if _, err := io.Copy(io.MultiWriter(pb, out), resp.Body); err != nil {
+			return err
+		}
+	}
+
+	if *dumpFs != "" {
+		return common.DumpFs(*dumpFs)
+	}
+
+	if *runScripts != "" {
+		if common.HasExperimentalFlag("translate_shell") {
+			*translateScripts = true
+		}
+		return builderRunScripts(*runScripts, *translateScripts)
+	}
+
+	if *runBasicScripts != "" {
+		bytes, err := os.ReadFile(*runBasicScripts)
+		if err != nil {
+			return err
+		}
+
+		var scripts []string
+
+		if err := json.Unmarshal(bytes, &scripts); err != nil {
+			return err
+		}
+
+		for _, script := range scripts {
+			if err := common.RunCommand(script); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	if *runConfig != "" {
+		f, err := os.Open(*runConfig)
+		if err != nil {
+			return err
+		}
+
+		dec := json.NewDecoder(f)
+
+		var cfg config.BuilderConfig
+
+		if err := dec.Decode(&cfg); err != nil {
+			return err
+		}
+
+		return builderRunWithConfig(cfg)
+	}
+
+	if *runStarlarkScript != "" {
+		return runStarlark(*runStarlarkScript)
+	}
+
+	if os.Getpid() != 1 {
+		return fmt.Errorf("/init must run as PID 1")
+	}
+
+	if os.Getuid() != 0 {
+		return fmt.Errorf("/init must be run as root")
+	}
+
+	if err := runStarlark("/init.star"); err != nil {
 		return err
 	}
 

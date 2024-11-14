@@ -31,8 +31,19 @@ import (
 )
 
 type macroContext struct {
-	db       *PackageDatabase
-	builders map[string]common.InstallationPlanBuilder
+	db        *PackageDatabase
+	builders  map[string]common.InstallationPlanBuilder
+	variables map[string]string
+}
+
+// Variable implements macro.MacroContext.
+func (m *macroContext) Variable(name string) string {
+	return m.variables[name]
+}
+
+// AddVariable implements macro.MacroContext.
+func (m *macroContext) AddVariable(name string, value string) {
+	m.variables[name] = value
 }
 
 // AddBuilder implements macro.MacroContext.
@@ -915,8 +926,9 @@ func (db *PackageDatabase) GetMacroByShorthand(ctx macro.MacroContext, shorthand
 
 func (db *PackageDatabase) NewMacroContext() macro.MacroContext {
 	return &macroContext{
-		db:       db,
-		builders: make(map[string]common.InstallationPlanBuilder),
+		db:        db,
+		builders:  make(map[string]common.InstallationPlanBuilder),
+		variables: make(map[string]string),
 	}
 }
 
