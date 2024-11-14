@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"strings"
@@ -411,6 +412,22 @@ func (tr *TinyRange) runWithConfig() error {
 		tr.debug = true
 	}
 
+	var onExit []func()
+
+	// Catch Interrupt signals to shutdown gracefully.
+	osSignal := make(chan os.Signal, 1)
+	signal.Notify(osSignal, os.Interrupt)
+
+	go func() {
+		<-osSignal
+
+		for _, fn := range onExit {
+			fn()
+		}
+
+		os.Exit(1)
+	}()
+
 	interaction := tr.cfg.Interaction
 	if interaction == "" {
 		interaction = "ssh"
@@ -779,6 +796,12 @@ func (tr *TinyRange) runWithConfig() error {
 	}()
 
 	slog.Debug("starting virtual machine", "took", time.Since(start))
+
+	onExit = append(onExit, func() {
+		if err := virtualMachine.Shutdown(); err != nil {
+			slog.Error("failed to shutdown virtual machine", "err", err)
+		}
+	})
 
 	if interaction == "ssh" || interaction == "vnc" {
 		go func() {
