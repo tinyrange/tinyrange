@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 	"strings"
 	"time"
@@ -91,6 +92,16 @@ var loginCmd = &cobra.Command{
 
 					currentConfig.SetLocalConfig()
 				}
+
+				currentConfig.SetBasePath(filepath.Dir(loginLoadConfig))
+			} else {
+				currentConfig.SetLocalConfig()
+
+				wd, err := os.Getwd()
+				if err != nil {
+					return err
+				}
+				currentConfig.SetBasePath(wd)
 			}
 
 			return currentConfig.Run(db)

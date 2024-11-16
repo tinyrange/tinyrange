@@ -134,7 +134,10 @@ type Config struct {
 	Mounts            []string `json:"-" yaml:"-"`
 
 	localConfig bool
+	basePath    string
 }
+
+func (config *Config) SetBasePath(path string) { config.basePath = path }
 
 func (config *Config) SetLocalConfig() { config.localConfig = true }
 
@@ -148,6 +151,14 @@ func (config *Config) SetVmSpec() {
 	if config.StorageSize < config.MinSpec.StorageSize {
 		config.StorageSize = config.MinSpec.StorageSize
 	}
+}
+
+func (config *Config) resolvePath(filename string) (string, error) {
+	if strings.HasPrefix(filename, "/") {
+		return filename, nil
+	}
+
+	return filepath.Join(config.basePath, filename), nil
 }
 
 func (config *Config) parseInclusion(db *database.PackageDatabase, inclusion string) (common.Directive, error) {
@@ -246,14 +257,14 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 				return nil, "", fmt.Errorf("remote configs can't include local files")
 			}
 
-			absPath, err := filepath.Abs(filename)
+			filePath, err := config.resolvePath(filename)
 			if err != nil {
 				return nil, "", err
 			}
 
 			directives = append(directives, common.DirectiveLocalFile{
-				HostFilename: absPath,
-				Filename:     path.Join("/root", filepath.Base(absPath)),
+				HostFilename: filePath,
+				Filename:     path.Join("/root", filepath.Base(filePath)),
 			})
 		}
 	}
@@ -285,13 +296,18 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 				return nil, "", fmt.Errorf("remote configs can't include local files")
 			}
 
-			hash, err := sha256HashFromFile(filename)
+			filePath, err := config.resolvePath(filename)
+			if err != nil {
+				return nil, "", err
+			}
+
+			hash, err := sha256HashFromFile(filePath)
 			if err != nil {
 				return nil, "", err
 			}
 
 			def = builder.NewConstantHashDefinition(hash, func() (io.ReadCloser, error) {
-				return os.Open(filename)
+				return os.Open(filePath)
 			})
 		}
 
