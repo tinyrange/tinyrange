@@ -297,7 +297,7 @@ def build_alpine_directives(builder, plan):
         ] + plan.directives
 
         if not plan.tags.contains("noScripts"):
-            directives.append(directive.run_command("/init -run-scripts /.pkg/scripts.json"))
+            directives.append(directive.run_command("/init -run-scripts /.pkg/scripts.json -lock-file /.pkg/alpine.lock"))
 
         directives.append(directive.default_interactive("/bin/login -pf root"))
 

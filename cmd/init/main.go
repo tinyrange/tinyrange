@@ -1006,6 +1006,7 @@ var (
 	runSshServer      = flag.String("ssh", "", "run a ssh server that executes the argument on connection")
 	downloadFile      = flag.String("download", "", "download a file from the specified server")
 	runScripts        = flag.String("run-scripts", "", "run a JSON file of scripts")
+	lockFile          = flag.String("lock-file", "", "don't run scripts if this file exists and create it if it doesn't exist")
 	runBasicScripts   = flag.String("run-basic-scripts", "", "run a JSON file containing an array of commands")
 	translateScripts  = flag.Bool("translate-scripts", false, "translate scripts into starlark before running them")
 	runConfig         = flag.String("run-config", "", "run a JSON file with a given builder config")
@@ -1054,6 +1055,35 @@ func initMain() error {
 	}
 
 	if *runScripts != "" {
+		if *lockFile != "" {
+			if _, err := os.Stat(*lockFile + ".tmp"); err == nil {
+				for {
+					if _, err := os.Stat(*lockFile); err == nil {
+						slog.Info("waiting for lock file to be removed", "filename", *lockFile+".tmp")
+						time.Sleep(100 * time.Millisecond)
+						continue
+					} else {
+						break
+					}
+				}
+
+				return nil
+			}
+
+			if _, err := os.Stat(*lockFile); err == nil {
+				return nil
+			}
+
+			if err := os.WriteFile(*lockFile+".tmp", []byte{}, os.ModePerm); err != nil {
+				return err
+			}
+			defer os.Remove(*lockFile + ".tmp")
+
+			if err := os.WriteFile(*lockFile, []byte{}, os.ModePerm); err != nil {
+				return err
+			}
+		}
+
 		if common.HasExperimentalFlag("translate_shell") {
 			*translateScripts = true
 		}
