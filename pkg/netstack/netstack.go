@@ -408,11 +408,6 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 			Port: int(id.LocalPort),
 		}
 
-		// Proxy connections to 10.42.0.100 to localhost.
-		if id.LocalAddress.As4() == [4]byte{10, 42, 0, 100} {
-			loc.IP = net.IPv4(127, 0, 0, 1)
-		}
-
 		slog.Debug("dialing remote host", "addr", loc.String())
 
 		var outbound net.Conn
@@ -420,6 +415,11 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 		if ns.wg != nil {
 			outbound, err = ns.wg.Dial("tcp", loc.String())
 		} else {
+			// Proxy connections to 10.42.0.100 to localhost.
+			if id.LocalAddress.As4() == [4]byte{10, 42, 0, 100} {
+				loc.IP = net.IPv4(127, 0, 0, 1)
+			}
+
 			outbound, err = net.DialTCP("tcp", nil, loc)
 		}
 		if err != nil {
