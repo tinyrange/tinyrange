@@ -752,6 +752,31 @@ func runStarlark(filename string) error {
 		return starlark.None, nil
 	})
 
+	globals["file_chmod"] = starlark.NewBuiltin("file_chmod", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			path string
+			mode int
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"path", &path,
+			"mode", &mode,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := os.Chmod(path, os.FileMode(mode)); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
 	globals["insmod"] = starlark.NewBuiltin("insmod", func(
 		thread *starlark.Thread,
 		fn *starlark.Builtin,
