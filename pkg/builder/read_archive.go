@@ -443,7 +443,7 @@ func (r *ReadArchiveBuildDefinition) ToStarlark(ctx common.BuildContext, result 
 		return starlark.None, err
 	}
 
-	return filesystem.NewStarArchive(ark, r.Tag()), nil
+	return filesystem.NewStarArchive(ark, r, r.Tag()), nil
 }
 
 // NeedsBuild implements BuildDefinition.

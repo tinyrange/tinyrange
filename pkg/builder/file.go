@@ -207,6 +207,10 @@ func NewDefinitionFromFile(f filesystem.File) (common.BuildDefinition, error) {
 	return &FileDefinition{params: FileParameters{File: f}}, nil
 }
 
+func SourceFromArchive(archive filesystem.Archive) (hash.SerializableValue, error) {
+	return filesystem.SourceFromArchive(archive)
+}
+
 func NewConstantHashDefinition(hash string, builder BuilderFunc) *ConstantHashDefinition {
 	return &ConstantHashDefinition{params: ConstantHashParameters{Hash: hash}, builder: builder}
 }

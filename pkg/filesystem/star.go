@@ -87,7 +87,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 				return starlark.None, nil
 			}
 
-			return NewStarArchive(ark, f.Name), nil
+			return NewStarArchive(ark, nil, f.Name), nil
 		}), nil
 	} else if name == "read_compressed" {
 		return starlark.NewBuiltin("File.read_compressed", func(
@@ -254,7 +254,8 @@ var (
 
 type StarArchive struct {
 	Archive
-	Name string
+	Source hash.SerializableValue
+	Name   string
 }
 
 // Iterate implements starlark.Iterable.
@@ -301,8 +302,8 @@ var (
 	_ starlark.Iterable = &StarArchive{}
 )
 
-func NewStarArchive(ark Archive, name string) *StarArchive {
-	return &StarArchive{Archive: ark, Name: name}
+func NewStarArchive(ark Archive, source hash.SerializableValue, name string) *StarArchive {
+	return &StarArchive{Archive: ark, Source: source, Name: name}
 }
 
 type starDirectoryIterator struct {

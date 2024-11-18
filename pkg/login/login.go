@@ -332,7 +332,11 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 
 	macroCtx := db.NewMacroContext()
 
-	macroCtx.AddVariable("arch", string(arch))
+	if arch == cfg.ArchInvalid {
+		macroCtx.AddVariable("arch", string(cfg.HostArchitecture))
+	} else {
+		macroCtx.AddVariable("arch", string(arch))
+	}
 
 	var planDirective *builder.PlanDefinition
 	if config.OciImage != "" {

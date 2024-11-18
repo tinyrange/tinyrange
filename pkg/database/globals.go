@@ -40,6 +40,17 @@ func asDirective(val starlark.Value) (common.Directive, error) {
 		} else {
 			return nil, fmt.Errorf("could not convert %T to Directive", def)
 		}
+	} else if ark, ok := val.(filesystem.Archive); ok {
+		def, err := builder.SourceFromArchive(ark)
+		if err != nil {
+			return nil, err
+		}
+
+		if dir, ok := def.(common.Directive); ok {
+			return dir, nil
+		} else {
+			return nil, fmt.Errorf("could not convert %T to Directive", def)
+		}
 	} else {
 		return nil, fmt.Errorf("could not convert %s to Directive", val.Type())
 	}
