@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	shelltranslater "github.com/tinyrange/tinyrange/pkg/shellTranslater"
+	"go.starlark.net/starlark"
 	"golang.org/x/sys/unix"
 )
 
@@ -559,6 +561,42 @@ func (builder *Builder) uploadChangedArchive(hostAddress string, changeTrackerFi
 	}
 }
 
+func getString(dict *starlark.Dict, key string) (string, error) {
+	val, found, err := dict.Get(starlark.String(key))
+	if err != nil {
+		return "", err
+	}
+
+	if !found {
+		return "", nil
+	}
+
+	str, ok := val.(starlark.String)
+	if !ok {
+		return "", fmt.Errorf("key %s is not a string", key)
+	}
+
+	return string(str), nil
+}
+
+func (b *Builder) forkSSHServer() error {
+	cmd, err := os.Executable()
+	if err != nil {
+		return err
+	}
+
+	command := exec.Command(cmd, "-ssh-configured")
+
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+
+	if err := command.Start(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func builderRunScripts(filename string, translateShell bool) error {
 	builder := &Builder{translateShell: translateShell}
 
@@ -598,7 +636,16 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 	}
 
 	if cfg.ExecInit != "" {
-		return unix.Exec(cfg.ExecInit, []string{cfg.ExecInit}, os.Environ())
+		if os.Getpid() == 1 {
+			// Fork a server just running SSH.
+			if err := builder.forkSSHServer(); err != nil {
+				return err
+			}
+
+			return unix.Exec(cfg.ExecInit, []string{cfg.ExecInit}, os.Environ())
+		} else {
+			return common.RunCommand("interactive")
+		}
 	}
 
 	if cfg.OutputFilename == "/init/changed.archive" {

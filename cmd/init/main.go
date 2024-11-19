@@ -435,18 +435,18 @@ func getFd(reader io.Reader) (fd int, ok bool) {
 	return fd, term.IsTerminal(fd)
 }
 
-func runStarlark(filename string) error {
+func loadStarlarkArgs() (starlark.Value, error) {
 	var args starlark.Value = starlark.NewDict(0)
 
 	if ok, _ := common.Exists("/init.json"); ok {
 		contents, err := os.ReadFile("/init.json")
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		args, err = starlarkJsonDecode(nil, starlark.Tuple{starlark.String(contents)}, []starlark.Tuple{})
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -459,7 +459,7 @@ func runStarlark(filename string) error {
 		if ok {
 			files, err := os.ReadDir("/init.d")
 			if err != nil {
-				return err
+				return nil, err
 			}
 
 			for _, file := range files {
@@ -470,23 +470,32 @@ func runStarlark(filename string) error {
 				if strings.HasSuffix(file.Name(), ".json") {
 					contents, err := os.ReadFile("/init.d/" + file.Name())
 					if err != nil {
-						return err
+						return nil, err
 					}
 
 					var newArgs map[string]string
 
 					if err := json.Unmarshal(contents, &newArgs); err != nil {
-						return err
+						return nil, err
 					}
 
 					for k, v := range newArgs {
 						if err := argsDict.SetKey(starlark.String(k), starlark.String(v)); err != nil {
-							return err
+							return nil, err
 						}
 					}
 				}
 			}
 		}
+	}
+
+	return args, nil
+}
+
+func runStarlark(filename string) error {
+	args, err := loadStarlarkArgs()
+	if err != nil {
+		return err
 	}
 
 	globals := starlark.StringDict{}
@@ -1086,9 +1095,67 @@ func runStarlark(filename string) error {
 	return nil
 }
 
+func runSSHServer() error {
+	// Load the configuration file.
+	args, err := loadStarlarkArgs()
+	if err != nil {
+		return err
+	}
+
+	argsDict, ok := args.(*starlark.Dict)
+	if !ok {
+		return fmt.Errorf("args is not a dict")
+	}
+
+	sshCommand, found, err := argsDict.Get(starlark.String("ssh_command"))
+	if err != nil {
+		return fmt.Errorf("failed to get ssh_command: %s", err)
+	}
+
+	var commandArgs []string
+
+	if iter, ok := sshCommand.(starlark.Iterable); ok {
+		commandArgs, err = ToStringList(iter)
+		if err != nil {
+			return fmt.Errorf("failed to convert ssh_command to list: %s", err)
+		}
+	} else {
+		return fmt.Errorf("ssh_command is not iterable")
+	}
+
+	if !found {
+		return fmt.Errorf("ssh_command not found")
+	}
+
+	sshHostKey, err := getString(argsDict, "ssh_host_key")
+	if err != nil {
+		return fmt.Errorf("failed to get ssh_host_key: %s", err)
+	}
+
+	sshPassword, err := getString(argsDict, "ssh_password")
+	if err != nil {
+		return fmt.Errorf("failed to get ssh_password: %s", err)
+	}
+
+	server := &sshServer{
+		hostKey:  sshHostKey,
+		password: sshPassword,
+		command:  commandArgs,
+	}
+
+	slog.Info("starting ssh server")
+
+	if err := server.run(nil); err != nil {
+		return fmt.Errorf("failed to start ssh server: %s", err)
+	}
+
+	return nil
+}
+
 var (
 	execShell         = flag.Bool("shell", false, "start the shell instead of running /init.sh")
 	runSshServer      = flag.String("ssh", "", "run a ssh server that executes the argument on connection")
+	runConfiguredSsh  = flag.Bool("ssh-configured", false, "run a ssh server with the machine config files")
 	downloadFile      = flag.String("download", "", "download a file from the specified server")
 	runScripts        = flag.String("run-scripts", "", "run a JSON file of scripts")
 	lockFile          = flag.String("lock-file", "", "don't run scripts if this file exists and create it if it doesn't exist")
@@ -1114,6 +1181,10 @@ func initMain() error {
 		sshServer := &sshServer{command: cmd, password: config.INSECURE_SSH_PASSWORD}
 
 		return sshServer.run(nil)
+	}
+
+	if *runConfiguredSsh {
+		return runSSHServer()
 	}
 
 	if *downloadFile != "" {

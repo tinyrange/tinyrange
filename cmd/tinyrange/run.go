@@ -18,6 +18,7 @@ import (
 
 var (
 	runDebug            bool
+	runForwardSSH       bool
 	runExportFilesystem string
 	runListenNbd        string
 	runStreamingServer  string
@@ -97,12 +98,13 @@ var runCmd = &cobra.Command{
 			}
 		}
 
-		return tinyrange.RunWithConfig(rootBuildDir, configs, runDebug, false, runExportFilesystem, runListenNbd, runStreamingServer, runWireguardUrl, runSecureSSH)
+		return tinyrange.RunWithConfig(rootBuildDir, configs, runDebug, runForwardSSH, runExportFilesystem, runListenNbd, runStreamingServer, runWireguardUrl, runSecureSSH)
 	},
 }
 
 func init() {
 	runCmd.PersistentFlags().BoolVar(&runDebug, "debug", false, "redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup")
+	runCmd.PersistentFlags().BoolVar(&runForwardSSH, "forward-ssh", false, "forward the SSH port to the host")
 	runCmd.PersistentFlags().StringVar(&runExportFilesystem, "export-filesystem", "", "write the filesystem to the host filesystem")
 	runCmd.PersistentFlags().StringVar(&runListenNbd, "listen-nbd", "", "Listen with an NBD server on the given address and port")
 	runCmd.PersistentFlags().StringVar(&runStreamingServer, "stream", "", "Specify a server to download the config from.")
