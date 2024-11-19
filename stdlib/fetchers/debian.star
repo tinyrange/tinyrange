@@ -1,6 +1,7 @@
 BASE_MIRROR = "https://mirror.aarnet.edu.au/pub"
 
 db.add_mirror("ubuntu", [BASE_MIRROR + "/ubuntu/archive"])
+db.add_mirror("ubuntu_ports", [BASE_MIRROR + "/ubuntu/ports"])
 db.add_mirror("neurodebian", [BASE_MIRROR + "/neurodebian"])
 db.add_mirror("kali", [BASE_MIRROR + "/kali/kali"])
 
@@ -36,7 +37,7 @@ def parse_debian_index(base, contents):
 
     return ret
 
-def parse_debian_release(ctx, release_file, mirror):
+def parse_debian_release(ctx, release_file, mirror, arch):
     contents = parse_debian_index("", release_file.read())
 
     contents = contents[0]
@@ -49,7 +50,7 @@ def parse_debian_release(ctx, release_file, mirror):
         contents = ctx.build(
             define.decompress_file(
                 define.fetch_http(
-                    "{}/{}/binary-amd64/Packages.gz".format(base, component),
+                    "{}/{}/binary-{}/Packages.gz".format(base, component, arch),
                     expire_time = duration("8h"),
                 ),
                 ".gz",
@@ -184,7 +185,7 @@ def get_debian_installer(pkg, tags):
         deps += [parse_debian_query(q) for q in ent["depends"].split(", ")]
 
     if "recommends" in ent:
-        deps += [parse_debian_query(q) for q in ent["recommends"].split(", ") if q != "luit"]
+        deps += [parse_debian_query(q) for q in ent["recommends"].split(", ") if q != "luit" and q != "libdts-dev"]
 
     if tags.contains("level3"):
         download_archive = define.fetch_http(ent["$base"] + ent["filename"])
@@ -233,7 +234,7 @@ def get_sources_list_line(ctx, release_file):
 
     return file("deb {} {} {}".format(url, dist_name, contents["components"]))
 
-def make_ubuntu_repos(only_latest = True, include_neurodebian = False):
+def make_ubuntu_repos(only_latest = True, include_neurodebian = False, arch="amd64"):
     ubuntu_repos = {}
 
     for version in UBUNTU_VERSIONS:
@@ -242,12 +243,16 @@ def make_ubuntu_repos(only_latest = True, include_neurodebian = False):
 
         repos = []
 
+        mirror = "mirror://ubuntu"
+        if arch != "amd64":
+            mirror = "mirror://ubuntu_ports"
+
         release_file = define.fetch_http(
-            url = "mirror://ubuntu/dists/{}/Release".format(version),
+            url = "{}/dists/{}/Release".format(mirror,version),
             expire_time = duration("8h"),
         )
 
-        repos.append(define.build(parse_debian_release, release_file, "mirror://ubuntu/"))
+        repos.append(define.build(parse_debian_release, release_file, mirror + "/", arch))
 
         ubuntu_repos[version] = (
             define.package_collection(
@@ -258,12 +263,12 @@ def make_ubuntu_repos(only_latest = True, include_neurodebian = False):
             define.build(get_sources_list_line, release_file),
         )
 
-        if include_neurodebian and version == "focal":
+        if include_neurodebian and version == "focal" and arch == "amd64":
             release_file = define.fetch_http(
                 url = "mirror://neurodebian/dists/{}/Release".format(version),
                 expire_time = duration("8h"),
             )
-            repos.append(define.build(parse_debian_release, release_file, "mirror://neurodebian"))
+            repos.append(define.build(parse_debian_release, release_file, "mirror://neurodebian", arch))
 
             ubuntu_repos[version + "_neurodebian"] = (
                 define.package_collection(
@@ -438,7 +443,7 @@ def build_debian_directives(builder, plan):
             define.fetch_oci_image(image = "library/ubuntu", tag = builder.metadata["version"]),
         ] + plan.directives
 
-def make_ubuntu_builders(repos):
+def make_ubuntu_builders(repos, arch):
     ret = []
     for version in repos:
         defaults = [
@@ -459,7 +464,7 @@ def make_ubuntu_builders(repos):
         # Define a container builder for each version.
         ret.append(define.container_builder(
             name = "ubuntu@" + version,
-            arch = "x86_64",
+            arch = arch,
             display_name = "Ubuntu " + version,
             plan_callback = build_debian_directives,
             # Packages with a high priority need to be installed.
@@ -479,8 +484,16 @@ if __name__ == "__main__":
     for builder in make_ubuntu_builders(make_ubuntu_repos(
         only_latest = False,
         include_neurodebian = True,
-    )):
+        arch="amd64",
+    ), "x86_64"):
         db.add_container_builder(builder)
+
+    for arm_builder in make_ubuntu_builders(make_ubuntu_repos(
+        only_latest = False,
+        include_neurodebian = True,
+        arch="arm64",
+    ), "aarch64"):
+        db.add_container_builder(arm_builder)
 
     db.add_container_builder(define.container_builder(
         name = "kali",

@@ -1218,7 +1218,7 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 					fs = append(fs, subFs...)
 				}
 
-				return filesystem.NewStarArchive(fs, "source"), nil
+				return filesystem.NewStarArchive(fs, nil, "source"), nil
 			} else {
 				return starlark.None, fmt.Errorf("unknown builtin executable: %s", name)
 			}

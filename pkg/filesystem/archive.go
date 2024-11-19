@@ -63,6 +63,9 @@ func ReadArchiveFromFile(f File) (Archive, error) {
 		off += 1024
 
 		hdrEnd := strings.IndexByte(string(hdrBytes), '\x00')
+		if hdrEnd == -1 {
+			return nil, fmt.Errorf("invalid header: %s", hdrBytes)
+		}
 
 		var hdr CacheEntry
 

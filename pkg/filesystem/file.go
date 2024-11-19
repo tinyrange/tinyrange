@@ -425,6 +425,15 @@ func SourceFromFile(f File) (hash.SerializableValue, error) {
 	}
 }
 
+func SourceFromArchive(a Archive) (hash.SerializableValue, error) {
+	switch a := a.(type) {
+	case *StarArchive:
+		return a.Source, nil
+	default:
+		return nil, fmt.Errorf("SourceFromArchive not implemented: %T %+v", a, a)
+	}
+}
+
 type memoryFile struct {
 	kind     FileType
 	mTime    time.Time

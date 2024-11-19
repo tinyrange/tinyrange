@@ -1230,15 +1230,18 @@ def main(ctx):
             "virtconsole,chardev=charconsole0,id=console0",
         ]
         kernel_cmdline += [
-            "earlyprintk=hvc0",
             "console=hvc0",
         ]
     else:
+        print("[tinyrange_qemu.star] Using serial console.")
         args += [
             "-serial",
             "stdio",
         ]
-        kernel_cmdline.append("console=ttyS0")
+        kernel_cmdline += [
+            "earlycon",
+            "console=ttyAMA0",
+        ]
 
     # Set the number of CPU cores.
     args += [
