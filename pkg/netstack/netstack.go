@@ -434,8 +434,6 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 }
 
 func (ns *NetStack) SetupWireguard(config string) error {
-	slog.Info("setting up wireguard")
-
 	wg, err := wireguard.NewFromConfig("10.40.0.2", config)
 	if err != nil {
 		return err
