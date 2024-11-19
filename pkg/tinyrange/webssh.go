@@ -91,7 +91,7 @@ margin-bottom: 1rem;
 
 var upgrader = websocket.Upgrader{}
 
-func runWebSsh(ns *netstack.NetStack, address string, username string, password string, args string) error {
+func runWebSsh(ns *netstack.NetStack, address string, username string, secureSSH SecureSSHConfig, args string) error {
 	host, arg, _ := strings.Cut(args, ",")
 
 	minimal := arg == "minimal"
@@ -113,7 +113,7 @@ func runWebSsh(ns *netstack.NetStack, address string, username string, password 
 			return
 		}
 
-		if err := newWebSocketSSH(ws, ns, address, username, password); err != nil {
+		if err := newWebSocketSSH(ws, ns, address, username, secureSSH); err != nil {
 			slog.Warn("failed to create SSH connection", "error", err)
 			return
 		}

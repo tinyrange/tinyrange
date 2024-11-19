@@ -2,7 +2,11 @@ package tinyrange
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/miekg/dns"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -29,6 +34,7 @@ import (
 	virtualMachine "github.com/tinyrange/tinyrange/pkg/vm"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"github.com/tinyrange/vm"
+	"golang.org/x/crypto/ssh"
 )
 
 type vmBackend struct {
@@ -84,6 +90,7 @@ type TinyRange struct {
 	listenNbd          string
 	streamingServer    string
 	wireguardUrl       string
+	secureSSH          string
 	client             *http.Client
 	deferredFilesystem []func() error
 }
@@ -408,6 +415,62 @@ func (tr *TinyRange) filesystemToExt4(dir filesystem.Directory, fs *ext4.Ext4Fil
 	return nil
 }
 
+func (tr *TinyRange) generateOrLoadSecureSSH() (SecureSSHConfig, error) {
+	var secureSSH SecureSSHConfig
+
+	if ok, _ := common.Exists(tr.secureSSH); ok {
+		f, err := os.Open(tr.secureSSH)
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("failed to open secure ssh config: %w", err)
+		}
+		defer f.Close()
+
+		if err := json.NewDecoder(f).Decode(&secureSSH); err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("failed to decode secure ssh config: %w", err)
+		}
+	} else {
+		secureSSH.Password = uuid.NewString()
+
+		// Generate a new host key.
+		privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate key: %v", err)
+		}
+
+		block, err := ssh.MarshalPrivateKey(privateKey, "")
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to marshal private key: %v", err)
+		}
+
+		blockBytes := pem.EncodeToMemory(block)
+		if blockBytes == nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to encode private key")
+		}
+
+		secureSSH.HostKey = string(blockBytes)
+
+		publicKey, err := ssh.NewPublicKey(&privateKey.PublicKey)
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate public key: %v", err)
+		}
+
+		secureSSH.PublicKey = string(ssh.MarshalAuthorizedKey(publicKey))
+
+		// Write the config to disk.
+		f, err := os.Create(tr.secureSSH)
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("failed to create secure ssh config: %w", err)
+		}
+		defer f.Close()
+
+		if err := json.NewEncoder(f).Encode(secureSSH); err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("failed to encode secure ssh config: %w", err)
+		}
+	}
+
+	return secureSSH, nil
+}
+
 func (tr *TinyRange) runWithConfig() error {
 	if len(tr.configs) == 0 {
 		return fmt.Errorf("no configs specified")
@@ -464,6 +527,41 @@ func (tr *TinyRange) runWithConfig() error {
 				}
 			}
 		}
+	}
+
+	var secureSSH SecureSSHConfig
+
+	// Configure secure SSH.
+	if tr.secureSSH != "" {
+		var err error
+
+		secureSSH, err = tr.generateOrLoadSecureSSH()
+		if err != nil {
+			return fmt.Errorf("failed to generate or load secure ssh: %w", err)
+		}
+
+		secureConfig, err := json.Marshal(secureSSH)
+		if err != nil {
+			return fmt.Errorf("failed to marshal secure ssh config: %w", err)
+		}
+
+		memFile := filesystem.NewMemoryFile(filesystem.TypeRegular)
+
+		if err := memFile.Overwrite(secureConfig); err != nil {
+			return fmt.Errorf("failed to overwrite secure ssh config: %w", err)
+		}
+
+		if err := memFile.Chmod(0600); err != nil {
+			return fmt.Errorf("failed to chmod secure ssh config: %w", err)
+		}
+
+		if err := filesystem.CreateChild(root, "/init.d/secure_ssh.json", memFile); err != nil {
+			return fmt.Errorf("failed to create secure ssh config: %w", err)
+		}
+	} else {
+		secureSSH.HostKey = ""
+		secureSSH.PublicKey = ""
+		secureSSH.Password = config.INSECURE_SSH_PASSWORD
 	}
 
 	slog.Debug("built filesystem tree", "took", time.Since(start))
@@ -834,7 +932,7 @@ func (tr *TinyRange) runWithConfig() error {
 
 		// Start a loop so SSH can be restarted when requested by the user.
 		for {
-			err = connectOverSsh(ns, "10.42.0.2:2222", "root", "insecurepassword")
+			err = connectOverSsh(ns, "10.42.0.2:2222", "root", secureSSH)
 			if err == ErrRestart {
 				continue
 			} else if err != nil {
@@ -859,7 +957,7 @@ func (tr *TinyRange) runWithConfig() error {
 		}()
 		defer virtualMachine.Shutdown()
 
-		return runWebSsh(ns, "10.42.0.2:2222", "root", "insecurepassword", strings.TrimPrefix(interaction, "webssh,"))
+		return runWebSsh(ns, "10.42.0.2:2222", "root", secureSSH, strings.TrimPrefix(interaction, "webssh,"))
 	} else {
 		return fmt.Errorf("unknown interaction: %s", interaction)
 	}
@@ -874,6 +972,7 @@ func RunWithConfig(
 	listenNbd string,
 	streamingServer string,
 	wireguardUrl string,
+	secureSSH string,
 ) error {
 	tr := &TinyRange{
 		buildDir:         buildDir,
@@ -885,6 +984,7 @@ func RunWithConfig(
 		streamingServer:  streamingServer,
 		wireguardUrl:     wireguardUrl,
 		client:           http.DefaultClient,
+		secureSSH:        secureSSH,
 	}
 
 	return tr.runWithConfig()

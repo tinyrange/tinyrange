@@ -19,6 +19,12 @@ import (
 	"golang.org/x/term"
 )
 
+type SecureSSHConfig struct {
+	HostKey   string `json:"ssh_host_key"`
+	PublicKey string `json:"ssh_public_key"`
+	Password  string `json:"ssh_password"`
+}
+
 var ErrInterrupt = errors.New("Interrupt")
 var ErrRestart = errors.New("Restart")
 
@@ -98,13 +104,22 @@ func getFd(reader io.Reader) (fd int, ok bool) {
 	return fd, term.IsTerminal(fd)
 }
 
-func connectOverSsh(ns *netstack.NetStack, address string, username string, password string) error {
+func connectOverSsh(ns *netstack.NetStack, address string, username string, secureSSH SecureSSHConfig) error {
 	config := &ssh.ClientConfig{
 		User: username,
 		Auth: []ssh.AuthMethod{
-			ssh.Password(password),
+			ssh.Password(secureSSH.Password),
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+
+	if secureSSH.PublicKey != "" {
+		public, _, _, _, err := ssh.ParseAuthorizedKey([]byte(secureSSH.PublicKey))
+		if err != nil {
+			return fmt.Errorf("failed to parse public key: %v", err)
+		}
+
+		config.HostKeyCallback = ssh.FixedHostKey(public)
 	}
 
 	var (
@@ -261,13 +276,22 @@ var (
 	_ io.WriteCloser = &webSocketWriter{}
 )
 
-func newWebSocketSSH(ws *websocket.Conn, ns *netstack.NetStack, address string, username string, password string) error {
+func newWebSocketSSH(ws *websocket.Conn, ns *netstack.NetStack, address string, username string, secureSSH SecureSSHConfig) error {
 	config := &ssh.ClientConfig{
 		User: username,
 		Auth: []ssh.AuthMethod{
-			ssh.Password(password),
+			ssh.Password(secureSSH.Password),
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+
+	if secureSSH.PublicKey != "" {
+		public, _, _, _, err := ssh.ParseAuthorizedKey([]byte(secureSSH.PublicKey))
+		if err != nil {
+			return fmt.Errorf("failed to parse public key: %v", err)
+		}
+
+		config.HostKeyCallback = ssh.FixedHostKey(public)
 	}
 
 	var (

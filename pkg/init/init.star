@@ -48,4 +48,13 @@ def main():
         else:
             exec("/bin/login", "-pf", "root")
     else:
-        run_ssh_server(ssh_connect)
+        password = ""
+        host_key = ""
+
+        if "ssh_password" in args:
+            password = args["ssh_password"]
+
+        if "ssh_host_key" in args:
+            host_key = args["ssh_host_key"]
+        
+        run_ssh_server(ssh_connect, host_key = host_key, password = password)

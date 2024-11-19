@@ -6,6 +6,9 @@ import (
 	"runtime"
 )
 
+// Used as the default password when one is not provided.
+const INSECURE_SSH_PASSWORD = "insecurepassword"
+
 type CPUArchitecture string
 
 const (

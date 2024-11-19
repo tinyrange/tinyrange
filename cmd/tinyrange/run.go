@@ -22,6 +22,7 @@ var (
 	runListenNbd        string
 	runStreamingServer  string
 	runWireguardUrl     string
+	runSecureSSH        string
 )
 
 var runCmd = &cobra.Command{
@@ -96,7 +97,7 @@ var runCmd = &cobra.Command{
 			}
 		}
 
-		return tinyrange.RunWithConfig(rootBuildDir, configs, runDebug, false, runExportFilesystem, runListenNbd, runStreamingServer, runWireguardUrl)
+		return tinyrange.RunWithConfig(rootBuildDir, configs, runDebug, false, runExportFilesystem, runListenNbd, runStreamingServer, runWireguardUrl, runSecureSSH)
 	},
 }
 
@@ -106,5 +107,6 @@ func init() {
 	runCmd.PersistentFlags().StringVar(&runListenNbd, "listen-nbd", "", "Listen with an NBD server on the given address and port")
 	runCmd.PersistentFlags().StringVar(&runStreamingServer, "stream", "", "Specify a server to download the config from.")
 	runCmd.PersistentFlags().StringVar(&runWireguardUrl, "wireguard", "", "Specify a WireGuard server to download a config from.")
+	runCmd.PersistentFlags().StringVar(&runSecureSSH, "secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
 	rootCmd.AddCommand(runCmd)
 }

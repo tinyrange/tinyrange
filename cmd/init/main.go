@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -86,6 +87,8 @@ func SetWinsize(fd uintptr, w, h uint32) error {
 type sshServer struct {
 	callable starlark.Callable
 	command  []string
+	hostKey  string
+	password string
 }
 
 // Attr implements starlark.HasAttrs.
@@ -337,7 +340,7 @@ func (s *sshServer) handleClient(nConn net.Conn, config *ssh.ServerConfig) error
 	return nil
 }
 
-func (s *sshServer) run(password string, callable starlark.Callable) error {
+func (s *sshServer) run(callable starlark.Callable) error {
 	s.callable = callable
 
 	listener, err := net.Listen("tcp", "0.0.0.0:2222")
@@ -347,26 +350,33 @@ func (s *sshServer) run(password string, callable starlark.Callable) error {
 
 	config := &ssh.ServerConfig{
 		PasswordCallback: func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
-			// Should use constant-time compare (or better, salt+hash) in
-			// a production setting.
-			if string(pass) == password {
+			if subtle.ConstantTimeCompare(pass, []byte(s.password)) == 1 {
 				return nil, nil
 			}
 			return nil, fmt.Errorf("password rejected for %q", c.User())
 		},
 	}
 
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return fmt.Errorf("ssh: failed to generate key: %v", err)
-	}
+	if s.hostKey == "" {
+		privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return fmt.Errorf("ssh: failed to generate key: %v", err)
+		}
 
-	hostSigner, err := ssh.NewSignerFromKey(privateKey)
-	if err != nil {
-		return fmt.Errorf("ssh: failed to make signer: %v", err)
-	}
+		hostSigner, err := ssh.NewSignerFromKey(privateKey)
+		if err != nil {
+			return fmt.Errorf("ssh: failed to make signer: %v", err)
+		}
 
-	config.AddHostKey(hostSigner)
+		config.AddHostKey(hostSigner)
+	} else {
+		private, err := ssh.ParsePrivateKey([]byte(s.hostKey))
+		if err != nil {
+			return fmt.Errorf("ssh: failed to parse private key: %v", err)
+		}
+
+		config.AddHostKey(private)
+	}
 
 	for {
 		nConn, err := listener.Accept()
@@ -376,7 +386,7 @@ func (s *sshServer) run(password string, callable starlark.Callable) error {
 		go func() {
 			err := s.handleClient(nConn, config)
 			if err != nil {
-				slog.Warn("failed to handle ssh client", "err", err)
+				slog.Debug("failed to handle ssh client", "err", err)
 			}
 		}()
 	}
@@ -437,6 +447,45 @@ func runStarlark(filename string) error {
 		args, err = starlarkJsonDecode(nil, starlark.Tuple{starlark.String(contents)}, []starlark.Tuple{})
 		if err != nil {
 			return err
+		}
+	}
+
+	if ok, _ := common.Exists("/init.d"); ok {
+		if args == nil {
+			args = starlark.NewDict(0)
+		}
+
+		argsDict, ok := args.(*starlark.Dict)
+		if ok {
+			files, err := os.ReadDir("/init.d")
+			if err != nil {
+				return err
+			}
+
+			for _, file := range files {
+				if file.IsDir() {
+					continue
+				}
+
+				if strings.HasSuffix(file.Name(), ".json") {
+					contents, err := os.ReadFile("/init.d/" + file.Name())
+					if err != nil {
+						return err
+					}
+
+					var newArgs map[string]string
+
+					if err := json.Unmarshal(contents, &newArgs); err != nil {
+						return err
+					}
+
+					for k, v := range newArgs {
+						if err := argsDict.SetKey(starlark.String(k), starlark.String(v)); err != nil {
+							return err
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -872,17 +921,28 @@ func runStarlark(filename string) error {
 	) (starlark.Value, error) {
 		var (
 			callable starlark.Callable
+			password string
+			hostKey  string
 		)
 
 		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 			"callable", &callable,
+			"password?", &password,
+			"host_key?", &hostKey,
 		); err != nil {
 			return starlark.None, err
 		}
 
-		sshServer := &sshServer{}
+		if password == "" {
+			password = config.INSECURE_SSH_PASSWORD
+		}
 
-		err := sshServer.run("insecurepassword", callable)
+		sshServer := &sshServer{
+			hostKey:  hostKey,
+			password: password,
+		}
+
+		err := sshServer.run(callable)
 		if err != nil {
 			return starlark.None, err
 		}
@@ -1051,9 +1111,9 @@ func initMain() error {
 			return err
 		}
 
-		sshServer := &sshServer{command: cmd}
+		sshServer := &sshServer{command: cmd, password: config.INSECURE_SSH_PASSWORD}
 
-		return sshServer.run("insecurepassword", nil)
+		return sshServer.run(nil)
 	}
 
 	if *downloadFile != "" {
