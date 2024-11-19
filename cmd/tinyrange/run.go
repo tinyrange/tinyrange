@@ -41,7 +41,7 @@ var runCmd = &cobra.Command{
 			defer pprof.StopCPUProfile()
 		}
 
-		var cfg config.TinyRangeConfig
+		var configs []config.TinyRangeConfig
 
 		if runStreamingServer != "" {
 			resp, err := http.Get(runStreamingServer)
@@ -49,6 +49,8 @@ var runCmd = &cobra.Command{
 				return err
 			}
 			defer resp.Body.Close()
+
+			var cfg config.TinyRangeConfig
 
 			dec := json.NewDecoder(resp.Body)
 
@@ -64,29 +66,37 @@ var runCmd = &cobra.Command{
 			url.Path = path.Dir(url.Path)
 
 			runStreamingServer = url.String()
+
+			configs = append(configs, cfg)
 		} else {
-			f, err := os.Open(args[0])
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-
-			if strings.HasSuffix(f.Name(), ".json") {
-				dec := json.NewDecoder(f)
-
-				if err := dec.Decode(&cfg); err != nil {
+			for _, configFilename := range args {
+				f, err := os.Open(configFilename)
+				if err != nil {
 					return err
 				}
-			} else if strings.HasSuffix(f.Name(), ".yml") {
-				dec := yaml.NewDecoder(f)
+				defer f.Close()
 
-				if err := dec.Decode(&cfg); err != nil {
-					return err
+				var cfg config.TinyRangeConfig
+
+				if strings.HasSuffix(f.Name(), ".json") {
+					dec := json.NewDecoder(f)
+
+					if err := dec.Decode(&cfg); err != nil {
+						return err
+					}
+				} else if strings.HasSuffix(f.Name(), ".yml") {
+					dec := yaml.NewDecoder(f)
+
+					if err := dec.Decode(&cfg); err != nil {
+						return err
+					}
 				}
+
+				configs = append(configs, cfg)
 			}
 		}
 
-		return tinyrange.RunWithConfig(rootBuildDir, cfg, runDebug, false, runExportFilesystem, runListenNbd, runStreamingServer, runWireguardUrl)
+		return tinyrange.RunWithConfig(rootBuildDir, configs, runDebug, false, runExportFilesystem, runListenNbd, runStreamingServer, runWireguardUrl)
 	},
 }
 

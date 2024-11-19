@@ -77,7 +77,7 @@ func (*vmBackend) Sync() error {
 
 type TinyRange struct {
 	buildDir           string
-	cfg                config.TinyRangeConfig
+	configs            []config.TinyRangeConfig
 	debug              bool
 	forwardSsh         bool
 	exportFilesystem   string
@@ -88,9 +88,9 @@ type TinyRange struct {
 	deferredFilesystem []func() error
 }
 
-func (tr *TinyRange) fragmentToFilesystem(frag config.Fragment, dir filesystem.MutableDirectory) error {
+func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
 	if localFile := frag.LocalFile; localFile != nil {
-		file := filesystem.NewLocalFile(tr.cfg.Resolve(localFile.HostFilename), nil)
+		file := filesystem.NewLocalFile(cfg.Resolve(localFile.HostFilename), nil)
 
 		overlay, err := filesystem.NewOverlayFile(file)
 		if err != nil {
@@ -111,8 +111,14 @@ func (tr *TinyRange) fragmentToFilesystem(frag config.Fragment, dir filesystem.M
 	} else if fileContents := frag.FileContents; fileContents != nil {
 		file := filesystem.NewMemoryFile(filesystem.TypeRegular)
 
-		if err := file.Overwrite(fileContents.Contents); err != nil {
-			return err
+		if fileContents.StringContents != "" {
+			if err := file.Overwrite([]byte(fileContents.StringContents)); err != nil {
+				return err
+			}
+		} else {
+			if err := file.Overwrite(fileContents.Contents); err != nil {
+				return err
+			}
 		}
 
 		if fileContents.Executable {
@@ -203,7 +209,7 @@ func (tr *TinyRange) fragmentToFilesystem(frag config.Fragment, dir filesystem.M
 				return fmt.Errorf("failed to download archive: %w", err)
 			}
 		} else {
-			f := filesystem.NewLocalFile(tr.cfg.Resolve(ark.HostFilename), nil)
+			f := filesystem.NewLocalFile(cfg.Resolve(ark.HostFilename), nil)
 
 			archive, err = filesystem.ReadArchiveFromFile(f)
 			if err != nil {
@@ -294,7 +300,7 @@ func (tr *TinyRange) fragmentToFilesystem(frag config.Fragment, dir filesystem.M
 
 		return nil
 	} else {
-		return fmt.Errorf("unknown fragment kind")
+		return fmt.Errorf("unknown fragment kind: %+v", frag)
 	}
 }
 
@@ -403,11 +409,17 @@ func (tr *TinyRange) filesystemToExt4(dir filesystem.Directory, fs *ext4.Ext4Fil
 }
 
 func (tr *TinyRange) runWithConfig() error {
-	if tr.cfg.StorageSize == 0 || tr.cfg.CPUCores == 0 || tr.cfg.MemoryMB == 0 {
+	if len(tr.configs) == 0 {
+		return fmt.Errorf("no configs specified")
+	}
+
+	topConfig := tr.configs[0]
+
+	if topConfig.StorageSize == 0 || topConfig.CPUCores == 0 || topConfig.MemoryMB == 0 {
 		return fmt.Errorf("invalid config")
 	}
 
-	if tr.cfg.Debug {
+	if topConfig.Debug {
 		slog.Warn("enabling hypervisor debug mode")
 		tr.debug = true
 	}
@@ -428,7 +440,7 @@ func (tr *TinyRange) runWithConfig() error {
 		os.Exit(1)
 	}()
 
-	interaction := tr.cfg.Interaction
+	interaction := topConfig.Interaction
 	if interaction == "" {
 		interaction = "ssh"
 	}
@@ -440,14 +452,16 @@ func (tr *TinyRange) runWithConfig() error {
 
 	root := filesystem.NewMemoryDirectory()
 
-	for _, frag := range tr.cfg.RootFsFragments {
-		if port := frag.ExportPort; port != nil {
-			exportedPorts = append(exportedPorts, port.Port)
-		} else if mount := frag.MountHostDirectory; mount != nil {
-			mountedHostDirectories = append(mountedHostDirectories, mount.HostDirectory)
-		} else {
-			if err := tr.fragmentToFilesystem(frag, root); err != nil {
-				return fmt.Errorf("failed to extract fragment to filesystem: %w", err)
+	for _, config := range tr.configs {
+		for _, frag := range config.RootFsFragments {
+			if port := frag.ExportPort; port != nil {
+				exportedPorts = append(exportedPorts, port.Port)
+			} else if mount := frag.MountHostDirectory; mount != nil {
+				mountedHostDirectories = append(mountedHostDirectories, mount.HostDirectory)
+			} else {
+				if err := tr.fragmentToFilesystem(config, frag, root); err != nil {
+					return fmt.Errorf("failed to extract fragment to filesystem: %w", err)
+				}
 			}
 		}
 	}
@@ -459,7 +473,7 @@ func (tr *TinyRange) runWithConfig() error {
 		return fmt.Errorf("could not compute total size")
 	}
 
-	fsSize := int64(tr.cfg.StorageSize * 1024 * 1024)
+	fsSize := int64(topConfig.StorageSize * 1024 * 1024)
 
 	if int64(float64(totalSize)*1.5) > fsSize {
 		targetSize := int64(float64(totalSize)*1.5) / 128 / 1024 / 1024
@@ -614,19 +628,19 @@ func (tr *TinyRange) runWithConfig() error {
 
 	// ns.OpenPacketCapture(out)
 
-	factory, err := virtualMachine.LoadVirtualMachineFactory(tr.buildDir, tr.cfg.Resolve(tr.cfg.HypervisorScript))
+	factory, err := virtualMachine.LoadVirtualMachineFactory(tr.buildDir, topConfig.Resolve(topConfig.HypervisorScript))
 	if err != nil {
 		return fmt.Errorf("failed to load virtual machine factory: %w", err)
 	}
 
 	virtualMachine, err := factory.Create(
-		tr.cfg.CPUCores,
-		tr.cfg.MemoryMB,
-		tr.cfg.Architecture,
-		tr.cfg.Resolve(tr.cfg.KernelFilename),
-		tr.cfg.Resolve(tr.cfg.InitFilesystemFilename),
+		topConfig.CPUCores,
+		topConfig.MemoryMB,
+		topConfig.Architecture,
+		topConfig.Resolve(topConfig.KernelFilename),
+		topConfig.Resolve(topConfig.InitFilesystemFilename),
 		"nbd://"+listener.Addr().String(),
-		tr.cfg.Interaction,
+		topConfig.Interaction,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to make virtual machine: %w", err)
@@ -853,7 +867,7 @@ func (tr *TinyRange) runWithConfig() error {
 
 func RunWithConfig(
 	buildDir string,
-	cfg config.TinyRangeConfig,
+	configs []config.TinyRangeConfig,
 	debug bool,
 	forwardSsh bool,
 	exportFilesystem string,
@@ -863,7 +877,7 @@ func RunWithConfig(
 ) error {
 	tr := &TinyRange{
 		buildDir:         buildDir,
-		cfg:              cfg,
+		configs:          configs,
 		debug:            debug,
 		forwardSsh:       forwardSsh,
 		exportFilesystem: exportFilesystem,

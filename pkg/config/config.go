@@ -51,9 +51,10 @@ type LocalFileFragment struct {
 }
 
 type FileContentsFragment struct {
-	Contents      []byte `json:"contents" yaml:"contents"`
-	GuestFilename string `json:"guest_filename" yaml:"guest_filename"`
-	Executable    bool   `json:"executable" yaml:"executable"`
+	Contents       []byte `json:"contents" yaml:"contents"`
+	StringContents string `json:"string_contents" yaml:"string_contents"`
+	GuestFilename  string `json:"guest_filename" yaml:"guest_filename"`
+	Executable     bool   `json:"executable" yaml:"executable"`
 }
 
 type ArchiveFragment struct {
