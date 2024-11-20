@@ -2,7 +2,9 @@
 
 package buildinfo
 
-import _ "embed"
+import (
+	_ "embed"
+)
 
 //go:embed commit.txt
 var VERSION string

@@ -8,5 +8,6 @@
         "**/.git/subtree-cache/**": true,
         "**/node_modules/*/**": true,
         "**/local/cache/**": true
-    }
+    },
+    "go.buildTags": "official"
 }

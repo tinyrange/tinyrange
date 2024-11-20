@@ -4,6 +4,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -113,6 +114,19 @@ func GetAdjacentExecutable(names ...string) (string, error) {
 	return "", fmt.Errorf("could not find any of the executables: %v", names)
 }
 
+func IsPortable() bool {
+	exeDir, err := getExeDirectory()
+	if err != nil {
+		return false
+	}
+
+	if ok, _ := Exists(filepath.Join(exeDir, "tinyrange.portable")); ok {
+		return true
+	}
+
+	return false
+}
+
 func GetDefaultBuildDir() string {
 	// Look for the tinyrange.portable file first.
 	exeDir, err := getExeDirectory()
@@ -206,3 +220,23 @@ func GetExperimentalFlags() []string {
 }
 
 const REPO_PATH = ""
+
+func CopyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("could not open source file: %v", err)
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("could not create destination file: %v", err)
+	}
+	defer out.Close()
+
+	if _, err = io.Copy(out, in); err != nil {
+		return fmt.Errorf("could not copy file: %v", err)
+	}
+
+	return nil
+}
