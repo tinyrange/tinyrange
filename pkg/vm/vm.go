@@ -68,7 +68,13 @@ func (vm *VirtualMachine) runExecutable(exe *vmmFactoryExecutable, bindOutput bo
 
 	vm.mtx.Unlock()
 
-	return vm.cmd.Run()
+	if err := vm.cmd.Run(); err != nil {
+		return fmt.Errorf("failed to run virtual machine: %s", err)
+	}
+
+	slog.Warn("virtual machine exited")
+
+	return nil
 }
 
 func (vm *VirtualMachine) Shutdown() error {

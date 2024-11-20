@@ -1215,9 +1215,10 @@ def main(ctx):
             args += ["-cpu", "host", "-accel", "hvf"]
         elif ctx.os == "windows":
             args += ["-accel", "whpx"]
-
     elif ctx.architecture == "aarch64":
         args += ["-cpu", "cortex-a57"]
+    elif ctx.architecture == "x86_64":
+        args += ["-cpu", "max"]
 
     # Configure output using a serial console or virtio-console if supported.
     if CFG_USE_VIRTIO_CONSOLE:
