@@ -58,6 +58,13 @@ var loginCmd = &cobra.Command{
 			}
 
 			if loginLoadConfig != "" {
+				var addedCommands []string
+				var additionalPorts []string
+
+				// add the commands from the command line
+				addedCommands = append(addedCommands, currentConfig.Commands...)
+				additionalPorts = append(additionalPorts, currentConfig.ForwardPorts...)
+
 				// check if loginLoadConfig is a URL
 				if strings.HasPrefix(loginLoadConfig, "http://") || strings.HasPrefix(loginLoadConfig, "https://") {
 					// expire after 1 hour
@@ -94,6 +101,22 @@ var loginCmd = &cobra.Command{
 				}
 
 				currentConfig.SetBasePath(filepath.Dir(loginLoadConfig))
+
+				if len(addedCommands) > 0 {
+					if len(currentConfig.Commands) > 0 {
+						// Remove the last command from the end of the config (normally a shell or a entrypoint)
+						currentConfig.Commands = currentConfig.Commands[:len(currentConfig.Commands)-1]
+
+						// Add the new commands
+						currentConfig.Commands = append(currentConfig.Commands, addedCommands...)
+					} else {
+						currentConfig.Commands = addedCommands
+					}
+				}
+
+				if len(additionalPorts) > 0 {
+					currentConfig.ForwardPorts = append(currentConfig.ForwardPorts, additionalPorts...)
+				}
 			} else {
 				currentConfig.SetLocalConfig()
 
