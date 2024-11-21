@@ -89,13 +89,11 @@ func installLocalUpdate(filename string, deleteUpdate bool) error {
 
 		newName := strings.TrimPrefix(file.Name, "tinyrange/")
 
-		if newName == "tinyrange.portable" {
-			continue
-		}
-
 		targetPath := filepath.Join(updateDir, newName)
 
-		newFiles = append(newFiles, newName)
+		if newName != "tinyrange.portable" {
+			newFiles = append(newFiles, newName)
+		}
 
 		if err := common.Ensure(filepath.Dir(targetPath), 0755); err != nil {
 			return fmt.Errorf("could not ensure directory %s: %w", filepath.Dir(targetPath), err)
@@ -250,7 +248,7 @@ func revertUpdate(targetInstallDir string) error {
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Download the latest vesion of TinyRange",
+	Short: "Download the latest version of TinyRange",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var currentVersion buildinfo.VersionInfo
 
