@@ -713,7 +713,7 @@ func (tr *TinyRange) runWithConfig() error {
 			return fmt.Errorf("failed to read wireguard config: %w", err)
 		}
 
-		if err := ns.SetupWireguard(string(config)); err != nil {
+		if err := ns.SetupWireguard(string(config), 1420); err != nil {
 			return fmt.Errorf("failed to setup wireguard: %w", err)
 		}
 	}

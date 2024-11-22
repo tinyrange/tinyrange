@@ -433,8 +433,8 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 	}()
 }
 
-func (ns *NetStack) SetupWireguard(config string) error {
-	wg, err := wireguard.NewFromConfig("10.40.0.2", config)
+func (ns *NetStack) SetupWireguard(config string, mtu int) error {
+	wg, err := wireguard.NewFromConfig("10.40.0.2", mtu, config)
 	if err != nil {
 		return err
 	}
