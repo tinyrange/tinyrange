@@ -434,7 +434,9 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 }
 
 func (ns *NetStack) SetupWireguard(config string, mtu int) error {
-	wg, err := wireguard.NewFromConfig("10.40.0.2", mtu, config)
+	handler := wireguard.NewSimpleFlowHandler()
+
+	wg, err := wireguard.NewFromConfig("10.40.0.2", mtu, config, handler)
 	if err != nil {
 		return err
 	}
@@ -449,7 +451,7 @@ func (ns *NetStack) SetupWireguard(config string, mtu int) error {
 		}
 	}()
 
-	listen, err := ns.wg.ListenTCPAddr("10.42.0.2:0")
+	listen, err := handler.ListenTCPAddr("10.42.0.2:0")
 	if err != nil {
 		return err
 	}

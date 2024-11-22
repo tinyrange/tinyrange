@@ -154,8 +154,8 @@ github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsT
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
 github.com/tinyrange/vm v0.0.0-20240616031946-b46d8ccc03db h1:dT27YvrPfoPnZesyNDjHfYFSoQ1YGmPXOejzxR0QXoQ=
 github.com/tinyrange/vm v0.0.0-20240616031946-b46d8ccc03db/go.mod h1:frSmiYbMgYeLCgDoBDUyFnBEju5fHZSqlN0ftnTs+es=
-github.com/tinyrange/wireguard v0.0.3 h1:FZ4hQVUPoALSA28RHEEdpBMyYUuLZE/OXwOS38AfyfY=
-github.com/tinyrange/wireguard v0.0.3/go.mod h1:Wc5XCR1OhWhldEFoTTse6epIi/bzspyV8KI7PzcVHn0=
+github.com/tinyrange/wireguard v0.1.0 h1:KyrcfccaQZfONZcUhWvJ71TqXcti8eIlbIIPOkun19k=
+github.com/tinyrange/wireguard v0.1.0/go.mod h1:Wc5XCR1OhWhldEFoTTse6epIi/bzspyV8KI7PzcVHn0=
 github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923 h1:tHNk7XK9GkmKUR6Gh8gVBKXc2MVSZ4G/NnWLtzw4gNA=
 github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923/go.mod h1:eLL9Nub3yfAho7qB0MzZizFhTU2QkLeoVsWdHtDW264=
 github.com/wader/readline v0.0.0-20230307172220-bcb7158e7448 h1:AzpBtmgdXa3uznrb3esNeEoaLqtNEwckRmaUH0qWD6w=
