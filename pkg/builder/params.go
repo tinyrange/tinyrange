@@ -72,6 +72,12 @@ type FetchOciImageParameters struct {
 	Architecture string
 }
 
+// Read a OCI image from a file.
+// The output is a serialized copy of FetchOciImageDefinition (for compatibility reasons).
+type ReadOciImageParameters struct {
+	Base common.BuildDefinition
+}
+
 // Copy a file to the build output directory.
 type FileParameters struct {
 	File filesystem.File
@@ -120,6 +126,7 @@ func (d DecompressFileParameters) SerializableType() string  { return "Decompres
 func (f FetchHttpParameters) SerializableType() string       { return "FetchHttpParameters" }
 func (r RegistryRequestParameters) SerializableType() string { return "RegistryRequestParameters" }
 func (f FetchOciImageParameters) SerializableType() string   { return "FetchOciImageParameters" }
+func (r ReadOciImageParameters) SerializableType() string    { return "ReadOciImageParameters" }
 func (f FileParameters) SerializableType() string            { return "FileParameters" }
 func (f ConstantHashParameters) SerializableType() string    { return "ConstantHashParameters" }
 func (f ExtractFileParameters) SerializableType() string     { return "ExtractFileParameters" }
@@ -135,6 +142,7 @@ var (
 	_ hash.SerializableValue = FetchHttpParameters{}
 	_ hash.SerializableValue = RegistryRequestParameters{}
 	_ hash.SerializableValue = FetchOciImageParameters{}
+	_ hash.SerializableValue = ReadOciImageParameters{}
 	_ hash.SerializableValue = FileParameters{}
 	_ hash.SerializableValue = ConstantHashParameters{}
 	_ hash.SerializableValue = ExtractFileParameters{}

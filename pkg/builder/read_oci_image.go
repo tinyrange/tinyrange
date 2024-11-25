@@ -1,0 +1,165 @@
+package builder
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/tinyrange/tinyrange/pkg/builder/oci"
+	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
+	"go.starlark.net/starlark"
+)
+
+type OciManifest []struct {
+	Config   string   `json:"Config"`
+	RepoTags []string `json:"RepoTags"`
+	Layers   []string `json:"Layers"`
+}
+
+type ReadOciImageDefinition struct {
+	params ReadOciImageParameters
+}
+
+// Dependencies implements common.BuildDefinition.
+func (r *ReadOciImageDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+	return []common.DependencyNode{r.params.Base}, nil
+}
+
+// NeedsBuild implements common.BuildDefinition.
+func (r *ReadOciImageDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+	return ctx.NeedsBuild(r.params.Base)
+}
+
+// Params implements common.BuildDefinition.
+func (r *ReadOciImageDefinition) Params() hash.SerializableValue { return r.params }
+func (r *ReadOciImageDefinition) SerializableType() string       { return "ReadOciImageDefinition" }
+func (r *ReadOciImageDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &ReadOciImageDefinition{params: params.(ReadOciImageParameters)}
+}
+
+// Tag implements common.BuildDefinition.
+func (r *ReadOciImageDefinition) Tag() string {
+	tag := []string{"ReadOciImage"}
+	tag = append(tag, r.params.Base.Tag())
+	return strings.Join(tag, "_")
+}
+
+// AsFragments implements common.Directive.
+func (r *ReadOciImageDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+	res, err := ctx.BuildChild(r)
+	if err != nil {
+		return nil, err
+	}
+
+	var def FetchOciImageDefinition
+
+	if err := ParseJsonFromFile(res, &def); err != nil {
+		return nil, err
+	}
+
+	var ret []config.Fragment
+
+	for _, archive := range def.LayerArchives {
+		filename, err := ctx.FilenameFromDigest(archive)
+		if err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+	}
+
+	slices.Reverse(ret)
+
+	if def.Config.Config.Env != nil {
+		ret = append(ret, config.Fragment{Environment: &config.EnvironmentFragment{Variables: def.Config.Config.Env}})
+	}
+
+	return ret, nil
+}
+
+// ToStarlark implements common.BuildDefinition.
+func (r *ReadOciImageDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	var def FetchOciImageDefinition
+
+	return def.ToStarlark(ctx, result)
+}
+
+// Build implements common.BuildDefinition.
+func (r *ReadOciImageDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+	child, err := ctx.BuildChild(r.params.Base)
+	if err != nil {
+		return nil, err
+	}
+
+	ark, err := filesystem.ReadArchiveFromFile(child)
+	if err != nil {
+		return nil, err
+	}
+
+	ents, err := ark.Entries()
+	if err != nil {
+		return nil, err
+	}
+
+	filenames := make(map[string]filesystem.Entry)
+
+	for _, ent := range ents {
+		filenames[ent.Name()] = ent
+	}
+
+	var manifest OciManifest
+
+	if err := ParseJsonFromFile(filenames["manifest.json"], &manifest); err != nil {
+		return nil, err
+	}
+
+	if len(manifest) != 1 {
+		return nil, fmt.Errorf("no manifest found or multiple manifests found")
+	}
+
+	mainManifest := manifest[0]
+
+	var config oci.ImageConfig
+
+	if err := ParseJsonFromFile(filenames[mainManifest.Config], &config); err != nil {
+		return nil, err
+	}
+
+	out := &FetchOciImageDefinition{}
+
+	for _, layer := range mainManifest.Layers {
+		layerDef, err := NewDefinitionFromFile(filenames[layer])
+		if err != nil {
+			return nil, err
+		}
+
+		readArchiveDef := NewReadArchiveBuildDefinition(layerDef, layer)
+
+		layerFile, err := ctx.BuildChild(readArchiveDef)
+		if err != nil {
+			return nil, err
+		}
+
+		out.LayerArchives = append(out.LayerArchives, layerFile.Digest())
+	}
+
+	out.Config = config
+
+	return out, nil
+}
+
+var (
+	_ common.BuildDefinition = &ReadOciImageDefinition{}
+)
+
+func NewReadOCIImageDefinition(base common.BuildDefinition) *ReadOciImageDefinition {
+	return &ReadOciImageDefinition{
+		params: ReadOciImageParameters{
+			Base: base,
+		},
+	}
+}

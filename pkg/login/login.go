@@ -350,19 +350,46 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 
 	var planDirective *builder.PlanDefinition
 	if config.OciImage != "" {
-		registry, image, tag, err := parseOciImage(config.OciImage)
-		if err != nil {
-			return nil, "", err
+		if strings.HasPrefix(config.OciImage, "./") {
+			// assume this is a local archive which needs to be imported.
+			if !config.localConfig {
+				return nil, "", fmt.Errorf("remote configs can't include local files")
+			}
+
+			filePath, err := config.resolvePath(config.OciImage)
+			if err != nil {
+				return nil, "", err
+			}
+
+			hash, err := sha256HashFromFile(filePath)
+			if err != nil {
+				return nil, "", err
+			}
+
+			def := builder.NewConstantHashDefinition(hash, func() (io.ReadCloser, error) {
+				return os.Open(filePath)
+			})
+
+			readArchiveDef := builder.NewReadArchiveBuildDefinition(def, filePath)
+
+			ociDef := builder.NewReadOCIImageDefinition(readArchiveDef)
+
+			directives = append(directives, ociDef)
+		} else {
+			registry, image, tag, err := parseOciImage(config.OciImage)
+			if err != nil {
+				return nil, "", err
+			}
+
+			ociArch, err := toOciArchitecture(arch)
+			if err != nil {
+				return nil, "", err
+			}
+
+			ociDef := builder.NewFetchOCIImageDefinition(registry, image, tag, ociArch)
+
+			directives = append(directives, ociDef)
 		}
-
-		ociArch, err := toOciArchitecture(arch)
-		if err != nil {
-			return nil, "", err
-		}
-
-		ociDef := builder.NewFetchOCIImageDefinition(registry, image, tag, ociArch)
-
-		directives = append(directives, ociDef)
 	} else {
 		planDirective, err = builder.NewPlanDefinition(config.Builder, arch, pkgs, tags)
 		if err != nil {
