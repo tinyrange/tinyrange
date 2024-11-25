@@ -140,6 +140,8 @@ func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, env []str
 
 	shell.Env = env
 
+	shell.Stderr = connection.Stderr()
+
 	close := func() {
 		if shell.Process != nil {
 			if ps, err := shell.Process.Wait(); err != nil && ps != nil {
