@@ -75,9 +75,19 @@ func parseOciImage(ociImage string) (registry string, image string, tag string, 
 		registry = builder.DEFAULT_REGISTRY
 	}
 
+	if registry == "docker.io" {
+		registry = builder.DEFAULT_REGISTRY
+	}
+
+	if !strings.HasPrefix(registry, "http://") && !strings.HasPrefix(registry, "https://") {
+		registry = "https://" + registry
+	}
+
 	if registry == builder.DEFAULT_REGISTRY && !strings.Contains(image, "/") {
 		image = "library/" + image
 	}
+
+	slog.Debug("parsed OCI image", "registry", registry, "image", image, "tag", tag)
 
 	return
 }
