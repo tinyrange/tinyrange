@@ -169,8 +169,7 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, secu
 
 	nonInteractive := false
 
-	fd, ok := getFd(os.Stdin)
-	if ok {
+	if fd, ok := getFd(os.Stdin); ok {
 		state, err := term.MakeRaw(fd)
 		if err != nil {
 			return fmt.Errorf("failed to make terminal raw: %v", err)
@@ -189,6 +188,10 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, secu
 	term, ok := os.LookupEnv("TERM")
 	if !ok {
 		term = "linux"
+	}
+
+	if nonInteractive {
+		term = "non-interactive/" + term
 	}
 
 	if err := session.RequestPty(term, height, width, ssh.TerminalModes{

@@ -129,7 +129,7 @@ func (s *sshServer) AttrNames() []string {
 	return []string{"run"}
 }
 
-func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, env []string, resizes <-chan []byte) error {
+func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, nonInteractive bool, env []string, resizes <-chan []byte) error {
 	if s.callable != nil {
 		if _, err := starlark.Call(&starlark.Thread{}, s.callable, starlark.Tuple{s}, []starlark.Tuple{}); err != nil {
 			return err
@@ -140,7 +140,11 @@ func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, env []str
 
 	shell.Env = env
 
-	shell.Stderr = connection.Stderr()
+	// Only redirect stderr if we're not in interactive mode
+	// TODO(joshua): Don't allocate a pty if we're not in interactive mode
+	if nonInteractive {
+		shell.Stderr = connection.Stderr()
+	}
 
 	close := func() {
 		if shell.Process != nil {
@@ -268,6 +272,8 @@ func (s *sshServer) handleRequests(conn ssh.Conn, connection ssh.Channel, reques
 
 	defer close(resizes)
 
+	var nonInteractive bool
+
 	// Sessions have out-of-band requests such as "shell", "pty-req" and "env"
 	for req := range requests {
 		switch req.Type {
@@ -278,6 +284,10 @@ func (s *sshServer) handleRequests(conn ssh.Conn, connection ssh.Channel, reques
 			// Make sure we correctly forward the terminal from the host.
 			term := string(req.Payload[4 : 4+termLen])
 			env = append(env, fmt.Sprintf("TERM=%s", term))
+
+			if strings.HasPrefix(term, "non-interactive/") {
+				nonInteractive = true
+			}
 
 			resizes <- req.Payload[termLen+4:]
 			// Responding true (OK) here will let the client
@@ -292,7 +302,7 @@ func (s *sshServer) handleRequests(conn ssh.Conn, connection ssh.Channel, reques
 				slog.Debug("shell command ignored", "payload", req.Payload)
 			}
 
-			err := s.attachShell(conn, connection, env, resizes)
+			err := s.attachShell(conn, connection, nonInteractive, env, resizes)
 			if err != nil {
 				slog.Warn("failed to attach shell", "error", err)
 			}
