@@ -48,6 +48,7 @@ require (
 	github.com/BurntSushi/graphics-go v0.0.0-20160129215708-b43f31a4a966 // indirect
 	github.com/Microsoft/go-winio v0.6.0 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
+	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.4.0 // indirect

@@ -142,6 +142,7 @@ type Config struct {
 	WebSSH            string   `json:"-" yaml:"-"`
 	WriteTemplate     bool     `json:"-" yaml:"-"`
 	Mounts            []string `json:"-" yaml:"-"`
+	RemoteSystem      string   `json:"-" yaml:"-"`
 
 	localConfig bool
 	basePath    string
@@ -553,6 +554,10 @@ func (config *Config) MakeTemplate(db *database.PackageDatabase) (string, error)
 func (config *Config) Run(db *database.PackageDatabase) error {
 	if config.Version > CURRENT_CONFIG_VERSION {
 		return fmt.Errorf("attempt to run config version %d on TinyRange version %d", config.Version, CURRENT_CONFIG_VERSION)
+	}
+
+	if config.RemoteSystem != "" {
+		return RunConfig(config.RemoteSystem, *config)
 	}
 
 	if config.Builder == "list" {

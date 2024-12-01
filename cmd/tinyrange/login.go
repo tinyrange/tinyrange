@@ -163,6 +163,11 @@ func init() {
 	loginCmd.PersistentFlags().StringVar(&currentConfig.WebSSH, "web", "", "Start a web interface on the given port.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.WriteTemplate, "template", false, "If true then just generate the config and don't run the VM.")
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.Mounts, "mount", []string{}, "Mount a host directory into the VM using SFTP.")
-	// loginCmd.PersistentFlags().BoolVar(&currentConfig.NoNetwork, "no-network", false, "Disable network access.")
+	loginCmd.PersistentFlags().StringVarP(&currentConfig.RemoteSystem, "remote", "r", "", "Run the VM on a remote system.")
+
 	rootCmd.AddCommand(loginCmd)
+
+	// Random ideas that Copilot comes up with.
+	// loginCmd.PersistentFlags().StringVar(&currentConfig.MountRoot, "mount-root", "", "Mount the root filesystem of the VM into a host directory.")
+	// loginCmd.PersistentFlags().BoolVar(&currentConfig.NoNetwork, "no-network", false, "Disable network access.")
 }
