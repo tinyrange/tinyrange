@@ -31,8 +31,6 @@ var OFFICIAL_KERNEL_URL_AARCH64 = "https://github.com/tinyrange/linux_build/rele
 func runTinyRange(exe string, persistPath string, configFilename string) (*exec.Cmd, error) {
 	cmd := exec.Command(exe, "run-vm", "--persist", persistPath, configFilename)
 
-	slog.Info("executing tinyrange", "args", cmd.Args)
-
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
