@@ -24,6 +24,7 @@ var (
 	runStreamingServer  string
 	runWireguardUrl     string
 	runSecureSSH        string
+	runPersistPath      string
 )
 
 var runCmd = &cobra.Command{
@@ -98,7 +99,7 @@ var runCmd = &cobra.Command{
 			}
 		}
 
-		return tinyrange.RunWithConfig(rootBuildDir, configs, runDebug, runForwardSSH, runExportFilesystem, runListenNbd, runStreamingServer, runWireguardUrl, runSecureSSH)
+		return tinyrange.RunWithConfig(rootBuildDir, configs, runDebug, runForwardSSH, runExportFilesystem, runListenNbd, runStreamingServer, runWireguardUrl, runSecureSSH, runPersistPath)
 	},
 }
 
@@ -110,5 +111,6 @@ func init() {
 	runCmd.PersistentFlags().StringVar(&runStreamingServer, "stream", "", "Specify a server to download the config from.")
 	runCmd.PersistentFlags().StringVar(&runWireguardUrl, "wireguard", "", "Specify a WireGuard server to download a config from.")
 	runCmd.PersistentFlags().StringVar(&runSecureSSH, "secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
+	runCmd.PersistentFlags().StringVar(&runPersistPath, "persist", "", "Specify a path to save VM files to.")
 	rootCmd.AddCommand(runCmd)
 }

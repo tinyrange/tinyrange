@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -93,6 +94,8 @@ type TinyRange struct {
 	secureSSH          string
 	client             *http.Client
 	deferredFilesystem []func() error
+	onExit             []func()
+	persistPath        string
 }
 
 func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
@@ -471,6 +474,41 @@ func (tr *TinyRange) generateOrLoadSecureSSH() (SecureSSHConfig, error) {
 	return secureSSH, nil
 }
 
+func (tr *TinyRange) createNbdListener(tryUnix bool) (string, net.Listener, error) {
+	if (runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows") && tr.persistPath != "" && tryUnix {
+		pid := os.Getpid()
+
+		filename := fmt.Sprintf("%s.%d.nbd.sock", tr.persistPath, pid)
+
+		listener, err := net.Listen("unix", filename)
+		if err != nil {
+			slog.Warn("failed to listen on unix socket", "error", err)
+			return tr.createNbdListener(false)
+		}
+
+		tr.onExit = append(tr.onExit, func() {
+			if err := listener.Close(); err != nil {
+				slog.Error("failed to close listener", "error", err)
+			}
+
+			if ok, _ := common.Exists(filename); ok {
+				if err := os.Remove(filename); err != nil {
+					slog.Error("failed to remove socket", "error", err)
+				}
+			}
+		})
+
+		return "nbd+unix://?socket=" + filename, listener, nil
+	} else {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to listen: %v", err)
+		}
+
+		return "nbd://" + listener.Addr().String(), listener, nil
+	}
+}
+
 func (tr *TinyRange) runWithConfig() error {
 	if len(tr.configs) == 0 {
 		return fmt.Errorf("no configs specified")
@@ -487,8 +525,6 @@ func (tr *TinyRange) runWithConfig() error {
 		tr.debug = true
 	}
 
-	var onExit []func()
-
 	// Catch Interrupt signals to shutdown gracefully.
 	osSignal := make(chan os.Signal, 1)
 	signal.Notify(osSignal, os.Interrupt)
@@ -496,7 +532,7 @@ func (tr *TinyRange) runWithConfig() error {
 	go func() {
 		<-osSignal
 
-		for _, fn := range onExit {
+		for _, fn := range tr.onExit {
 			fn()
 		}
 
@@ -659,9 +695,9 @@ func (tr *TinyRange) runWithConfig() error {
 
 	start = time.Now()
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	nbdAddress, listener, err := tr.createNbdListener(true)
 	if err != nil {
-		return fmt.Errorf("failed to listen: %v", err)
+		return fmt.Errorf("failed to create nbd listener: %w", err)
 	}
 
 	backend := &vmBackend{vm: vmem}
@@ -737,7 +773,7 @@ func (tr *TinyRange) runWithConfig() error {
 		topConfig.Architecture,
 		topConfig.Resolve(topConfig.KernelFilename),
 		topConfig.Resolve(topConfig.InitFilesystemFilename),
-		"nbd://"+listener.Addr().String(),
+		nbdAddress,
 		topConfig.Interaction,
 	)
 	if err != nil {
@@ -909,11 +945,17 @@ func (tr *TinyRange) runWithConfig() error {
 
 	slog.Debug("starting virtual machine", "took", time.Since(start))
 
-	onExit = append(onExit, func() {
+	tr.onExit = append(tr.onExit, func() {
 		if err := virtualMachine.Shutdown(); err != nil {
 			slog.Error("failed to shutdown virtual machine", "err", err)
 		}
 	})
+
+	defer func() {
+		for _, fn := range tr.onExit {
+			fn()
+		}
+	}()
 
 	if interaction == "ssh" || interaction == "vnc" {
 		go func() {
@@ -922,7 +964,6 @@ func (tr *TinyRange) runWithConfig() error {
 				os.Exit(1)
 			}
 		}()
-		defer virtualMachine.Shutdown()
 
 		// return nil
 
@@ -945,7 +986,6 @@ func (tr *TinyRange) runWithConfig() error {
 		if err := virtualMachine.Run(nic, true); err != nil {
 			return err
 		}
-		defer virtualMachine.Shutdown()
 
 		return nil
 	} else if strings.HasPrefix(interaction, "webssh") {
@@ -955,7 +995,6 @@ func (tr *TinyRange) runWithConfig() error {
 				os.Exit(1)
 			}
 		}()
-		defer virtualMachine.Shutdown()
 
 		return runWebSsh(ns, "10.42.0.2:2222", "root", secureSSH, strings.TrimPrefix(interaction, "webssh,"))
 	} else {
@@ -973,6 +1012,7 @@ func RunWithConfig(
 	streamingServer string,
 	wireguardUrl string,
 	secureSSH string,
+	persistPath string,
 ) error {
 	tr := &TinyRange{
 		buildDir:         buildDir,
@@ -985,6 +1025,7 @@ func RunWithConfig(
 		wireguardUrl:     wireguardUrl,
 		client:           http.DefaultClient,
 		secureSSH:        secureSSH,
+		persistPath:      persistPath,
 	}
 
 	return tr.runWithConfig()

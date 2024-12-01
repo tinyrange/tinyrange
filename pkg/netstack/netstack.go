@@ -445,7 +445,7 @@ func (ns *NetStack) SetupWireguard(config string, mtu int) error {
 
 	// Use the connection so it establishes with the server.
 	go func() {
-		conn, _ := ns.wg.Dial("tcp", "8.8.8.8:80")
+		conn, _ := ns.wg.Dial("tcp", "10.40.0.1:8080")
 		if conn != nil {
 			conn.Close()
 		}
