@@ -373,12 +373,13 @@ func (d DirectiveDefaultInteractive) Tag() string {
 
 type DirectiveMountHostDirectory struct {
 	HostDirectory string
+	Writable      bool
 }
 
 // AsFragments implements Directive.
 func (d DirectiveMountHostDirectory) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	return []config.Fragment{
-		{MountHostDirectory: &config.MountHostDirectoryFragment{HostDirectory: d.HostDirectory}},
+		{MountHostDirectory: &config.MountHostDirectoryFragment{HostDirectory: d.HostDirectory, Writable: d.Writable}},
 	}, nil
 }
 

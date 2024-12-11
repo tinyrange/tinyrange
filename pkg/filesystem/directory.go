@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 )
 
@@ -148,7 +147,7 @@ func Mkdir(dir Directory, p string) (MutableDirectory, error) {
 	return mut.Mkdir(dirname)
 }
 
-func CreateChild(dir Directory, p string, f File) error {
+func CreateChild(dir Directory, p string, f File) (File, error) {
 	p = strings.TrimPrefix(p, "/")
 
 	tokens := strings.Split(path.Clean(p), "/")
@@ -161,20 +160,20 @@ func CreateChild(dir Directory, p string, f File) error {
 			if mut := getMutable(currentDir); mut != nil {
 				newChild, err := mut.Mkdir(token)
 				if err != nil {
-					return err
+					return nil, err
 				}
 
 				child = DirectoryEntry{File: newChild, Name: token}
 			} else {
-				return err
+				return nil, err
 			}
 		} else if err != nil {
-			return err
+			return nil, err
 		}
 
 		childDir, err := resolveDirectory(dir, child.File, path.Join(tokens[:i+1]...))
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		currentDir = childDir
@@ -182,7 +181,7 @@ func CreateChild(dir Directory, p string, f File) error {
 
 	mut := getMutable(currentDir)
 	if mut == nil {
-		return fmt.Errorf("directory %T is not mutable", currentDir)
+		return nil, fmt.Errorf("directory %T is not mutable", currentDir)
 	}
 
 	return mut.Create(tokens[len(tokens)-1], f)
@@ -230,7 +229,7 @@ type MutableDirectory interface {
 	MutableFile
 
 	Mkdir(name string) (MutableDirectory, error)
-	Create(name string, f File) error
+	Create(name string, f File) (File, error)
 	Unlink(name string) error
 }
 
@@ -263,23 +262,23 @@ func (m *memoryDirectory) Unlink(name string) error {
 }
 
 // Create implements MutableDirectory.
-func (m *memoryDirectory) Create(name string, f File) error {
+func (m *memoryDirectory) Create(name string, f File) (File, error) {
 	if name == "" || name == "." {
-		return fmt.Errorf("invalid name specified for child: %s", name)
+		return nil, fmt.Errorf("invalid name specified for child: %s", name)
 	}
 
 	if path.Base(name) != name {
-		return fmt.Errorf("MutableDirectory methods can not handle paths: %s", name)
+		return nil, fmt.Errorf("MutableDirectory methods can not handle paths: %s", name)
 	}
 
 	if _, exists := m.entries[name]; exists {
-		return nil
+		return nil, nil
 	}
 
 	m.names = append(m.names, name)
 	m.entries[name] = f
 
-	return nil
+	return f, nil
 }
 
 // GetChild implements MutableDirectory.
@@ -323,13 +322,16 @@ func (m *memoryDirectory) Mkdir(name string) (MutableDirectory, error) {
 		}
 	}
 
-	child := NewMemoryDirectory()
-
-	if err := m.Create(name, child); err != nil {
+	newChild, err := m.Create(name, NewMemoryDirectory())
+	if err != nil {
 		return nil, err
 	}
 
-	return child, nil
+	if mut, ok := newChild.(MutableDirectory); ok {
+		return mut, nil
+	} else {
+		return nil, fmt.Errorf("child is not mutable: %T", newChild)
+	}
 }
 
 // Open implements MutableDirectory.
@@ -372,67 +374,7 @@ func NewMemoryDirectory() MutableDirectory {
 	}
 }
 
-type LocalDirectory struct {
-	*LocalFile
-}
-
-// GetChild implements Directory.
-func (l *LocalDirectory) GetChild(name string) (DirectoryEntry, error) {
-	if name == "" || name == "." {
-		return DirectoryEntry{File: l}, nil
-	}
-
-	if path.Base(name) != name {
-		return DirectoryEntry{}, fmt.Errorf("LocalDirectory methods can not handle paths: %s", name)
-	}
-
-	childName := filepath.Join(l.filename, name)
-
-	info, err := os.Stat(childName)
-	if err != nil {
-		return DirectoryEntry{}, err
-	}
-
-	if info.IsDir() {
-		return DirectoryEntry{File: NewLocalDirectory(childName), Name: name}, nil
-	} else {
-		return DirectoryEntry{File: NewLocalFile(childName, nil), Name: name}, nil
-	}
-}
-
-// Readdir implements Directory.
-func (l *LocalDirectory) Readdir() ([]DirectoryEntry, error) {
-	ents, err := os.ReadDir(l.filename)
-	if err != nil {
-		return nil, err
-	}
-
-	var ret []DirectoryEntry
-
-	for _, ent := range ents {
-		var f File
-
-		if ent.IsDir() {
-			f = NewLocalDirectory(filepath.Join(l.filename, ent.Name()))
-		} else {
-			f = NewLocalFile(filepath.Join(l.filename, ent.Name()), nil)
-		}
-
-		ret = append(ret, DirectoryEntry{File: f, Name: ent.Name()})
-	}
-
-	return ret, nil
-}
-
-var (
-	_ Directory = &LocalDirectory{}
-)
-
-func NewLocalDirectory(filename string) *LocalDirectory {
-	return &LocalDirectory{LocalFile: NewLocalFile(filename, nil).(*LocalFile)}
-}
-
-func ExtractEntry(ent Entry, dir MutableDirectory) error {
+func ExtractEntry(ent Entry, dir MutableDirectory) (File, error) {
 	switch ent.Typeflag() {
 	case TypeDirectory:
 		name := strings.TrimSuffix(ent.Name(), "/")
@@ -440,24 +382,24 @@ func ExtractEntry(ent Entry, dir MutableDirectory) error {
 
 		child, err := Mkdir(dir, name)
 		if errors.Is(err, os.ErrExist) {
-			return nil
+			return nil, nil
 		} else if err != nil {
-			return err
+			return nil, err
 		}
 
 		if err := child.Chmod(ent.Mode()); err != nil {
-			return err
+			return nil, err
 		}
 
 		if err := child.Chown(ent.Uid(), ent.Gid()); err != nil {
-			return err
+			return nil, err
 		}
 
 		if err := child.Chtimes(ent.ModTime()); err != nil {
-			return err
+			return nil, err
 		}
 
-		return nil
+		return child, nil
 	case TypeRegular:
 		return CreateChild(dir, ent.Name(), ent)
 	case TypeSymlink:
@@ -465,6 +407,6 @@ func ExtractEntry(ent Entry, dir MutableDirectory) error {
 	case TypeLink:
 		return CreateChild(dir, ent.Name(), ent)
 	default:
-		return fmt.Errorf("unknown Entry type: %s", ent.Typeflag())
+		return nil, fmt.Errorf("unknown Entry type: %s", ent.Typeflag())
 	}
 }

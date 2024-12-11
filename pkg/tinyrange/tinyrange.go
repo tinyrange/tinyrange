@@ -113,7 +113,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 			}
 		}
 
-		if err := filesystem.CreateChild(dir, localFile.GuestFilename, overlay); err != nil {
+		if _, err := filesystem.CreateChild(dir, localFile.GuestFilename, overlay); err != nil {
 			return err
 		}
 
@@ -137,7 +137,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 			}
 		}
 
-		if err := filesystem.CreateChild(dir, fileContents.GuestFilename, file); err != nil {
+		if _, err := filesystem.CreateChild(dir, fileContents.GuestFilename, file); err != nil {
 			return err
 		}
 
@@ -159,7 +159,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 				return err
 			}
 
-			if err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
+			if _, err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
 				return err
 			}
 
@@ -171,7 +171,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 				return err
 			}
 
-			if err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
+			if _, err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
 				return err
 			}
 
@@ -184,7 +184,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 
 			file := filesystem.NewLocalFile(exe, nil)
 
-			if err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
+			if _, err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
 				return err
 			}
 
@@ -197,7 +197,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 
 			file := filesystem.NewLocalFile(local, nil)
 
-			if err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
+			if _, err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
 				return err
 			}
 
@@ -267,7 +267,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 
 					file = symlink
 
-					if err := filesystem.CreateChild(dir, name, symlink); err != nil {
+					if _, err := filesystem.CreateChild(dir, name, symlink); err != nil {
 						return err
 					}
 				case filesystem.TypeLink:
@@ -279,7 +279,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 
 					file = link
 
-					if err := filesystem.CreateChild(dir, name, link); err != nil {
+					if _, err := filesystem.CreateChild(dir, name, link); err != nil {
 						return err
 					}
 				case filesystem.TypeRegular:
@@ -289,7 +289,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 						return err
 					}
 
-					if err := filesystem.CreateChild(dir, name, ent); err != nil {
+					if _, err := filesystem.CreateChild(dir, name, ent); err != nil {
 						return err
 					}
 				default:
@@ -509,6 +509,11 @@ func (tr *TinyRange) createNbdListener(tryUnix bool) (string, net.Listener, erro
 	}
 }
 
+type mountInfo struct {
+	HostDirectory string
+	Writable      bool
+}
+
 func (tr *TinyRange) runWithConfig() error {
 	if len(tr.configs) == 0 {
 		return fmt.Errorf("no configs specified")
@@ -547,7 +552,7 @@ func (tr *TinyRange) runWithConfig() error {
 	start := time.Now()
 
 	var exportedPorts []int
-	var mountedHostDirectories []string
+	var mountedHostDirectories []mountInfo
 
 	root := filesystem.NewMemoryDirectory()
 
@@ -556,7 +561,10 @@ func (tr *TinyRange) runWithConfig() error {
 			if port := frag.ExportPort; port != nil {
 				exportedPorts = append(exportedPorts, port.Port)
 			} else if mount := frag.MountHostDirectory; mount != nil {
-				mountedHostDirectories = append(mountedHostDirectories, mount.HostDirectory)
+				mountedHostDirectories = append(mountedHostDirectories, mountInfo{
+					HostDirectory: config.Resolve(mount.HostDirectory),
+					Writable:      mount.Writable,
+				})
 			} else {
 				if err := tr.fragmentToFilesystem(config, frag, root); err != nil {
 					return fmt.Errorf("failed to extract fragment to filesystem: %w", err)
@@ -591,7 +599,7 @@ func (tr *TinyRange) runWithConfig() error {
 			return fmt.Errorf("failed to chmod secure ssh config: %w", err)
 		}
 
-		if err := filesystem.CreateChild(root, "/init.d/secure_ssh.json", memFile); err != nil {
+		if _, err := filesystem.CreateChild(root, "/init.d/secure_ssh.json", memFile); err != nil {
 			return fmt.Errorf("failed to create secure ssh config: %w", err)
 		}
 	} else {
@@ -919,11 +927,17 @@ func (tr *TinyRange) runWithConfig() error {
 	top := filesystem.NewMemoryDirectory()
 
 	for _, dir := range mountedHostDirectories {
-		name := filepath.Base(dir)
+		name := filepath.Base(dir.HostDirectory)
 
-		hostDir := filesystem.NewLocalDirectory(dir)
+		var hostDir filesystem.Directory
 
-		if err := filesystem.CreateChild(top, name, hostDir); err != nil {
+		if dir.Writable {
+			hostDir = filesystem.NewLocalMutableDirectory(dir.HostDirectory)
+		} else {
+			hostDir = filesystem.NewLocalDirectory(dir.HostDirectory)
+		}
+
+		if _, err := filesystem.CreateChild(top, name, hostDir); err != nil {
 			return fmt.Errorf("failed to create child: %w", err)
 		}
 	}

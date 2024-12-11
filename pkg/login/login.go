@@ -433,12 +433,21 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 	for _, mount := range config.Mounts {
 		// Mounts are private so we don't need to check if they're remote.
 
+		writable := false
+
+		if strings.HasPrefix(mount, "rw://") {
+			writable = true
+			mount = strings.TrimPrefix(mount, "rw://")
+		} else {
+			mount = strings.TrimPrefix(mount, "ro://")
+		}
+
 		p, err := filepath.Abs(mount)
 		if err != nil {
 			return nil, "", err
 		}
 
-		directives = append(directives, common.DirectiveMountHostDirectory{HostDirectory: p})
+		directives = append(directives, common.DirectiveMountHostDirectory{HostDirectory: p, Writable: writable})
 	}
 
 	if len(config.Mounts) > 0 && strings.HasPrefix(config.Builder, "alpine@") && config.OciImage == "" {

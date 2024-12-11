@@ -125,7 +125,7 @@ func ExtractArchive(ark Archive, mut MutableDirectory) error {
 	}
 
 	for _, ent := range ents {
-		if err := ExtractEntry(ent, mut); err != nil {
+		if _, err := ExtractEntry(ent, mut); err != nil {
 			return fmt.Errorf("failed to extract archive: %w", err)
 		}
 	}

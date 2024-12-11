@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	SFTP_DEBUG = false
+	SFTP_DEBUG = true
 )
 
 type fileHandle struct {
@@ -176,7 +176,7 @@ func (s *SSHFSServer) PktOpen(ctx sftpContext, pkt *pktOpen) (ResponsePacket, er
 	basename := path.Base(pkt.Path)
 
 	dirF, err := s.lookup(dirname)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "directory not found",
@@ -196,35 +196,74 @@ func (s *SSHFSServer) PktOpen(ctx sftpContext, pkt *pktOpen) (ResponsePacket, er
 	if pkt.Flags&openFlagCreat != 0 {
 		mut, ok := dir.(filesystem.MutableDirectory)
 		if !ok {
+			slog.Warn("directory is not mutable", "dir", dirname)
 			return nil, fs.ErrInvalid
 		}
 
-		file := filesystem.NewMemoryFile(filesystem.TypeRegular)
+		file = filesystem.NewMemoryFile(filesystem.TypeRegular)
 
-		if err := mut.Create(basename, file); err != nil {
-			return nil, err
+		if SFTP_DEBUG {
+			slog.Debug("creating file", "dir", dirname, "file", basename)
 		}
 
-		err = s.setAttributes(file, pkt.Attrs)
+		newFile, err := mut.Create(basename, file)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not create file: %w", err)
+		}
+
+		if mutFile, ok := newFile.(filesystem.MutableFile); ok {
+			err = s.setAttributes(mutFile, pkt.Attrs)
+			if err != nil {
+				return nil, fmt.Errorf("could not set attributes: %w", err)
+			}
+
+			file = mutFile
+		} else {
+			return nil, fs.ErrInvalid
+		}
+	} else if pkt.Flags&openFlagTrunc != 0 {
+		mut, ok := dir.(filesystem.MutableDirectory)
+		if !ok {
+			slog.Warn("directory is not mutable", "dir", dirname)
+			return nil, fs.ErrInvalid
+		}
+
+		if SFTP_DEBUG {
+			slog.Debug("truncating file", "dir", dirname, "file", basename)
+		}
+
+		ent, err := mut.GetChild(basename)
+		if err != nil {
+			return nil, fmt.Errorf("could not get child: %w", err)
+		}
+
+		file = ent.File
+
+		mutFile, ok := file.(filesystem.MutableFile)
+		if !ok {
+			slog.Info("file is not mutable", "file", pkt.Path, "type", fmt.Sprintf("%T", file))
+			return nil, fs.ErrInvalid
+		}
+
+		if err := mutFile.Overwrite(nil); err != nil {
+			return nil, fmt.Errorf("could not truncate file: %w", err)
 		}
 	} else {
 		file, err = dir.GetChild(basename)
-		if err == fs.ErrNotExist {
+		if errors.Is(err, fs.ErrNotExist) {
 			return &pktStatus{
 				Code:     errNoSuchFile,
 				Message:  "directory not found",
 				Language: "en",
 			}, nil
 		} else if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not get child: %w", err)
 		}
 	}
 
 	handle, err := file.Open()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not open file: %w", err)
 	}
 
 	id := s.allocateHandleId()
@@ -311,9 +350,11 @@ func (s *SSHFSServer) PktWrite(ctx sftpContext, pkt *pktWrite) (ResponsePacket, 
 		return nil, fmt.Errorf("file handle not found: %s", pkt.Handle)
 	}
 
-	mut, ok := fh.file.(filesystem.WritableFileHandle)
+	slog.Debug("write", "handle", pkt.Handle, "offset", pkt.Offset, "fh", fh.file)
+
+	mut, ok := fh.handle.(filesystem.WritableFileHandle)
 	if !ok {
-		return nil, fmt.Errorf("file is readonly: %s", pkt.Handle)
+		return nil, fmt.Errorf("file is readonly: %s %+T", pkt.Handle, fh.file)
 	}
 
 	data := []byte(pkt.Data)
@@ -341,7 +382,7 @@ func (s *SSHFSServer) PktStat(ctx sftpContext, pkt *pktStat) (ResponsePacket, er
 	}
 
 	child, err := s.lookup(pkt.Path)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "file not found",
@@ -372,7 +413,7 @@ func (s *SSHFSServer) PktLstat(ctx sftpContext, pkt *pktLstat) (ResponsePacket, 
 	}
 
 	child, err := s.lookup(pkt.Path)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "file not found",
@@ -409,7 +450,7 @@ func (s *SSHFSServer) PktFstat(ctx sftpContext, pkt *pktFstat) (ResponsePacket, 
 	}
 
 	info, err := fh.file.Stat()
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "file not found",
@@ -435,7 +476,7 @@ func (s *SSHFSServer) PktOpenDir(ctx sftpContext, pkt *pktOpenDir) (ResponsePack
 	}
 
 	dirF, err := s.lookup(pkt.Path)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "directory not found",
@@ -530,7 +571,7 @@ func (s *SSHFSServer) PktMkdir(ctx sftpContext, pkt *pktMkdir) (ResponsePacket, 
 	base := path.Base(pkt.Path)
 
 	file, err := s.lookup(dir)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "directory not found",
@@ -574,7 +615,7 @@ func (s *SSHFSServer) PktSetStat(ctx sftpContext, pkt *pktSetStat) (ResponsePack
 	}
 
 	f, err := s.lookup(pkt.Path)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "file not found",
@@ -636,7 +677,7 @@ func (s *SSHFSServer) PktRename(ctx sftpContext, pkt *pktRename) (ResponsePacket
 	}
 
 	file, err := s.lookup(pkt.OldPath)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "file not found",
@@ -663,7 +704,7 @@ func (s *SSHFSServer) PktRename(ctx sftpContext, pkt *pktRename) (ResponsePacket
 	base := path.Base(pkt.NewPath)
 
 	target, err := s.lookup(dir)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "directory not found",
@@ -680,14 +721,14 @@ func (s *SSHFSServer) PktRename(ctx sftpContext, pkt *pktRename) (ResponsePacket
 
 	// If the file already exists in the target path then overwrite it.
 	err = targetDir.Unlink(base)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		// fallthrough
 	} else if err != nil {
 		return nil, err
 	}
 
 	// Create the file at the new location.
-	err = targetDir.Create(base, file)
+	_, err = targetDir.Create(base, file)
 	if err != nil {
 		return nil, err
 	}
@@ -715,7 +756,7 @@ func (s *SSHFSServer) PktSymlink(ctx sftpContext, pkt *pktSymlink) (ResponsePack
 	base := path.Base(pkt.LinkPath)
 
 	target, err := s.lookup(dir)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "file not found",
@@ -730,7 +771,7 @@ func (s *SSHFSServer) PktSymlink(ctx sftpContext, pkt *pktSymlink) (ResponsePack
 		return nil, err
 	}
 
-	targetDir.Create(base, filesystem.NewSymlink(pkt.TargetPath))
+	_, err = targetDir.Create(base, filesystem.NewSymlink(pkt.TargetPath))
 	if err != nil {
 		return nil, err
 	}
@@ -749,7 +790,7 @@ func (s *SSHFSServer) PktReadlink(ctx sftpContext, pkt *pktReadlink) (ResponsePa
 	}
 
 	file, err := s.lookup(pkt.Path)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "file not found",
@@ -790,7 +831,7 @@ func (s *SSHFSServer) PktRmdir(ctx sftpContext, pkt *pktRmdir) (ResponsePacket, 
 	base := path.Base(pkt.Path)
 
 	file, err := s.lookup(dir)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "directory not found",
@@ -806,7 +847,7 @@ func (s *SSHFSServer) PktRmdir(ctx sftpContext, pkt *pktRmdir) (ResponsePacket, 
 	}
 
 	err = fileDir.Unlink(base)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "file not found",
@@ -833,7 +874,7 @@ func (s *SSHFSServer) PktRemove(ctx sftpContext, pkt *pktRemove) (ResponsePacket
 	base := path.Base(pkt.Filename)
 
 	file, err := s.lookup(dir)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "directory not found",
@@ -849,7 +890,7 @@ func (s *SSHFSServer) PktRemove(ctx sftpContext, pkt *pktRemove) (ResponsePacket
 	}
 
 	err = fileDir.Unlink(base)
-	if err == fs.ErrNotExist {
+	if errors.Is(err, fs.ErrNotExist) {
 		return &pktStatus{
 			Code:     errNoSuchFile,
 			Message:  "file not found",
@@ -882,7 +923,7 @@ func (s *SSHFSServer) ServeSftp(channel ssh.Channel) error {
 
 		ret, err := handlePacket(s, channel, pkt)
 		if err != nil {
-			slog.Debug("failed to handle packet", "kind", rawPkt.kind, "error", err)
+			slog.Warn("failed to handle packet", "kind", rawPkt.kind, "error", err)
 			ret = &pktStatus{
 				Code:     errFailure,
 				Message:  err.Error(),

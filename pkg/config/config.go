@@ -90,6 +90,7 @@ type DefaultInteractiveFragment struct {
 
 type MountHostDirectoryFragment struct {
 	HostDirectory string `json:"host_directory" yaml:"host_directory"`
+	Writable      bool   `json:"writable" yaml:"writable"`
 }
 
 type KernelFragment struct {

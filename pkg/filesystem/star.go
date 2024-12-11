@@ -389,7 +389,11 @@ func (f *StarDirectory) SetKey(k starlark.Value, v starlark.Value) error {
 	}
 
 	if file, ok := v.(File); ok {
-		return CreateChild(f, name, file)
+		if _, err := CreateChild(f, name, file); err != nil {
+			return err
+		}
+
+		return nil
 	} else if contents, ok := v.(starlark.String); ok {
 		file := NewMemoryFile(TypeRegular)
 
@@ -397,7 +401,11 @@ func (f *StarDirectory) SetKey(k starlark.Value, v starlark.Value) error {
 			return err
 		}
 
-		return CreateChild(f, name, file)
+		if _, err := CreateChild(f, name, file); err != nil {
+			return err
+		}
+
+		return nil
 	} else {
 		return fmt.Errorf("expected File got %s", v.Type())
 	}

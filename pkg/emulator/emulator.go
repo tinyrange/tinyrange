@@ -120,7 +120,11 @@ func (proc *process) SetKey(k starlark.Value, v starlark.Value) error {
 		return err
 	}
 
-	return filesystem.CreateChild(root, p, file)
+	if _, err := filesystem.CreateChild(root, p, file); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Chdir implements shared.Process.
@@ -385,7 +389,11 @@ func (emu *Emulator) AddSimpleProgram(filename string, prog func(proc shared.Pro
 }
 
 func (emu *Emulator) AddProgram(filename string, prog shared.Program) error {
-	return filesystem.CreateChild(emu.root, filename, prog)
+	if _, err := filesystem.CreateChild(emu.root, filename, prog); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (emu *Emulator) NewProcess() (shared.Process, error) {

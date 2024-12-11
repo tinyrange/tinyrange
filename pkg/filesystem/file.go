@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -54,6 +53,10 @@ func GetUidAndGid(ent File) (int, int, error) {
 	case *LocalFile:
 		return 0, 0, nil
 	case *LocalDirectory:
+		return 0, 0, nil
+	case *LocalMutableFile:
+		return 0, 0, nil
+	case *LocalMutableDirectory:
 		return 0, 0, nil
 	default:
 		return -1, -1, fmt.Errorf("GetUidAndGid not implemented: %T", ent)
@@ -159,58 +162,6 @@ type Entry interface {
 
 	Devmajor() int64 // Major device number (valid for TypeChar or TypeBlock)
 	Devminor() int64 // Minor device number (valid for TypeChar or TypeBlock)
-}
-
-type osStat struct {
-	fs.FileInfo
-}
-
-// Kind implements FileInfo.
-func (o *osStat) Kind() FileType {
-	if o.IsDir() {
-		return TypeDirectory
-	} else if o.Mode().Type() == fs.ModeSymlink {
-		return TypeSymlink
-	} else {
-		return TypeRegular
-	}
-}
-
-var (
-	_ FileInfo = &osStat{}
-)
-
-type LocalFile struct {
-	filename string
-	source   hash.SerializableValue
-}
-
-// Digest implements File.
-func (l *LocalFile) Digest() *FileDigest {
-	return &FileDigest{Hash: l.filename}
-}
-
-// Open implements File.
-func (l *LocalFile) Open() (FileHandle, error) {
-	return os.Open(l.filename)
-}
-
-// Stat implements File.
-func (l *LocalFile) Stat() (FileInfo, error) {
-	s, err := os.Stat(l.filename)
-	if err != nil {
-		return nil, err
-	}
-
-	return &osStat{FileInfo: s}, nil
-}
-
-var (
-	_ File = &LocalFile{}
-)
-
-func NewLocalFile(filename string, source hash.SerializableValue) File {
-	return &LocalFile{filename: filename, source: source}
 }
 
 type RemoteFile struct {
