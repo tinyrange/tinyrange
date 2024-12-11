@@ -141,7 +141,8 @@ type Config struct {
 	Hash              bool     `json:"-" yaml:"-"`
 	WebSSH            string   `json:"-" yaml:"-"`
 	WriteTemplate     bool     `json:"-" yaml:"-"`
-	Mounts            []string `json:"-" yaml:"-"`
+	ReadOnlyMounts    []string `json:"-" yaml:"-"`
+	ReadWriteMounts   []string `json:"-" yaml:"-"`
 
 	localConfig bool
 	basePath    string
@@ -430,27 +431,30 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 		}
 	}
 
-	for _, mount := range config.Mounts {
+	for _, mount := range config.ReadOnlyMounts {
 		// Mounts are private so we don't need to check if they're remote.
-
-		writable := false
-
-		if strings.HasPrefix(mount, "rw://") {
-			writable = true
-			mount = strings.TrimPrefix(mount, "rw://")
-		} else {
-			mount = strings.TrimPrefix(mount, "ro://")
-		}
 
 		p, err := filepath.Abs(mount)
 		if err != nil {
 			return nil, "", err
 		}
 
-		directives = append(directives, common.DirectiveMountHostDirectory{HostDirectory: p, Writable: writable})
+		directives = append(directives, common.DirectiveMountHostDirectory{HostDirectory: p})
 	}
 
-	if len(config.Mounts) > 0 && strings.HasPrefix(config.Builder, "alpine@") && config.OciImage == "" {
+	for _, mount := range config.ReadWriteMounts {
+		// Mounts are private so we don't need to check if they're remote.
+
+		p, err := filepath.Abs(mount)
+		if err != nil {
+			return nil, "", err
+		}
+
+		directives = append(directives, common.DirectiveMountHostDirectory{HostDirectory: p, Writable: true})
+	}
+
+	if (len(config.ReadOnlyMounts) > 0 || len(config.ReadWriteMounts) > 0) &&
+		strings.HasPrefix(config.Builder, "alpine@") && config.OciImage == "" {
 		directives = append(directives, common.DirectiveAddPackage{Name: common.PackageQuery{Name: "sshfs"}})
 		directives = append(directives, common.DirectiveRunCommand{Command: strings.Join([]string{
 			"mkdir /share",

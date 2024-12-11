@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -603,6 +604,9 @@ func builderRunScripts(filename string, translateShell bool) error {
 	return builder.RunScripts(filename)
 }
 
+// regex to match $ENV so long as it doesn't have $ before it.
+var envRegex = regexp.MustCompile(`([^$])\$([A-Z_]+)`)
+
 func builderRunWithConfig(cfg config.BuilderConfig) error {
 	if len(cfg.DefaultInteractive) > 0 {
 		common.SetDefaultInteractive(cfg.DefaultInteractive)
@@ -610,9 +614,26 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 
 	builder := &Builder{}
 
+	var appendProfile strings.Builder
+
 	for _, env := range cfg.Environment {
 		k, v, _ := strings.Cut(env, "=")
+		// Replace $ENV with the value of the environment variable using envRegex.
+		v = envRegex.ReplaceAllStringFunc(v, func(s string) string {
+			prefix := s[0]
+			v := os.Getenv(s[2:])
+			return string(prefix) + v
+		})
+		v = strings.ReplaceAll(v, "$$", "$")
 		if err := os.Setenv(k, v); err != nil {
+			return err
+		}
+		appendProfile.WriteString(fmt.Sprintf("export %s=%s\n", k, v))
+	}
+
+	if appendProfile.Len() > 0 {
+		profile := filepath.Join("/etc/profile.d", "builder.sh")
+		if err := os.WriteFile(profile, []byte(appendProfile.String()), 0644); err != nil {
 			return err
 		}
 	}
