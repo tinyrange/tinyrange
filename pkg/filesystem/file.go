@@ -55,9 +55,19 @@ func GetUidAndGid(ent File) (int, int, error) {
 	case *LocalDirectory:
 		return 0, 0, nil
 	case *LocalMutableFile:
-		return 0, 0, nil
+		stat, err := ent.Stat()
+		if err != nil {
+			return -1, -1, err
+		}
+
+		return GetUidAndGidNative(stat)
 	case *LocalMutableDirectory:
-		return 0, 0, nil
+		stat, err := ent.Stat()
+		if err != nil {
+			return -1, -1, err
+		}
+
+		return GetUidAndGidNative(stat)
 	default:
 		return -1, -1, fmt.Errorf("GetUidAndGid not implemented: %T", ent)
 	}
