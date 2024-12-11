@@ -369,7 +369,7 @@ func (def *FetchOciImageDefinition) buildFromManifest(
 				params: RegistryRequestParameters{
 					Url: fmt.Sprintf("/%s/blobs/%s", def.params.Image, layer.Digest),
 				},
-			}, ".tar.gz"),
+			}, ".tar$oci.gz"),
 		)
 		if err != nil {
 			return nil, err

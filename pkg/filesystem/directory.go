@@ -187,6 +187,35 @@ func CreateChild(dir Directory, p string, f File) (File, error) {
 	return mut.Create(tokens[len(tokens)-1], f)
 }
 
+func DeleteChild(dir Directory, p string) error {
+	p = strings.TrimPrefix(p, "/")
+
+	tokens := strings.Split(path.Clean(p), "/")
+
+	var currentDir = dir
+
+	for i, token := range tokens[:len(tokens)-1] {
+		child, err := currentDir.GetChild(token)
+		if err != nil {
+			return err
+		}
+
+		childDir, err := resolveDirectory(dir, child.File, path.Join(tokens[:i+1]...))
+		if err != nil {
+			return err
+		}
+
+		currentDir = childDir
+	}
+
+	mut := getMutable(currentDir)
+	if mut == nil {
+		return fmt.Errorf("directory %T is not mutable", currentDir)
+	}
+
+	return mut.Unlink(tokens[len(tokens)-1])
+}
+
 func GetTotalSize(dir Directory) (int64, error) {
 	ents, err := dir.Readdir()
 	if err != nil {

@@ -224,7 +224,8 @@ var (
 )
 
 type tarToArchiveBuildResult struct {
-	r *tar.Reader
+	r   *tar.Reader
+	oci bool
 }
 
 // WriteTo implements common.BuildResult.
@@ -237,6 +238,18 @@ func (r *tarToArchiveBuildResult) WriteResult(w io.Writer) error {
 			break
 		} else if err != nil {
 			return err
+		}
+
+		deleted := false
+
+		if r.oci {
+			if path.Base(hdr.Name) == ".wh..wh..opq" {
+				deleted = true
+				hdr.Name = path.Dir(hdr.Name)
+			} else if strings.HasPrefix(path.Base(hdr.Name), ".wh.") {
+				deleted = true
+				hdr.Name = path.Join(path.Dir(hdr.Name), path.Base(hdr.Name)[4:])
+			}
 		}
 
 		info := hdr.FileInfo()
@@ -256,6 +269,10 @@ func (r *tarToArchiveBuildResult) WriteResult(w io.Writer) error {
 			continue
 		default:
 			return fmt.Errorf("unknown type flag: %d", hdr.Typeflag)
+		}
+
+		if deleted {
+			typeFlag = filesystem.TypeDeleted
 		}
 
 		if err := ark.WriteEntry(&filesystem.CacheEntry{
@@ -515,6 +532,8 @@ func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext) (common.Buil
 
 		if strings.HasSuffix(kind, ".tar") {
 			return &tarToArchiveBuildResult{r: tar.NewReader(reader)}, nil
+		} else if strings.HasSuffix(kind, ".tar$oci") {
+			return &tarToArchiveBuildResult{r: tar.NewReader(reader), oci: true}, nil
 		} else if strings.HasSuffix(kind, ".cpio") {
 			return &cpioToArchiveBuildResult{r: cpio.NewReader(reader)}, nil
 		} else if strings.HasSuffix(kind, ".ar") {

@@ -137,7 +137,7 @@ func (r *ReadOciImageDefinition) Build(ctx common.BuildContext) (common.BuildRes
 			return nil, err
 		}
 
-		readArchiveDef := NewReadArchiveBuildDefinition(layerDef, layer)
+		readArchiveDef := NewReadArchiveBuildDefinition(layerDef, ".tar$oci.gz")
 
 		layerFile, err := ctx.BuildChild(readArchiveDef)
 		if err != nil {

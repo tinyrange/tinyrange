@@ -96,6 +96,7 @@ type TinyRange struct {
 	deferredFilesystem []func() error
 	onExit             []func()
 	persistPath        string
+	deletedFiles       map[string]bool
 }
 
 func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
@@ -236,6 +237,10 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 			// TODO(joshua): Why is this not filepath.join?
 			name := ark.Target + "/" + ent.Name()
 
+			if _, ok := tr.deletedFiles[name]; ok {
+				continue
+			}
+
 			var file filesystem.MutableFile
 
 			if name != "/" {
@@ -292,6 +297,14 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 					if _, err := filesystem.CreateChild(dir, name, ent); err != nil {
 						return err
 					}
+				case filesystem.TypeDeleted:
+					if err := filesystem.DeleteChild(dir, name); err != nil {
+						return err
+					}
+
+					tr.deletedFiles[name] = true
+
+					continue
 				default:
 					return fmt.Errorf("unimplemented entry type: %s", ent.Typeflag())
 				}
@@ -555,6 +568,8 @@ func (tr *TinyRange) runWithConfig() error {
 	var mountedHostDirectories []mountInfo
 
 	root := filesystem.NewMemoryDirectory()
+
+	tr.deletedFiles = make(map[string]bool)
 
 	for _, config := range tr.configs {
 		for _, frag := range config.RootFsFragments {

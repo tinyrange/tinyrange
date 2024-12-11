@@ -138,6 +138,7 @@ const (
 	TypeDirectory
 	TypeSymlink
 	TypeLink
+	TypeDeleted
 )
 
 func (t FileType) String() string {
@@ -150,6 +151,8 @@ func (t FileType) String() string {
 		return "Symlink"
 	case TypeLink:
 		return "Link"
+	case TypeDeleted:
+		return "Deleted"
 	default:
 		return "<unknown>"
 	}

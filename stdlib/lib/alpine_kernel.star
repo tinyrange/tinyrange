@@ -95,11 +95,11 @@ def get_inital_modules(ctx, plan):
 
     return ctx.archive(out)
 
-def alpine_kernel_fs(version):
+def alpine_kernel_fs(version, edition = "virt"):
     return define.plan(
         builder = "alpine@{}".format(version),
         packages = [
-            query("linux-virt"),
+            query("linux-" + edition),
         ],
         tags = ["download"],
     )
@@ -153,3 +153,8 @@ def kernel(version):
         ),
         alpine_modules_fs(kernel_fs),
     ])
+
+def modprobe(name):
+    "#macro string"
+
+    return directive.run_command("/init -modprobe {}".format(name))

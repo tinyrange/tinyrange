@@ -28,6 +28,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/insomniacslk/dhcp/netboot"
 	"github.com/jsimonetti/rtnetlink/rtnl"
+	"github.com/ramr/go-reaper"
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -1176,6 +1177,7 @@ var (
 	runConfig         = flag.String("run-config", "", "run a JSON file with a given builder config")
 	dumpFs            = flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
 	runStarlarkScript = flag.String("star", "", "run a starlark script")
+	modprobe          = flag.String("modprobe", "", "load a kernel module")
 )
 
 func initMain() error {
@@ -1300,12 +1302,55 @@ func initMain() error {
 		return runStarlark(*runStarlarkScript)
 	}
 
-	if os.Getpid() != 1 {
-		return fmt.Errorf("/init must run as PID 1")
+	if *modprobe != "" {
+		return common.Modprobe(*modprobe)
 	}
 
 	if os.Getuid() != 0 {
 		return fmt.Errorf("/init must be run as root")
+	}
+
+	// Use an environment variable REAPER to indicate whether or not
+	// we are the child/parent.
+	if _, hasReaper := os.LookupEnv("REAPER"); !hasReaper {
+		if os.Getpid() != 1 {
+			return fmt.Errorf("/init must run as PID 1")
+		}
+
+		//  Start background reaping of orphaned child processes.
+		go reaper.Reap()
+
+		args := os.Args
+
+		pwd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+
+		kidEnv := []string{fmt.Sprintf("REAPER=%d", os.Getpid())}
+
+		var wstatus syscall.WaitStatus
+		pattrs := &syscall.ProcAttr{
+			Dir: pwd,
+			Env: append(os.Environ(), kidEnv...),
+			Sys: &syscall.SysProcAttr{Setsid: true},
+			Files: []uintptr{
+				uintptr(syscall.Stdin),
+				uintptr(syscall.Stdout),
+				uintptr(syscall.Stderr),
+			},
+		}
+
+		pid, _ := syscall.ForkExec(args[0], args, pattrs)
+
+		_, err = syscall.Wait4(pid, &wstatus, 0, nil)
+		for syscall.EINTR == err {
+			_, err = syscall.Wait4(pid, &wstatus, 0, nil)
+		}
+
+		// If you put this code into a function, then exit here.
+		os.Exit(0)
+		return nil
 	}
 
 	if err := runStarlark("/init.star"); err != nil {
