@@ -847,6 +847,24 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					Initramfs: initramfs,
 				}}, nil
 			}),
+			"add_init_script": starlark.NewBuiltin("directive.add_init_script", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var guestFilename string
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"guest_filename", &guestFilename,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				return &common.StarDirective{Directive: common.DirectiveAddInitScript{
+					GuestFilename: guestFilename,
+				}}, nil
+			}),
 		},
 	}
 

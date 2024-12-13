@@ -17,6 +17,8 @@ func init() {
 	hash.RegisterType(DirectiveInteraction{})
 	hash.RegisterType(DirectiveDefaultInteractive{})
 	hash.RegisterType(DirectiveMountHostDirectory{})
+	hash.RegisterType(DirectiveKernel{})
+	hash.RegisterType(DirectiveAddInitScript{})
 }
 
 type Directive interface {
@@ -448,6 +450,30 @@ func (d DirectiveKernel) Tag() string {
 	return fmt.Sprintf("DirectiveKernel_%s_%s", d.Kernel.Tag(), d.Initramfs.Tag())
 }
 
+type DirectiveAddInitScript struct {
+	GuestFilename string
+}
+
+// AsFragments implements Directive.
+func (d DirectiveAddInitScript) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
+	return []config.Fragment{
+		{AddInitScript: &config.AddInitScriptFragment{GuestFilename: d.GuestFilename}},
+	}, nil
+}
+
+// Dependencies implements Directive.
+func (d DirectiveAddInitScript) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return nil, nil
+}
+
+// SerializableType implements Directive.
+func (d DirectiveAddInitScript) SerializableType() string { return "DirectiveAddInitScript" }
+
+// Tag implements Directive.
+func (d DirectiveAddInitScript) Tag() string {
+	return fmt.Sprintf("DirectiveAddInitScript_%s", d.GuestFilename)
+}
+
 var (
 	_ Directive = DirectiveRunCommand{}
 	_ Directive = DirectiveAddFile{}
@@ -461,6 +487,8 @@ var (
 	_ Directive = DirectiveInteraction{}
 	_ Directive = DirectiveDefaultInteractive{}
 	_ Directive = DirectiveMountHostDirectory{}
+	_ Directive = DirectiveKernel{}
+	_ Directive = DirectiveAddInitScript{}
 )
 
 type StarDirective struct {
@@ -479,6 +507,7 @@ var (
 
 type SpecialDirectiveHandlers struct {
 	RunCommand         func(dir DirectiveRunCommand) error
+	AddInitScript      func(dir DirectiveAddInitScript) error
 	AddPackage         func(dir DirectiveAddPackage) error
 	Environment        func(dir DirectiveEnvironment) error
 	Interaction        func(dir DirectiveInteraction) error
@@ -498,6 +527,14 @@ func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers
 			case DirectiveRunCommand:
 				if handlers.RunCommand != nil {
 					if err := handlers.RunCommand(dir); err != nil {
+						return err
+					}
+				} else {
+					ret = append(ret, dir)
+				}
+			case DirectiveAddInitScript:
+				if handlers.AddInitScript != nil {
+					if err := handlers.AddInitScript(dir); err != nil {
 						return err
 					}
 				} else {

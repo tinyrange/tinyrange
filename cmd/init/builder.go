@@ -1,3 +1,5 @@
+//go:build linux
+
 package main
 
 import (
@@ -614,6 +616,13 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 
 	builder := &Builder{}
 
+	// run init scripts first
+	for _, script := range cfg.InitScripts {
+		if err := runStarlark(script); err != nil {
+			return err
+		}
+	}
+
 	var appendProfile strings.Builder
 
 	for _, env := range cfg.Environment {
@@ -628,7 +637,7 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 		if err := os.Setenv(k, v); err != nil {
 			return err
 		}
-		appendProfile.WriteString(fmt.Sprintf("export %s=%s\n", k, v))
+		appendProfile.WriteString(fmt.Sprintf("export \"%s=%s\"\n", k, v))
 	}
 
 	if appendProfile.Len() > 0 {

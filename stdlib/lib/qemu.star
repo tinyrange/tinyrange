@@ -43,12 +43,12 @@ test_vm = define.build_vm(
     ],
 ) 
 
-def user(arch):
-    "#macro variable,arch"
-    if arch == "x86_64":
+def user(guest_arch):
+    "#macro variable,guest_arch"
+    if guest_arch == "x86_64":
         return directive.list([])
 
     return directive.list([
-        define.build(qemu_download, arch),
-        directive.run_command("/init -star /.pkg/qemu-x86_64.star"),
+        define.build(qemu_download, guest_arch),
+        directive.add_init_script("/.pkg/qemu-x86_64.star"),
     ])

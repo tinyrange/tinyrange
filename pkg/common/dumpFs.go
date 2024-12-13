@@ -101,7 +101,11 @@ type fsWalker struct {
 func (w *fsWalker) walk(filename string) error {
 	mount, ok := w.mounts[filename]
 	if ok {
-		if mount.Kind != "rootfs" && mount.Kind != "ext4" {
+		// We want to skip all mounts except rootfs and ext4``
+		if mount.Kind != "rootfs" &&
+			mount.Kind != "ext4" &&
+			// overlayfs is a special case, we want to see the contents of the overlay
+			mount.Kind != "overlay" {
 			return nil
 		}
 	}
@@ -115,7 +119,7 @@ func (w *fsWalker) walk(filename string) error {
 		fullName: filename,
 		mode:     stat.Mode(),
 		size:     uint64(stat.Size()),
-		modTime:  stat.ModTime(),
+		// modTime:  stat.ModTime(),
 	})
 
 	if stat.Mode().IsDir() {

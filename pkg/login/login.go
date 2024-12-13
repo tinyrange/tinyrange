@@ -114,21 +114,22 @@ type VMSpec struct {
 }
 
 type Config struct {
-	Version      int      `json:"version" yaml:"version"`
-	Builder      string   `json:"builder" yaml:"builder"`
-	OciImage     string   `json:"oci_image,omitempty" yaml:"oci_image,omitempty"`
-	Architecture string   `json:"architecture,omitempty" yaml:"architecture,omitempty"`
-	Commands     []string `json:"commands,omitempty" yaml:"commands,omitempty"`
-	Files        []string `json:"files,omitempty" yaml:"files,omitempty"`
-	Archives     []string `json:"archives,omitempty" yaml:"archives,omitempty"`
-	Output       string   `json:"output,omitempty" yaml:"output,omitempty"`
-	Packages     []string `json:"packages,omitempty" yaml:"packages,omitempty"`
-	Macros       []string `json:"macros,omitempty" yaml:"macros,omitempty"`
-	Environment  []string `json:"environment,omitempty" yaml:"environment,omitempty"`
-	NoScripts    bool     `json:"no_scripts,omitempty" yaml:"no_scripts,omitempty"`
-	Init         string   `json:"init,omitempty" yaml:"init,omitempty"`
-	ForwardPorts []string `json:"forward_ports,omitempty" yaml:"forward_ports,omitempty"`
-	MinSpec      VMSpec   `json:"min_spec,omitempty" yaml:"min_spec,omitempty"`
+	Version          int      `json:"version" yaml:"version"`
+	Builder          string   `json:"builder" yaml:"builder"`
+	OciImage         string   `json:"oci_image,omitempty" yaml:"oci_image,omitempty"`
+	Architecture     string   `json:"architecture,omitempty" yaml:"architecture,omitempty"`
+	RootArchitecture string   `json:"root_architecture,omitempty" yaml:"root_architecture,omitempty"`
+	Commands         []string `json:"commands,omitempty" yaml:"commands,omitempty"`
+	Files            []string `json:"files,omitempty" yaml:"files,omitempty"`
+	Archives         []string `json:"archives,omitempty" yaml:"archives,omitempty"`
+	Output           string   `json:"output,omitempty" yaml:"output,omitempty"`
+	Packages         []string `json:"packages,omitempty" yaml:"packages,omitempty"`
+	Macros           []string `json:"macros,omitempty" yaml:"macros,omitempty"`
+	Environment      []string `json:"environment,omitempty" yaml:"environment,omitempty"`
+	NoScripts        bool     `json:"no_scripts,omitempty" yaml:"no_scripts,omitempty"`
+	Init             string   `json:"init,omitempty" yaml:"init,omitempty"`
+	ForwardPorts     []string `json:"forward_ports,omitempty" yaml:"forward_ports,omitempty"`
+	MinSpec          VMSpec   `json:"min_spec,omitempty" yaml:"min_spec,omitempty"`
 
 	// secure configs that have to be set on the command line.
 	CpuCores          int      `json:"-" yaml:"-"`
@@ -250,6 +251,15 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 		return nil, "", err
 	}
 
+	vmArch := arch
+
+	if config.RootArchitecture != "" {
+		arch, err = cfg.ArchitectureFromString(config.RootArchitecture)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+
 	for _, filename := range config.Files {
 		if strings.HasPrefix(filename, "http://") || strings.HasPrefix(filename, "https://") {
 			parsed, err := url.Parse(filename)
@@ -347,6 +357,12 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 		macroCtx.AddVariable("arch", string(cfg.HostArchitecture))
 	} else {
 		macroCtx.AddVariable("arch", string(arch))
+	}
+
+	if vmArch == cfg.ArchInvalid {
+		macroCtx.AddVariable("guest_arch", string(cfg.HostArchitecture))
+	} else {
+		macroCtx.AddVariable("guest_arch", string(vmArch))
 	}
 
 	var planDirective *builder.PlanDefinition
@@ -530,6 +546,8 @@ func (config *Config) MakeTemplate(db *database.PackageDatabase) (string, error)
 		return "", err
 	}
 
+	vmArch := arch
+
 	if config.Init != "" {
 		interaction = "init," + config.Init
 	}
@@ -544,7 +562,7 @@ func (config *Config) MakeTemplate(db *database.PackageDatabase) (string, error)
 		directives,
 		nil, nil,
 		config.Output,
-		config.CpuCores, config.MemorySize, arch,
+		config.CpuCores, config.MemorySize, vmArch,
 		config.StorageSize,
 		interaction, config.Debug,
 	)
@@ -584,6 +602,15 @@ func (config *Config) Run(db *database.PackageDatabase) error {
 	arch, err := cfg.ArchitectureFromString(config.Architecture)
 	if err != nil {
 		return err
+	}
+
+	vmArch := arch
+
+	if config.RootArchitecture != "" {
+		arch, err = cfg.ArchitectureFromString(config.RootArchitecture)
+		if err != nil {
+			return err
+		}
 	}
 
 	if config.WriteRoot != "" {
@@ -754,7 +781,7 @@ func (config *Config) Run(db *database.PackageDatabase) error {
 			directives,
 			kernel, initramfs,
 			config.Output,
-			config.CpuCores, config.MemorySize, arch,
+			config.CpuCores, config.MemorySize, vmArch,
 			config.StorageSize,
 			interaction, config.Debug,
 		)
