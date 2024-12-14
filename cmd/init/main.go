@@ -928,6 +928,8 @@ func runStarlark(filename string) error {
 			return nil, err
 		}
 
+		slog.Debug("exec", "args", cmdArgs)
+
 		if err := unix.Exec(cmdArgs[0], cmdArgs, os.Environ()); err != nil {
 			return starlark.None, err
 		}
@@ -1182,6 +1184,7 @@ var (
 
 func initMain() error {
 	flag.Parse()
+
 	if *execShell {
 		return shellMain()
 	}
@@ -1310,9 +1313,33 @@ func initMain() error {
 		return fmt.Errorf("/init must be run as root")
 	}
 
+	needsReaper := false
+
+	// get the interaction from /proc/cmdline
+	if err := mount("proc", "proc", "/proc", mountOptions{}); err != nil {
+		return err
+	}
+
+	cmdline, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return err
+	}
+
+	for _, arg := range strings.Split(string(cmdline), " ") {
+		if strings.HasPrefix(arg, "tinyrange.interaction=") {
+			interaction := strings.TrimPrefix(arg, "tinyrange.interaction=")
+
+			interaction = strings.Trim(interaction, "\n")
+
+			if interaction != "serial" {
+				needsReaper = true
+			}
+		}
+	}
+
 	// Use an environment variable REAPER to indicate whether or not
 	// we are the child/parent.
-	if _, hasReaper := os.LookupEnv("REAPER"); !hasReaper {
+	if _, hasReaper := os.LookupEnv("REAPER"); !hasReaper && needsReaper {
 		if os.Getpid() != 1 {
 			return fmt.Errorf("/init must run as PID 1")
 		}

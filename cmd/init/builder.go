@@ -674,6 +674,7 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 	}
 
 	if cfg.ExecInit != "" {
+		slog.Debug("executing init", "cmd", cfg.ExecInit, "pid", os.Getpid())
 		if os.Getpid() == 1 {
 			// Fork a server just running SSH.
 			if err := builder.forkSSHServer(); err != nil {
@@ -682,7 +683,7 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 
 			return unix.Exec(cfg.ExecInit, []string{cfg.ExecInit}, os.Environ())
 		} else {
-			return common.RunCommand("interactive")
+			return fmt.Errorf("cannot run init command as pid is not 1")
 		}
 	}
 

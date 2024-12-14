@@ -965,7 +965,6 @@ func (tr *TinyRange) runWithConfig() error {
 
 	go func() {
 		if err := svr.Run(func(network, addr string) (net.Listener, error) {
-			slog.Debug("listening", "addr", addr)
 			return ns.ListenInternal("tcp", addr)
 		}); err != nil {
 			slog.Error("failed to run sftp server", "err", err)
