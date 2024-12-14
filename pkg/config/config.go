@@ -69,6 +69,10 @@ type RunCommandFragment struct {
 	Command string `json:"command" yaml:"command"`
 }
 
+type StartServiceCommandFragment struct {
+	Command string `json:"command" yaml:"command"`
+}
+
 type AddInitScriptFragment struct {
 	GuestFilename string `json:"guest_filename" yaml:"guest_filename"`
 }
@@ -104,10 +108,13 @@ type KernelFragment struct {
 
 type Fragment struct {
 	// Not supported by TinyRange directly.
-	RunCommand         *RunCommandFragment         `json:"run_command,omitempty" yaml:"run_command"`
-	AddInitScript      *AddInitScriptFragment      `json:"add_init_script,omitempty" yaml:"add_init_script"`
+	RunCommand          *RunCommandFragment          `json:"run_command,omitempty" yaml:"run_command"`
+	StartServiceCommand *StartServiceCommandFragment `json:"start_service,omitempty" yaml:"start_service"`
+	AddInitScript       *AddInitScriptFragment       `json:"add_init_script,omitempty" yaml:"add_init_script"`
+	Environment         *EnvironmentFragment         `json:"environment,omitempty" yaml:"environment"`
+
+	// Supported Directly
 	DefaultInteractive *DefaultInteractiveFragment `json:"interactive,omitempty" yaml:"interactive"`
-	Environment        *EnvironmentFragment        `json:"environment,omitempty" yaml:"environment"`
 	LocalFile          *LocalFileFragment          `json:"local_file,omitempty" yaml:"local_file"`
 	FileContents       *FileContentsFragment       `json:"file_contents,omitempty" yaml:"file_contents"`
 	Archive            *ArchiveFragment            `json:"archive,omitempty" yaml:"archive"`

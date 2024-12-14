@@ -51,6 +51,32 @@ func (d DirectiveRunCommand) Tag() string {
 	return fmt.Sprintf("RunCommand_%s", strings.ReplaceAll(string(d.Command), " ", "_"))
 }
 
+type DirectiveStartServiceCommand struct {
+	Command string
+}
+
+// Dependencies implements Directive.
+func (d DirectiveStartServiceCommand) Dependencies(ctx BuildContext) ([]DependencyNode, error) {
+	return []DependencyNode{}, nil
+}
+
+// SerializableType implements Directive.
+func (d DirectiveStartServiceCommand) SerializableType() string {
+	return "DirectiveStartServiceCommand"
+}
+
+// AsFragments implements Directive.
+func (d DirectiveStartServiceCommand) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
+	return []config.Fragment{
+		{StartServiceCommand: &config.StartServiceCommandFragment{Command: string(d.Command)}},
+	}, nil
+}
+
+// Tag implements Directive.
+func (d DirectiveStartServiceCommand) Tag() string {
+	return fmt.Sprintf("StartServiceCommand_%s", strings.ReplaceAll(string(d.Command), " ", "_"))
+}
+
 type DirectiveAddFile struct {
 	Filename   string
 	Definition BuildDefinition
@@ -476,6 +502,7 @@ func (d DirectiveAddInitScript) Tag() string {
 
 var (
 	_ Directive = DirectiveRunCommand{}
+	_ Directive = DirectiveStartServiceCommand{}
 	_ Directive = DirectiveAddFile{}
 	_ Directive = DirectiveLocalFile{}
 	_ Directive = DirectiveArchive{}
@@ -506,14 +533,15 @@ var (
 )
 
 type SpecialDirectiveHandlers struct {
-	RunCommand         func(dir DirectiveRunCommand) error
-	AddInitScript      func(dir DirectiveAddInitScript) error
-	AddPackage         func(dir DirectiveAddPackage) error
-	Environment        func(dir DirectiveEnvironment) error
-	Interaction        func(dir DirectiveInteraction) error
-	DefaultInteractive func(dir DirectiveDefaultInteractive) error
-	MountHostDirectory func(dir DirectiveMountHostDirectory) error
-	Kernel             func(dir DirectiveKernel) error
+	RunCommand          func(dir DirectiveRunCommand) error
+	StartServiceCommand func(dir DirectiveStartServiceCommand) error
+	AddInitScript       func(dir DirectiveAddInitScript) error
+	AddPackage          func(dir DirectiveAddPackage) error
+	Environment         func(dir DirectiveEnvironment) error
+	Interaction         func(dir DirectiveInteraction) error
+	DefaultInteractive  func(dir DirectiveDefaultInteractive) error
+	MountHostDirectory  func(dir DirectiveMountHostDirectory) error
+	Kernel              func(dir DirectiveKernel) error
 }
 
 func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers) ([]Directive, error) {
@@ -527,6 +555,14 @@ func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers
 			case DirectiveRunCommand:
 				if handlers.RunCommand != nil {
 					if err := handlers.RunCommand(dir); err != nil {
+						return err
+					}
+				} else {
+					ret = append(ret, dir)
+				}
+			case DirectiveStartServiceCommand:
+				if handlers.StartServiceCommand != nil {
+					if err := handlers.StartServiceCommand(dir); err != nil {
 						return err
 					}
 				} else {

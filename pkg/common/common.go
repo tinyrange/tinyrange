@@ -180,6 +180,29 @@ func ExecCommand(args []string, environment map[string]string) error {
 	return nil
 }
 
+func ExecService(args []string, environment map[string]string) (*exec.Cmd, error) {
+	if ok, _ := Exists(args[0]); !ok {
+		return nil, fmt.Errorf("path %s does not exist", args[0])
+	}
+
+	cmd := exec.Command(args[0], args[1:]...)
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = cmd.Environ()
+
+	for k, v := range environment {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	err := cmd.Start()
+	if err != nil {
+		return nil, err
+	}
+
+	return cmd, nil
+}
+
 var DefaultInteractiveCommand = []string{"/bin/sh"}
 
 func SetDefaultInteractive(args []string) {
@@ -198,6 +221,19 @@ func RunCommand(script string) error {
 		return ExecCommand(DefaultInteractiveCommand, nil)
 	} else {
 		return ExecCommand([]string{"/bin/sh", "-lc", script}, nil)
+	}
+}
+
+func RunService(script string) (*exec.Cmd, error) {
+	if strings.HasPrefix(script, "/init") {
+		tokens, err := shlex.Split(script, true)
+		if err != nil {
+			return nil, err
+		}
+
+		return ExecService(tokens, nil)
+	} else {
+		return ExecService([]string{"/bin/sh", "-lc", script}, nil)
 	}
 }
 

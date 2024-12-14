@@ -647,6 +647,14 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 		}
 	}
 
+	// Start services
+	for _, cmd := range cfg.ServiceCommands {
+		if _, err := common.RunService(cmd); err != nil {
+			return err
+		}
+	}
+
+	// Run commands.
 	for i, cmd := range cfg.Commands {
 		// Check if this is the last command.
 		if i == len(cfg.Commands)-1 {

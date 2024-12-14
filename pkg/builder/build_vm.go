@@ -254,6 +254,8 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		for _, frag := range frags {
 			if frag.RunCommand != nil {
 				builderCfg.Commands = append(builderCfg.Commands, frag.RunCommand.Command)
+			} else if frag.StartServiceCommand != nil {
+				builderCfg.ServiceCommands = append(builderCfg.ServiceCommands, frag.StartServiceCommand.Command)
 			} else if frag.AddInitScript != nil {
 				builderCfg.InitScripts = append(builderCfg.InitScripts, frag.AddInitScript.GuestFilename)
 			} else if frag.Environment != nil {

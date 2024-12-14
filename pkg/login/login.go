@@ -120,6 +120,7 @@ type Config struct {
 	Architecture     string   `json:"architecture,omitempty" yaml:"architecture,omitempty"`
 	RootArchitecture string   `json:"root_architecture,omitempty" yaml:"root_architecture,omitempty"`
 	Commands         []string `json:"commands,omitempty" yaml:"commands,omitempty"`
+	ServiceCommands  []string `json:"service_commands,omitempty" yaml:"service_commands,omitempty"`
 	Files            []string `json:"files,omitempty" yaml:"files,omitempty"`
 	Archives         []string `json:"archives,omitempty" yaml:"archives,omitempty"`
 	Output           string   `json:"output,omitempty" yaml:"output,omitempty"`
@@ -481,6 +482,10 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 	}
 
 	if config.WriteRoot == "" && config.WriteDocker == "" {
+		for _, cmd := range config.ServiceCommands {
+			directives = append(directives, common.DirectiveStartServiceCommand{Command: cmd})
+		}
+
 		if len(config.Commands) == 0 && config.Init == "" {
 			directives = append(directives, common.DirectiveRunCommand{Command: "interactive"})
 		} else {
