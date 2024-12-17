@@ -145,7 +145,11 @@ func (e *ArchiveEntry) Kind() filesystem.FileType {
 
 // Name implements fs.FileInfo.
 func (e *ArchiveEntry) Name() string {
-	return string(e.entryBytes[e.raw.Size() : uint16(e.raw.Size())+e.raw.NameLen()])
+	return string(e.NameBytes())
+}
+
+func (e *ArchiveEntry) NameBytes() []byte {
+	return e.entryBytes[e.raw.Size() : uint16(e.raw.Size())+e.raw.NameLen()]
 }
 
 func (e *ArchiveEntry) Linkname() string {
@@ -183,6 +187,21 @@ func (e *ArchiveEntry) Open() (filesystem.FileHandle, error) {
 	}, nil
 }
 
+func (e *ArchiveEntry) ReadAt(p []byte, off int64) (int, error) {
+	// bounds check
+	if off < 0 || off >= e.Size() {
+		return 0, io.EOF
+	}
+
+	// cap to the size of the entry
+	if off+int64(len(p)) > e.Size() {
+		p = p[:e.Size()-off]
+	}
+
+	// read from the underlying contents at the offset
+	return e.contentsFile.ReadAt(p, off+int64(e.raw.ContentsOffset()))
+}
+
 func (e *ArchiveEntry) Stat() (filesystem.FileInfo, error) {
 	return e, nil
 }
@@ -194,6 +213,7 @@ func (e *ArchiveEntry) Digest() *filesystem.FileDigest {
 var (
 	_ filesystem.FileInfo = &ArchiveEntry{}
 	_ filesystem.File     = &ArchiveEntry{}
+	_ io.ReaderAt         = &ArchiveEntry{}
 )
 
 type archiveReader struct {
@@ -219,6 +239,8 @@ func (r *archiveReader) ReadEntry(ent *ArchiveEntry) error {
 	if _, err := io.ReadFull(r.indexFile, ent.entryBytes); err != nil {
 		return err
 	}
+
+	ent.raw = RawArchiveEntry(ent.entryBytes[:ent.hdr.EntrySize()])
 
 	ent.contentsFile = r.contentsFile
 
@@ -282,6 +304,25 @@ func tarToArchive(input *tar.Reader, output *archiveWriter) error {
 	return nil
 }
 
+func RangeTokens(input []byte, sep byte) func(yield func(token []byte) bool) {
+	return func(yield func(token []byte) bool) {
+		var start int
+
+		for i, b := range input {
+			if b == sep {
+				if !yield(input[start:i]) {
+					return
+				}
+				start = i + 1
+			}
+		}
+
+		if !yield(input[start:]) {
+			return
+		}
+	}
+}
+
 var (
 	mode       = flag.String("mode", "convert", "convert or build")
 	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
@@ -336,10 +377,12 @@ func appMain() error {
 	case "build":
 		start := time.Now()
 
-		pb := progressbar.Default(1000, "building")
+		n := 1000
+
+		pb := progressbar.Default(int64(n), "building")
 		defer pb.Close()
 
-		for range 1000 {
+		for range n {
 			var closers []io.Closer
 			defer func() {
 				for _, closer := range closers {
@@ -365,8 +408,6 @@ func appMain() error {
 
 				var ent ArchiveEntry
 
-				var totalSize int64
-
 				for {
 					err := reader.ReadEntry(&ent)
 					if err == io.EOF {
@@ -375,14 +416,16 @@ func appMain() error {
 						return err
 					}
 
-					totalSize += ent.Size()
+					for range RangeTokens(ent.NameBytes(), '/') {
+						// do nothing
+					}
 				}
 			}
 
 			pb.Add(1)
 		}
 
-		slog.Info("read archive", "times", 1000, "duration", time.Since(start))
+		slog.Info("read archive", "times", n, "duration", time.Since(start))
 
 		return nil
 	default:
