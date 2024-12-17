@@ -1167,11 +1167,11 @@ def find_qemu(os, name):
     if os == "windows":
         name += ".exe"
 
-    command_name = find_command(name)
+    command_name = find_local(name)
     if command_name != None:
         return command_name
 
-    command_name = find_local(name)
+    command_name = find_command(name)
     if command_name != None:
         return command_name
 
