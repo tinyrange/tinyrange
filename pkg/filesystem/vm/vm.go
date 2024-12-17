@@ -11,10 +11,8 @@ type VirtualMemory struct {
 	pageSize uint32
 	// The size of a page is always pageSize.
 	// Any pages smaller must be fragmentedRegions and any pages larger must be split into OffsetRegions.
-	pages []MemoryRegion
-	// Write pages are a mirror of the regular pages that intercept writes and override future reads.
-	writePages []*RawRegion
-	totalSize  int64
+	pages     []MemoryRegion
+	totalSize int64
 
 	// stats
 	totalMaps         int64
@@ -224,10 +222,6 @@ func (vm *VirtualMemory) DumpMap(out io.Writer) error {
 }
 
 func (vm *VirtualMemory) getRegion(offset int64, isWrite bool) (MemoryRegion, int64, error) {
-	// Find the closest page and start the access there.
-	// If the internal access is only partially filled then continue though subsequent pages.
-	// This means a read/write larger than a single page skips over connected OffsetRegions.
-
 	// If the offset is more than the total size then return EOF.
 	if offset > vm.totalSize {
 		return nil, 0, io.EOF
@@ -238,36 +232,36 @@ func (vm *VirtualMemory) getRegion(offset int64, isWrite bool) (MemoryRegion, in
 	regionOffset := offset % int64(vm.pageSize)
 
 	// Get the region.
-	region := vm.writePages[uint64(regionIndex)]
-	if region != nil {
-		// If the writeRegion already exists then just return it.
-		return region, regionOffset, nil
+	region := vm.pages[uint64(regionIndex)]
+	if region == nil {
+		if isWrite {
+			// Create a new raw region for writing.
+			newRegion := make(RawRegion, vm.pageSize)
+			vm.pages[uint64(regionIndex)] = &newRegion
+			return vm.pages[uint64(regionIndex)], regionOffset, nil
+		} else {
+			// Reading from unmapped region returns zeros.
+			return nil, regionOffset, nil
+		}
 	}
 
 	if isWrite {
-		newWritePage := make(RawRegion, vm.pageSize)
-
-		existingRegion := vm.pages[uint64(regionIndex)]
-		if existingRegion != nil {
-			// Populate the region with the existing contents.
-			if _, err := existingRegion.ReadAt(newWritePage, 0); err != nil {
+		// Check if region is a raw region.
+		if _, ok := region.(RawRegion); !ok {
+			// Not writable, create a new raw region.
+			newRegion := make(RawRegion, vm.pageSize)
+			// Copy existing data into new region.
+			if _, err := region.ReadAt(newRegion, 0); err != nil {
 				return nil, 0, err
 			}
+			// Replace region with new writable region.
+			vm.pages[uint64(regionIndex)] = &newRegion
+			return vm.pages[uint64(regionIndex)], regionOffset, nil
 		}
-
-		vm.writePages[uint64(regionIndex)] = &newWritePage
-
-		return vm.writePages[uint64(regionIndex)], regionOffset, nil
-	} else {
-		region := vm.pages[uint64(regionIndex)]
-		if region == nil {
-			// A missing region is not a error and just reads zeros.
-			return nil, regionOffset, nil
-		}
-
-		// Return the region.
-		return region, regionOffset, nil
 	}
+
+	// Return the region.
+	return region, regionOffset, nil
 }
 
 // ReadAt implements io.ReaderAt.
@@ -352,7 +346,6 @@ func (vm *VirtualMemory) WriteAt(p []byte, off int64) (n int, err error) {
 func (vm *VirtualMemory) Reset() error {
 	// Clear all the old pages and write pages.
 	vm.pages = make([]MemoryRegion, len(vm.pages))
-	vm.writePages = make([]*RawRegion, len(vm.writePages))
 
 	return nil
 }
@@ -395,9 +388,8 @@ func NewVirtualMemory(totalSize int64, pageSize uint32) *VirtualMemory {
 	}
 
 	return &VirtualMemory{
-		pageSize:   pageSize,
-		totalSize:  totalSize,
-		pages:      make([]MemoryRegion, totalSize/int64(pageSize)),
-		writePages: make([]*RawRegion, totalSize/int64(pageSize)),
+		pageSize:  pageSize,
+		totalSize: totalSize,
+		pages:     make([]MemoryRegion, totalSize/int64(pageSize)),
 	}
 }

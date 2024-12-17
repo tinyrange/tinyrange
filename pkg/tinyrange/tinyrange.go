@@ -519,8 +519,6 @@ func (tr *TinyRange) buildFilesystem(root filesystem.Directory, fsSize int64) (B
 
 	start := time.Now()
 
-	slog.Info("allocating", "pages", fsSize/4096)
-
 	vmem := vm.NewVirtualMemory(fsSize, 4096)
 
 	slog.Debug("created virtual memory", "took", time.Since(start))
@@ -664,6 +662,8 @@ func (tr *TinyRange) runWithConfig() error {
 	if len(tr.configs) == 0 {
 		return fmt.Errorf("no configs specified")
 	}
+
+	mainStart := time.Now()
 
 	topConfig := tr.configs[0]
 
@@ -900,6 +900,8 @@ func (tr *TinyRange) runWithConfig() error {
 			fn()
 		}
 	}()
+
+	slog.Debug("running virtual machine", "initTime", time.Since(mainStart))
 
 	if interaction == "ssh" || interaction == "vnc" {
 		go func() {

@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -182,6 +183,10 @@ func (b *Builder) runScript(script BuilderScript) error {
 			return nil
 		}
 
+		if common.IsVerbose() {
+			fmt.Fprintf(os.Stderr, "|| > trigger_on(%s, %s)\n", script.Exec, args)
+		}
+
 		if err := b.execCommand(
 			append([]string{script.Exec}, args...),
 			script.Environment,
@@ -189,7 +194,9 @@ func (b *Builder) runScript(script BuilderScript) error {
 			return err
 		}
 
-		slog.Debug("trigger_on", "exec", script.Exec, "took", time.Since(start))
+		if common.IsVerbose() {
+			fmt.Fprintf(os.Stderr, "|| < trigger_on(%s, %s) [%s]\n", script.Exec, args, time.Since(start))
+		}
 
 		return nil
 	case "execute":
@@ -668,6 +675,19 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 		}
 
 		slog.Debug("running", "cmd", cmd)
+		if cmd == "interactive" {
+			realStart := START_TIME
+			realStartTime := os.Getenv("TINYRANGE_START_TIME")
+			if realStartTime != "" {
+				realStartUnixMicro, err := strconv.ParseInt(realStartTime, 10, 64)
+				if err == nil {
+					realStart = time.UnixMicro(realStartUnixMicro)
+				}
+			}
+			uptime, _ := GetUptime()
+			slog.Debug("time to interactive", "time", time.Since(realStart), "uptime", uptime)
+		}
+
 		if err := common.RunCommand(cmd); err != nil {
 			return err
 		}

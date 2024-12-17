@@ -105,6 +105,8 @@ func getFd(reader io.Reader) (fd int, ok bool) {
 }
 
 func connectOverSsh(ns *netstack.NetStack, address string, username string, secureSSH SecureSSHConfig) error {
+	start := time.Now()
+
 	config := &ssh.ClientConfig{
 		User: username,
 		Auth: []ssh.AuthMethod{
@@ -164,6 +166,8 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, secu
 		return fmt.Errorf("failed to create session: %v", err)
 	}
 	defer session.Close()
+
+	slog.Debug("connected over SSH", "took", time.Since(start))
 
 	width, height := 80, 40
 

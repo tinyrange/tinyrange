@@ -44,6 +44,15 @@ var START_TIME = time.Now()
 
 var starlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builtin).CallInternal
 
+func GetUptime() (time.Duration, error) {
+	var ts unix.Timespec
+	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts); err != nil {
+		return 0, err
+	}
+
+	return time.Duration(ts.Nano()), nil
+}
+
 func ToStringList(it starlark.Iterable) ([]string, error) {
 	iter := it.Iterate()
 	defer iter.Done()
@@ -1378,6 +1387,10 @@ func initMain() error {
 		// If you put this code into a function, then exit here.
 		os.Exit(0)
 		return nil
+	}
+
+	if err := os.Setenv("TINYRANGE_START_TIME", fmt.Sprintf("%d", START_TIME.UnixMicro())); err != nil {
+		return err
 	}
 
 	if err := runStarlark("/init.star"); err != nil {
