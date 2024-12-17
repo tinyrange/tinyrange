@@ -1,0 +1,24 @@
+version: 1
+builder: alpine@3.20
+commands:
+  - mkdir /root/build
+  - mkdir /root/dist
+  - cd /root/build;/root/qemu-9.2.0/configure --without-default-features --enable-kvm --target-list=x86_64-softmmu --static --prefix=/root/dist
+  - cd /root/build; ninja install
+archives:
+  - https://download.qemu.org/qemu-9.2.0.tar.xz
+packages:
+  - build-base
+  - python3
+  - ninja
+  - pkgconfig
+  - glib-dev
+  - glib-static
+  - libfdt
+  - zlib-static
+  - git
+output: /root/dist/bin/qemu-system-x86_64
+min_spec:
+  cpu: 4
+  memory: 4096
+  disk: 4096
