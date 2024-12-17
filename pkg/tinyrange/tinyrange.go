@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	goFs "io/fs"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -28,18 +28,24 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	_ "github.com/tinyrange/tinyrange/pkg/platform"
 	"github.com/tinyrange/tinyrange/pkg/sftp"
 	virtualMachine "github.com/tinyrange/tinyrange/pkg/vm"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
-	"github.com/tinyrange/vm"
 	"golang.org/x/crypto/ssh"
 )
 
+type BlockDevice interface {
+	io.ReaderAt
+	io.WriterAt
+	Size() int64
+}
+
 type vmBackend struct {
-	vm *vm.VirtualMemory
+	vm BlockDevice
 }
 
 // Close implements common.Backend.
@@ -83,20 +89,19 @@ func (*vmBackend) Sync() error {
 }
 
 type TinyRange struct {
-	buildDir           string
-	configs            []config.TinyRangeConfig
-	debug              bool
-	forwardSsh         bool
-	exportFilesystem   string
-	listenNbd          string
-	streamingServer    string
-	wireguardUrl       string
-	secureSSH          string
-	client             *http.Client
-	deferredFilesystem []func() error
-	onExit             []func()
-	persistPath        string
-	deletedFiles       map[string]bool
+	buildDir         string
+	configs          []config.TinyRangeConfig
+	debug            bool
+	forwardSsh       bool
+	exportFilesystem string
+	listenNbd        string
+	streamingServer  string
+	wireguardUrl     string
+	secureSSH        string
+	client           *http.Client
+	onExit           []func()
+	persistPath      string
+	deletedFiles     map[string]bool
 }
 
 func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
@@ -109,7 +114,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 		}
 
 		if localFile.Executable {
-			if err := overlay.Chmod(goFs.FileMode(0755)); err != nil {
+			if err := overlay.Chmod(fs.FileMode(0755)); err != nil {
 				return err
 			}
 		}
@@ -133,7 +138,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 		}
 
 		if fileContents.Executable {
-			if err := file.Chmod(goFs.FileMode(0755)); err != nil {
+			if err := file.Chmod(fs.FileMode(0755)); err != nil {
 				return err
 			}
 		}
@@ -156,7 +161,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 				return err
 			}
 
-			if err := file.Chmod(goFs.FileMode(0755)); err != nil {
+			if err := file.Chmod(fs.FileMode(0755)); err != nil {
 				return err
 			}
 
@@ -316,7 +321,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 				return fmt.Errorf("failed to chown in guest: %w", err)
 			}
 
-			if err := file.Chmod(goFs.FileMode(ent.Mode())); err != nil {
+			if err := file.Chmod(fs.FileMode(ent.Mode())); err != nil {
 				return fmt.Errorf("failed to chmod in guest: %w", err)
 			}
 		}
@@ -325,110 +330,6 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 	} else {
 		return fmt.Errorf("unknown fragment kind: %+v", frag)
 	}
-}
-
-// Recurse into an filesystem.Directory and put all it's contents into a ext4 filesystem.
-func (tr *TinyRange) filesystemToExt4(dir filesystem.Directory, fs *ext4.Ext4Filesystem, name string) error {
-	ents, err := dir.Readdir()
-	if err != nil {
-		return fmt.Errorf("failed to readdir: %w", err)
-	}
-
-	for _, ent := range ents {
-		info, err := ent.File.Stat()
-		if err != nil {
-			return fmt.Errorf("failed to stat: %w", err)
-		}
-
-		name := path.Join(name, path.Base(ent.Name))
-
-		skip := false
-
-		switch info.Kind() {
-		case filesystem.TypeDirectory:
-			if err := fs.Mkdir(name, false); err != nil {
-				return fmt.Errorf("failed to mkdir %s: %w", name, err)
-			}
-
-			child, ok := ent.File.(filesystem.Directory)
-			if !ok {
-				return fmt.Errorf("directory does not implement Directory: %T", ent.File)
-			}
-
-			if err := tr.filesystemToExt4(child, fs, name); err != nil {
-				return err
-			}
-		case filesystem.TypeLink:
-			target, err := filesystem.GetLinkName(ent.File)
-			if err != nil {
-				return fmt.Errorf("failed to get linkname: %w", err)
-			}
-
-			if err := fs.Link(name, target); err != nil {
-				tr.deferredFilesystem = append(tr.deferredFilesystem, func() error {
-					if err := fs.Link(name, target); err != nil {
-						return fmt.Errorf("failed to make hard link: %w", err)
-					}
-
-					if err := fs.Chmod(name, info.Mode()); err != nil {
-						return fmt.Errorf("failed to chmod: %w", err)
-					}
-
-					uid, gid, err := filesystem.GetUidAndGid(ent.File)
-					if err != nil {
-						return fmt.Errorf("failed to GetUidAndGid: %w", err)
-					}
-
-					if err := fs.Chown(name, uint16(uid), uint16(gid)); err != nil {
-						return fmt.Errorf("failed to chown: %w", err)
-					}
-
-					return nil
-				})
-
-				skip = true
-			}
-		case filesystem.TypeSymlink:
-			target, err := filesystem.GetLinkName(ent.File)
-			if err != nil {
-				return fmt.Errorf("failed to get linkname: %w", err)
-			}
-
-			if err := fs.Symlink(name, target); err != nil {
-				return fmt.Errorf("failed to make symlink: %w", err)
-			}
-		case filesystem.TypeRegular:
-			f, err := ent.File.Open()
-			if err != nil {
-				return fmt.Errorf("failed to open file for guest: %T %w", ent.File, err)
-			}
-
-			region := vm.NewReaderRegion(f, info.Size())
-
-			if err := fs.CreateFile(name, region); err != nil {
-				return fmt.Errorf("failed to create file in guest %s: %w", name, err)
-			}
-		default:
-			return fmt.Errorf("unimplemented kind: %s", info.Kind())
-		}
-
-		if !skip {
-			if err := fs.Chmod(name, info.Mode()); err != nil {
-				return fmt.Errorf("failed to chmod: %w", err)
-			}
-
-			uid, gid, err := filesystem.GetUidAndGid(ent.File)
-			if err != nil {
-				return fmt.Errorf("failed to GetUidAndGid: %w", err)
-			}
-
-			if err := fs.Chown(name, uint16(uid), uint16(gid)); err != nil {
-				return fmt.Errorf("failed to chown: %w", err)
-			}
-		}
-	}
-
-	return nil
 }
 
 func (tr *TinyRange) generateOrLoadSecureSSH() (SecureSSHConfig, error) {
@@ -487,7 +388,20 @@ func (tr *TinyRange) generateOrLoadSecureSSH() (SecureSSHConfig, error) {
 	return secureSSH, nil
 }
 
-func (tr *TinyRange) createNbdListener(tryUnix bool) (string, net.Listener, error) {
+type nbdAddress struct {
+	Unix bool
+	Addr string
+}
+
+func (addr nbdAddress) Export(name string) string {
+	if addr.Unix {
+		return fmt.Sprintf("nbd+unix:///%s?socket=%s", name, addr.Addr)
+	} else {
+		return fmt.Sprintf("nbd://%s/%s", addr.Addr, name)
+	}
+}
+
+func (tr *TinyRange) createNbdListener(tryUnix bool) (nbdAddress, net.Listener, error) {
 	if (runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows") && tr.persistPath != "" && tryUnix {
 		pid := os.Getpid()
 
@@ -511,15 +425,234 @@ func (tr *TinyRange) createNbdListener(tryUnix bool) (string, net.Listener, erro
 			}
 		})
 
-		return "nbd+unix://?socket=" + filename, listener, nil
+		return nbdAddress{Unix: true, Addr: filename}, listener, nil
 	} else {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
-			return "", nil, fmt.Errorf("failed to listen: %v", err)
+			return nbdAddress{}, nil, fmt.Errorf("failed to listen: %v", err)
 		}
 
-		return "nbd://" + listener.Addr().String(), listener, nil
+		return nbdAddress{Addr: listener.Addr().String()}, listener, nil
 	}
+}
+
+func (tr *TinyRange) fragmentsToConfig() (filesystem.Directory, []int, []mountInfo, error) {
+	var exportedPorts []int
+	var mountedHostDirectories []mountInfo
+
+	root := filesystem.NewMemoryDirectory()
+
+	tr.deletedFiles = make(map[string]bool)
+
+	for _, config := range tr.configs {
+		for _, frag := range config.RootFsFragments {
+			if port := frag.ExportPort; port != nil {
+				exportedPorts = append(exportedPorts, port.Port)
+			} else if mount := frag.MountHostDirectory; mount != nil {
+				mountedHostDirectories = append(mountedHostDirectories, mountInfo{
+					HostDirectory: config.Resolve(mount.HostDirectory),
+					Writable:      mount.Writable,
+				})
+			} else {
+				if err := tr.fragmentToFilesystem(config, frag, root); err != nil {
+					return nil, nil, nil, fmt.Errorf("failed to extract fragment to filesystem: %w", err)
+				}
+			}
+		}
+	}
+
+	return root, exportedPorts, mountedHostDirectories, nil
+}
+
+func (tr *TinyRange) configureSecureSSH(root filesystem.Directory) (SecureSSHConfig, error) {
+	var secureSSH SecureSSHConfig
+
+	// Configure secure SSH.
+	if tr.secureSSH != "" {
+		var err error
+
+		secureSSH, err = tr.generateOrLoadSecureSSH()
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("failed to generate or load secure ssh: %w", err)
+		}
+
+		secureConfig, err := json.Marshal(secureSSH)
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("failed to marshal secure ssh config: %w", err)
+		}
+
+		memFile := filesystem.NewMemoryFile(filesystem.TypeRegular)
+
+		if err := memFile.Overwrite(secureConfig); err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("failed to overwrite secure ssh config: %w", err)
+		}
+
+		if err := memFile.Chmod(0600); err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("failed to chmod secure ssh config: %w", err)
+		}
+
+		if _, err := filesystem.CreateChild(root, "/init.d/secure_ssh.json", memFile); err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("failed to create secure ssh config: %w", err)
+		}
+	} else {
+		secureSSH.HostKey = ""
+		secureSSH.PublicKey = ""
+		secureSSH.Password = config.INSECURE_SSH_PASSWORD
+	}
+
+	return secureSSH, nil
+}
+
+func (tr *TinyRange) buildFilesystem(root filesystem.Directory, fsSize int64) (BlockDevice, int64, error) {
+	totalSize, err := filesystem.GetTotalSize(root)
+	if err != nil {
+		return nil, 0, fmt.Errorf("could not compute total size")
+	}
+
+	if int64(float64(totalSize)*1.5) > fsSize {
+		targetSize := int64(float64(totalSize)*1.5) / 128 / 1024 / 1024
+
+		slog.Debug("resize filesystem", "new", fmt.Sprintf("%dmb", targetSize*128))
+
+		fsSize = targetSize * 128 * 1024 * 1024
+	}
+
+	start := time.Now()
+
+	slog.Info("allocating", "pages", fsSize/4096)
+
+	vmem := vm.NewVirtualMemory(fsSize, 4096)
+
+	slog.Debug("created virtual memory", "took", time.Since(start))
+
+	start = time.Now()
+
+	fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create ext4 filesystem: %w", err)
+	}
+
+	slog.Debug("created ext4 filesystem", "took", time.Since(start))
+
+	start = time.Now()
+
+	if err := fs.AddDirectory(root); err != nil {
+		return nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
+	}
+
+	slog.Debug("built filesystem", "took", time.Since(start))
+
+	return vmem, fsSize, nil
+}
+
+func (tr *TinyRange) nbdLoop(listener net.Listener, backend *vmBackend) {
+	for {
+		conn, err := listener.Accept()
+		if errors.Is(err, net.ErrClosed) {
+			return
+		} else if err != nil {
+			slog.Error("nbd server failed to accept", "error", err)
+			return
+		}
+
+		go func(conn net.Conn) {
+			slog.Debug("got nbd connection", "remote", conn.RemoteAddr().String())
+			err = gonbd.Handle(conn, []gonbd.Export{{
+				Name:        "root",
+				Description: "",
+				Backend:     backend,
+			}}, &gonbd.Options{
+				ReadOnly:           false,
+				MinimumBlockSize:   1024,
+				PreferredBlockSize: uint32(backend.PreferredBlockSize()),
+				MaximumBlockSize:   32*1024*1024 - 1,
+			})
+			if err != nil {
+				slog.Warn("nbd server failed to handle", "error", err)
+			}
+		}(conn)
+	}
+}
+
+func (tr *TinyRange) startDNSServer(ns *netstack.NetStack) error {
+	dnsServer := &dnsServer{
+		dnsLookup: func(name string) (string, error) {
+			if name == "tinyrange." {
+				return "10.42.0.2", nil
+			} else if name == "host.internal." {
+				return "10.42.0.1", nil
+			}
+
+			slog.Debug("doing DNS lookup", "name", name)
+
+			// Do a DNS lookup on the host.
+			addr, err := net.ResolveIPAddr("ip4", name)
+			if err != nil {
+				return "", err
+			}
+
+			return string(addr.IP.String()), nil
+		},
+	}
+	dnsMux := dns.NewServeMux()
+
+	dnsMux.HandleFunc(".", dnsServer.handleDnsRequest)
+
+	packetConn, err := ns.ListenPacketInternal("udp", ":53")
+	if err != nil {
+		return fmt.Errorf("failed to listen internal (dns): %w", err)
+	}
+
+	dnsServer.server = &dns.Server{
+		Addr:       ":53",
+		Net:        "udp",
+		Handler:    dnsMux,
+		PacketConn: packetConn,
+	}
+
+	go func() {
+		err := dnsServer.server.ActivateAndServe()
+		if err != nil {
+			slog.Error("dns: failed to start server", "error", err.Error())
+		}
+	}()
+
+	return nil
+}
+
+func (tr *TinyRange) exportPort(ns *netstack.NetStack, port int) error {
+	portListen, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for {
+			conn, err := portListen.Accept()
+			if err != nil {
+				slog.Error("failed to accept", "err", err)
+				return
+			}
+
+			go func() {
+				defer conn.Close()
+
+				clientConn, err := ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("10.42.0.2:%d", port))
+				if err != nil {
+					slog.Error("failed to dial vm port", "err", err)
+					return
+				}
+				defer clientConn.Close()
+
+				if err := common.Proxy(clientConn, conn, 4096); err != nil {
+					slog.Error("failed to proxy connection", "err", err)
+					return
+				}
+			}()
+		}
+	}()
+
+	return nil
 }
 
 type mountInfo struct {
@@ -564,102 +697,22 @@ func (tr *TinyRange) runWithConfig() error {
 
 	start := time.Now()
 
-	var exportedPorts []int
-	var mountedHostDirectories []mountInfo
-
-	root := filesystem.NewMemoryDirectory()
-
-	tr.deletedFiles = make(map[string]bool)
-
-	for _, config := range tr.configs {
-		for _, frag := range config.RootFsFragments {
-			if port := frag.ExportPort; port != nil {
-				exportedPorts = append(exportedPorts, port.Port)
-			} else if mount := frag.MountHostDirectory; mount != nil {
-				mountedHostDirectories = append(mountedHostDirectories, mountInfo{
-					HostDirectory: config.Resolve(mount.HostDirectory),
-					Writable:      mount.Writable,
-				})
-			} else {
-				if err := tr.fragmentToFilesystem(config, frag, root); err != nil {
-					return fmt.Errorf("failed to extract fragment to filesystem: %w", err)
-				}
-			}
-		}
-	}
-
-	var secureSSH SecureSSHConfig
-
-	// Configure secure SSH.
-	if tr.secureSSH != "" {
-		var err error
-
-		secureSSH, err = tr.generateOrLoadSecureSSH()
-		if err != nil {
-			return fmt.Errorf("failed to generate or load secure ssh: %w", err)
-		}
-
-		secureConfig, err := json.Marshal(secureSSH)
-		if err != nil {
-			return fmt.Errorf("failed to marshal secure ssh config: %w", err)
-		}
-
-		memFile := filesystem.NewMemoryFile(filesystem.TypeRegular)
-
-		if err := memFile.Overwrite(secureConfig); err != nil {
-			return fmt.Errorf("failed to overwrite secure ssh config: %w", err)
-		}
-
-		if err := memFile.Chmod(0600); err != nil {
-			return fmt.Errorf("failed to chmod secure ssh config: %w", err)
-		}
-
-		if _, err := filesystem.CreateChild(root, "/init.d/secure_ssh.json", memFile); err != nil {
-			return fmt.Errorf("failed to create secure ssh config: %w", err)
-		}
-	} else {
-		secureSSH.HostKey = ""
-		secureSSH.PublicKey = ""
-		secureSSH.Password = config.INSECURE_SSH_PASSWORD
+	root, exportedPorts, mountedHostDirectories, err := tr.fragmentsToConfig()
+	if err != nil {
+		return fmt.Errorf("failed to convert fragments to config: %w", err)
 	}
 
 	slog.Debug("built filesystem tree", "took", time.Since(start))
 
-	totalSize, err := filesystem.GetTotalSize(root)
+	secureSSH, err := tr.configureSecureSSH(root)
 	if err != nil {
-		return fmt.Errorf("could not compute total size")
+		return fmt.Errorf("failed to configure secure ssh: %w", err)
 	}
 
-	fsSize := int64(topConfig.StorageSize * 1024 * 1024)
-
-	if int64(float64(totalSize)*1.5) > fsSize {
-		targetSize := int64(float64(totalSize)*1.5) / 128 / 1024 / 1024
-
-		slog.Debug("resize filesystem", "new", fmt.Sprintf("%dmb", targetSize*128))
-
-		fsSize = targetSize * 128 * 1024 * 1024
-	}
-
-	start = time.Now()
-
-	vmem := vm.NewVirtualMemory(fsSize, 4096)
-
-	fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
+	vmem, fsSize, err := tr.buildFilesystem(root, int64(topConfig.StorageSize)*1024*1024)
 	if err != nil {
-		return fmt.Errorf("failed to create ext4 filesystem: %w", err)
+		return fmt.Errorf("failed to build filesystem: %w", err)
 	}
-
-	if err := tr.filesystemToExt4(root, fs, "/"); err != nil {
-		return fmt.Errorf("failed to convert filesystem to ext4: %w", err)
-	}
-
-	for _, deferred := range tr.deferredFilesystem {
-		if err := deferred(); err != nil {
-			return err
-		}
-	}
-
-	slog.Debug("built filesystem", "took", time.Since(start))
 
 	if tr.exportFilesystem != "" {
 		start := time.Now()
@@ -689,31 +742,7 @@ func (tr *TinyRange) runWithConfig() error {
 
 		backend := &vmBackend{vm: vmem}
 
-		for {
-			conn, err := listener.Accept()
-			if errors.Is(err, net.ErrClosed) {
-				return nil
-			} else if err != nil {
-				return err
-			}
-
-			go func(conn net.Conn) {
-				slog.Debug("got nbd connection", "remote", conn.RemoteAddr().String())
-				err = gonbd.Handle(conn, []gonbd.Export{{
-					Name:        "",
-					Description: "",
-					Backend:     backend,
-				}}, &gonbd.Options{
-					ReadOnly:           false,
-					MinimumBlockSize:   1024,
-					PreferredBlockSize: uint32(backend.PreferredBlockSize()),
-					MaximumBlockSize:   32*1024*1024 - 1,
-				})
-				if err != nil {
-					slog.Warn("nbd server failed to handle", "error", err)
-				}
-			}(conn)
-		}
+		tr.nbdLoop(listener, backend)
 	}
 
 	start = time.Now()
@@ -725,34 +754,7 @@ func (tr *TinyRange) runWithConfig() error {
 
 	backend := &vmBackend{vm: vmem}
 
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if errors.Is(err, net.ErrClosed) {
-				return
-			} else if err != nil {
-				slog.Error("nbd server failed to accept", "error", err)
-				return
-			}
-
-			go func(conn net.Conn) {
-				slog.Debug("got nbd connection", "remote", conn.RemoteAddr().String())
-				err = gonbd.Handle(conn, []gonbd.Export{{
-					Name:        "",
-					Description: "",
-					Backend:     backend,
-				}}, &gonbd.Options{
-					ReadOnly:           false,
-					MinimumBlockSize:   1024,
-					PreferredBlockSize: uint32(backend.PreferredBlockSize()),
-					MaximumBlockSize:   32*1024*1024 - 1,
-				})
-				if err != nil {
-					slog.Warn("nbd server failed to handle", "error", err)
-				}
-			}(conn)
-		}
-	}()
+	go tr.nbdLoop(listener, backend)
 
 	ns := netstack.New()
 
@@ -796,7 +798,7 @@ func (tr *TinyRange) runWithConfig() error {
 		topConfig.Architecture,
 		topConfig.Resolve(topConfig.KernelFilename),
 		topConfig.Resolve(topConfig.InitFilesystemFilename),
-		nbdAddress,
+		[]string{nbdAddress.Export("root")},
 		topConfig.Interaction,
 	)
 	if err != nil {
@@ -808,68 +810,9 @@ func (tr *TinyRange) runWithConfig() error {
 		return fmt.Errorf("failed to attach network interface: %w", err)
 	}
 
-	// Create internal HTTP server.
-	{
-		listen, err := ns.ListenInternal("tcp", ":80")
-		if err != nil {
-			return fmt.Errorf("failed to listen internal: %w", err)
-		}
-
-		mux := http.NewServeMux()
-
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Length", fmt.Sprintf("%d", 4096*1024*1024))
-			io.CopyN(w, rand.Reader, 4096*1024*1024)
-		})
-
-		go func() {
-			slog.Error("failed to serve", "err", http.Serve(listen, mux))
-		}()
-	}
-
 	// Create DNS server.
-	{
-		dnsServer := &dnsServer{
-			dnsLookup: func(name string) (string, error) {
-				if name == "tinyrange." {
-					return "10.42.0.2", nil
-				} else if name == "host.internal." {
-					return "10.42.0.1", nil
-				}
-
-				slog.Debug("doing DNS lookup", "name", name)
-
-				// Do a DNS lookup on the host.
-				addr, err := net.ResolveIPAddr("ip4", name)
-				if err != nil {
-					return "", err
-				}
-
-				return string(addr.IP.String()), nil
-			},
-		}
-		dnsMux := dns.NewServeMux()
-
-		dnsMux.HandleFunc(".", dnsServer.handleDnsRequest)
-
-		packetConn, err := ns.ListenPacketInternal("udp", ":53")
-		if err != nil {
-			return fmt.Errorf("failed to listen internal (dns): %w", err)
-		}
-
-		dnsServer.server = &dns.Server{
-			Addr:       ":53",
-			Net:        "udp",
-			Handler:    dnsMux,
-			PacketConn: packetConn,
-		}
-
-		go func() {
-			err := dnsServer.server.ActivateAndServe()
-			if err != nil {
-				slog.Error("dns: failed to start server", "error", err.Error())
-			}
-		}()
+	if err := tr.startDNSServer(ns); err != nil {
+		return fmt.Errorf("failed to start DNS server: %w", err)
 	}
 
 	// Create forwarder for SSH connection.
@@ -907,36 +850,9 @@ func (tr *TinyRange) runWithConfig() error {
 	}
 
 	for _, port := range exportedPorts {
-		portListen, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
-		if err != nil {
-			return err
+		if err := tr.exportPort(ns, port); err != nil {
+			return fmt.Errorf("failed to export port: %w", err)
 		}
-
-		go func() {
-			for {
-				conn, err := portListen.Accept()
-				if err != nil {
-					slog.Error("failed to accept", "err", err)
-					return
-				}
-
-				go func() {
-					defer conn.Close()
-
-					clientConn, err := ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("10.42.0.2:%d", port))
-					if err != nil {
-						slog.Error("failed to dial vm port", "err", err)
-						return
-					}
-					defer clientConn.Close()
-
-					if err := common.Proxy(clientConn, conn, 4096); err != nil {
-						slog.Error("failed to proxy connection", "err", err)
-						return
-					}
-				}()
-			}
-		}()
 	}
 
 	top := filesystem.NewMemoryDirectory()

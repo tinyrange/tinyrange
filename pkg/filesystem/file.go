@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 	"github.com/tinyrange/tinyrange/pkg/hash"
-	"github.com/tinyrange/vm"
 )
 
 func GetLinkName(ent File) (string, error) {

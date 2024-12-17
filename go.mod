@@ -29,7 +29,6 @@ require (
 	github.com/ramr/go-reaper v0.2.3
 	github.com/schollz/progressbar/v3 v3.17.1
 	github.com/spf13/cobra v1.8.1
-	github.com/tinyrange/vm v0.0.0-20240616031946-b46d8ccc03db
 	github.com/tinyrange/wireguard v0.1.0
 	github.com/wader/readline v0.0.0-20230307172220-bcb7158e7448
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8

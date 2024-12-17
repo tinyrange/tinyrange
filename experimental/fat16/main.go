@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem/fat16"
-	"github.com/tinyrange/vm"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 )
 
 var (

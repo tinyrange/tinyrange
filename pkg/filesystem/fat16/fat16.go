@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	vm "github.com/tinyrange/vm"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 )
 
 type fatType byte

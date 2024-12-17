@@ -46,7 +46,7 @@ type VirtualMachine struct {
 	architecture config.CPUArchitecture
 	kernel       string
 	initrd       string
-	diskImage    string
+	diskImages   []string
 	interaction  string
 	nic          *netstack.NetworkInterface
 	cmd          *exec.Cmd
@@ -120,7 +120,19 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 	} else if name == "initrd" {
 		return starlark.String(vm.initrd), nil
 	} else if name == "disk_image" {
-		return starlark.String(vm.diskImage), nil
+		if len(vm.diskImages) > 0 {
+			return starlark.String(vm.diskImages[0]), nil
+		} else {
+			return starlark.None, nil
+		}
+	} else if name == "disk_images" {
+		ret := make([]starlark.Value, len(vm.diskImages))
+
+		for i, diskImage := range vm.diskImages {
+			ret[i] = starlark.String(diskImage)
+		}
+
+		return starlark.NewList(ret), nil
 	} else if name == "net_send" {
 		return starlark.String(vm.nic.NetSend), nil
 	} else if name == "net_recv" {
@@ -391,7 +403,7 @@ func (factory *VirtualMachineFactory) Create(
 	architecture config.CPUArchitecture,
 	kernel string,
 	initrd string,
-	diskImage string,
+	diskImages []string,
 	interaction string,
 ) (*VirtualMachine, error) {
 	return &VirtualMachine{
@@ -401,7 +413,7 @@ func (factory *VirtualMachineFactory) Create(
 		architecture: architecture,
 		kernel:       kernel,
 		initrd:       initrd,
-		diskImage:    diskImage,
+		diskImages:   diskImages,
 		interaction:  interaction,
 	}, nil
 }

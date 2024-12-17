@@ -14,7 +14,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tinyrange/vm"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 	"golang.org/x/exp/constraints"
 )
 
@@ -1435,109 +1436,129 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool, resol
 	}
 }
 
-func (fs *Ext4Filesystem) Mkdir(filename string, all bool) error {
+func (fs *Ext4Filesystem) mkdir(filename string, all bool) (*InodeWrapper, error) {
 	parentName := path.Dir(filename)
 	newDirName := path.Base(filename)
 
 	node, err := fs.getNode(parentName, false, all, false)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	d, err := fs.allocateInode()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := d.allocateDirectory(node); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := node.addDirectoryEntry(d, path.Base(newDirName)); err != nil {
-		return err
+		return nil, err
 	}
 
 	fs.inodeCache[filename] = d
 
-	return nil
+	return d, nil
 }
 
-func (fs *Ext4Filesystem) CreateFile(filename string, content vm.MemoryRegion) error {
+func (fs *Ext4Filesystem) Mkdir(filename string, all bool) error {
+	_, err := fs.mkdir(filename, all)
+	return err
+}
+
+func (fs *Ext4Filesystem) createFile(filename string, content vm.MemoryRegion) (*InodeWrapper, error) {
 	node, err := fs.getNode(path.Dir(filename), false, false, true)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if !node.Mode().IsDir() {
-		return fmt.Errorf("parent is not a directory: %s", node.Mode().Type())
+		return nil, fmt.Errorf("parent is not a directory: %s", node.Mode().Type())
 	}
 
 	f, err := fs.allocateInode()
 	if err != nil {
-		return fmt.Errorf("failed to allocate inode: %v", err)
+		return nil, fmt.Errorf("failed to allocate inode: %v", err)
 	}
 
 	if err := f.addContents(content, false); err != nil {
-		return fmt.Errorf("failed to add contents: %v", err)
+		return nil, fmt.Errorf("failed to add contents: %v", err)
 	}
 
 	if err := node.addDirectoryEntry(f, path.Base(filename)); err != nil {
-		return fmt.Errorf("CreateFile(%s): failed to addDirectoryEntry: %v", filename, err)
+		return nil, fmt.Errorf("CreateFile(%s): failed to addDirectoryEntry: %v", filename, err)
 	}
 
-	return nil
+	return f, nil
 }
 
-func (fs *Ext4Filesystem) Link(filename string, target string) error {
+func (fs *Ext4Filesystem) CreateFile(filename string, content vm.MemoryRegion) error {
+	_, err := fs.createFile(filename, content)
+	return err
+}
+
+func (fs *Ext4Filesystem) link(filename string, target string) (*InodeWrapper, error) {
 	if !strings.HasPrefix(target, "/") {
-		return fmt.Errorf("hard links must use absolute paths: %s", target)
+		return nil, fmt.Errorf("hard links must use absolute paths: %s", target)
 	}
 
 	node, err := fs.getNode(path.Dir(filename), false, false, true)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if !node.Mode().IsDir() {
-		return goFs.ErrInvalid
+		return nil, goFs.ErrInvalid
 	}
 
 	targetNode, err := fs.getNode(target, false, false, false)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := node.addDirectoryEntry(targetNode, path.Base(filename)); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return targetNode, nil
 }
 
-func (fs *Ext4Filesystem) Symlink(filename string, target string) error {
+func (fs *Ext4Filesystem) Link(filename string, target string) error {
+	_, err := fs.link(filename, target)
+	return err
+}
+
+func (fs *Ext4Filesystem) symlink(filename string, target string) (*InodeWrapper, error) {
 	node, err := fs.getNode(path.Dir(filename), false, false, true)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if !node.Mode().IsDir() {
-		return goFs.ErrInvalid
+		return nil, goFs.ErrInvalid
 	}
 
 	f, err := fs.allocateInode()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := f.addContents(vm.RawRegion(target), true); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := node.addDirectoryEntry(f, path.Base(filename)); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return f, nil
+}
+
+func (fs *Ext4Filesystem) Symlink(filename string, target string) error {
+	_, err := fs.symlink(filename, target)
+	return err
 }
 
 func (fs *Ext4Filesystem) Exists(filename string) bool {
@@ -1656,6 +1677,136 @@ func (fs *Ext4Filesystem) MakeDeterministic(fsUuid uuid.UUID, createTime time.Ti
 	return nil
 }
 
+type filesystemCreationContext struct {
+	deferredFilesystem []func() error
+}
+
+// Recurse into an filesystem.Directory and put all it's contents into a ext4 filesystem.
+func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir filesystem.Directory, name string) error {
+	ents, err := dir.Readdir()
+	if err != nil {
+		return fmt.Errorf("failed to readdir: %w", err)
+	}
+
+	for _, ent := range ents {
+		info, err := ent.File.Stat()
+		if err != nil {
+			return fmt.Errorf("failed to stat: %w", err)
+		}
+
+		name := path.Join(name, path.Base(ent.Name))
+
+		skip := false
+
+		var node *InodeWrapper
+
+		switch info.Kind() {
+		case filesystem.TypeDirectory:
+			node, err = fs.mkdir(name, false)
+			if err != nil {
+				return fmt.Errorf("failed to mkdir %s: %w", name, err)
+			}
+
+			child, ok := ent.File.(filesystem.Directory)
+			if !ok {
+				return fmt.Errorf("directory does not implement Directory: %T", ent.File)
+			}
+
+			if err := fs.addDirectory(ctx, child, name); err != nil {
+				return err
+			}
+		case filesystem.TypeLink:
+			target, err := filesystem.GetLinkName(ent.File)
+			if err != nil {
+				return fmt.Errorf("failed to get linkname: %w", err)
+			}
+
+			node, err = fs.link(name, target)
+			if err != nil {
+				ctx.deferredFilesystem = append(ctx.deferredFilesystem, func() error {
+					if err := fs.Link(name, target); err != nil {
+						return fmt.Errorf("failed to make hard link: %w", err)
+					}
+
+					if err := fs.Chmod(name, info.Mode()); err != nil {
+						return fmt.Errorf("failed to chmod: %w", err)
+					}
+
+					uid, gid, err := filesystem.GetUidAndGid(ent.File)
+					if err != nil {
+						return fmt.Errorf("failed to GetUidAndGid: %w", err)
+					}
+
+					if err := fs.Chown(name, uint16(uid), uint16(gid)); err != nil {
+						return fmt.Errorf("failed to chown: %w", err)
+					}
+
+					return nil
+				})
+
+				skip = true
+			}
+		case filesystem.TypeSymlink:
+			target, err := filesystem.GetLinkName(ent.File)
+			if err != nil {
+				return fmt.Errorf("failed to get linkname: %w", err)
+			}
+
+			node, err = fs.symlink(name, target)
+			if err != nil {
+				return fmt.Errorf("failed to make symlink: %w", err)
+			}
+		case filesystem.TypeRegular:
+			f, err := ent.File.Open()
+			if err != nil {
+				return fmt.Errorf("failed to open file for guest: %T %w", ent.File, err)
+			}
+
+			region := vm.NewReaderRegion(f, info.Size())
+
+			node, err = fs.createFile(name, region)
+			if err != nil {
+				return fmt.Errorf("failed to create file in guest %s: %w", name, err)
+			}
+		default:
+			return fmt.Errorf("unimplemented kind: %s", info.Kind())
+		}
+
+		if !skip {
+			if err := node.chmod(info.Mode()); err != nil {
+				return fmt.Errorf("failed to chmod: %w", err)
+			}
+
+			uid, gid, err := filesystem.GetUidAndGid(ent.File)
+			if err != nil {
+				return fmt.Errorf("failed to GetUidAndGid: %w", err)
+			}
+
+			if err := node.chown(uint16(uid), uint16(gid)); err != nil {
+				return fmt.Errorf("failed to chown: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (fs *Ext4Filesystem) AddDirectory(dir filesystem.Directory) error {
+	ctx := &filesystemCreationContext{}
+
+	if err := fs.addDirectory(ctx, dir, "/"); err != nil {
+		return fmt.Errorf("failed to convert filesystem to ext4: %w", err)
+	}
+
+	for _, fn := range ctx.deferredFilesystem {
+		if err := fn(); err != nil {
+			return fmt.Errorf("failed to run deferred filesystem operation: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func (fs *Ext4Filesystem) PrintStats() {
 	slog.Info("ext4 stats",
 		"totalMapRegion", float64(totalMapRegion)/1000/1000,
@@ -1678,8 +1829,6 @@ func (sb *Superblock) blockSize() uint64 {
 }
 
 func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext4Filesystem, error) {
-	start := time.Now()
-
 	inodesPerGroup := 8192
 	blockSize := 4096
 	blockCount := roundUpDiv(size, int64(blockSize))
@@ -1888,8 +2037,6 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 	if err := fs.mapRegion(make(vm.RawRegion, 1), size-1); err != nil {
 		return nil, err
 	}
-
-	slog.Debug("created fs", "time", time.Since(start))
 
 	return fs, nil
 }

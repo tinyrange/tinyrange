@@ -1262,11 +1262,12 @@ def main(ctx):
         "panic=-1",
     ]
 
-    # Add the root device using virtio-blk.
-    args += [
-        "-drive",
-        "file={},if=virtio,readonly=off,format=raw".format(ctx.disk_image),
-    ]
+    # Add block devices using virtio-blk.
+    for img in ctx.disk_images:
+        args += [
+            "-drive",
+            "file={},if=virtio,readonly=off,format=raw".format(img),
+        ]
 
     # Set the init executable.
     kernel_cmdline.append("init=/init")

@@ -1,4 +1,4 @@
-package filesystem
+package ext4
 
 import (
 	"archive/tar"
@@ -9,11 +9,10 @@ import (
 	"path"
 	"strings"
 
-	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
-	"github.com/tinyrange/vm"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 )
 
-func ExtractReaderTo(input io.Reader, kind string, fs *ext4.Ext4Filesystem, filter func(hdr *tar.Header) bool) error {
+func ExtractReaderTo(input io.Reader, kind string, fs *Ext4Filesystem, filter func(hdr *tar.Header) bool) error {
 	var (
 		reader io.Reader
 		err    error
@@ -94,7 +93,7 @@ func ExtractReaderTo(input io.Reader, kind string, fs *ext4.Ext4Filesystem, filt
 	}
 }
 
-func ExtractArchiveTo(input string, fs *ext4.Ext4Filesystem) error {
+func ExtractArchiveTo(input string, fs *Ext4Filesystem) error {
 	f, err := os.Open(input)
 	if err != nil {
 		return err

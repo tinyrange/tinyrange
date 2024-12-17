@@ -9,7 +9,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
-	"github.com/tinyrange/vm"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 )
 
 var (
