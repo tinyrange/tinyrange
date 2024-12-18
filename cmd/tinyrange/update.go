@@ -134,9 +134,13 @@ func installLocalUpdate(filename string, deleteUpdate bool) error {
 
 	slog.Info("testing new version")
 
-	cmd := exec.Command(newExe, "login", "--buildDir", rootBuildDir, "-E", "echo \"New Version Tested\"")
+	args := []string{newExe, "login", "--buildDir", rootBuildDir, "-E", "echo \"New Version Tested\""}
+
+	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
+	slog.Info("running new version", "args", args)
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("new version failed to run: %w", err)

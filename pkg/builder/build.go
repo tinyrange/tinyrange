@@ -25,6 +25,11 @@ type BuildContext struct {
 	hasCached bool
 }
 
+// BuildDir implements common.BuildContext.
+func (b *BuildContext) BuildDir() string {
+	return b.database.BuildDir()
+}
+
 func (b *BuildContext) DisplayTree() {
 	var dumpContext func(ctx *BuildContext, prefix string)
 
