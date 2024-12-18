@@ -304,6 +304,10 @@ func (m *memoryDirectory) Create(name string, f File) (File, error) {
 		return nil, nil
 	}
 
+	if f == nil {
+		f = NewMemoryFile(TypeRegular)
+	}
+
 	m.names = append(m.names, name)
 	m.entries[name] = f
 

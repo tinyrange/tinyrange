@@ -1,7 +1,6 @@
 package filesystem
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
@@ -398,6 +397,66 @@ func SourceFromArchive(a Archive) (hash.SerializableValue, error) {
 	}
 }
 
+type memoryFileHandle struct {
+	f      *memoryFile
+	offset int64
+}
+
+// Read implements io.Reader.
+func (m *memoryFileHandle) Read(p []byte) (n int, err error) {
+	n, err = m.ReadAt(p, m.offset)
+	m.offset += int64(n)
+
+	return
+}
+
+// ReadAt implements io.ReaderAt.
+func (m *memoryFileHandle) ReadAt(p []byte, off int64) (n int, err error) {
+	if off < 0 || off >= int64(len(m.f.contents)) {
+		return 0, io.EOF
+	}
+
+	n = copy(p, m.f.contents[off:])
+	if n < len(p) {
+		err = io.EOF
+	}
+
+	return
+}
+
+// Close implements io.Closer.
+func (m *memoryFileHandle) Close() error {
+	return nil
+}
+
+// Write implements io.Writer.
+func (m *memoryFileHandle) Write(p []byte) (n int, err error) {
+	n, err = m.WriteAt(p, m.offset)
+	m.offset += int64(n)
+
+	return
+}
+
+// WriteAt implements io.WriterAt.
+func (m *memoryFileHandle) WriteAt(p []byte, off int64) (n int, err error) {
+	if off < 0 {
+		return 0, fmt.Errorf("negative offset")
+	}
+
+	if off+int64(len(p)) > int64(len(m.f.contents)) {
+		// Extend the file.
+		m.f.contents = append(m.f.contents, make([]byte, int(off+int64(len(p)))-len(m.f.contents))...)
+	}
+
+	n = copy(m.f.contents[off:], p)
+
+	return
+}
+
+var (
+	_ WritableFileHandle = &memoryFileHandle{}
+)
+
 type memoryFile struct {
 	kind     FileType
 	mTime    time.Time
@@ -440,7 +499,7 @@ func (m *memoryFile) Chtimes(mtime time.Time) error {
 
 // Open implements MutableFile.
 func (m *memoryFile) Open() (FileHandle, error) {
-	return NewNopCloserFileHandle(bytes.NewReader(m.contents)), nil
+	return &memoryFileHandle{f: m}, nil
 }
 
 // Overwrite implements MutableFile.
