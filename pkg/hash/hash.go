@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"reflect"
+	"sync"
 )
 
 func GetSha256Hash(content []byte) string {
@@ -86,6 +87,7 @@ type serializedDefinition struct {
 type CacheMissFunction func(hash string) (io.ReadCloser, error)
 
 type DefinitionDatabase struct {
+	mtx   sync.RWMutex
 	cache map[string]Definition
 	miss  CacheMissFunction
 }
@@ -102,6 +104,9 @@ func (db *DefinitionDatabase) HashDefinition(d Definition) (string, error) {
 	}
 
 	hash := GetSha256Hash(val)
+
+	db.mtx.Lock()
+	defer db.mtx.Unlock()
 
 	db.cache[hash] = d
 
@@ -506,6 +511,14 @@ func (db *DefinitionDatabase) UnmarshalDefinition(input io.Reader) (Definition, 
 	return fac.Create(params), nil
 }
 
+func (db *DefinitionDatabase) getFromCache(hash string) (Definition, bool) {
+	db.mtx.RLock()
+	defer db.mtx.RUnlock()
+
+	def, ok := db.cache[hash]
+	return def, ok
+}
+
 func (db *DefinitionDatabase) unmarshalPointer(ptr definitionPointer) (Definition, error) {
 	if ptr.TypeName == "" {
 		// assume a null ptr.
@@ -517,8 +530,11 @@ func (db *DefinitionDatabase) unmarshalPointer(ptr definitionPointer) (Definitio
 		return nil, fmt.Errorf("attempt to unmarshalPointer with empty hash")
 	}
 
-	val, ok := db.cache[ptr.Hash]
+	val, ok := db.getFromCache(ptr.Hash)
 	if !ok {
+		db.mtx.Lock()
+		defer db.mtx.Unlock()
+
 		f, err := db.miss(ptr.Hash)
 		if err != nil {
 			return nil, fmt.Errorf("could not find definitionCache entry for %s: %s", ptr.Hash, err)

@@ -12,8 +12,10 @@ import (
 	"log/slog"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/buildinfo"
@@ -57,6 +59,23 @@ func readFile(file filesystem.File) ([]byte, error) {
 	defer r.Close()
 
 	return io.ReadAll(r)
+}
+
+func writeFile(dir filesystem.MutableDirectory, name string, contents []byte) error {
+	file, err := dir.Create(name, nil)
+	if err != nil {
+		return err
+	}
+	if file == nil {
+		return fs.ErrExist
+	}
+
+	mutFile, ok := file.(filesystem.MutableFile)
+	if !ok {
+		return fmt.Errorf("file is not mutable: %T dir=%T", file, dir)
+	}
+
+	return mutFile.Overwrite(contents)
 }
 
 type BuildReceipt struct {
@@ -192,7 +211,7 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 			return nil, fmt.Errorf("failed to hash definition: %w", err)
 		}
 
-		slog.Info("skipping build", "hash", hash[:8], "parent", parentHash[:8])
+		slog.Debug("skipping build", "hash", hash[:8], "parent", parentHash[:8])
 
 		return art, nil
 	}
@@ -230,6 +249,7 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 		return nil, fmt.Errorf("failed to build: %w", err)
 	}
 	if art == nil {
+		slog.Debug("returning existing build", "hash", hash[:8])
 		return b.ArtifactFromHash(hash)
 	}
 	return art, nil
@@ -282,7 +302,17 @@ func (b *builder) ArtifactFromHash(hash string) (BuildArtifact, error) {
 
 // DefinitionFromArtifact implements Builder.
 func (b *builder) DefinitionFromArtifact(artifact BuildArtifact) (BuildDefinition, error) {
-	return nil, fmt.Errorf("Builder.DefinitionFromArtifact not implemented")
+	rawDef, err := artifact.RawDefinition()
+	if err != nil {
+		return nil, err
+	}
+
+	def, err := b.hashDb.UnmarshalDefinition(rawDef)
+	if err != nil {
+		return nil, err
+	}
+
+	return def.(BuildDefinition), nil
 }
 
 type garbageCollectorState struct {
@@ -489,6 +519,7 @@ type BuildContext interface {
 }
 
 type buildContext struct {
+	mtx            sync.Mutex
 	builder        Builder
 	parent         BuildContext
 	hash           string
@@ -496,6 +527,7 @@ type buildContext struct {
 	def            BuildDefinition
 	receipt        BuildReceipt
 	outputs        map[string]*buildOutputWriter
+	artifact       BuildArtifact
 }
 
 // Hash implements BuildContext.
@@ -511,14 +543,26 @@ func (b *buildContext) SetExpireTime(expireTime time.Time) {
 	b.receipt.ExpireTime = expireTime
 }
 
-// BuildChild implements BuildContext.
-func (b *buildContext) BuildChild(def BuildDefinition, opts BuildOptions) (BuildArtifact, error) {
+func (b *buildContext) addDependency(def BuildDefinition) error {
 	hash, err := b.builder.HashDefinition(def)
 	if err != nil {
-		return nil, fmt.Errorf("failed to hash definition: %w", err)
+		return fmt.Errorf("failed to hash definition: %w", err)
+	}
+
+	if ok := slices.Contains(b.receipt.Dependencies, hash); ok {
+		return nil
 	}
 
 	b.receipt.Dependencies = append(b.receipt.Dependencies, hash)
+
+	return nil
+}
+
+// BuildChild implements BuildContext.
+func (b *buildContext) BuildChild(def BuildDefinition, opts BuildOptions) (BuildArtifact, error) {
+	if err := b.addDependency(def); err != nil {
+		return nil, err
+	}
 
 	return b.builder.BuildChild(b, def, opts)
 }
@@ -565,125 +609,102 @@ func (b *buildContext) CreateOutput(name string) (BuildOutputWriter, error) {
 	return writer, nil
 }
 
-func writeFile(dir filesystem.MutableDirectory, name string, contents []byte) error {
-	file, err := dir.Create(name, nil)
-	if err != nil {
-		return err
-	}
-
-	mutFile, ok := file.(filesystem.MutableFile)
-	if !ok {
-		return fmt.Errorf("file is not mutable: %T", file)
-	}
-
-	return mutFile.Overwrite(contents)
-}
-
-func createLockFile(buildDir filesystem.MutableDirectory) (bool, error) {
+func writeLockFile(hash string, buildDir filesystem.MutableDirectory) (bool, error) {
 	// write the lock file.
-	processPid := os.Getpid()
-	if err := writeFile(buildDir, "lock", []byte(fmt.Sprintf("%d", processPid))); err != nil {
+	pid := os.Getpid()
+	pidStr := strconv.Itoa(pid)
+
+	if err := writeFile(buildDir, LOCK_FILENAME, []byte(pidStr)); err != nil {
 		return false, fmt.Errorf("failed to write lock file: %w", err)
 	}
 
-	// double check that we didn't race on the file creation and read back the file to ensure it's correct.
-	lockFile, err := buildDir.GetChild("lock")
+	// double check that we own the lock file that was written.
+	lockFile, err := buildDir.GetChild(LOCK_FILENAME)
 	if err != nil {
-		return false, fmt.Errorf("failed to read lock file: %w", err)
+		return false, err
 	}
 
-	if contents, err := readFile(lockFile.File); err != nil {
-		return false, fmt.Errorf("failed to read lock file: %w", err)
-	} else if string(contents) != fmt.Sprintf("%d", processPid) {
-		return false, fmt.Errorf("lock file contents do not match: %s", contents)
+	pidBytes, err := readFile(lockFile.File)
+	if err != nil {
+		return false, err
+	}
+
+	if string(pidBytes) != pidStr {
+		pid, err := strconv.Atoi(string(pidBytes))
+		if err != nil {
+			return false, err
+		}
+
+		return waitForLockFile(hash, buildDir, pid)
 	}
 
 	return true, nil
 }
 
-// returns true if we own the lock file and need to build.
-func exclusiveLockForBuild(hash string, buildDir filesystem.MutableDirectory) (bool, error) {
-	// keep trying to create the lock file until we succeed.
+func waitForLockFile(hash string, buildDir filesystem.MutableDirectory, pid int) (bool, error) {
+	// wait for the lock to be released.
+	slog.Info("waiting for lock release", "hash", hash[:8])
+
 	for {
-		lockFile, err := buildDir.GetChild(LOCK_FILENAME)
+		time.Sleep(100 * time.Millisecond)
+		// slog.Info("wait")
+
+		// check to see if the lock file still exists.
+		_, err := buildDir.GetChild(LOCK_FILENAME)
 		if err == nil {
-			// read the lock file.
-			contents, err := readFile(lockFile.File)
-			if errors.Is(err, fs.ErrNotExist) {
-				ok, err := createLockFile(buildDir)
-				if err != nil {
-					return false, fmt.Errorf("failed to create lock file: %w", err)
-				}
-
-				if ok {
-					return true, nil
-				} else {
-					continue
-				}
-			} else if err != nil {
-				return true, fmt.Errorf("failed to read lock file: %w", err)
-			}
-
-			pid, err := strconv.Atoi(string(contents))
-			if err != nil {
-				// the lock file is an invalid format. this is a fatal error.
-				return false, fmt.Errorf("invalid lock file contents: %w", err)
-			}
-
-			// check if the process is running.
-			ok, err := ProcessRunning(pid)
-			if err != nil {
-				// we can't determine if the process is running. this is a fatal error.
-				return false, fmt.Errorf("failed to check if process is running: %w", err)
-			}
-
-			// wait for the build to finish in the other process.
-			if ok {
-				slog.Info("waiting for lock file to be removed", "pid", pid, "hash", hash[:8])
-				for {
-					_, err := buildDir.GetChild(LOCK_FILENAME)
-					if errors.Is(err, fs.ErrNotExist) {
-						break
-					}
-
-					time.Sleep(100 * time.Millisecond)
-				}
-
-				// we don't need to rebuild.
-				return false, nil
-			} else {
-				// the process is not running, remove the lock file.
-				if err := buildDir.Unlink(LOCK_FILENAME); err != nil {
-					return false, fmt.Errorf("failed to remove lock file: %w", err)
-				}
-
-				ok, err := createLockFile(buildDir)
-				if err != nil {
-					return false, fmt.Errorf("failed to create lock file: %w", err)
-				}
-
-				if ok {
-					return true, nil
-				} else {
-					continue
-				}
-			}
+			continue
 		} else if !errors.Is(err, fs.ErrNotExist) {
-			return false, fmt.Errorf("failed to get lock file: %w", err)
+			return false, err
+		}
+
+		// if the process crashed, we need to rebuild.
+		if running, _ := ProcessRunning(pid); !running {
+			return writeLockFile(hash, buildDir)
 		} else {
-			// the lock file does not exist.
-			ok, err := createLockFile(buildDir)
-			if err != nil {
-				return false, fmt.Errorf("failed to create lock file: %w", err)
-			}
-			if ok {
-				return true, nil
-			}
+			// the lock file was deleted and the process is still
+			// running so we assume it's built successfully.
+			return false, nil
 		}
 	}
 }
 
+// returns true if we own the lock file and need to build.
+func exclusiveLockForBuild(hash string, buildDir filesystem.MutableDirectory) (bool, error) {
+	// check if the lock file exists.
+	lockFile, err := buildDir.GetChild(LOCK_FILENAME)
+	if errors.Is(err, fs.ErrNotExist) {
+		return writeLockFile(hash, buildDir)
+	} else if err != nil {
+		return false, err
+	}
+
+	// read the lock file.
+	pidBytes, err := readFile(lockFile.File)
+	if err != nil {
+		return false, err
+	}
+
+	pid, err := strconv.Atoi(string(pidBytes))
+	if err != nil {
+		return false, err
+	}
+
+	// check if the process is still running.
+	if running, _ := ProcessRunning(pid); !running {
+		return writeLockFile(hash, buildDir)
+	} else {
+		return waitForLockFile(hash, buildDir, pid)
+	}
+}
+
 func (b *buildContext) build() (BuildArtifact, error) {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	if b.artifact != nil {
+		return b.artifact, nil
+	}
+
 	start := time.Now()
 
 	// check if the lock file exists.
@@ -695,7 +716,7 @@ func (b *buildContext) build() (BuildArtifact, error) {
 		// the build is already in progress.
 		return nil, nil
 	}
-	defer b.buildDirectory.Unlink("lock")
+	defer b.buildDirectory.Unlink(LOCK_FILENAME)
 
 	slog.Info("building", "hash", b.hash[:8])
 
@@ -709,9 +730,50 @@ func (b *buildContext) build() (BuildArtifact, error) {
 		return nil, fmt.Errorf("failed to write definition: %w", err)
 	}
 
-	// build the definition.
-	if err := b.def.Build(b); err != nil {
-		return nil, fmt.Errorf("failed to build definition %s: %w", b.hash[:8], err)
+	// start builds for any dependencies.
+	deps, err := b.def.Dependencies()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dependencies: %w", err)
+	}
+
+	errChan := make(chan error)
+	doneChan := make(chan struct{})
+
+	wg := sync.WaitGroup{}
+
+	for _, dep := range deps {
+		wg.Add(1)
+
+		if err := b.addDependency(dep); err != nil {
+			return nil, err
+		}
+
+		go func(dep BuildDefinition) {
+			defer wg.Done()
+			if _, err := b.builder.BuildChild(b, dep, BuildOptions{}); err != nil {
+				errChan <- fmt.Errorf("failed to build dependency %s: %w", dep.Params().SerializableType(), err)
+			}
+		}(dep)
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// build the definition.
+		if err := b.def.Build(b); err != nil {
+			errChan <- fmt.Errorf("failed to build definition %s: %w", b.hash[:8], err)
+		}
+	}()
+
+	go func() {
+		wg.Wait()
+		close(doneChan)
+	}()
+
+	select {
+	case err := <-errChan:
+		return nil, err
+	case <-doneChan:
 	}
 
 	// set the written files in the receipt.
@@ -737,10 +799,12 @@ func (b *buildContext) build() (BuildArtifact, error) {
 	slog.Info("built", "hash", b.hash[:8], "duration", b.receipt.BuildDuration)
 
 	// create the artifact.
-	return &buildArtifact{
+	b.artifact = &buildArtifact{
 		receipt:  b.receipt,
 		buildDir: b.buildDirectory,
-	}, nil
+	}
+
+	return b.artifact, nil
 }
 
 var (
@@ -755,6 +819,7 @@ type BuildDefinition interface {
 }
 
 type basicBuildDefinitionParams struct {
+	Name      string
 	SleepTime int
 	Children  []BuildDefinition
 }
@@ -770,9 +835,13 @@ type basicBuildDefinition struct {
 	params basicBuildDefinitionParams
 }
 
+func (b *basicBuildDefinition) String() string {
+	return b.params.Name
+}
+
 // Create implements BuildDefinition.
 func (b *basicBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &basicBuildDefinition{params: *params.(*basicBuildDefinitionParams)}
+	return &basicBuildDefinition{params: params.(basicBuildDefinitionParams)}
 }
 
 // Params implements BuildDefinition.
@@ -787,11 +856,15 @@ func (b *basicBuildDefinition) SerializableType() string {
 
 // Build implements BuildDefinition.
 func (b *basicBuildDefinition) Build(ctx BuildContext) error {
+	slog.Info("[#] starting", "name", b.params.Name)
+
 	for _, child := range b.params.Children {
 		if _, err := ctx.BuildChild(child, BuildOptions{}); err != nil {
 			return err
 		}
 	}
+
+	slog.Info("[#] building", "name", b.params.Name)
 
 	time.Sleep(time.Duration(b.params.SleepTime) * time.Millisecond)
 
@@ -805,6 +878,8 @@ func (b *basicBuildDefinition) Build(ctx BuildContext) error {
 		return fmt.Errorf("failed to write output: %w", err)
 	}
 
+	slog.Info("[#] finished", "name", b.params.Name)
+
 	return nil
 }
 
@@ -817,12 +892,32 @@ var (
 	_ BuildDefinition = &basicBuildDefinition{}
 )
 
-func newBasicBuildDefinition(sleepTime time.Duration, children ...BuildDefinition) *basicBuildDefinition {
+func newBasicBuildDefinition(name string, sleepTime time.Duration, children ...BuildDefinition) *basicBuildDefinition {
 	return &basicBuildDefinition{
 		params: basicBuildDefinitionParams{
+			Name:      name,
 			SleepTime: int(sleepTime.Milliseconds()),
 			Children:  children,
 		},
+	}
+}
+
+func dumpTree(b Builder, art BuildArtifact, prefix string) {
+	def, err := b.DefinitionFromArtifact(art)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sfailed to get definition: %v\n", prefix, err)
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "%s%s [%s]\n", prefix, def, art.Receipt().BuildDuration)
+	for _, dep := range art.Receipt().Dependencies {
+		child, err := b.ArtifactFromHash(dep)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%sfailed to get child: %v\n", prefix, err)
+			continue
+		}
+
+		dumpTree(b, child, prefix+"  ")
 	}
 }
 
@@ -831,10 +926,14 @@ func appMain() error {
 
 	builder := NewBuilder(filesystem.NewMemoryDirectory())
 
-	item2 := newBasicBuildDefinition(200 * time.Millisecond)
+	item2 := newBasicBuildDefinition("item2", 200*time.Millisecond)
 
-	defTree := newBasicBuildDefinition(100*time.Millisecond,
-		newBasicBuildDefinition(200*time.Millisecond, item2),
+	defTree := newBasicBuildDefinition("top", 100*time.Millisecond,
+		newBasicBuildDefinition("topIt2", 200*time.Millisecond, item2),
+		newBasicBuildDefinition("long", 400*time.Millisecond,
+			newBasicBuildDefinition("longChild1", 200*time.Millisecond),
+			newBasicBuildDefinition("longChild2", 200*time.Millisecond, item2),
+		),
 		item2,
 	)
 
@@ -843,7 +942,7 @@ func appMain() error {
 		return err
 	}
 
-	_ = res
+	dumpTree(builder, res, "")
 
 	deleted, err := builder.GarbageCollect(time.Now().Add(time.Hour))
 	if err != nil {

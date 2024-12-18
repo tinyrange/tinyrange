@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
@@ -398,13 +399,18 @@ func SourceFromArchive(a Archive) (hash.SerializableValue, error) {
 }
 
 type memoryFileHandle struct {
-	f      *memoryFile
-	offset int64
+	f        *memoryFile
+	offMutex sync.Mutex
+	offset   int64
 }
 
 // Read implements io.Reader.
 func (m *memoryFileHandle) Read(p []byte) (n int, err error) {
 	n, err = m.ReadAt(p, m.offset)
+
+	m.offMutex.Lock()
+	defer m.offMutex.Unlock()
+
 	m.offset += int64(n)
 
 	return
@@ -412,6 +418,9 @@ func (m *memoryFileHandle) Read(p []byte) (n int, err error) {
 
 // ReadAt implements io.ReaderAt.
 func (m *memoryFileHandle) ReadAt(p []byte, off int64) (n int, err error) {
+	m.f.mtx.RLock()
+	defer m.f.mtx.RUnlock()
+
 	if off < 0 || off >= int64(len(m.f.contents)) {
 		return 0, io.EOF
 	}
@@ -432,6 +441,10 @@ func (m *memoryFileHandle) Close() error {
 // Write implements io.Writer.
 func (m *memoryFileHandle) Write(p []byte) (n int, err error) {
 	n, err = m.WriteAt(p, m.offset)
+
+	m.offMutex.Lock()
+	defer m.offMutex.Unlock()
+
 	m.offset += int64(n)
 
 	return
@@ -439,6 +452,9 @@ func (m *memoryFileHandle) Write(p []byte) (n int, err error) {
 
 // WriteAt implements io.WriterAt.
 func (m *memoryFileHandle) WriteAt(p []byte, off int64) (n int, err error) {
+	m.f.mtx.Lock()
+	defer m.f.mtx.Unlock()
+
 	if off < 0 {
 		return 0, fmt.Errorf("negative offset")
 	}
@@ -458,6 +474,7 @@ var (
 )
 
 type memoryFile struct {
+	mtx      sync.RWMutex
 	kind     FileType
 	mTime    time.Time
 	mode     fs.FileMode
@@ -477,6 +494,9 @@ func (m *memoryFile) Sys() any            { return m }
 
 // Chmod implements MutableFile.
 func (m *memoryFile) Chmod(mode fs.FileMode) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	m.mode = mode
 
 	return nil
@@ -484,6 +504,9 @@ func (m *memoryFile) Chmod(mode fs.FileMode) error {
 
 // Chown implements MutableFile.
 func (m *memoryFile) Chown(uid int, gid int) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	m.uid = uid
 	m.gid = gid
 
@@ -492,6 +515,9 @@ func (m *memoryFile) Chown(uid int, gid int) error {
 
 // Chtimes implements MutableFile.
 func (m *memoryFile) Chtimes(mtime time.Time) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	m.mTime = mtime
 
 	return nil
@@ -504,6 +530,9 @@ func (m *memoryFile) Open() (FileHandle, error) {
 
 // Overwrite implements MutableFile.
 func (m *memoryFile) Overwrite(contents []byte) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	m.contents = contents
 
 	return nil

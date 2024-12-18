@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 )
 
 type DirectoryEntry struct {
@@ -265,6 +266,7 @@ type MutableDirectory interface {
 type memoryDirectory struct {
 	*memoryFile
 
+	mtx     sync.RWMutex
 	names   []string
 	entries map[string]File
 }
@@ -281,6 +283,9 @@ func (m *memoryDirectory) Sys() any {
 
 // Unlink implements MutableDirectory.
 func (m *memoryDirectory) Unlink(name string) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	if path.Base(name) != name {
 		return fmt.Errorf("MutableDirectory methods can not handle paths: %s", name)
 	}
@@ -292,6 +297,18 @@ func (m *memoryDirectory) Unlink(name string) error {
 
 // Create implements MutableDirectory.
 func (m *memoryDirectory) Create(name string, f File) (File, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	newFile, err := m.create(name, f)
+	if err != nil {
+		return nil, err
+	}
+
+	return newFile, nil
+}
+
+func (m *memoryDirectory) create(name string, f File) (File, error) {
 	if name == "" || name == "." {
 		return nil, fmt.Errorf("invalid name specified for child: %s", name)
 	}
@@ -311,11 +328,14 @@ func (m *memoryDirectory) Create(name string, f File) (File, error) {
 	m.names = append(m.names, name)
 	m.entries[name] = f
 
-	return f, nil
+	return m.entries[name], nil
 }
 
 // GetChild implements MutableDirectory.
 func (m *memoryDirectory) GetChild(name string) (DirectoryEntry, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
 	if name == "" || name == "." {
 		return DirectoryEntry{File: m}, nil
 	}
@@ -334,6 +354,9 @@ func (m *memoryDirectory) GetChild(name string) (DirectoryEntry, error) {
 
 // Mkdir implements MutableDirectory.
 func (m *memoryDirectory) Mkdir(name string) (MutableDirectory, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	if name == "" || name == "." {
 		return nil, fmt.Errorf("invalid name specified for child: %s", name)
 	}
@@ -355,7 +378,7 @@ func (m *memoryDirectory) Mkdir(name string) (MutableDirectory, error) {
 		}
 	}
 
-	newChild, err := m.Create(name, NewMemoryDirectory())
+	newChild, err := m.create(name, NewMemoryDirectory())
 	if err != nil {
 		return nil, err
 	}
@@ -379,6 +402,9 @@ func (m *memoryDirectory) Overwrite(contents []byte) error {
 
 // Readdir implements MutableDirectory.
 func (m *memoryDirectory) Readdir() ([]DirectoryEntry, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
 	var ret []DirectoryEntry
 
 	for _, name := range m.names {
