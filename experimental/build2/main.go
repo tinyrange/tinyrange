@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,7 @@ var VALID_OUTPUT_NAME = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 const (
 	DEFINITION_FILENAME = "definition.json"
 	RECEIPT_FILENAME    = "receipt.json"
+	LOCK_FILENAME       = "lock.pid"
 	OUTPUT_PREFIX       = "output."
 )
 
@@ -45,6 +47,16 @@ func readJSONFromFile(file filesystem.File, v any) error {
 	defer r.Close()
 
 	return json.NewDecoder(r).Decode(v)
+}
+
+func readFile(file filesystem.File) ([]byte, error) {
+	r, err := file.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+
+	return io.ReadAll(r)
 }
 
 type BuildReceipt struct {
@@ -60,6 +72,10 @@ type BuildReceipt struct {
 	BuiltFor string `json:"built_for"`
 	// OutputHashes is a map of output names to their SHA-256 hashes.
 	OutputHashes map[string]string `json:"output_hashes"`
+	// BuildTime is the time the artifact was built.
+	BuildTime time.Time `json:"build_time"`
+	// BuildDuration is the duration of the build.
+	BuildDuration time.Duration `json:"build_duration"`
 }
 
 type BuildOptions struct {
@@ -84,6 +100,9 @@ type Builder interface {
 
 	// DefinitionFromArtifact gets a BuildDefinition from a BuildArtifact.
 	DefinitionFromArtifact(artifact BuildArtifact) (BuildDefinition, error)
+
+	// GarbageCollect returns a list of garbage collectable hashes.
+	GarbageCollect(olderThan time.Time) ([]string, error)
 }
 
 type builder struct {
@@ -168,6 +187,13 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 		return nil, err
 	} else if art != nil {
 		// The artifact does not need to be rebuilt.
+		hash, err := b.HashDefinition(def)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash definition: %w", err)
+		}
+
+		slog.Info("skipping build", "hash", hash[:8], "parent", parentHash[:8])
+
 		return art, nil
 	}
 
@@ -199,7 +225,14 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 	}
 
 	// Build the definition.
-	return ctx.build()
+	art, err = ctx.build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build: %w", err)
+	}
+	if art == nil {
+		return b.ArtifactFromHash(hash)
+	}
+	return art, nil
 }
 
 // HashDefinition implements Builder.
@@ -250,6 +283,93 @@ func (b *builder) ArtifactFromHash(hash string) (BuildArtifact, error) {
 // DefinitionFromArtifact implements Builder.
 func (b *builder) DefinitionFromArtifact(artifact BuildArtifact) (BuildDefinition, error) {
 	return nil, fmt.Errorf("Builder.DefinitionFromArtifact not implemented")
+}
+
+type garbageCollectorState struct {
+	receipt    BuildReceipt
+	references int
+}
+
+// GarbageCollect implements Builder.
+func (b *builder) GarbageCollect(olderThan time.Time) ([]string, error) {
+	ents, err := b.buildDirectory.Readdir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	receipts := make(map[string]*garbageCollectorState)
+
+	// Populate the receipts map.
+	for _, ent := range ents {
+		if !VALID_SHA256.MatchString(ent.Name) {
+			continue
+		}
+
+		art, err := b.ArtifactFromHash(ent.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get artifact from hash: %w", err)
+		}
+
+		receipts[ent.Name] = &garbageCollectorState{
+			receipt:    art.Receipt(),
+			references: 0,
+		}
+	}
+
+	// Count the references.
+	for _, state := range receipts {
+		for _, hash := range state.receipt.Dependencies {
+			if _, ok := receipts[hash]; ok {
+				receipts[hash].references++
+			}
+		}
+	}
+
+	// Look for any receipts with no references.
+	var checkNext []string
+	for hash, state := range receipts {
+		// Don't delete receipts that have references.
+		if state.references > 0 {
+			continue
+		}
+
+		// Don't delete receipts that were built after the cutoff time.
+		if state.receipt.BuildTime.After(olderThan) {
+			continue
+		}
+
+		checkNext = append(checkNext, hash)
+	}
+
+	deleted := make(map[string]bool)
+	for len(checkNext) > 0 {
+		// Pop the first element.
+		hash := checkNext[0]
+		checkNext = checkNext[1:]
+
+		if receipts[hash].references > 0 {
+			continue
+		}
+
+		deleted[hash] = true
+
+		// reduce the reference count of each dependency.
+		for _, depHash := range receipts[hash].receipt.Dependencies {
+			receipts[depHash].references--
+
+			if receipts[depHash].receipt.BuildTime.After(olderThan) {
+				continue
+			}
+
+			checkNext = append(checkNext, depHash)
+		}
+	}
+
+	var ret []string
+	for hash := range deleted {
+		ret = append(ret, hash)
+	}
+	return ret, nil
 }
 
 func (b *builder) hashCacheMiss(hash string) (io.ReadCloser, error) {
@@ -393,6 +513,13 @@ func (b *buildContext) SetExpireTime(expireTime time.Time) {
 
 // BuildChild implements BuildContext.
 func (b *buildContext) BuildChild(def BuildDefinition, opts BuildOptions) (BuildArtifact, error) {
+	hash, err := b.builder.HashDefinition(def)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash definition: %w", err)
+	}
+
+	b.receipt.Dependencies = append(b.receipt.Dependencies, hash)
+
 	return b.builder.BuildChild(b, def, opts)
 }
 
@@ -452,7 +579,126 @@ func writeFile(dir filesystem.MutableDirectory, name string, contents []byte) er
 	return mutFile.Overwrite(contents)
 }
 
+func createLockFile(buildDir filesystem.MutableDirectory) (bool, error) {
+	// write the lock file.
+	processPid := os.Getpid()
+	if err := writeFile(buildDir, "lock", []byte(fmt.Sprintf("%d", processPid))); err != nil {
+		return false, fmt.Errorf("failed to write lock file: %w", err)
+	}
+
+	// double check that we didn't race on the file creation and read back the file to ensure it's correct.
+	lockFile, err := buildDir.GetChild("lock")
+	if err != nil {
+		return false, fmt.Errorf("failed to read lock file: %w", err)
+	}
+
+	if contents, err := readFile(lockFile.File); err != nil {
+		return false, fmt.Errorf("failed to read lock file: %w", err)
+	} else if string(contents) != fmt.Sprintf("%d", processPid) {
+		return false, fmt.Errorf("lock file contents do not match: %s", contents)
+	}
+
+	return true, nil
+}
+
+// returns true if we own the lock file and need to build.
+func exclusiveLockForBuild(hash string, buildDir filesystem.MutableDirectory) (bool, error) {
+	// keep trying to create the lock file until we succeed.
+	for {
+		lockFile, err := buildDir.GetChild(LOCK_FILENAME)
+		if err == nil {
+			// read the lock file.
+			contents, err := readFile(lockFile.File)
+			if errors.Is(err, fs.ErrNotExist) {
+				ok, err := createLockFile(buildDir)
+				if err != nil {
+					return false, fmt.Errorf("failed to create lock file: %w", err)
+				}
+
+				if ok {
+					return true, nil
+				} else {
+					continue
+				}
+			} else if err != nil {
+				return true, fmt.Errorf("failed to read lock file: %w", err)
+			}
+
+			pid, err := strconv.Atoi(string(contents))
+			if err != nil {
+				// the lock file is an invalid format. this is a fatal error.
+				return false, fmt.Errorf("invalid lock file contents: %w", err)
+			}
+
+			// check if the process is running.
+			ok, err := ProcessRunning(pid)
+			if err != nil {
+				// we can't determine if the process is running. this is a fatal error.
+				return false, fmt.Errorf("failed to check if process is running: %w", err)
+			}
+
+			// wait for the build to finish in the other process.
+			if ok {
+				slog.Info("waiting for lock file to be removed", "pid", pid, "hash", hash[:8])
+				for {
+					_, err := buildDir.GetChild(LOCK_FILENAME)
+					if errors.Is(err, fs.ErrNotExist) {
+						break
+					}
+
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				// we don't need to rebuild.
+				return false, nil
+			} else {
+				// the process is not running, remove the lock file.
+				if err := buildDir.Unlink(LOCK_FILENAME); err != nil {
+					return false, fmt.Errorf("failed to remove lock file: %w", err)
+				}
+
+				ok, err := createLockFile(buildDir)
+				if err != nil {
+					return false, fmt.Errorf("failed to create lock file: %w", err)
+				}
+
+				if ok {
+					return true, nil
+				} else {
+					continue
+				}
+			}
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return false, fmt.Errorf("failed to get lock file: %w", err)
+		} else {
+			// the lock file does not exist.
+			ok, err := createLockFile(buildDir)
+			if err != nil {
+				return false, fmt.Errorf("failed to create lock file: %w", err)
+			}
+			if ok {
+				return true, nil
+			}
+		}
+	}
+}
+
 func (b *buildContext) build() (BuildArtifact, error) {
+	start := time.Now()
+
+	// check if the lock file exists.
+	ok, err := exclusiveLockForBuild(b.hash, b.buildDirectory)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for lock release: %w", err)
+	}
+	if !ok {
+		// the build is already in progress.
+		return nil, nil
+	}
+	defer b.buildDirectory.Unlink("lock")
+
+	slog.Info("building", "hash", b.hash[:8])
+
 	// serialize the definition to a file.
 	contents, err := b.builder.MarshalDefinition(b.def)
 	if err != nil {
@@ -474,6 +720,10 @@ func (b *buildContext) build() (BuildArtifact, error) {
 		b.receipt.OutputHashes[name] = hash
 	}
 
+	// set the build time and duration.
+	b.receipt.BuildTime = time.Now()
+	b.receipt.BuildDuration = time.Since(start)
+
 	// serialize the receipt to a file.
 	contents, err = json.Marshal(b.receipt)
 	if err != nil {
@@ -483,6 +733,8 @@ func (b *buildContext) build() (BuildArtifact, error) {
 	if err := writeFile(b.buildDirectory, RECEIPT_FILENAME, contents); err != nil {
 		return nil, fmt.Errorf("failed to write receipt: %w", err)
 	}
+
+	slog.Info("built", "hash", b.hash[:8], "duration", b.receipt.BuildDuration)
 
 	// create the artifact.
 	return &buildArtifact{
@@ -579,8 +831,11 @@ func appMain() error {
 
 	builder := NewBuilder(filesystem.NewMemoryDirectory())
 
+	item2 := newBasicBuildDefinition(200 * time.Millisecond)
+
 	defTree := newBasicBuildDefinition(100*time.Millisecond,
-		newBasicBuildDefinition(200*time.Millisecond),
+		newBasicBuildDefinition(200*time.Millisecond, item2),
+		item2,
 	)
 
 	res, err := builder.Build(defTree, BuildOptions{})
@@ -589,6 +844,13 @@ func appMain() error {
 	}
 
 	_ = res
+
+	deleted, err := builder.GarbageCollect(time.Now().Add(time.Hour))
+	if err != nil {
+		return err
+	}
+
+	slog.Info("garbage collected", "deleted", deleted)
 
 	return nil
 }
