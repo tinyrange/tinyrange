@@ -1,23 +1,23 @@
 module github.com/tinyrange/tinyrange
 
-go 1.23.3
+go 1.23.4
 
 require (
 	github.com/agnivade/levenshtein v1.2.0
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/basgys/goxml2json v1.1.0
-	github.com/bazelbuild/buildtools v0.0.0-20240823132350-3488089d3661
+	github.com/bazelbuild/buildtools v0.0.0-20241212155839-a9c248f4b684
 	github.com/blakesmith/ar v0.0.0-20190502131153-809d4375e1fb
 	github.com/cavaliergopher/cpio v1.0.1
 	github.com/cavaliergopher/rpm v1.2.0
 	github.com/creack/pty v1.1.24
-	github.com/docker/docker v27.4.0+incompatible
+	github.com/docker/docker v27.4.1+incompatible
 	github.com/fatih/color v1.18.0
 	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/gopacket v1.1.19
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/insomniacslk/dhcp v0.0.0-20240529192340-51bc6136a0a6
+	github.com/insomniacslk/dhcp v0.0.0-20241203100832-a481575ed0ef
 	github.com/jezek/xgb v1.1.1
 	github.com/jezek/xgbutil v0.0.0-20240804174445-e2e9464b6e01
 	github.com/jsimonetti/rtnetlink v1.4.2
@@ -32,10 +32,10 @@ require (
 	github.com/tinyrange/wireguard v0.1.0
 	github.com/wader/readline v0.0.0-20230307172220-bcb7158e7448
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
-	go.starlark.net v0.0.0-20240520160348-046347dcd104
+	go.starlark.net v0.0.0-20241125201518-c05ff208a98f
 	golang.org/x/crypto v0.31.0
-	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090
-	golang.org/x/net v0.32.0
+	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
+	golang.org/x/net v0.33.0
 	golang.org/x/sys v0.28.0
 	golang.org/x/term v0.27.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -80,11 +80,11 @@ require (
 	go.opentelemetry.io/otel/metric v1.30.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.30.0 // indirect
 	go.opentelemetry.io/otel/trace v1.30.0 // indirect
-	golang.org/x/mod v0.21.0 // indirect
+	golang.org/x/mod v0.22.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/time v0.7.0 // indirect
-	golang.org/x/tools v0.26.0 // indirect
+	golang.org/x/tools v0.28.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
