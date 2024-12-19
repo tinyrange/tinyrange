@@ -34,6 +34,7 @@ type ContainerBuilder interface {
 type PackageDatabase interface {
 	starlark.Value
 
+	BuildDir() string
 	FilenameFromHash(hash string, suffix string) (string, error)
 	Build(ctx BuildContext, def BuildDefinition, opts BuildOptions) (filesystem.File, error)
 	UrlsFor(url string) ([]string, error)

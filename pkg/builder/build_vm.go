@@ -28,8 +28,10 @@ func init() {
 var OFFICIAL_KERNEL_URL_X86_64 = "https://github.com/tinyrange/linux_build/releases/download/linux_x86_6.6.7/vmlinux_x86_64"
 var OFFICIAL_KERNEL_URL_AARCH64 = "https://github.com/tinyrange/linux_build/releases/download/linux_arm64_6.6.7/vmlinux_arm64"
 
-func runTinyRange(exe string, persistPath string, configFilename string) (*exec.Cmd, error) {
-	cmd := exec.Command(exe, "run-vm", "--persist", persistPath, configFilename)
+func runTinyRange(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
+	persistPath := filepath.Join(buildDir, "persist")
+
+	cmd := exec.Command(exe, "run-vm", "--buildDir", buildDir, "--persist", persistPath, configFilename)
 
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -367,19 +369,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		return nil, err
 	}
 
-	var persistPath string
-	var persist io.WriteCloser
-
-	persistPath, persist, err = ctx.CreateFile(".persist")
-	if err != nil {
-		persistPath = ""
-	} else {
-		persistPath = filepath.Dir(persistPath)
-
-		defer persist.Close()
-	}
-
-	cmd, err := runTinyRange(exe, persistPath, configFilename)
+	cmd, err := runTinyRange(exe, ctx.BuildDir(), configFilename)
 	if err != nil {
 		return nil, err
 	}

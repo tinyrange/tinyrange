@@ -167,7 +167,7 @@ func (config *Config) SetVmSpec() {
 }
 
 func (config *Config) resolvePath(filename string) (string, error) {
-	if strings.HasPrefix(filename, "/") {
+	if filepath.IsAbs(filename) {
 		return filename, nil
 	}
 

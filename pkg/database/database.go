@@ -246,6 +246,11 @@ type PackageDatabase struct {
 	distributionServer string
 }
 
+// BuildDir implements common.PackageDatabase.
+func (db *PackageDatabase) BuildDir() string {
+	return db.buildDir
+}
+
 // HashDefinition implements common.PackageDatabase.
 func (db *PackageDatabase) HashDefinition(def common.BuildDefinition) (string, error) {
 	return db.defDb.HashDefinition(def)
