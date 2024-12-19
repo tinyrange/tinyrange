@@ -78,6 +78,15 @@ func writeFile(dir filesystem.MutableDirectory, name string, contents []byte) er
 	return mutFile.Overwrite(contents)
 }
 
+type DependencyInfo struct {
+	// Hash is the SHA-256 hash of the dependency.
+	Hash string `json:"hash"`
+	// UsedCache is true if the dependency was loaded from the cache.
+	UsedCache bool `json:"used_cache"`
+	// Explicit is true if the dependency was explicitly added.
+	Explicit bool `json:"explicit"`
+}
+
 type BuildReceipt struct {
 	// Version is the version of TinyRange that built the artifact.
 	Version string `json:"version"`
@@ -86,7 +95,7 @@ type BuildReceipt struct {
 	// Non-zero if the build should unconditionally be rebuilt after this time.
 	ExpireTime time.Time `json:"expire_time"`
 	// Dependencies is a list of dependencies that were used to build the artifact.
-	Dependencies []string `json:"dependencies"`
+	Dependencies []*DependencyInfo `json:"dependencies"`
 	// BuiltFor is the parent definition that the artifact was built for.
 	BuiltFor string `json:"built_for"`
 	// OutputHashes is a map of output names to their SHA-256 hashes.
@@ -98,7 +107,8 @@ type BuildReceipt struct {
 }
 
 type BuildOptions struct {
-	ForceRebuild bool
+	ForceRebuild   bool
+	DependencyInfo *DependencyInfo
 }
 
 type Builder interface {
@@ -124,21 +134,24 @@ type Builder interface {
 	GarbageCollect(olderThan time.Time) ([]string, error)
 }
 
+type buildInfo struct {
+	mtx sync.Mutex
+	ctx *buildContext
+	wg  sync.WaitGroup
+}
+
 type builder struct {
+	mtx            sync.Mutex
 	buildDirectory filesystem.MutableDirectory
 	hashDb         *hash.DefinitionDatabase
+	buildCache     map[string]*buildInfo
 }
 
 // needsRebuild checks if a BuildDefinition needs to be rebuilt.
 // returns the BuildArtifact if it does not need to be rebuilt.
-func (b *builder) needsRebuild(def BuildDefinition, options BuildOptions) (BuildArtifact, error) {
+func (b *builder) needsRebuild(hash string, def BuildDefinition, options BuildOptions) (BuildArtifact, error) {
 	if options.ForceRebuild {
 		return nil, nil
-	}
-
-	hash, err := b.HashDefinition(def)
-	if err != nil {
-		return nil, fmt.Errorf("failed to hash definition: %w", err)
 	}
 
 	// returns true if the hash needs to be rebuilt.
@@ -159,7 +172,7 @@ func (b *builder) needsRebuild(def BuildDefinition, options BuildOptions) (Build
 
 		// Check if any dependencies need to be rebuilt.
 		for _, dep := range art.Receipt().Dependencies {
-			ok, err := checkHash(dep)
+			ok, err := checkHash(dep.Hash)
 			if err != nil {
 				return true, fmt.Errorf("failed to check dependency hash: %w", err)
 			}
@@ -193,6 +206,24 @@ func (b *builder) Build(def BuildDefinition, options BuildOptions) (BuildArtifac
 	return b.BuildChild(nil, def, options)
 }
 
+func (b *builder) getOrCreateBuild(hash string) (*buildInfo, bool, error) {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	if info, ok := b.buildCache[hash]; ok {
+		return info, false, nil
+	}
+
+	info := &buildInfo{
+		ctx: nil,
+	}
+	info.wg.Add(1)
+
+	b.buildCache[hash] = info
+
+	return info, true, nil
+}
+
 // BuildChild implements Builder.
 func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options BuildOptions) (BuildArtifact, error) {
 	parentHash := ""
@@ -200,8 +231,34 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 		parentHash = parent.Hash()
 	}
 
+	// Hash the definition.
+	hash, err := b.HashDefinition(def)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash definition: %w", err)
+	}
+
+	buildInfo, locked, err := b.getOrCreateBuild(hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get or wait for build: %w", err)
+	}
+	if !locked {
+		// Wait for the build to complete.
+		buildInfo.wg.Wait()
+
+		if buildInfo.ctx != nil {
+			if options.DependencyInfo != nil {
+				options.DependencyInfo.UsedCache = true
+			}
+
+			return buildInfo.ctx.artifact, nil
+		} else {
+			return nil, fmt.Errorf("failed to get build: %s", hash)
+		}
+	}
+	defer buildInfo.wg.Done()
+
 	// Check if the definition needs to be rebuilt.
-	art, err := b.needsRebuild(def, options)
+	art, err := b.needsRebuild(hash, def, options)
 	if err != nil {
 		return nil, err
 	} else if art != nil {
@@ -213,13 +270,11 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 
 		slog.Debug("skipping build", "hash", hash[:8], "parent", parentHash[:8])
 
-		return art, nil
-	}
+		if options.DependencyInfo != nil {
+			options.DependencyInfo.UsedCache = true
+		}
 
-	// Hash the definition.
-	hash, err := b.HashDefinition(def)
-	if err != nil {
-		return nil, fmt.Errorf("failed to hash definition: %w", err)
+		return art, nil
 	}
 
 	// Create a child directory for the build.
@@ -229,7 +284,7 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 	}
 
 	// Create a new build context.
-	ctx := &buildContext{
+	buildInfo.ctx = &buildContext{
 		builder:        b,
 		parent:         parent,
 		hash:           hash,
@@ -244,12 +299,17 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 	}
 
 	// Build the definition.
-	art, err = ctx.build()
+	art, err = buildInfo.ctx.build()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build: %w", err)
 	}
 	if art == nil {
 		slog.Debug("returning existing build", "hash", hash[:8])
+
+		if options.DependencyInfo != nil {
+			options.DependencyInfo.UsedCache = true
+		}
+
 		return b.ArtifactFromHash(hash)
 	}
 	return art, nil
@@ -295,6 +355,7 @@ func (b *builder) ArtifactFromHash(hash string) (BuildArtifact, error) {
 	}
 
 	return &buildArtifact{
+		hash:     hash,
 		receipt:  receipt,
 		buildDir: childDir,
 	}, nil
@@ -348,7 +409,8 @@ func (b *builder) GarbageCollect(olderThan time.Time) ([]string, error) {
 
 	// Count the references.
 	for _, state := range receipts {
-		for _, hash := range state.receipt.Dependencies {
+		for _, dep := range state.receipt.Dependencies {
+			hash := dep.Hash
 			if _, ok := receipts[hash]; ok {
 				receipts[hash].references++
 			}
@@ -384,7 +446,9 @@ func (b *builder) GarbageCollect(olderThan time.Time) ([]string, error) {
 		deleted[hash] = true
 
 		// reduce the reference count of each dependency.
-		for _, depHash := range receipts[hash].receipt.Dependencies {
+		for _, dep := range receipts[hash].receipt.Dependencies {
+			depHash := dep.Hash
+
 			receipts[depHash].references--
 
 			if receipts[depHash].receipt.BuildTime.After(olderThan) {
@@ -418,12 +482,16 @@ var (
 func NewBuilder(buildDirectory filesystem.MutableDirectory) Builder {
 	b := &builder{
 		buildDirectory: buildDirectory,
+		buildCache:     make(map[string]*buildInfo),
 	}
 	b.hashDb = hash.NewDefinitionDatabase(b.hashCacheMiss)
 	return b
 }
 
 type BuildArtifact interface {
+	// Hash returns the SHA-256 hash of the artifact.
+	Hash() string
+
 	// Receipt returns the BuildReceipt for the artifact.
 	Receipt() BuildReceipt
 
@@ -438,8 +506,14 @@ type BuildArtifact interface {
 }
 
 type buildArtifact struct {
+	hash     string
 	receipt  BuildReceipt
 	buildDir filesystem.Directory
+}
+
+// Hash implements BuildArtifact.
+func (b *buildArtifact) Hash() string {
+	return b.hash
 }
 
 // Receipt implements BuildArtifact.
@@ -543,26 +617,36 @@ func (b *buildContext) SetExpireTime(expireTime time.Time) {
 	b.receipt.ExpireTime = expireTime
 }
 
-func (b *buildContext) addDependency(def BuildDefinition) error {
+func (b *buildContext) addDependency(def BuildDefinition, explicit bool) (*DependencyInfo, error) {
 	hash, err := b.builder.HashDefinition(def)
 	if err != nil {
-		return fmt.Errorf("failed to hash definition: %w", err)
+		return nil, fmt.Errorf("failed to hash definition: %w", err)
 	}
 
-	if ok := slices.Contains(b.receipt.Dependencies, hash); ok {
-		return nil
+	if ok := slices.ContainsFunc(b.receipt.Dependencies, func(dep *DependencyInfo) bool {
+		return dep.Hash == hash
+	}); ok {
+		return nil, nil
 	}
 
-	b.receipt.Dependencies = append(b.receipt.Dependencies, hash)
+	depInfo := &DependencyInfo{
+		Hash:     hash,
+		Explicit: explicit,
+	}
 
-	return nil
+	b.receipt.Dependencies = append(b.receipt.Dependencies, depInfo)
+
+	return depInfo, nil
 }
 
 // BuildChild implements BuildContext.
 func (b *buildContext) BuildChild(def BuildDefinition, opts BuildOptions) (BuildArtifact, error) {
-	if err := b.addDependency(def); err != nil {
+	depInfo, err := b.addDependency(def, false)
+	if err != nil {
 		return nil, err
 	}
+
+	opts.DependencyInfo = depInfo
 
 	return b.builder.BuildChild(b, def, opts)
 }
@@ -659,6 +743,8 @@ func waitForLockFile(hash string, buildDir filesystem.MutableDirectory, pid int)
 
 		// if the process crashed, we need to rebuild.
 		if running, _ := ProcessRunning(pid); !running {
+			slog.Warn("process crashed", "pid", pid)
+
 			return writeLockFile(hash, buildDir)
 		} else {
 			// the lock file was deleted and the process is still
@@ -691,6 +777,8 @@ func exclusiveLockForBuild(hash string, buildDir filesystem.MutableDirectory) (b
 
 	// check if the process is still running.
 	if running, _ := ProcessRunning(pid); !running {
+		slog.Warn("process crashed", "pid", pid)
+
 		return writeLockFile(hash, buildDir)
 	} else {
 		return waitForLockFile(hash, buildDir, pid)
@@ -714,6 +802,7 @@ func (b *buildContext) build() (BuildArtifact, error) {
 	}
 	if !ok {
 		// the build is already in progress.
+		// slog.Info("skipping build due to lock", "hash", b.hash[:8])
 		return nil, nil
 	}
 	defer b.buildDirectory.Unlink(LOCK_FILENAME)
@@ -744,16 +833,20 @@ func (b *buildContext) build() (BuildArtifact, error) {
 	for _, dep := range deps {
 		wg.Add(1)
 
-		if err := b.addDependency(dep); err != nil {
+		depInfo, err := b.addDependency(dep, true)
+		if err != nil {
 			return nil, err
 		}
 
-		go func(dep BuildDefinition) {
+		go func(dep BuildDefinition, depInfo *DependencyInfo) {
 			defer wg.Done()
-			if _, err := b.builder.BuildChild(b, dep, BuildOptions{}); err != nil {
+
+			if _, err := b.builder.BuildChild(b, dep, BuildOptions{
+				DependencyInfo: depInfo,
+			}); err != nil {
 				errChan <- fmt.Errorf("failed to build dependency %s: %w", dep.Params().SerializableType(), err)
 			}
-		}(dep)
+		}(dep, depInfo)
 	}
 
 	wg.Add(1)
@@ -800,6 +893,7 @@ func (b *buildContext) build() (BuildArtifact, error) {
 
 	// create the artifact.
 	b.artifact = &buildArtifact{
+		hash:     b.hash,
 		receipt:  b.receipt,
 		buildDir: b.buildDirectory,
 	}
@@ -902,22 +996,27 @@ func newBasicBuildDefinition(name string, sleepTime time.Duration, children ...B
 	}
 }
 
-func dumpTree(b Builder, art BuildArtifact, prefix string) {
+func dumpTree(b Builder, art BuildArtifact, info *DependencyInfo, prefix string) {
 	def, err := b.DefinitionFromArtifact(art)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%sfailed to get definition: %v\n", prefix, err)
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "%s%s [%s]\n", prefix, def, art.Receipt().BuildDuration)
+	usedCache := "fresh"
+	if info != nil && info.UsedCache {
+		usedCache = "cache"
+	}
+
+	fmt.Fprintf(os.Stderr, "[%s] %s%s [%s, %s]\n", art.Hash()[:8], prefix, def, art.Receipt().BuildDuration, usedCache)
 	for _, dep := range art.Receipt().Dependencies {
-		child, err := b.ArtifactFromHash(dep)
+		child, err := b.ArtifactFromHash(dep.Hash)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%sfailed to get child: %v\n", prefix, err)
 			continue
 		}
 
-		dumpTree(b, child, prefix+"  ")
+		dumpTree(b, child, dep, prefix+"  ")
 	}
 }
 
@@ -926,13 +1025,16 @@ func appMain() error {
 
 	builder := NewBuilder(filesystem.NewMemoryDirectory())
 
-	item2 := newBasicBuildDefinition("item2", 200*time.Millisecond)
+	item2 := newBasicBuildDefinition("item2", 100*time.Millisecond)
 
-	defTree := newBasicBuildDefinition("top", 100*time.Millisecond,
-		newBasicBuildDefinition("topIt2", 200*time.Millisecond, item2),
-		newBasicBuildDefinition("long", 400*time.Millisecond,
+	defTree := newBasicBuildDefinition("top", 200*time.Millisecond,
+		newBasicBuildDefinition("topIt2", 400*time.Millisecond, item2),
+		newBasicBuildDefinition("long", 800*time.Millisecond,
 			newBasicBuildDefinition("longChild1", 200*time.Millisecond),
 			newBasicBuildDefinition("longChild2", 200*time.Millisecond, item2),
+			newBasicBuildDefinition("longChild3", 200*time.Millisecond),
+			newBasicBuildDefinition("longChild4", 200*time.Millisecond),
+			newBasicBuildDefinition("longChild5", 200*time.Millisecond),
 		),
 		item2,
 	)
@@ -942,7 +1044,7 @@ func appMain() error {
 		return err
 	}
 
-	dumpTree(builder, res, "")
+	dumpTree(builder, res, nil, "")
 
 	deleted, err := builder.GarbageCollect(time.Now().Add(time.Hour))
 	if err != nil {
