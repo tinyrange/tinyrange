@@ -383,6 +383,15 @@ func (m *memoryDirectory) Mkdir(name string) (MutableDirectory, error) {
 		return nil, err
 	}
 
+	if newChild == nil {
+		mut, ok := m.entries[name].(MutableDirectory)
+		if !ok {
+			return nil, fmt.Errorf("child is not mutable: %T", m.entries[name])
+		}
+
+		return mut, nil
+	}
+
 	if mut, ok := newChild.(MutableDirectory); ok {
 		return mut, nil
 	} else {

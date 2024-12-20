@@ -264,7 +264,11 @@ func (l *LocalMutableDirectory) GetChild(name string) (DirectoryEntry, error) {
 // Mkdir implements MutableDirectory.
 func (l *LocalMutableDirectory) Mkdir(name string) (MutableDirectory, error) {
 	if err := os.Mkdir(filepath.Join(l.filename, name), 0755); err != nil {
-		return nil, err
+		if os.IsExist(err) {
+			return NewLocalMutableDirectory(filepath.Join(l.filename, name)), err
+		} else {
+			return nil, err
+		}
 	}
 
 	return NewLocalMutableDirectory(filepath.Join(l.filename, name)), nil
@@ -308,7 +312,7 @@ func (l *LocalMutableDirectory) Readdir() ([]DirectoryEntry, error) {
 
 // Unlink implements MutableDirectory.
 func (l *LocalMutableDirectory) Unlink(name string) error {
-	return os.Remove(filepath.Join(l.filename, name))
+	return os.RemoveAll(filepath.Join(l.filename, name))
 }
 
 var (

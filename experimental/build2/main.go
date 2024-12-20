@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	cryptoHash "hash"
 	"io"
@@ -16,9 +17,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/tinyrange/tinyrange/pkg/buildinfo"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
@@ -40,6 +44,13 @@ const (
 	LOCK_FILENAME       = "lock.pid"
 	OUTPUT_PREFIX       = "output."
 )
+
+func formatHash(hash string) string {
+	if len(hash) < 8 {
+		return hash
+	}
+	return hash[:8]
+}
 
 func readJSONFromFile(file filesystem.File, v any) error {
 	r, err := file.Open()
@@ -107,8 +118,14 @@ type BuildReceipt struct {
 }
 
 type BuildOptions struct {
-	ForceRebuild   bool
+	// ForceRebuild is true if the build should be forced to rebuild.
+	ForceRebuild bool
+
+	// DependencyInfo is the dependency info for the build.
 	DependencyInfo *DependencyInfo
+
+	// BlockerFor is the build context that is being blocked by this build.
+	BlockerFor BuildContext
 }
 
 type Builder interface {
@@ -134,10 +151,23 @@ type Builder interface {
 	GarbageCollect(olderThan time.Time) ([]string, error)
 }
 
+type buildInfoState int
+
+const (
+	// buildInfoStateWaiting is the initial state of a buildInfo.
+	// The buildInfo is waiting for a token to be acquired.
+	buildInfoStateWaiting buildInfoState = iota
+	// buildInfoStateBuilding is the state of a buildInfo when it is building.
+	buildInfoStateBuilding
+	// buildInfoStateBuilt is the state of a buildInfo when it has been built.
+	buildInfoStateBuilt
+)
+
 type buildInfo struct {
-	mtx sync.Mutex
-	ctx *buildContext
-	wg  sync.WaitGroup
+	state atomic.Value
+	tk    *token
+	ctx   *buildContext
+	wg    sync.WaitGroup
 }
 
 type builder struct {
@@ -145,11 +175,13 @@ type builder struct {
 	buildDirectory filesystem.MutableDirectory
 	hashDb         *hash.DefinitionDatabase
 	buildCache     map[string]*buildInfo
+	tl             *tokenLocker
+	logger         BuildLogger
 }
 
 // needsRebuild checks if a BuildDefinition needs to be rebuilt.
 // returns the BuildArtifact if it does not need to be rebuilt.
-func (b *builder) needsRebuild(hash string, def BuildDefinition, options BuildOptions) (BuildArtifact, error) {
+func (b *builder) needsRebuild(hash string, options BuildOptions) (BuildArtifact, error) {
 	if options.ForceRebuild {
 		return nil, nil
 	}
@@ -166,7 +198,8 @@ func (b *builder) needsRebuild(hash string, def BuildDefinition, options BuildOp
 		}
 
 		// Check if the receipt has expired.
-		if art.Receipt().ExpireTime.Before(time.Now()) {
+		expireTime := art.Receipt().ExpireTime
+		if !expireTime.IsZero() && expireTime.Before(time.Now()) {
 			return true, nil
 		}
 
@@ -187,7 +220,7 @@ func (b *builder) needsRebuild(hash string, def BuildDefinition, options BuildOp
 	needsRebuild, err := checkHash(hash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check hash: %w", err)
-	} else if !needsRebuild {
+	} else if needsRebuild {
 		return nil, nil
 	}
 
@@ -203,6 +236,13 @@ func (b *builder) needsRebuild(hash string, def BuildDefinition, options BuildOp
 
 // Build implements Builder.
 func (b *builder) Build(def BuildDefinition, options BuildOptions) (BuildArtifact, error) {
+	go func() {
+		if err := b.logger.Run(os.Stdout); err != nil {
+			slog.Warn("failed to run logger", "error", err)
+		}
+	}()
+	defer b.logger.Close()
+
 	return b.BuildChild(nil, def, options)
 }
 
@@ -217,7 +257,9 @@ func (b *builder) getOrCreateBuild(hash string) (*buildInfo, bool, error) {
 	info := &buildInfo{
 		ctx: nil,
 	}
+	info.state.Store(buildInfoStateWaiting)
 	info.wg.Add(1)
+	info.tk = b.tl.New()
 
 	b.buildCache[hash] = info
 
@@ -237,12 +279,27 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 		return nil, fmt.Errorf("failed to hash definition: %w", err)
 	}
 
+	var logGroup Group
+	if parent != nil {
+		logGroup = parent.LogGroup().Subgroup(uuid.NewString())
+	} else {
+		logGroup = b.logger.Group(uuid.NewString())
+	}
+	defer logGroup.Close()
+
 	buildInfo, locked, err := b.getOrCreateBuild(hash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get or wait for build: %w", err)
 	}
 	if !locked {
+		// If we are a blocker for another build and the current build is still waiting to start then preempt that build.
+		if options.BlockerFor != nil && buildInfo.state.Load() == buildInfoStateWaiting {
+			logGroup.Description("[%s %s] donating token to preempt build", formatHash(hash), def)
+			buildInfo.tk.Donate()
+		}
+
 		// Wait for the build to complete.
+		logGroup.Description("[%s %s] waiting for build to complete", formatHash(hash), def)
 		buildInfo.wg.Wait()
 
 		if buildInfo.ctx != nil {
@@ -252,23 +309,21 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 
 			return buildInfo.ctx.artifact, nil
 		} else {
-			return nil, fmt.Errorf("failed to get build: %s", hash)
+			logGroup.Description("[%s %s] getting existing artifact", formatHash(hash), def)
+			return b.ArtifactFromHash(hash)
 		}
 	}
 	defer buildInfo.wg.Done()
+	// defer buildInfo.tk.Close()
+
+	logGroup.Description("[%s %s] checking if a rebuild is needed", formatHash(hash), def)
 
 	// Check if the definition needs to be rebuilt.
-	art, err := b.needsRebuild(hash, def, options)
+	art, err := b.needsRebuild(hash, options)
 	if err != nil {
 		return nil, err
 	} else if art != nil {
-		// The artifact does not need to be rebuilt.
-		hash, err := b.HashDefinition(def)
-		if err != nil {
-			return nil, fmt.Errorf("failed to hash definition: %w", err)
-		}
-
-		slog.Debug("skipping build", "hash", hash[:8], "parent", parentHash[:8])
+		logGroup.Description("[%s %s] skipping build", formatHash(hash), def)
 
 		if options.DependencyInfo != nil {
 			options.DependencyInfo.UsedCache = true
@@ -277,9 +332,18 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 		return art, nil
 	}
 
+	logGroup.Description("[%s %s] waiting for token", formatHash(hash), def)
+
+	// Lock the token locker.
+	defer buildInfo.tk.Lock().Close()
+
+	logGroup.Description("[%s %s] building", formatHash(hash), def)
+
+	buildInfo.state.Store(buildInfoStateBuilding)
+
 	// Create a child directory for the build.
 	childDir, err := b.buildDirectory.Mkdir(hash)
-	if err != nil {
+	if err != nil && !errors.Is(err, fs.ErrExist) {
 		return nil, fmt.Errorf("failed to create build directory: %w", err)
 	}
 
@@ -296,6 +360,7 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 			OutputHashes: make(map[string]string),
 		},
 		outputs: make(map[string]*buildOutputWriter),
+		group:   logGroup,
 	}
 
 	// Build the definition.
@@ -303,8 +368,13 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 	if err != nil {
 		return nil, fmt.Errorf("failed to build: %w", err)
 	}
+
+	buildInfo.state.Store(buildInfoStateBuilt)
+
+	logGroup.Description("[%s %s] build finished", formatHash(hash), def)
+
 	if art == nil {
-		slog.Debug("returning existing build", "hash", hash[:8])
+		logGroup.Description("[%s %s] returning existing artifact", formatHash(hash), def)
 
 		if options.DependencyInfo != nil {
 			options.DependencyInfo.UsedCache = true
@@ -479,10 +549,12 @@ var (
 	_ Builder = &builder{}
 )
 
-func NewBuilder(buildDirectory filesystem.MutableDirectory) Builder {
+func NewBuilder(buildDirectory filesystem.MutableDirectory, maxParallelism int, logger BuildLogger) Builder {
 	b := &builder{
 		buildDirectory: buildDirectory,
 		buildCache:     make(map[string]*buildInfo),
+		tl:             newTokenLocker(maxParallelism),
+		logger:         logger,
 	}
 	b.hashDb = hash.NewDefinitionDatabase(b.hashCacheMiss)
 	return b
@@ -585,11 +657,28 @@ var (
 )
 
 type BuildContext interface {
+	// Hash returns the SHA-256 hash of the build context.
 	Hash() string
+
+	// BuildChild builds a child BuildDefinition.
 	BuildChild(def BuildDefinition, opts BuildOptions) (BuildArtifact, error)
+
+	// CreateOutput creates a new output file.
 	CreateOutput(name string) (BuildOutputWriter, error)
+
+	// SetRedistributable sets the redistributable flag.
+	// If the redistributable flag is true, the build artifact can be redistributed automatically.
 	SetRedistributable(redistributable bool)
+
+	// SetExpireTime sets the expire time.
+	// If the expire time is non-zero, the build will be unconditionally rebuilt after this time.
 	SetExpireTime(expireTime time.Time)
+
+	// Logf logs a message.
+	Logf(format string, args ...any)
+
+	// LogGroup returns the log group.
+	LogGroup() Group
 }
 
 type buildContext struct {
@@ -602,6 +691,21 @@ type buildContext struct {
 	receipt        BuildReceipt
 	outputs        map[string]*buildOutputWriter
 	artifact       BuildArtifact
+	group          Group
+}
+
+// Logf implements BuildContext.
+func (b *buildContext) Logf(format string, args ...any) {
+	b.group.Logf(format, args...)
+}
+
+// LogGroup implements BuildContext.
+func (b *buildContext) LogGroup() Group {
+	return b.group
+}
+
+func (b *buildContext) updateStatus(format string, args ...any) {
+	b.group.Description(fmt.Sprintf("[%s %s] %s", formatHash(b.hash), b.def, fmt.Sprintf(format, args...)))
 }
 
 // Hash implements BuildContext.
@@ -647,6 +751,7 @@ func (b *buildContext) BuildChild(def BuildDefinition, opts BuildOptions) (Build
 	}
 
 	opts.DependencyInfo = depInfo
+	opts.BlockerFor = b
 
 	return b.builder.BuildChild(b, def, opts)
 }
@@ -693,7 +798,7 @@ func (b *buildContext) CreateOutput(name string) (BuildOutputWriter, error) {
 	return writer, nil
 }
 
-func writeLockFile(hash string, buildDir filesystem.MutableDirectory) (bool, error) {
+func (b *buildContext) writeLockFile(hash string, buildDir filesystem.MutableDirectory) (bool, error) {
 	// write the lock file.
 	pid := os.Getpid()
 	pidStr := strconv.Itoa(pid)
@@ -719,15 +824,15 @@ func writeLockFile(hash string, buildDir filesystem.MutableDirectory) (bool, err
 			return false, err
 		}
 
-		return waitForLockFile(hash, buildDir, pid)
+		return b.waitForLockFile(hash, buildDir, pid)
 	}
 
 	return true, nil
 }
 
-func waitForLockFile(hash string, buildDir filesystem.MutableDirectory, pid int) (bool, error) {
+func (b *buildContext) waitForLockFile(hash string, buildDir filesystem.MutableDirectory, pid int) (bool, error) {
 	// wait for the lock to be released.
-	slog.Info("waiting for lock release", "hash", hash[:8])
+	b.updateStatus("waiting for lock release hash=%s", formatHash(hash))
 
 	for {
 		time.Sleep(100 * time.Millisecond)
@@ -743,9 +848,9 @@ func waitForLockFile(hash string, buildDir filesystem.MutableDirectory, pid int)
 
 		// if the process crashed, we need to rebuild.
 		if running, _ := ProcessRunning(pid); !running {
-			slog.Warn("process crashed", "pid", pid)
+			b.updateStatus("process crashed pid=%d", pid)
 
-			return writeLockFile(hash, buildDir)
+			return b.writeLockFile(hash, buildDir)
 		} else {
 			// the lock file was deleted and the process is still
 			// running so we assume it's built successfully.
@@ -755,11 +860,11 @@ func waitForLockFile(hash string, buildDir filesystem.MutableDirectory, pid int)
 }
 
 // returns true if we own the lock file and need to build.
-func exclusiveLockForBuild(hash string, buildDir filesystem.MutableDirectory) (bool, error) {
+func (b *buildContext) exclusiveLockForBuild(hash string, buildDir filesystem.MutableDirectory) (bool, error) {
 	// check if the lock file exists.
 	lockFile, err := buildDir.GetChild(LOCK_FILENAME)
 	if errors.Is(err, fs.ErrNotExist) {
-		return writeLockFile(hash, buildDir)
+		return b.writeLockFile(hash, buildDir)
 	} else if err != nil {
 		return false, err
 	}
@@ -777,11 +882,11 @@ func exclusiveLockForBuild(hash string, buildDir filesystem.MutableDirectory) (b
 
 	// check if the process is still running.
 	if running, _ := ProcessRunning(pid); !running {
-		slog.Warn("process crashed", "pid", pid)
+		b.updateStatus("process crashed pid=%d", pid)
 
-		return writeLockFile(hash, buildDir)
+		return b.writeLockFile(hash, buildDir)
 	} else {
-		return waitForLockFile(hash, buildDir, pid)
+		return b.waitForLockFile(hash, buildDir, pid)
 	}
 }
 
@@ -796,7 +901,7 @@ func (b *buildContext) build() (BuildArtifact, error) {
 	start := time.Now()
 
 	// check if the lock file exists.
-	ok, err := exclusiveLockForBuild(b.hash, b.buildDirectory)
+	ok, err := b.exclusiveLockForBuild(b.hash, b.buildDirectory)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for lock release: %w", err)
 	}
@@ -807,7 +912,7 @@ func (b *buildContext) build() (BuildArtifact, error) {
 	}
 	defer b.buildDirectory.Unlink(LOCK_FILENAME)
 
-	slog.Info("building", "hash", b.hash[:8])
+	b.updateStatus("building")
 
 	// serialize the definition to a file.
 	contents, err := b.builder.MarshalDefinition(b.def)
@@ -854,7 +959,7 @@ func (b *buildContext) build() (BuildArtifact, error) {
 		defer wg.Done()
 		// build the definition.
 		if err := b.def.Build(b); err != nil {
-			errChan <- fmt.Errorf("failed to build definition %s: %w", b.hash[:8], err)
+			errChan <- fmt.Errorf("failed to build definition %s: %w", formatHash(b.hash), err)
 		}
 	}()
 
@@ -889,7 +994,7 @@ func (b *buildContext) build() (BuildArtifact, error) {
 		return nil, fmt.Errorf("failed to write receipt: %w", err)
 	}
 
-	slog.Info("built", "hash", b.hash[:8], "duration", b.receipt.BuildDuration)
+	b.updateStatus("built duration=%s", b.receipt.BuildDuration)
 
 	// create the artifact.
 	b.artifact = &buildArtifact{
@@ -908,14 +1013,19 @@ var (
 type BuildDefinition interface {
 	hash.Definition
 
+	// Build builds the definition.
 	Build(ctx BuildContext) error
+
+	// Dependencies returns a list of explicit dependencies.
+	// Explicit dependencies are automatically built as the definition starts building.
 	Dependencies() ([]BuildDefinition, error)
 }
 
 type basicBuildDefinitionParams struct {
-	Name      string
-	SleepTime int
-	Children  []BuildDefinition
+	Name       string
+	SleepTime  int
+	ExpireTime int
+	Children   []BuildDefinition
 }
 
 // SerializableType implements hash.SerializableValue.
@@ -950,15 +1060,16 @@ func (b *basicBuildDefinition) SerializableType() string {
 
 // Build implements BuildDefinition.
 func (b *basicBuildDefinition) Build(ctx BuildContext) error {
-	slog.Info("[#] starting", "name", b.params.Name)
+	ctx.Logf("[#] starting name=%s", b.params.Name)
 
-	for _, child := range b.params.Children {
+	for i, child := range b.params.Children {
 		if _, err := ctx.BuildChild(child, BuildOptions{}); err != nil {
 			return err
 		}
+		ctx.Logf("[#] finished child=%s (%d/%d)", child, i+1, len(b.params.Children))
 	}
 
-	slog.Info("[#] building", "name", b.params.Name)
+	ctx.Logf("[#] building name=%s", b.params.Name)
 
 	time.Sleep(time.Duration(b.params.SleepTime) * time.Millisecond)
 
@@ -972,7 +1083,11 @@ func (b *basicBuildDefinition) Build(ctx BuildContext) error {
 		return fmt.Errorf("failed to write output: %w", err)
 	}
 
-	slog.Info("[#] finished", "name", b.params.Name)
+	if b.params.ExpireTime > 0 {
+		ctx.SetExpireTime(time.Now().Add(time.Duration(b.params.ExpireTime) * time.Millisecond))
+	}
+
+	ctx.Logf("[#] finished name=%s", b.params.Name)
 
 	return nil
 }
@@ -986,12 +1101,13 @@ var (
 	_ BuildDefinition = &basicBuildDefinition{}
 )
 
-func newBasicBuildDefinition(name string, sleepTime time.Duration, children ...BuildDefinition) *basicBuildDefinition {
+func newBasicBuildDefinition(name string, expireTime time.Duration, sleepTime time.Duration, children ...BuildDefinition) *basicBuildDefinition {
 	return &basicBuildDefinition{
 		params: basicBuildDefinitionParams{
-			Name:      name,
-			SleepTime: int(sleepTime.Milliseconds()),
-			Children:  children,
+			Name:       name,
+			SleepTime:  int(sleepTime.Milliseconds()),
+			ExpireTime: int(expireTime.Milliseconds()),
+			Children:   children,
 		},
 	}
 }
@@ -1008,7 +1124,7 @@ func dumpTree(b Builder, art BuildArtifact, info *DependencyInfo, prefix string)
 		usedCache = "cache"
 	}
 
-	fmt.Fprintf(os.Stderr, "[%s] %s%s [%s, %s]\n", art.Hash()[:8], prefix, def, art.Receipt().BuildDuration, usedCache)
+	fmt.Fprintf(os.Stderr, "[%s] %s%s [%s, %s]\n", formatHash(art.Hash()), prefix, def, art.Receipt().BuildDuration, usedCache)
 	for _, dep := range art.Receipt().Dependencies {
 		child, err := b.ArtifactFromHash(dep.Hash)
 		if err != nil {
@@ -1020,38 +1136,62 @@ func dumpTree(b Builder, art BuildArtifact, info *DependencyInfo, prefix string)
 	}
 }
 
+var (
+	buildPath = flag.String("build-dir", "", "The build directory")
+	jobs      = flag.Int("jobs", 1, "The number of parallel jobs")
+)
+
 func appMain() error {
+	flag.Parse()
+
 	hash.RegisterType(&basicBuildDefinition{})
 
-	builder := NewBuilder(filesystem.NewMemoryDirectory())
+	buildDir := filesystem.NewMemoryDirectory()
+	if *buildPath != "" {
+		if err := common.Ensure(*buildPath, os.ModePerm); err != nil {
+			return err
+		}
 
-	item2 := newBasicBuildDefinition("item2", 100*time.Millisecond)
+		buildDir = filesystem.NewLocalMutableDirectory(*buildPath)
+	}
 
-	defTree := newBasicBuildDefinition("top", 200*time.Millisecond,
-		newBasicBuildDefinition("topIt2", 400*time.Millisecond, item2),
-		newBasicBuildDefinition("long", 800*time.Millisecond,
-			newBasicBuildDefinition("longChild1", 200*time.Millisecond),
-			newBasicBuildDefinition("longChild2", 200*time.Millisecond, item2),
-			newBasicBuildDefinition("longChild3", 200*time.Millisecond),
-			newBasicBuildDefinition("longChild4", 200*time.Millisecond),
-			newBasicBuildDefinition("longChild5", 200*time.Millisecond),
+	// tui := NewSimpleLogger()
+	tui := NewBuildLogger(32)
+
+	builder := NewBuilder(buildDir, *jobs, tui)
+
+	item2 := newBasicBuildDefinition("item2", 0, 100*time.Millisecond)
+
+	item3 := newBasicBuildDefinition("item3", 0, 100*time.Millisecond)
+
+	defTree := newBasicBuildDefinition("top", 0, 200*time.Millisecond,
+		newBasicBuildDefinition("topIt2", 0, 400*time.Millisecond, item2),
+		newBasicBuildDefinition("long", 0, 800*time.Millisecond,
+			newBasicBuildDefinition("longChild1", 0, 200*time.Millisecond),
+			newBasicBuildDefinition("longChild2", 100*time.Millisecond, 200*time.Millisecond, item2),
+			newBasicBuildDefinition("longChild3", 0, 200*time.Millisecond),
+			newBasicBuildDefinition("longChild4", 0, 200*time.Millisecond, item3),
+			newBasicBuildDefinition("longChild5", 0, 200*time.Millisecond, item3),
 		),
 		item2,
 	)
 
-	res, err := builder.Build(defTree, BuildOptions{})
-	if err != nil {
+	if _, err := builder.Build(defTree, BuildOptions{}); err != nil {
 		return err
 	}
 
-	dumpTree(builder, res, nil, "")
+	// dumpTree(builder, res, nil, "")
 
-	deleted, err := builder.GarbageCollect(time.Now().Add(time.Hour))
+	deleted, err := builder.GarbageCollect(time.Now().Add(-2 * time.Minute))
 	if err != nil {
 		return err
 	}
-
-	slog.Info("garbage collected", "deleted", deleted)
+	for _, hash := range deleted {
+		slog.Info("deleted", "hash", hash)
+		if err := buildDir.Unlink(hash); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
