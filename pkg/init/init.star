@@ -5,19 +5,22 @@ def ssh_connect(ctx):
         return ctx.run(["/bin/login", "-pf", "root"])
 
 def main():
-    network_interface_up("lo")
-    network_interface_up("eth0")
-    network_interface_configure("eth0", ip = "10.42.0.2/16", router = "10.42.0.1")
+    parse_commandline(file_read("/proc/cmdline"))
+
+    nonet = False
+
+    # Only configure the network if the TINYRANGE_NONET environment variable is not set.
+    if get_env("TINYRANGE_NONET") == "":
+        network_interface_up("lo")
+        network_interface_up("eth0")
+        network_interface_configure("eth0", ip = "10.42.0.2/16", router = "10.42.0.1")
+    else:
+        nonet = True
 
     # print(fetch_http("http://1.1.1.1"))
 
     # Set the hostname.
     set_hostname("tinyrange")
-
-    # Mount /proc filesystem.
-    mount("proc", "proc", "/proc", ensure_path = True)
-
-    parse_commandline(file_read("/proc/cmdline"))
 
     # Mount other filesystems.
     mount("devtmpfs", "devtmpfs", "/dev", ensure_path = True, ignore_error = True)
@@ -32,8 +35,9 @@ def main():
     path_symlink("/proc/self/fd", "/dev/fd")
 
     # Write /etc/resolv.conf
-    path_ensure("/etc")
-    file_write("/etc/resolv.conf", "nameserver 10.42.0.1\n")
+    if not nonet:
+        path_ensure("/etc")
+        file_write("/etc/resolv.conf", "nameserver 10.42.0.1\n")
 
     # Write a custom MOTD since the default one might link to distribution
     # documentation which may not work inside TinyRange.
@@ -42,7 +46,7 @@ def main():
     set_env("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
     set_env("HOME", "/root")
 
-    if get_env("TINYRANGE_INTERACTION") == "serial":
+    if get_env("TINYRANGE_INTERACTION") == "serial" or nonet:
         if "ssh_command" in args:
             exec(*args["ssh_command"])
         else:

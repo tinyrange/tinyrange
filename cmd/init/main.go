@@ -1006,6 +1006,10 @@ func runStarlark(filename string) error {
 				if err := common.EnableVerbose(); err != nil {
 					return starlark.None, err
 				}
+			} else if arg == "tinyrange.nonet=yes" {
+				if err := os.Setenv("TINYRANGE_NONET", "yes"); err != nil {
+					return starlark.None, err
+				}
 			} else if strings.HasPrefix(arg, "tinyrange.experimental=") {
 				flags := strings.TrimPrefix(arg, "tinyrange.experimental=")
 
