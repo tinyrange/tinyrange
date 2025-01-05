@@ -427,12 +427,18 @@ var (
 
 type mountOptions struct {
 	Readonly bool
+	Ensure   bool
 }
 
 func mount(kind string, mountName string, mountPoint string, opts mountOptions) error {
 	var flags uintptr
 	if opts.Readonly {
 		flags |= unix.MS_RDONLY
+	}
+	if opts.Ensure {
+		if err := common.Ensure(mountPoint, os.ModePerm); err != nil {
+			return fmt.Errorf("failed to create mount point: %v", err)
+		}
 	}
 	err := unix.Mount(mountName, mountPoint, kind, flags, "")
 	if err != nil {
@@ -1329,7 +1335,9 @@ func initMain() error {
 	needsReaper := false
 
 	// get the interaction from /proc/cmdline
-	if err := mount("proc", "proc", "/proc", mountOptions{}); err != nil {
+	if err := mount("proc", "proc", "/proc", mountOptions{
+		Ensure: true,
+	}); err != nil {
 		return err
 	}
 
