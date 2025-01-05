@@ -1,0 +1,51 @@
+id: dev.tinyrange.TinyRange
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+
+command: tinyrange
+
+finish-args:
+  # Allow access to the host's home directory
+  - --filesystem=home
+  # Allow access to the host's network
+  - --share=network
+  # Allow access to /dev/kvm
+  - --device=kvm
+
+build-options:
+  env:
+    - GOBIN=/app/bin
+    - GOROOT=/usr/lib/sdk/golang
+    - PATH=/app/bin:/usr/lib/sdk/golang/bin:/usr/bin:/bin
+  build-args:
+    - --share=network
+
+modules:
+  - name: tinyrange
+    buildsystem: simple
+    build-commands:
+      - $GOROOT/bin/go run tools/build.go
+      - install -Dm00755 build/tinyrange $FLATPAK_DEST/bin/tinyrange
+      - install -Dm00755 build/tinyrange_qemu $FLATPAK_DEST/bin/tinyrange_qemu
+    sources:
+      - type: git
+        url: https://github.com/tinyrange/tinyrange.git
+        branch: alpha
+  - name: qemu
+    config-opts:
+      - "--disable-user"
+      - "--disable-vnc"
+      - "--disable-sdl"
+      - "--disable-gtk"
+      - "--disable-curses"
+      - "--disable-iconv"
+      - "--disable-gio"
+      - "--enable-kvm"
+      - "--target-list=x86_64-softmmu,aarch64-softmmu"
+    sources:
+      - type: archive
+        url: https://download.qemu.org/qemu-9.2.0.tar.xz
+        sha256: f859f0bc65e1f533d040bbe8c92bcfecee5af2c921a6687c652fb44d089bd894

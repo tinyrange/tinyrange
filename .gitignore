@@ -29,3 +29,5 @@ benchmarks
 .venv/
 
 .DS_Store
+
+.flatpak-builder/
