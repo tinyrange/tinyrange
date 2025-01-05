@@ -1,7 +1,7 @@
 package main
 
 import (
-	cli "github.com/tinyrange/tinyrange/cmd/tinyrange"
+	"github.com/tinyrange/tinyrange/pkg/cli"
 )
 
 func main() {

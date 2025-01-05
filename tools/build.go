@@ -256,7 +256,7 @@ func buildVMMForTarget(buildDir string, buildOs string, buildArch string, name s
 		"-tags", "official",
 	}
 
-	args = append(args, "github.com/tinyrange/tinyrange/cmd/vmm/"+name)
+	args = append(args, "github.com/tinyrange/tinyrange/cmd/tinyrange_"+name)
 
 	cmd := exec.Command("go", args...)
 
