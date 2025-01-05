@@ -7,7 +7,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 )
 
-//go:embed vmlinux_x86_64
+//go:embed x86_64/vmlinux
 var KERNEL_X86_64 []byte
 
 func GetOfficialKernel(arch config.CPUArchitecture) ([]byte, error) {

@@ -1,0 +1,21 @@
+#!/usr/bin/env tinyrange
+
+version: 1
+builder: alpine@3.20
+commands:
+  - mv /root/linux.config /root/linux-6.12.8/.config
+  - cd /root/linux-6.12.8; make olddefconfig
+  - mv /root/linux-6.12.8/.config /root/linux.proposed.config
+files:
+  - linux.config
+archives:
+  - https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.8.tar.xz
+output: /root/linux.proposed.config
+packages:
+  - build-base
+  - flex
+  - bison
+  - gmp-dev
+  - mpc1-dev
+  - openssl-dev
+  - linux-headers

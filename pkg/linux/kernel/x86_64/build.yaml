@@ -1,0 +1,30 @@
+#!/usr/bin/env tinyrange
+
+version: 1
+arch: x86_64
+builder: alpine@3.20
+commands:
+  - mv /root/linux.proposed.config /root/linux-6.12.8/.config
+  - cd /root/linux-6.12.8; make -j6
+  - mv /root/linux-6.12.8/arch/x86/boot/bzImage /root/vmlinux_x86_64.proposed
+files:
+  - linux.proposed.config
+archives:
+  - https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.8.tar.xz
+output: /root/vmlinux.proposed
+packages:
+  - build-base
+  - flex
+  - bison
+  - gmp-dev
+  - mpc1-dev
+  - openssl-dev
+  - linux-headers
+  - elfutils-dev
+  - findutils
+  - diffutils
+  - perl
+min_spec:
+  cpu: 6
+  memory: 10240
+  disk: 10240
