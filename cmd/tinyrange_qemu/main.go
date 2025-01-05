@@ -33,7 +33,10 @@ func findQemu(driver vmm.Driver, name string) (string, error) {
 	return "", fmt.Errorf("%s not found", name)
 }
 
-var qemuPath = flag.String("qemu", "", "path to qemu executable")
+var (
+	qemuPath   = flag.String("qemu", "", "path to qemu executable")
+	kernelPath = flag.String("kernel", "", "path to linux kernel")
+)
 
 func main() {
 	vmm.Entry(func(driver vmm.Driver) (vmm.PrepareResult, error) {
@@ -180,7 +183,9 @@ func main() {
 			args = append(args, "-device", fmt.Sprintf("virtio-net,netdev=net,mac=%s,romfile=", macAddr.String()))
 		}
 
-		if kern := driver.Kernel(); kern != nil {
+		if *kernelPath != "" {
+			args = append(args, "-kernel", *kernelPath)
+		} else if kern := driver.Kernel(); kern != nil {
 			kernelFilename, err := kern.HostFilename()
 			if err != nil {
 				return nil, fmt.Errorf("failed to get host filename: %w", err)
