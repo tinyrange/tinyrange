@@ -15,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const DEFAuLT_BUILDER = "alpine@3.20"
+const DEFAuLT_BUILDER = "alpine@3.21"
 
 var currentConfig login.Config = login.Config{Version: login.CURRENT_CONFIG_VERSION}
 
