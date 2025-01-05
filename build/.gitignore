@@ -1,6 +1,3 @@
 *
 !.gitignore
-!tinyrange_qemu.star
 !tinyrange.portable
-!installer.go
-!installer_windows.go

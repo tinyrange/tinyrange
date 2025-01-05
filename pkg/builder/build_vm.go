@@ -25,9 +25,6 @@ func init() {
 	hash.RegisterType(&BuildVmDefinition{})
 }
 
-var OFFICIAL_KERNEL_URL_X86_64 = "https://github.com/tinyrange/linux_build/releases/download/linux_x86_6.6.7/vmlinux_x86_64"
-var OFFICIAL_KERNEL_URL_AARCH64 = "https://github.com/tinyrange/linux_build/releases/download/linux_arm64_6.6.7/vmlinux_arm64"
-
 func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
 	persistPath := filepath.Join(buildDir, "persist")
 
@@ -83,18 +80,9 @@ func (def *BuildVmDefinition) Dependencies(ctx common.BuildContext) ([]common.De
 		arch = config.HostArchitecture
 	}
 
-	kernelDef := def.params.Kernel
-	if kernelDef == nil {
-		if arch == config.ArchX8664 {
-			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_X86_64, 0, nil)
-		} else if arch == config.ArchARM64 {
-			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_AARCH64, 0, nil)
-		} else {
-			return nil, fmt.Errorf("no kernel specified and no official kernel available for %s", arch)
-		}
+	if def.params.Kernel != nil {
+		ret = append(ret, def.params.Kernel)
 	}
-
-	ret = append(ret, kernelDef)
 
 	if def.params.InitRamFs != nil {
 		ret = append(ret, def.params.InitRamFs)
@@ -158,25 +146,19 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		return config.TinyRangeConfig{}, err
 	}
 
+	var kernelFilename string
+
 	kernelDef := def.params.Kernel
-	if kernelDef == nil {
-		if arch == config.ArchX8664 {
-			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_X86_64, 0, nil)
-		} else if arch == config.ArchARM64 {
-			kernelDef = NewFetchHttpBuildDefinition(OFFICIAL_KERNEL_URL_AARCH64, 0, nil)
-		} else {
-			return config.TinyRangeConfig{}, fmt.Errorf("no kernel specified and no official kernel available for %s", arch)
+	if kernelDef != nil {
+		kernel, err := ctx.BuildChild(kernelDef)
+		if err != nil {
+			return config.TinyRangeConfig{}, err
 		}
-	}
 
-	kernel, err := ctx.BuildChild(kernelDef)
-	if err != nil {
-		return config.TinyRangeConfig{}, err
-	}
-
-	kernelFilename, err := ctx.FilenameFromDigest(kernel.Digest())
-	if err != nil {
-		return config.TinyRangeConfig{}, err
+		kernelFilename, err = ctx.FilenameFromDigest(kernel.Digest())
+		if err != nil {
+			return config.TinyRangeConfig{}, err
+		}
 	}
 
 	interaction := def.params.Interaction

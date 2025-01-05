@@ -354,10 +354,10 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 			}
 
 			return nil
-		} else if builtin.Name == "tinyrange_qemu.star" {
-			local, err := common.GetAdjacentExecutable("tinyrange_qemu.star")
+		} else if builtin.Name == "tinyrange_qemu" {
+			local, err := common.GetAdjacentExecutable("tinyrange_qemu", "tinyqemu/tinyrange_qemu")
 			if err != nil {
-				return fmt.Errorf("failed to get tinyrange_qemu.star: %w", err)
+				return fmt.Errorf("failed to get tinyrange_qemu: %w", err)
 			}
 
 			file := filesystem.NewLocalFile(local, nil)
@@ -971,9 +971,11 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 	}
 
 	// Set the kernel.
-	d.kernel = &localFile{
-		driver:   d,
-		filename: topConfig.Resolve(topConfig.KernelFilename),
+	if topConfig.KernelFilename != "" {
+		d.kernel = &localFile{
+			driver:   d,
+			filename: topConfig.Resolve(topConfig.KernelFilename),
+		}
 	}
 	if topConfig.InitFilesystemFilename != "" {
 		d.initRamFs = &localFile{

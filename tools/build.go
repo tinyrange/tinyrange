@@ -439,7 +439,7 @@ func buildRelease(buildOs string, buildArch string) error {
 		return err
 	}
 
-	// copy tinyrange_qemu.star to tinyqemu/tinyrange_qemu.star
+	// copy tinyrange_qemu to tinyqemu/tinyrange_qemu
 	if err := archive.CopyFile(getTarget(targetDir, buildOs, "tinyrange_qemu"), "tinyqemu/tinyrange_qemu"+exeSuffix); err != nil {
 		return err
 	}

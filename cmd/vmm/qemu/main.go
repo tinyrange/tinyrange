@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/linux/kernel"
 	"github.com/tinyrange/tinyrange/pkg/vmm"
 )
 
@@ -179,18 +180,32 @@ func main() {
 			args = append(args, "-device", fmt.Sprintf("virtio-net,netdev=net,mac=%s,romfile=", macAddr.String()))
 		}
 
-		kernel := driver.Kernel()
-		if kernel == nil {
-			return nil, fmt.Errorf("kernel not found")
-		}
+		if kern := driver.Kernel(); kern != nil {
+			kernelFilename, err := kern.HostFilename()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get host filename: %w", err)
+			}
 
-		kernelFilename, err := kernel.HostFilename()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get host filename: %w", err)
-		}
+			// Add the kernel.
+			args = append(args, "-kernel", kernelFilename)
+		} else {
+			kernel, err := kernel.GetOfficialKernel(driver.GuestArchitecture())
+			if err != nil {
+				return nil, fmt.Errorf("failed to get official kernel: %w", err)
+			}
 
-		// Add the kernel.
-		args = append(args, "-kernel", kernelFilename)
+			kernelFile, err := driver.EnsureFile(kernel)
+			if err != nil {
+				return nil, fmt.Errorf("failed to ensure file: %w", err)
+			}
+
+			filename, err := kernelFile.HostFilename()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get host filename: %w", err)
+			}
+
+			args = append(args, "-kernel", filename)
+		}
 
 		// Add the kernel command line.
 		args = append(args, "-append", strings.Join(kernelCmdline, " "))

@@ -1204,26 +1204,13 @@ func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
 				} else {
 					return starlark.None, fmt.Errorf("invalid architecture for tinyrange: %s", arch)
 				}
-			} else if name == "tinyrange_qemu.star" {
-				local, err := common.GetAdjacentExecutable("tinyrange_qemu.star", "tinyqemu/tinyrange_qemu.star")
+			} else if name == "tinyrange_qemu" {
+				local, err := common.GetAdjacentExecutable("tinyrange_qemu", "tinyqemu/tinyrange_qemu")
 				if err != nil {
 					return nil, err
 				}
 
-				return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange_qemu.star"), nil
-			} else if name == "source" {
-				var fs filesystem.ArrayArchive
-
-				for _, root := range []string{"pkg", "cmd", "tools", "go.mod", "go.sum", "main.go", "LICENSE", "stdlib", "third_party"} {
-					subFs, err := filesystem.ArchiveFromFS(common.SOURCE_FS, root)
-					if err != nil {
-						return nil, err
-					}
-
-					fs = append(fs, subFs...)
-				}
-
-				return filesystem.NewStarArchive(fs, nil, "source"), nil
+				return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange_qemu"), nil
 			} else {
 				return starlark.None, fmt.Errorf("unknown builtin executable: %s", name)
 			}

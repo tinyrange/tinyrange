@@ -1,7 +1,6 @@
 package common
 
 import (
-	"embed"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -19,12 +19,6 @@ import (
 
 var StarlarkJsonEncode = starlarkjson.Module.Members["encode"].(*starlark.Builtin).CallInternal
 var StarlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builtin).CallInternal
-
-var SOURCE_FS embed.FS
-
-func SetSourceFS(fs embed.FS) {
-	SOURCE_FS = fs
-}
 
 var verboseEnabled = false
 
@@ -101,6 +95,10 @@ func GetAdjacentExecutable(names ...string) (string, error) {
 
 	for _, name := range names {
 		localPath := filepath.Join(exeDir, name)
+
+		if runtime.GOOS == "windows" {
+			localPath += ".exe"
+		}
 
 		if ok, _ := Exists(localPath); ok {
 			return localPath, nil
