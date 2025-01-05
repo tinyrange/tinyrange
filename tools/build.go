@@ -247,6 +247,41 @@ func buildTinyRangeForTarget(buildDir string, buildOs string, buildArch string) 
 	return outputFilename, nil
 }
 
+func buildVMMForTarget(buildDir string, buildOs string, buildArch string, name string) (string, error) {
+	outputFilename := getTarget(buildDir, buildOs, "tinyrange_"+name)
+
+	args := []string{
+		"build",
+		"-o", outputFilename,
+		"-tags", "official",
+	}
+
+	args = append(args, "github.com/tinyrange/tinyrange/cmd/vmm/"+name)
+
+	cmd := exec.Command("go", args...)
+
+	cmd.Env = cmd.Environ()
+
+	cmd.Env = append(cmd.Env, "GOOS="+buildOs)
+	cmd.Env = append(cmd.Env, "GOARCH="+buildArch)
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if *debug {
+		log.Printf("executing %v", cmd.Args)
+	}
+
+	log.Printf("Build VMM %s for target: %s/%s", name, buildOs, buildArch)
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+
+	return outputFilename, nil
+}
+
 func getTargetDir(buildDir string, targetOs string, targetArch string) (string, string, error) {
 	if targetOs == runtime.GOOS && targetArch == runtime.GOARCH {
 		return buildDir, "", nil
@@ -405,7 +440,7 @@ func buildRelease(buildOs string, buildArch string) error {
 	}
 
 	// copy tinyrange_qemu.star to tinyqemu/tinyrange_qemu.star
-	if err := archive.CopyFile("build/tinyrange_qemu.star", "tinyqemu/tinyrange_qemu.star"); err != nil {
+	if err := archive.CopyFile(getTarget(targetDir, buildOs, "tinyrange_qemu"), "tinyqemu/tinyrange_qemu"+exeSuffix); err != nil {
 		return err
 	}
 
@@ -471,6 +506,12 @@ func main() {
 	target, _, err := getTargetDir(*buildDir, *buildOs, *buildArch)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	for _, name := range []string{"qemu"} {
+		if _, err := buildVMMForTarget(target, *buildOs, *buildArch, name); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	filename, err := buildTinyRangeForTarget(target, *buildOs, *buildArch)

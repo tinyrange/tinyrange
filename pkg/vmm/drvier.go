@@ -1,4 +1,4 @@
-package tinyrange
+package vmm
 
 import (
 	"context"
@@ -8,18 +8,20 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,11 +31,11 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	_ "github.com/tinyrange/tinyrange/pkg/platform"
 	"github.com/tinyrange/tinyrange/pkg/sftp"
-	virtualMachine "github.com/tinyrange/tinyrange/pkg/vm"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"golang.org/x/crypto/ssh"
 )
@@ -88,23 +90,180 @@ func (*vmBackend) Sync() error {
 	return nil
 }
 
-type TinyRange struct {
-	buildDir         string
-	configs          []config.TinyRangeConfig
-	debug            bool
-	forwardSsh       bool
-	exportFilesystem string
-	listenNbd        string
-	streamingServer  string
-	wireguardUrl     string
-	secureSSH        string
-	client           *http.Client
-	onExit           []func()
-	persistPath      string
-	deletedFiles     map[string]bool
+type PrepareResult struct {
 }
 
-func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
+type File interface {
+	// GetNBDServer returns the NBD server address and the export name.
+	// If unix is true, it returns a Unix domain socket path.
+	// Otherwise, it returns a TCP address.
+	GetNBDServer(unix bool) (net.Addr, string, error)
+
+	// HostFilename writes the file to a temporary file and returns the path.
+	HostFilename() (string, error)
+}
+
+type localFile struct {
+	driver   *driver
+	filename string
+}
+
+func (f *localFile) HostFilename() (string, error) {
+	return f.filename, nil
+}
+
+func (f *localFile) GetNBDServer(unix bool) (net.Addr, string, error) {
+	return nil, "", fmt.Errorf("not supported for local files")
+}
+
+var (
+	_ File = &localFile{}
+)
+
+type NetworkInterface interface {
+	// MACAddress returns the MAC address.
+	MACAddress() net.HardwareAddr
+
+	// GetUDPSocketPair returns a pair of UDP sockets one for sending L2 and one for receiving L2 packets.
+	GetUDPSocketPair() (net.Addr, net.Addr, error)
+}
+
+type networkInterface struct {
+	nic *netstack.NetworkInterface
+}
+
+func (ni *networkInterface) MACAddress() net.HardwareAddr {
+	return ni.nic.MacAddress
+}
+
+func (ni *networkInterface) GetUDPSocketPair() (net.Addr, net.Addr, error) {
+	return ni.nic.NetSend, ni.nic.NetRecv, nil
+}
+
+var (
+	_ NetworkInterface = &networkInterface{}
+)
+
+type VirtualMachineMonitor interface {
+	// Run starts the virtual machine.
+	// If bindOutput is true, the output is bound to the current process.
+	Run(bindOutput bool) error
+
+	// Shutdown stops the virtual machine.
+	Shutdown() error
+}
+
+type executable struct {
+	name string
+	args []string
+
+	mtx sync.Mutex
+	cmd *exec.Cmd
+}
+
+func (exe *executable) Run(bindOutput bool) error {
+	exe.mtx.Lock()
+
+	slog.Debug("running hypervisor", "command", exe.name, "args", exe.args)
+
+	exe.cmd = exec.Command(exe.name, exe.args...)
+
+	if bindOutput {
+		exe.cmd.Stdout = os.Stdout
+		exe.cmd.Stderr = os.Stderr
+		exe.cmd.Stdin = os.Stdin
+	}
+
+	exe.mtx.Unlock()
+
+	if err := exe.cmd.Run(); err != nil {
+		return fmt.Errorf("failed to run virtual machine: %s", err)
+	}
+
+	slog.Warn("virtual machine exited")
+
+	return nil
+}
+
+func (exe *executable) Shutdown() error {
+	exe.mtx.Lock()
+	defer exe.mtx.Unlock()
+
+	if exe.cmd != nil {
+		return exe.cmd.Process.Kill()
+	}
+	return nil
+}
+
+func NewExecutable(name string, args []string) VirtualMachineMonitor {
+	return &executable{
+		name: name,
+		args: args,
+	}
+}
+
+type Driver interface {
+	// FindExecutable finds the executable with the given name.
+	// It looks beside the current executable first then searches the PATH.
+	FindExecutable(name string) (string, error)
+
+	// HostOperatingSystem returns the host operating system.
+	HostOperatingSystem() string
+
+	// GuestArchitecture returns the guest architecture.
+	GuestArchitecture() config.CPUArchitecture
+
+	// Accelerated returns true if the driver supports hardware acceleration.
+	Accelerated() bool
+
+	// CPUCount returns the number of CPU cores.
+	CPUCores() int
+
+	// MemorySize returns the memory size in MiB.
+	MemoryMB() int
+
+	// DiskImages returns a list of attached disk images.
+	DiskImages() []File
+
+	// InitRamFs returns the initial ramdisk filesystem or nil.
+	InitRamFs() File
+
+	// Verbose returns true if the driver is in verbose mode.
+	Verbose() bool
+
+	// Experimental returns the experimental flags.
+	Experimental() []string
+
+	// Interaction returns the interaction mode.
+	Interaction() config.InteractionKind
+
+	// NetworkInterface returns the network interface or nil.
+	NetworkInterface() NetworkInterface
+
+	// Kernel returns the kernel image.
+	Kernel() File
+
+	// EnsureFile ensures the file with the given name exists and has the given contents.
+	EnsureFile(contents []byte) (File, error)
+}
+
+type driver struct {
+	configs     []config.TinyRangeConfig
+	buildDir    string
+	debug       bool
+	secureSSH   string
+	persistPath string
+
+	kernel           File
+	initRamFs        File
+	diskImages       []File
+	networkInterface NetworkInterface
+
+	onExit       []func()
+	deletedFiles map[string]bool
+}
+
+func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
 	if localFile := frag.LocalFile; localFile != nil {
 		file := filesystem.NewLocalFile(cfg.Resolve(localFile.HostFilename), nil)
 
@@ -217,21 +376,21 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 			err     error
 		)
 
-		if tr.streamingServer != "" {
-			f := filesystem.NewRemoteFile(tr.client, tr.streamingServer+ark.HostFilename)
+		// if tr.streamingServer != "" {
+		// 	f := filesystem.NewRemoteFile(tr.client, tr.streamingServer+ark.HostFilename)
 
-			archive, err = filesystem.ReadArchiveFromStreamingServer(tr.client, tr.streamingServer, f)
-			if err != nil {
-				return fmt.Errorf("failed to download archive: %w", err)
-			}
-		} else {
-			f := filesystem.NewLocalFile(cfg.Resolve(ark.HostFilename), nil)
+		// 	archive, err = filesystem.ReadArchiveFromStreamingServer(tr.client, tr.streamingServer, f)
+		// 	if err != nil {
+		// 		return fmt.Errorf("failed to download archive: %w", err)
+		// 	}
+		// } else {
+		f := filesystem.NewLocalFile(cfg.Resolve(ark.HostFilename), nil)
 
-			archive, err = filesystem.ReadArchiveFromFile(f)
-			if err != nil {
-				return fmt.Errorf("failed to read archive: %w", err)
-			}
+		archive, err = filesystem.ReadArchiveFromFile(f)
+		if err != nil {
+			return fmt.Errorf("failed to read archive: %w", err)
 		}
+		// }
 
 		entries, err := archive.Entries()
 		if err != nil {
@@ -332,7 +491,7 @@ func (tr *TinyRange) fragmentToFilesystem(cfg config.TinyRangeConfig, frag confi
 	}
 }
 
-func (tr *TinyRange) generateOrLoadSecureSSH() (SecureSSHConfig, error) {
+func (tr *driver) generateOrLoadSecureSSH() (SecureSSHConfig, error) {
 	var secureSSH SecureSSHConfig
 
 	if ok, _ := common.Exists(tr.secureSSH); ok {
@@ -389,19 +548,29 @@ func (tr *TinyRange) generateOrLoadSecureSSH() (SecureSSHConfig, error) {
 }
 
 type nbdAddress struct {
-	Unix bool
-	Addr string
+	Addr   net.Addr
+	Export string
 }
 
-func (addr nbdAddress) Export(name string) string {
-	if addr.Unix {
-		return fmt.Sprintf("nbd+unix:///%s?socket=%s", name, addr.Addr)
+func (nbd *nbdAddress) GetNBDServer(unix bool) (net.Addr, string, error) {
+	if unix && nbd.Addr.Network() == "unix" {
+		return nbd.Addr, nbd.Export, nil
+	} else if !unix && nbd.Addr.Network() == "tcp" {
+		return nbd.Addr, nbd.Export, nil
 	} else {
-		return fmt.Sprintf("nbd://%s/%s", addr.Addr, name)
+		return nil, "", fmt.Errorf("invalid address")
 	}
 }
 
-func (tr *TinyRange) createNbdListener(tryUnix bool) (nbdAddress, net.Listener, error) {
+func (nbd *nbdAddress) HostFilename() (string, error) {
+	return "", fmt.Errorf("not supported for nbd")
+}
+
+var (
+	_ File = &nbdAddress{}
+)
+
+func (tr *driver) createNbdListener(tryUnix bool) (*nbdAddress, net.Listener, error) {
 	if (runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows") && tr.persistPath != "" && tryUnix {
 		pid := os.Getpid()
 
@@ -425,18 +594,18 @@ func (tr *TinyRange) createNbdListener(tryUnix bool) (nbdAddress, net.Listener, 
 			}
 		})
 
-		return nbdAddress{Unix: true, Addr: filename}, listener, nil
+		return &nbdAddress{Addr: listener.Addr(), Export: "root"}, listener, nil
 	} else {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
-			return nbdAddress{}, nil, fmt.Errorf("failed to listen: %v", err)
+			return nil, nil, fmt.Errorf("failed to listen: %v", err)
 		}
 
-		return nbdAddress{Addr: listener.Addr().String()}, listener, nil
+		return &nbdAddress{Addr: listener.Addr(), Export: "root"}, listener, nil
 	}
 }
 
-func (tr *TinyRange) fragmentsToConfig() (filesystem.Directory, []int, []mountInfo, error) {
+func (tr *driver) fragmentsToConfig() (filesystem.Directory, []int, []mountInfo, error) {
 	var exportedPorts []int
 	var mountedHostDirectories []mountInfo
 
@@ -464,7 +633,7 @@ func (tr *TinyRange) fragmentsToConfig() (filesystem.Directory, []int, []mountIn
 	return root, exportedPorts, mountedHostDirectories, nil
 }
 
-func (tr *TinyRange) configureSecureSSH(root filesystem.Directory) (SecureSSHConfig, error) {
+func (tr *driver) configureSecureSSH(root filesystem.Directory) (SecureSSHConfig, error) {
 	var secureSSH SecureSSHConfig
 
 	// Configure secure SSH.
@@ -503,7 +672,7 @@ func (tr *TinyRange) configureSecureSSH(root filesystem.Directory) (SecureSSHCon
 	return secureSSH, nil
 }
 
-func (tr *TinyRange) buildFilesystem(root filesystem.Directory, fsSize int64) (BlockDevice, int64, error) {
+func (tr *driver) buildFilesystem(root filesystem.Directory, fsSize int64) (BlockDevice, int64, error) {
 	totalSize, err := filesystem.GetTotalSize(root)
 	if err != nil {
 		return nil, 0, fmt.Errorf("could not compute total size")
@@ -543,7 +712,7 @@ func (tr *TinyRange) buildFilesystem(root filesystem.Directory, fsSize int64) (B
 	return vmem, fsSize, nil
 }
 
-func (tr *TinyRange) nbdLoop(listener net.Listener, backend *vmBackend) {
+func (tr *driver) nbdLoop(listener net.Listener, backend *vmBackend) {
 	for {
 		conn, err := listener.Accept()
 		if errors.Is(err, net.ErrClosed) {
@@ -572,7 +741,7 @@ func (tr *TinyRange) nbdLoop(listener net.Listener, backend *vmBackend) {
 	}
 }
 
-func (tr *TinyRange) startDNSServer(ns *netstack.NetStack) error {
+func (tr *driver) startDNSServer(ns *netstack.NetStack) error {
 	dnsServer := &dnsServer{
 		dnsLookup: func(name string) (string, error) {
 			if name == "tinyrange." {
@@ -618,7 +787,7 @@ func (tr *TinyRange) startDNSServer(ns *netstack.NetStack) error {
 	return nil
 }
 
-func (tr *TinyRange) exportPort(ns *netstack.NetStack, port int) error {
+func (tr *driver) exportPort(ns *netstack.NetStack, port int) error {
 	portListen, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
 		return err
@@ -653,19 +822,19 @@ func (tr *TinyRange) exportPort(ns *netstack.NetStack, port int) error {
 	return nil
 }
 
+func (d *driver) topConfig() *config.TinyRangeConfig {
+	return &d.configs[0]
+}
+
 type mountInfo struct {
 	HostDirectory string
 	Writable      bool
 }
 
-func (tr *TinyRange) runWithConfig() error {
-	if len(tr.configs) == 0 {
-		return fmt.Errorf("no configs specified")
-	}
-
+func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) error {
 	mainStart := time.Now()
 
-	topConfig := tr.configs[0]
+	topConfig := d.topConfig()
 
 	if topConfig.StorageSize == 0 || topConfig.CPUCores == 0 || topConfig.MemoryMB == 0 {
 		return fmt.Errorf("invalid config")
@@ -673,7 +842,7 @@ func (tr *TinyRange) runWithConfig() error {
 
 	if topConfig.Debug {
 		slog.Warn("enabling hypervisor debug mode")
-		tr.debug = true
+		d.debug = true
 	}
 
 	// Catch Interrupt signals to shutdown gracefully.
@@ -683,176 +852,140 @@ func (tr *TinyRange) runWithConfig() error {
 	go func() {
 		<-osSignal
 
-		for _, fn := range tr.onExit {
+		for _, fn := range d.onExit {
 			fn()
 		}
 
 		os.Exit(1)
 	}()
 
-	interaction := topConfig.Interaction
-	if interaction == "" {
-		interaction = "ssh"
+	if topConfig.Interaction == "" {
+		topConfig.Interaction = config.InteractionSSH
 	}
 
 	start := time.Now()
 
-	root, exportedPorts, mountedHostDirectories, err := tr.fragmentsToConfig()
+	root, exportedPorts, mountedHostDirectories, err := d.fragmentsToConfig()
 	if err != nil {
 		return fmt.Errorf("failed to convert fragments to config: %w", err)
 	}
 
 	slog.Debug("built filesystem tree", "took", time.Since(start))
 
-	secureSSH, err := tr.configureSecureSSH(root)
+	secureSSH, err := d.configureSecureSSH(root)
 	if err != nil {
 		return fmt.Errorf("failed to configure secure ssh: %w", err)
 	}
 
-	vmem, fsSize, err := tr.buildFilesystem(root, int64(topConfig.StorageSize)*1024*1024)
+	vmem, fsSize, err := d.buildFilesystem(root, int64(topConfig.StorageSize)*1024*1024)
 	if err != nil {
 		return fmt.Errorf("failed to build filesystem: %w", err)
 	}
 
-	if tr.exportFilesystem != "" {
-		start := time.Now()
+	_ = fsSize
 
-		out, err := os.Create(tr.exportFilesystem)
-		if err != nil {
-			return err
-		}
-		defer out.Close()
+	// if tr.exportFilesystem != "" {
+	// 	start := time.Now()
 
-		if _, err := io.Copy(out, io.NewSectionReader(vmem, 0, fsSize)); err != nil {
-			return err
-		}
+	// 	out, err := os.Create(tr.exportFilesystem)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	defer out.Close()
 
-		slog.Debug("exported filesystem", "took", time.Since(start))
+	// 	if _, err := io.Copy(out, io.NewSectionReader(vmem, 0, fsSize)); err != nil {
+	// 		return err
+	// 	}
 
-		return nil
-	}
+	// 	slog.Debug("exported filesystem", "took", time.Since(start))
 
-	if tr.listenNbd != "" {
-		listener, err := net.Listen("tcp", tr.listenNbd)
-		if err != nil {
-			return fmt.Errorf("failed to listen: %v", err)
-		}
+	// 	return nil
+	// }
 
-		slog.Info("nbd listening on", "addr", listener.Addr().String())
+	// if tr.listenNbd != "" {
+	// 	listener, err := net.Listen("tcp", tr.listenNbd)
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed to listen: %v", err)
+	// 	}
 
-		backend := &vmBackend{vm: vmem}
+	// 	slog.Info("nbd listening on", "addr", listener.Addr().String())
 
-		tr.nbdLoop(listener, backend)
-	}
+	// 	backend := &vmBackend{vm: vmem}
 
-	start = time.Now()
+	// 	tr.nbdLoop(listener, backend)
+	// }
 
-	nbdAddress, listener, err := tr.createNbdListener(true)
+	nbdAddress, listener, err := d.createNbdListener(true)
 	if err != nil {
 		return fmt.Errorf("failed to create nbd listener: %w", err)
 	}
 
 	backend := &vmBackend{vm: vmem}
 
-	go tr.nbdLoop(listener, backend)
+	go d.nbdLoop(listener, backend)
+
+	d.diskImages = append(d.diskImages, nbdAddress)
 
 	ns := netstack.New()
 
-	if tr.wireguardUrl != "" {
-		resp, err := tr.client.Get(tr.wireguardUrl)
-		if err != nil {
-			return fmt.Errorf("failed to get wireguard config: %w", err)
-		}
-		defer resp.Body.Close()
+	// if d.wireguardUrl != "" {
+	// 	resp, err := d.client.Get(d.wireguardUrl)
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed to get wireguard config: %w", err)
+	// 	}
+	// 	defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("failed to get wireguard config from %s: %s", tr.wireguardUrl, resp.Status)
-		}
+	// 	if resp.StatusCode != http.StatusOK {
+	// 		return fmt.Errorf("failed to get wireguard config from %s: %s", d.wireguardUrl, resp.Status)
+	// 	}
 
-		config, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("failed to read wireguard config: %w", err)
-		}
+	// 	config, err := io.ReadAll(resp.Body)
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed to read wireguard config: %w", err)
+	// 	}
 
-		if err := ns.SetupWireguard(string(config), 1420); err != nil {
-			return fmt.Errorf("failed to setup wireguard: %w", err)
-		}
-	}
-
-	// out, err := os.Create("local/network.pcap")
-	// if err != nil {
-	// 	return err
+	// 	if err := ns.SetupWireguard(string(config), 1420); err != nil {
+	// 		return fmt.Errorf("failed to setup wireguard: %w", err)
+	// 	}
 	// }
-	// defer out.Close()
-
-	// ns.OpenPacketCapture(out)
-
-	factory, err := virtualMachine.LoadVirtualMachineFactory(tr.buildDir, topConfig.Resolve(topConfig.HypervisorScript))
-	if err != nil {
-		return fmt.Errorf("failed to load virtual machine factory: %w", err)
-	}
-
-	virtualMachine, err := factory.Create(
-		topConfig.CPUCores,
-		topConfig.MemoryMB,
-		topConfig.Architecture,
-		topConfig.Resolve(topConfig.KernelFilename),
-		topConfig.Resolve(topConfig.InitFilesystemFilename),
-		[]string{nbdAddress.Export("root")},
-		topConfig.Interaction,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to make virtual machine: %w", err)
-	}
 
 	nic, err := ns.AttachNetworkInterface()
 	if err != nil {
 		return fmt.Errorf("failed to attach network interface: %w", err)
 	}
 
+	d.networkInterface = &networkInterface{
+		nic: nic,
+	}
+
 	// Create DNS server.
-	if err := tr.startDNSServer(ns); err != nil {
+	if err := d.startDNSServer(ns); err != nil {
 		return fmt.Errorf("failed to start DNS server: %w", err)
 	}
 
-	// Create forwarder for SSH connection.
-	if tr.forwardSsh {
-		sshListen, err := net.Listen("tcp", "localhost:2222")
-		if err != nil {
-			return err
-		}
-
-		go func() {
-			for {
-				conn, err := sshListen.Accept()
-				if err != nil {
-					slog.Error("failed to accept", "err", err)
-					return
-				}
-
-				go func() {
-					defer conn.Close()
-
-					clientConn, err := ns.DialInternalContext(context.Background(), "tcp", "10.42.0.2:2222")
-					if err != nil {
-						slog.Error("failed to dial vm ssh", "err", err)
-						return
-					}
-					defer clientConn.Close()
-
-					if err := common.Proxy(clientConn, conn, 4096); err != nil {
-						slog.Error("failed to proxy ssh connection", "err", err)
-						return
-					}
-				}()
-			}
-		}()
-	}
-
+	// Export ports.
 	for _, port := range exportedPorts {
-		if err := tr.exportPort(ns, port); err != nil {
+		if err := d.exportPort(ns, port); err != nil {
 			return fmt.Errorf("failed to export port: %w", err)
 		}
+	}
+
+	// Set the kernel.
+	d.kernel = &localFile{
+		driver:   d,
+		filename: topConfig.Resolve(topConfig.KernelFilename),
+	}
+	if topConfig.InitFilesystemFilename != "" {
+		d.initRamFs = &localFile{
+			driver:   d,
+			filename: topConfig.Resolve(topConfig.InitFilesystemFilename),
+		}
+	}
+
+	// Create the virtual machine monitor.
+	vmm, err := create(d)
+	if err != nil {
+		return fmt.Errorf("failed to create virtual machine monitor: %w", err)
 	}
 
 	top := filesystem.NewMemoryDirectory()
@@ -889,31 +1022,30 @@ func (tr *TinyRange) runWithConfig() error {
 
 	slog.Debug("starting virtual machine", "took", time.Since(start))
 
-	tr.onExit = append(tr.onExit, func() {
-		if err := virtualMachine.Shutdown(); err != nil {
+	d.onExit = append(d.onExit, func() {
+		if err := vmm.Shutdown(); err != nil {
 			slog.Error("failed to shutdown virtual machine", "err", err)
 		}
 	})
 
 	defer func() {
-		for _, fn := range tr.onExit {
+		for _, fn := range d.onExit {
 			fn()
 		}
 	}()
 
 	slog.Debug("running virtual machine", "initTime", time.Since(mainStart))
 
-	if interaction == "ssh" || interaction == "vnc" {
+	switch d.Interaction() {
+	case config.InteractionSSH, config.InteractionVNC:
 		go func() {
-			if err := virtualMachine.Run(nic, tr.debug); err != nil {
+			if err := vmm.Run(d.debug); err != nil {
 				slog.Error("failed to run virtual machine", "err", err)
 				os.Exit(1)
 			}
 		}()
 
-		// return nil
-
-		if interaction == "vnc" {
+		if d.Interaction() == config.InteractionVNC {
 			go runVncClient(ns, "10.42.0.2:5901")
 		}
 
@@ -928,51 +1060,173 @@ func (tr *TinyRange) runWithConfig() error {
 
 			return nil
 		}
-	} else if interaction == "serial" {
-		if err := virtualMachine.Run(nic, true); err != nil {
-			return err
+	case config.InteractionSerial:
+		if err := vmm.Run(true); err != nil {
+			return fmt.Errorf("failed to run virtual machine: %w", err)
 		}
 
 		return nil
-	} else if strings.HasPrefix(interaction, "webssh") {
+	case config.InteractionWebSSH, config.InteractionWebSSHMinimal, config.InteractionWebSSHNoBrower:
 		go func() {
-			if err := virtualMachine.Run(nic, tr.debug); err != nil {
+			if err := vmm.Run(d.debug); err != nil {
 				slog.Error("failed to run virtual machine", "err", err)
 				os.Exit(1)
 			}
 		}()
 
-		return runWebSsh(ns, "10.42.0.2:2222", "root", secureSSH, strings.TrimPrefix(interaction, "webssh,"))
-	} else {
-		return fmt.Errorf("unknown interaction: %s", interaction)
+		return runWebSsh(ns, "10.42.0.2:2222", "root", secureSSH, strings.TrimPrefix(string(d.Interaction()), "webssh,"))
+	default:
+		return fmt.Errorf("unsupported interaction mode: %s", d.Interaction())
 	}
 }
 
-func RunWithConfig(
-	buildDir string,
-	configs []config.TinyRangeConfig,
-	debug bool,
-	forwardSsh bool,
-	exportFilesystem string,
-	listenNbd string,
-	streamingServer string,
-	wireguardUrl string,
-	secureSSH string,
-	persistPath string,
-) error {
-	tr := &TinyRange{
-		buildDir:         buildDir,
-		configs:          configs,
-		debug:            debug,
-		forwardSsh:       forwardSsh,
-		exportFilesystem: exportFilesystem,
-		listenNbd:        listenNbd,
-		streamingServer:  streamingServer,
-		wireguardUrl:     wireguardUrl,
-		client:           http.DefaultClient,
-		secureSSH:        secureSSH,
-		persistPath:      persistPath,
+func (d *driver) addConfig(path string) error {
+	var cfg config.TinyRangeConfig
+
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open config file: %w", err)
 	}
 
-	return tr.runWithConfig()
+	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
+		return fmt.Errorf("failed to decode config file: %w", err)
+	}
+
+	d.configs = append(d.configs, cfg)
+
+	return nil
+}
+
+func (d *driver) FindExecutable(name string) (string, error) {
+	myPath, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	// If the name exists then return it.
+	if _, err := os.Stat(name); err == nil {
+		return name, nil
+	}
+
+	// Look in the same directory as the current executable.
+	dir := filepath.Dir(myPath)
+	if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+		return filepath.Join(dir, name), nil
+	}
+
+	// Look in the PATH.
+	filename, err := exec.LookPath(name)
+	if err != nil {
+		return "", fmt.Errorf("failed to find executable: %w", err)
+	}
+
+	return filename, nil
+}
+
+func (d *driver) Accelerated() bool {
+	if !d.GuestArchitecture().IsNative() {
+		return false
+	}
+
+	return SupportsAcceleration()
+}
+
+func (d *driver) HostOperatingSystem() string               { return runtime.GOOS }
+func (d *driver) GuestArchitecture() config.CPUArchitecture { return d.topConfig().Architecture }
+func (d *driver) CPUCores() int                             { return d.topConfig().CPUCores }
+func (d *driver) MemoryMB() int                             { return d.topConfig().MemoryMB }
+func (d *driver) DiskImages() []File                        { return d.diskImages }
+func (d *driver) InitRamFs() File                           { return d.initRamFs }
+func (d *driver) Verbose() bool                             { return common.IsVerbose() }
+func (d *driver) Experimental() []string                    { return common.GetExperimentalFlags() }
+func (d *driver) Interaction() config.InteractionKind       { return d.topConfig().Interaction }
+func (d *driver) NetworkInterface() NetworkInterface        { return d.networkInterface }
+func (d *driver) Kernel() File                              { return d.kernel }
+
+func (d *driver) EnsureFile(contents []byte) (File, error) {
+	hash := hash.GetSha256Hash(contents)
+
+	path := filepath.Join(d.buildDir, hash+".bin")
+
+	if ok, _ := common.Exists(path); !ok {
+		if err := os.WriteFile(path, contents, os.ModePerm); err != nil {
+			return &localFile{driver: d, filename: path}, err
+		}
+	}
+
+	return &localFile{driver: d, filename: path}, nil
+}
+
+var (
+	_ Driver = &driver{}
+)
+
+var (
+	doPrepare   = flag.Bool("prepare", false, "prepare the driver and check if it is runnable")
+	buildDir    = flag.String("build-dir", common.GetDefaultBuildDir(), "the build directory")
+	debug       = flag.Bool("debug", false, "enable debug mode")
+	verbose     = flag.Bool("verbose", false, "enable verbose mode")
+	secureSSH   = flag.String("secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
+	persistPath = flag.String("persist-path", "", "Specify a path to save VM files to.")
+)
+
+func entryMain(
+	prepare func(vmm Driver) (PrepareResult, error),
+	create func(vmm Driver) (VirtualMachineMonitor, error),
+) error {
+	flag.Parse()
+
+	if *verbose {
+		common.EnableVerbose()
+	}
+
+	driver := &driver{
+		buildDir:    *buildDir,
+		debug:       *debug,
+		secureSSH:   *secureSSH,
+		persistPath: *persistPath,
+	}
+
+	if *doPrepare {
+		out, err := prepare(driver)
+		if err != nil {
+			slog.Error("fatal", "err", err)
+			os.Exit(1)
+		}
+
+		enc, err := json.Marshal(out)
+		if err != nil {
+			return err
+		}
+
+		if _, err := os.Stdout.Write(enc); err != nil {
+			return err
+		}
+	}
+
+	for _, arg := range flag.Args() {
+		if err := driver.addConfig(arg); err != nil {
+			return err
+		}
+	}
+
+	if len(driver.configs) == 0 {
+		return fmt.Errorf("no configs provided")
+	}
+
+	if err := driver.exec(create); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func Entry(
+	prepare func(vmm Driver) (PrepareResult, error),
+	create func(vmm Driver) (VirtualMachineMonitor, error),
+) {
+	if err := entryMain(prepare, create); err != nil {
+		slog.Error("fatal", "err", err)
+		os.Exit(1)
+	}
 }

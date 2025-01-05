@@ -3,7 +3,7 @@
 
 // From: https://github.com/superfly/flyctl/blob/master/ssh/terminal_windows.go (Apache-2.0)
 
-package tinyrange
+package vmm
 
 import (
 	"log/slog"

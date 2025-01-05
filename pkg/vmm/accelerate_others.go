@@ -1,7 +1,7 @@
 //go:build !linux && !darwin && !windows
 
-package vm
+package vmm
 
-func (vm *VirtualMachine) Accelerate() bool {
+func SupportsAcceleration() bool {
 	return false
 }

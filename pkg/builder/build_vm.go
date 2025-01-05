@@ -28,16 +28,16 @@ func init() {
 var OFFICIAL_KERNEL_URL_X86_64 = "https://github.com/tinyrange/linux_build/releases/download/linux_x86_6.6.7/vmlinux_x86_64"
 var OFFICIAL_KERNEL_URL_AARCH64 = "https://github.com/tinyrange/linux_build/releases/download/linux_arm64_6.6.7/vmlinux_arm64"
 
-func runTinyRange(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
+func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
 	persistPath := filepath.Join(buildDir, "persist")
 
-	cmd := exec.Command(exe, "run-vm", "--buildDir", buildDir, "--persist", persistPath, configFilename)
+	cmd := exec.Command(exe, "-build-dir", buildDir, "-persist-path", persistPath, configFilename)
 
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	slog.Debug("executing tinyrange", "args", cmd.Args)
+	slog.Debug("executing VMM", "args", cmd.Args)
 
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -179,26 +179,23 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		return config.TinyRangeConfig{}, err
 	}
 
-	hvScript, err := common.GetAdjacentExecutable("tinyrange_qemu.star", "tinyqemu/tinyrange_qemu.star")
-	if err != nil {
-		return config.TinyRangeConfig{}, fmt.Errorf("could not find default hypervisor tinyrange_qemu.star: %s", hvScript)
-	}
-
 	interaction := def.params.Interaction
+	var vmInteraction config.InteractionKind
 
 	if strings.HasPrefix(interaction, "init,") {
 		builderCfg.ExecInit = strings.TrimPrefix(interaction, "init,")
-		interaction = "serial"
+		vmInteraction = config.InteractionSerial
+	} else {
+		vmInteraction = config.InteractionKind(interaction)
 	}
 
 	vmCfg.BaseDirectory = wd
 	vmCfg.Architecture = arch
-	vmCfg.HypervisorScript = hvScript
 	vmCfg.KernelFilename = kernelFilename
 	vmCfg.CPUCores = def.params.CpuCores
 	vmCfg.MemoryMB = def.params.MemoryMB
 	vmCfg.StorageSize = def.params.StorageSize
-	vmCfg.Interaction = interaction
+	vmCfg.Interaction = vmInteraction
 	vmCfg.Debug = def.params.Debug
 
 	if def.params.InitRamFs != nil {
@@ -364,12 +361,12 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		return nil, err
 	}
 
-	exe, err := os.Executable()
+	exe, err := common.GetAdjacentExecutable("tinyrange_qemu", "tinyqemu/tinyrange_qemu")
 	if err != nil {
 		return nil, err
 	}
 
-	cmd, err := runTinyRange(exe, ctx.BuildDir(), configFilename)
+	cmd, err := runVMM(exe, ctx.BuildDir(), configFilename)
 	if err != nil {
 		return nil, err
 	}

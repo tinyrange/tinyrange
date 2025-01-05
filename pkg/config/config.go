@@ -124,14 +124,23 @@ type Fragment struct {
 	Kernel             *KernelFragment             `json:"kernel,omitempty" yaml:"kernel"`
 }
 
+type InteractionKind string
+
+const (
+	InteractionSSH            InteractionKind = "ssh"
+	InteractionSerial         InteractionKind = "serial"
+	InteractionVNC            InteractionKind = "vnc"
+	InteractionWebSSH         InteractionKind = "webssh"
+	InteractionWebSSHMinimal  InteractionKind = "webssh,minimal"
+	InteractionWebSSHNoBrower InteractionKind = "webssh,nobrowser"
+)
+
 // A config file that can be passed to TinyRange to configure and execute a virtual machine.
 type TinyRangeConfig struct {
 	// The base directory all other filenames resolve from.
 	BaseDirectory string `json:"base_directory" yaml:"base_directory"`
 	// The CPU Architecture of the guest.
 	Architecture CPUArchitecture `json:"architecture" yaml:"architecture"`
-	// The filename of the hypervisor starlark script to use.
-	HypervisorScript string `json:"hypervisor_script" yaml:"hypervisor_script"`
 	// The kernel to boot.
 	KernelFilename string `json:"kernel_filename" yaml:"kernel_filename"`
 	// A initramfs to pass to the kernel or "" to disable passing a initramfs.
@@ -141,7 +150,7 @@ type TinyRangeConfig struct {
 	// The size of the rootfs in megabytes.
 	StorageSize int `json:"storage_size" yaml:"storage_size"`
 	// The way the user will interact with the virtual machine (options: [ssh, serial], default: ssh).
-	Interaction string `json:"interaction" yaml:"interaction"`
+	Interaction InteractionKind `json:"interaction" yaml:"interaction"`
 	// The number of CPU cores to allocate to the virtual machine.
 	CPUCores int `json:"cpu_cores" yaml:"cpu_cores"`
 	// The amount of memory to allocate to the virtual machine.

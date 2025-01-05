@@ -1,16 +1,12 @@
 //go:build linux
 
-package vm
+package vmm
 
 import (
 	"os"
 )
 
-func (vm *VirtualMachine) Accelerate() bool {
-	if !vm.architecture.IsNative() {
-		return false
-	}
-
+func SupportsAcceleration() bool {
 	f, err := os.OpenFile("/dev/kvm", os.O_RDWR, os.ModePerm)
 	if err != nil {
 		return false

@@ -59,9 +59,9 @@ func generateMacAddress() (net.HardwareAddr, error) {
 }
 
 type NetworkInterface struct {
-	NetSend    string
-	NetRecv    string
-	MacAddress string
+	NetSend    net.Addr
+	NetRecv    net.Addr
+	MacAddress net.HardwareAddr
 
 	udpConn *net.UDPConn
 
@@ -269,7 +269,7 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 		return nil, err
 	}
 
-	nic.NetSend = send.LocalAddr().String()
+	nic.NetSend = send.LocalAddr()
 
 	go func() {
 		buf := make([]byte, 8192)
@@ -301,7 +301,7 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 		return nil, err
 	}
 
-	nic.NetRecv = recv.LocalAddr().String()
+	nic.NetRecv = recv.LocalAddr()
 
 	recvPort := recv.LocalAddr().(*net.UDPAddr).Port
 
@@ -356,7 +356,7 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 		}
 	}()
 
-	nic.MacAddress = deviceMac.String()
+	nic.MacAddress = deviceMac
 
 	ns.interfaces = append(ns.interfaces, nic)
 

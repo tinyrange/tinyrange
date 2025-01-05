@@ -1,4 +1,4 @@
-package tinyrange
+package vmm
 
 import (
 	"bytes"

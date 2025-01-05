@@ -1,6 +1,6 @@
 //go:build windows
 
-package vm
+package vmm
 
 import (
 	"syscall"
@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func (vm *VirtualMachine) Accelerate() bool {
+func SupportsAcceleration() bool {
 	lib, err := windows.LoadLibrary("WinHVPlatform.dll")
 	if err != nil {
 		return false

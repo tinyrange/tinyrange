@@ -1,16 +1,12 @@
 //go:build darwin
 
-package vm
+package vmm
 
 import (
 	"os/exec"
 )
 
-func (vm *VirtualMachine) Accelerate() bool {
-	if !vm.architecture.IsNative() {
-		return false
-	}
-
+func SupportsAcceleration() bool {
 	out, err := exec.Command("sysctl", "kern.hv.supported").Output()
 	if err != nil {
 		return false
