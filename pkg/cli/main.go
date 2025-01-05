@@ -81,6 +81,15 @@ func init() {
 }
 
 func Run() {
+	// check if we are passing a single argument.
+	if len(os.Args) == 2 {
+		// If the argument ends with .yaml then assume it's a config file.
+		if strings.HasSuffix(os.Args[1], ".yaml") {
+			runConfig(os.Args[1])
+			return
+		}
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		// fmt.Println(err)
 		os.Exit(1)

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime/pprof"
@@ -23,112 +24,125 @@ var (
 	loginLoadConfig string
 )
 
+func runLogin(args []string) error {
+	if rootCpuProfile != "" {
+		f, err := os.Create(rootCpuProfile)
+		if err != nil {
+			return err
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
+	if len(currentConfig.ExperimentalFlags) > 0 {
+		if err := common.SetExperimental(currentConfig.ExperimentalFlags); err != nil {
+			return err
+		}
+	}
+
+	currentConfig.Packages = args
+
+	if loginSaveConfig != "" {
+		cfg, err := yaml.Marshal(&currentConfig)
+		if err != nil {
+			return err
+		}
+
+		return os.WriteFile(loginSaveConfig, cfg, os.FileMode(0644))
+	} else {
+		db, err := newDb()
+		if err != nil {
+			return err
+		}
+
+		if loginLoadConfig != "" {
+			var addedCommands []string
+			var additionalPorts []string
+
+			// add the commands from the command line
+			addedCommands = append(addedCommands, currentConfig.Commands...)
+			additionalPorts = append(additionalPorts, currentConfig.ForwardPorts...)
+
+			// check if loginLoadConfig is a URL
+			if strings.HasPrefix(loginLoadConfig, "http://") || strings.HasPrefix(loginLoadConfig, "https://") {
+				// expire after 1 hour
+				def := builder.NewFetchHttpBuildDefinition(loginLoadConfig, 1*time.Hour, nil)
+
+				f, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{})
+				if err != nil {
+					return err
+				}
+
+				fh, err := f.Open()
+				if err != nil {
+					return err
+				}
+				defer fh.Close()
+
+				if err := yaml.NewDecoder(fh).Decode(&currentConfig); err != nil {
+					return err
+				}
+			} else {
+				f, err := os.Open(loginLoadConfig)
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+
+				dec := yaml.NewDecoder(f)
+
+				if err := dec.Decode(&currentConfig); err != nil {
+					return err
+				}
+
+				currentConfig.SetLocalConfig()
+			}
+
+			currentConfig.SetBasePath(filepath.Dir(loginLoadConfig))
+
+			if len(addedCommands) > 0 {
+				if len(currentConfig.Commands) > 0 {
+					// Remove the last command from the end of the config (normally a shell or a entrypoint)
+					currentConfig.Commands = currentConfig.Commands[:len(currentConfig.Commands)-1]
+
+					// Add the new commands
+					currentConfig.Commands = append(currentConfig.Commands, addedCommands...)
+				} else {
+					currentConfig.Commands = addedCommands
+				}
+			}
+
+			if len(additionalPorts) > 0 {
+				currentConfig.ForwardPorts = append(currentConfig.ForwardPorts, additionalPorts...)
+			}
+		} else {
+			currentConfig.SetLocalConfig()
+
+			wd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			currentConfig.SetBasePath(wd)
+		}
+
+		return currentConfig.Run(db)
+	}
+}
+
+func runConfig(configFilename string) {
+	loginLoadConfig = configFilename
+
+	if err := runLogin([]string{}); err != nil {
+		slog.Error("failed to run config", "error", err)
+		os.Exit(1)
+	}
+}
+
 var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Start a virtual machine with a builder and a list of packages",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if rootCpuProfile != "" {
-			f, err := os.Create(rootCpuProfile)
-			if err != nil {
-				return err
-			}
-			pprof.StartCPUProfile(f)
-			defer pprof.StopCPUProfile()
-		}
-
-		if len(currentConfig.ExperimentalFlags) > 0 {
-			if err := common.SetExperimental(currentConfig.ExperimentalFlags); err != nil {
-				return err
-			}
-		}
-
-		currentConfig.Packages = args
-
-		if loginSaveConfig != "" {
-			cfg, err := yaml.Marshal(&currentConfig)
-			if err != nil {
-				return err
-			}
-
-			return os.WriteFile(loginSaveConfig, cfg, os.FileMode(0644))
-		} else {
-			db, err := newDb()
-			if err != nil {
-				return err
-			}
-
-			if loginLoadConfig != "" {
-				var addedCommands []string
-				var additionalPorts []string
-
-				// add the commands from the command line
-				addedCommands = append(addedCommands, currentConfig.Commands...)
-				additionalPorts = append(additionalPorts, currentConfig.ForwardPorts...)
-
-				// check if loginLoadConfig is a URL
-				if strings.HasPrefix(loginLoadConfig, "http://") || strings.HasPrefix(loginLoadConfig, "https://") {
-					// expire after 1 hour
-					def := builder.NewFetchHttpBuildDefinition(loginLoadConfig, 1*time.Hour, nil)
-
-					f, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{})
-					if err != nil {
-						return err
-					}
-
-					fh, err := f.Open()
-					if err != nil {
-						return err
-					}
-					defer fh.Close()
-
-					if err := yaml.NewDecoder(fh).Decode(&currentConfig); err != nil {
-						return err
-					}
-				} else {
-					f, err := os.Open(loginLoadConfig)
-					if err != nil {
-						return err
-					}
-					defer f.Close()
-
-					dec := yaml.NewDecoder(f)
-
-					if err := dec.Decode(&currentConfig); err != nil {
-						return err
-					}
-
-					currentConfig.SetLocalConfig()
-				}
-
-				currentConfig.SetBasePath(filepath.Dir(loginLoadConfig))
-
-				if len(addedCommands) > 0 {
-					if len(currentConfig.Commands) > 0 {
-						// Remove the last command from the end of the config (normally a shell or a entrypoint)
-						currentConfig.Commands = currentConfig.Commands[:len(currentConfig.Commands)-1]
-
-						// Add the new commands
-						currentConfig.Commands = append(currentConfig.Commands, addedCommands...)
-					} else {
-						currentConfig.Commands = addedCommands
-					}
-				}
-
-				if len(additionalPorts) > 0 {
-					currentConfig.ForwardPorts = append(currentConfig.ForwardPorts, additionalPorts...)
-				}
-			} else {
-				currentConfig.SetLocalConfig()
-
-				wd, err := os.Getwd()
-				if err != nil {
-					return err
-				}
-				currentConfig.SetBasePath(wd)
-			}
-
-			return currentConfig.Run(db)
-		}
+		return runLogin(args)
 	},
 }
 
