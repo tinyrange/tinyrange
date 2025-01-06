@@ -78,7 +78,8 @@ func main() {
 			if driver.HostOperatingSystem() == "linux" {
 				args = append(args, "-enable-kvm", "-cpu", "host")
 			} else if driver.HostOperatingSystem() == "darwin" {
-				args = append(args, "-cpu", "host", "-accel", "hvf")
+				// Workaround for QEMU bug https://gitlab.com/qemu-project/qemu/-/issues/2665
+				args = append(args, "-cpu", "cortex-a57", "-accel", "hvf")
 			} else if driver.HostOperatingSystem() == "windows" {
 				args = append(args, "-accel", "whpx")
 			} else {
