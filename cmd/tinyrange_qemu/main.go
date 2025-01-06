@@ -38,6 +38,12 @@ var (
 	kernelPath = flag.String("kernel", "", "path to linux kernel")
 )
 
+type OperatingSystem string
+
+const (
+	OperatingSystemLinux OperatingSystem = "linux"
+)
+
 func main() {
 	vmm.Entry(func(driver vmm.Driver) (vmm.PrepareResult, error) {
 		return vmm.PrepareResult{}, nil
@@ -68,6 +74,8 @@ func main() {
 		}
 
 		kernelCmdline := []string{}
+
+		guestOs := OperatingSystemLinux
 
 		if driver.GuestArchitecture() == config.ArchARM64 {
 			args = append(args, "-machine", "virt")
@@ -101,22 +109,23 @@ func main() {
 			args = append(args, "-device", "virtio-serial-pci,id=virtio-serial0")
 			args = append(args, "-chardev", "stdio,id=charconsole0")
 			args = append(args, "-device", "virtconsole,chardev=charconsole0,id=console0")
-			kernelCmdline = append(kernelCmdline, "console=hvc0")
+			if guestOs == OperatingSystemLinux {
+				kernelCmdline = append(kernelCmdline, "console=hvc0")
+			}
 		} else {
 			// Print a warning since the serial console degrades performance.
 			slog.Warn("Using serial console")
 
 			args = append(args, "-serial", "stdio")
-			kernelCmdline = append(kernelCmdline, "earlycon", "console=ttyAMA0")
+			if guestOs == OperatingSystemLinux {
+				kernelCmdline = append(kernelCmdline, "earlycon", "console=ttyAMA0")
+			}
 		}
 
 		// Set the number of CPU cores.
 		args = append(args, "-smp", fmt.Sprintf("%d", driver.CPUCores()))
 		// Set the amount of memory.
 		args = append(args, "-m", fmt.Sprintf("%dm", driver.MemoryMB()))
-
-		// Disable the default panic handler and change reboot behavior.
-		kernelCmdline = append(kernelCmdline, "reboot=k", "panic=-1")
 
 		// Add block devices using virtio-blk.
 		for _, disk := range driver.DiskImages() {
@@ -139,39 +148,10 @@ func main() {
 			return nil, fmt.Errorf("failed to get NBD server: %w", err)
 		}
 
-		// Set the init executable.
-		kernelCmdline = append(kernelCmdline, "init=/init")
-
-		if initRamFs := driver.InitRamFs(); initRamFs != nil {
-			// Add the initramfs. It's responsible for loading the filesystem.
-			filename, err := initRamFs.HostFilename()
-			if err != nil {
-				return nil, fmt.Errorf("failed to get host filename: %w", err)
-			}
-
-			args = append(args, "-initrd", filename)
-		} else {
-			// Set the root device. Make the root device read/write.
-			kernelCmdline = append(kernelCmdline, "root=/dev/vda", "rw")
-		}
-
-		// Trust the random number generator on the host CPU.
-		kernelCmdline = append(kernelCmdline, "random.trust_cpu=on")
-
-		// Pass the verbose flag though to the virtual machine.
-		if driver.Verbose() {
-			kernelCmdline = append(kernelCmdline, "tinyrange.verbose=on")
-		}
-
-		if experimental := driver.Experimental(); len(experimental) > 0 {
-			kernelCmdline = append(kernelCmdline, "tinyrange.experimental="+strings.Join(experimental, ","))
-		}
-
-		kernelCmdline = append(kernelCmdline, "tinyrange.interaction="+string(driver.Interaction()))
-
 		// Add a random number generator using virtio-rng
 		args = append(args, "-device", "virtio-rng")
 
+		// Add a network device using virtio-net.
 		if netDev := driver.NetworkInterface(); netDev != nil {
 			netSend, netRecv, err := netDev.GetUDPSocketPair()
 			if err != nil {
@@ -184,50 +164,85 @@ func main() {
 			args = append(args, "-device", fmt.Sprintf("virtio-net,netdev=net,mac=%s,romfile=", macAddr.String()))
 		}
 
-		if *kernelPath != "" {
-			args = append(args, "-kernel", *kernelPath)
-		} else if kern := driver.Kernel(); kern != nil {
-			kernelFilename, err := kern.HostFilename()
-			if err != nil {
-				return nil, fmt.Errorf("failed to get host filename: %w", err)
+		if guestOs == OperatingSystemLinux {
+			// Disable the default panic handler and change reboot behavior.
+			kernelCmdline = append(kernelCmdline, "reboot=k", "panic=-1")
+
+			// Set the init executable.
+			kernelCmdline = append(kernelCmdline, "init=/init")
+
+			if initRamFs := driver.InitRamFs(); initRamFs != nil {
+				// Add the initramfs. It's responsible for loading the filesystem.
+				filename, err := initRamFs.HostFilename()
+				if err != nil {
+					return nil, fmt.Errorf("failed to get host filename: %w", err)
+				}
+
+				args = append(args, "-initrd", filename)
+			} else {
+				// Set the root device. Make the root device read/write.
+				kernelCmdline = append(kernelCmdline, "root=/dev/vda", "rw")
 			}
 
-			// Add the kernel.
-			args = append(args, "-kernel", kernelFilename)
-		} else {
-			kernel, err := kernel.GetOfficialKernel(driver.GuestArchitecture())
-			if err != nil {
-				return nil, fmt.Errorf("failed to get official kernel: %w", err)
+			// Trust the random number generator on the host CPU.
+			kernelCmdline = append(kernelCmdline, "random.trust_cpu=on")
+
+			// Pass the verbose flag though to the virtual machine.
+			if driver.Verbose() {
+				kernelCmdline = append(kernelCmdline, "tinyrange.verbose=on")
 			}
 
-			kernelFile, err := driver.EnsureFile(kernel)
-			if err != nil {
-				return nil, fmt.Errorf("failed to ensure file: %w", err)
+			if experimental := driver.Experimental(); len(experimental) > 0 {
+				kernelCmdline = append(kernelCmdline, "tinyrange.experimental="+strings.Join(experimental, ","))
 			}
 
-			filename, err := kernelFile.HostFilename()
-			if err != nil {
-				return nil, fmt.Errorf("failed to get host filename: %w", err)
+			kernelCmdline = append(kernelCmdline, "tinyrange.interaction="+string(driver.Interaction()))
+
+			if *kernelPath != "" {
+				args = append(args, "-kernel", *kernelPath)
+			} else if kern := driver.Kernel(); kern != nil {
+				kernelFilename, err := kern.HostFilename()
+				if err != nil {
+					return nil, fmt.Errorf("failed to get host filename: %w", err)
+				}
+
+				// Add the kernel.
+				args = append(args, "-kernel", kernelFilename)
+			} else {
+				kernel, err := kernel.GetOfficialKernel(driver.GuestArchitecture())
+				if err != nil {
+					return nil, fmt.Errorf("failed to get official kernel: %w", err)
+				}
+
+				kernelFile, err := driver.EnsureFile(kernel)
+				if err != nil {
+					return nil, fmt.Errorf("failed to ensure file: %w", err)
+				}
+
+				filename, err := kernelFile.HostFilename()
+				if err != nil {
+					return nil, fmt.Errorf("failed to get host filename: %w", err)
+				}
+
+				args = append(args, "-kernel", filename)
 			}
 
-			args = append(args, "-kernel", filename)
-		}
+			// Add the kernel command line.
+			args = append(args, "-append", strings.Join(kernelCmdline, " "))
 
-		// Add the kernel command line.
-		args = append(args, "-append", strings.Join(kernelCmdline, " "))
+			if driver.GuestArchitecture() == config.ArchX8664 {
+				bios, err := driver.EnsureFile(QBOOT)
+				if err != nil {
+					return nil, fmt.Errorf("failed to ensure file: %w", err)
+				}
 
-		if driver.GuestArchitecture() == config.ArchX8664 {
-			bios, err := driver.EnsureFile(QBOOT)
-			if err != nil {
-				return nil, fmt.Errorf("failed to ensure file: %w", err)
+				filename, err := bios.HostFilename()
+				if err != nil {
+					return nil, fmt.Errorf("failed to get host filename: %w", err)
+				}
+
+				args = append(args, "-bios", filename)
 			}
-
-			filename, err := bios.HostFilename()
-			if err != nil {
-				return nil, fmt.Errorf("failed to get host filename: %w", err)
-			}
-
-			args = append(args, "-bios", filename)
 		}
 
 		return vmm.NewExecutable(commandName, args), nil

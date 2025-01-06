@@ -1,0 +1,32 @@
+#!/usr/bin/env tinyrange
+
+version: 1
+arch: arm64
+builder: alpine@3.21
+commands:
+  - mv /root/linux.proposed.config /root/linux-6.10.14/.config
+  - cd /root/linux-6.10.14; patch -p1 < /root/RosettaPatch.diff
+  - cd /root/linux-6.10.14; make -j6
+  - mv /root/linux-6.10.14/arch/arm64/boot/Image /root/vmlinux.proposed
+files:
+  - linux.proposed.config
+  - RosettaPatch.diff
+archives:
+  - https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.10.14.tar.xz
+output: /root/vmlinux.proposed
+packages:
+  - build-base
+  - flex
+  - bison
+  - gmp-dev
+  - mpc1-dev
+  - openssl-dev
+  - linux-headers
+  - elfutils-dev
+  - findutils
+  - diffutils
+  - perl
+min_spec:
+  cpu: 6
+  memory: 10240
+  disk: 10240

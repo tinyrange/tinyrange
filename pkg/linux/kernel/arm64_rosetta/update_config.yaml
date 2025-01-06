@@ -1,0 +1,24 @@
+#!/usr/bin/env tinyrange
+
+version: 1
+arch: arm64
+builder: alpine@3.21
+commands:
+  - mv /root/linux.config /root/linux-6.10.14/.config
+  - cd /root/linux-6.10.14; patch -p1 < /root/RosettaPatch.diff
+  - cd /root/linux-6.10.14; make olddefconfig
+  - mv /root/linux-6.10.14/.config /root/linux.proposed.config
+files:
+  - linux.config
+  - RosettaPatch.diff
+archives:
+  - https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.10.14.tar.xz
+output: /root/linux.proposed.config
+packages:
+  - build-base
+  - flex
+  - bison
+  - gmp-dev
+  - mpc1-dev
+  - openssl-dev
+  - linux-headers

@@ -4,6 +4,10 @@ github.com/BurntSushi/freetype-go v0.0.0-20160129220410-b763ddbfe298 h1:1qlsVAQJ
 github.com/BurntSushi/freetype-go v0.0.0-20160129220410-b763ddbfe298/go.mod h1:D+QujdIlUNfa0igpNMk6UIvlb6C252URs4yupRUV4lQ=
 github.com/BurntSushi/graphics-go v0.0.0-20160129215708-b43f31a4a966 h1:lTG4HQym5oPKjL7nGs+csTgiDna685ZXjxijkne828g=
 github.com/BurntSushi/graphics-go v0.0.0-20160129215708-b43f31a4a966/go.mod h1:Mid70uvE93zn9wgF92A/r5ixgnvX8Lh68fxp9KQBaI0=
+github.com/Code-Hex/go-infinity-channel v1.0.0 h1:M8BWlfDOxq9or9yvF9+YkceoTkDI1pFAqvnP87Zh0Nw=
+github.com/Code-Hex/go-infinity-channel v1.0.0/go.mod h1:5yUVg/Fqao9dAjcpzoQ33WwfdMWmISOrQloDRn3bsvY=
+github.com/Code-Hex/vz/v3 v3.5.1 h1:PJst83OhAixhqA+9ks6J+o53UQUx54lSg2YRGe/4yqU=
+github.com/Code-Hex/vz/v3 v3.5.1/go.mod h1:WqWQuBbT4SbjO4C4GHG9m9HO8j5jecAmMh4eyVSEbEg=
 github.com/Microsoft/go-winio v0.6.0 h1:slsWYD/zyx7lCXoZVlvQrj0hPTM1HI4+v1sIda2yDvg=
 github.com/Microsoft/go-winio v0.6.0/go.mod h1:cTAf44im0RAYeL23bpB+fzCyDH2MJiz2BO69KH/soAE=
 github.com/agnivade/levenshtein v1.2.0 h1:U9L4IOT0Y3i0TIlUIDJ7rVUziKi/zPbrJGaFrtYH3SY=

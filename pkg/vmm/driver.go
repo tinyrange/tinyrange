@@ -40,6 +40,14 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+type Filesystem interface {
+	// EnsurePath ensures the path exists.
+	EnsurePath(path string) error
+
+	// WriteFile writes a file to the filesystem.
+	WriteFile(path string, contents []byte) error
+}
+
 type BlockDevice interface {
 	io.ReaderAt
 	io.WriterAt
@@ -126,6 +134,9 @@ type NetworkInterface interface {
 
 	// GetUDPSocketPair returns a pair of UDP sockets one for sending L2 and one for receiving L2 packets.
 	GetUDPSocketPair() (net.Addr, net.Addr, error)
+
+	// AttachFile attaches a file to the network interface.
+	AttachFile(file *os.File) error
 }
 
 type networkInterface struct {
@@ -137,7 +148,11 @@ func (ni *networkInterface) MACAddress() net.HardwareAddr {
 }
 
 func (ni *networkInterface) GetUDPSocketPair() (net.Addr, net.Addr, error) {
-	return ni.nic.NetSend, ni.nic.NetRecv, nil
+	return ni.nic.GetUDPSocketPair()
+}
+
+func (ni *networkInterface) AttachFile(file *os.File) error {
+	return ni.nic.AttachFile(file)
 }
 
 var (
@@ -210,8 +225,11 @@ type Driver interface {
 	// HostOperatingSystem returns the host operating system.
 	HostOperatingSystem() string
 
-	// GuestArchitecture returns the guest architecture.
+	// GuestArchitecture returns the guest architecture. This is the architecture of the kernel and init.
 	GuestArchitecture() config.CPUArchitecture
+
+	// RootArchitecture returns the architecture of executables on the guest filesystem so emulation can be installed.
+	RootArchitecture() config.CPUArchitecture
 
 	// Accelerated returns true if the driver supports hardware acceleration.
 	Accelerated() bool
@@ -570,6 +588,24 @@ var (
 	_ File = &nbdAddress{}
 )
 
+type ext4Filesystem struct {
+	*nbdAddress
+
+	fs *ext4.Ext4Filesystem
+}
+
+func (fs *ext4Filesystem) EnsurePath(path string) error {
+	return fs.fs.Mkdir(path, true)
+}
+
+func (fs *ext4Filesystem) WriteFile(path string, contents []byte) error {
+	return fs.fs.CreateFile(path, vm.RawRegion(contents))
+}
+
+var (
+	_ Filesystem = &ext4Filesystem{}
+)
+
 func (tr *driver) createNbdListener(tryUnix bool) (*nbdAddress, net.Listener, error) {
 	if (runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows") && tr.persistPath != "" && tryUnix {
 		pid := os.Getpid()
@@ -672,10 +708,10 @@ func (tr *driver) configureSecureSSH(root filesystem.Directory) (SecureSSHConfig
 	return secureSSH, nil
 }
 
-func (tr *driver) buildFilesystem(root filesystem.Directory, fsSize int64) (BlockDevice, int64, error) {
+func (tr *driver) buildFilesystem(root filesystem.Directory, fsSize int64) (BlockDevice, *ext4.Ext4Filesystem, int64, error) {
 	totalSize, err := filesystem.GetTotalSize(root)
 	if err != nil {
-		return nil, 0, fmt.Errorf("could not compute total size")
+		return nil, nil, 0, fmt.Errorf("could not compute total size")
 	}
 
 	if int64(float64(totalSize)*1.5) > fsSize {
@@ -696,7 +732,7 @@ func (tr *driver) buildFilesystem(root filesystem.Directory, fsSize int64) (Bloc
 
 	fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to create ext4 filesystem: %w", err)
+		return nil, nil, 0, fmt.Errorf("failed to create ext4 filesystem: %w", err)
 	}
 
 	slog.Debug("created ext4 filesystem", "took", time.Since(start))
@@ -704,12 +740,12 @@ func (tr *driver) buildFilesystem(root filesystem.Directory, fsSize int64) (Bloc
 	start = time.Now()
 
 	if err := fs.AddDirectory(root); err != nil {
-		return nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
+		return nil, nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
 	}
 
 	slog.Debug("built filesystem", "took", time.Since(start))
 
-	return vmem, fsSize, nil
+	return vmem, fs, fsSize, nil
 }
 
 func (tr *driver) nbdLoop(listener net.Listener, backend *vmBackend) {
@@ -723,14 +759,14 @@ func (tr *driver) nbdLoop(listener net.Listener, backend *vmBackend) {
 		}
 
 		go func(conn net.Conn) {
-			slog.Debug("got nbd connection", "remote", conn.RemoteAddr().String())
+			// slog.Debug("got nbd connection", "remote", conn.RemoteAddr().String())
 			err = gonbd.Handle(conn, []gonbd.Export{{
 				Name:        "root",
 				Description: "",
 				Backend:     backend,
 			}}, &gonbd.Options{
 				ReadOnly:           false,
-				MinimumBlockSize:   1024,
+				MinimumBlockSize:   512, // Fix for VZ on Darwin, it errors if the minimum is too large.
 				PreferredBlockSize: uint32(backend.PreferredBlockSize()),
 				MaximumBlockSize:   32*1024*1024 - 1,
 			})
@@ -877,7 +913,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		return fmt.Errorf("failed to configure secure ssh: %w", err)
 	}
 
-	vmem, fsSize, err := d.buildFilesystem(root, int64(topConfig.StorageSize)*1024*1024)
+	vmem, ext4Fs, fsSize, err := d.buildFilesystem(root, int64(topConfig.StorageSize)*1024*1024)
 	if err != nil {
 		return fmt.Errorf("failed to build filesystem: %w", err)
 	}
@@ -924,7 +960,10 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 	go d.nbdLoop(listener, backend)
 
-	d.diskImages = append(d.diskImages, nbdAddress)
+	d.diskImages = append(d.diskImages, &ext4Filesystem{
+		nbdAddress: nbdAddress,
+		fs:         ext4Fs,
+	})
 
 	ns := netstack.New()
 
@@ -1145,10 +1184,20 @@ func (d *driver) Interaction() config.InteractionKind       { return d.topConfig
 func (d *driver) NetworkInterface() NetworkInterface        { return d.networkInterface }
 func (d *driver) Kernel() File                              { return d.kernel }
 
+func (d *driver) RootArchitecture() config.CPUArchitecture {
+	return d.topConfig().RootArchitecture
+}
+
 func (d *driver) EnsureFile(contents []byte) (File, error) {
+	if len(contents) == 0 {
+		return nil, fmt.Errorf("empty contents")
+	}
+
 	hash := hash.GetSha256Hash(contents)
 
 	path := filepath.Join(d.buildDir, hash+".bin")
+
+	slog.Debug("ensure file", "path", path, "length", len(contents))
 
 	if ok, _ := common.Exists(path); !ok {
 		if err := os.WriteFile(path, contents, os.ModePerm); err != nil {
@@ -1227,6 +1276,13 @@ func Entry(
 	prepare func(vmm Driver) (PrepareResult, error),
 	create func(vmm Driver) (VirtualMachineMonitor, error),
 ) {
+	if os.Getenv("TINYRANGE_VERBOSE") == "on" {
+		if err := common.EnableVerbose(); err != nil {
+			slog.Error("failed to enable verbose logging", "err", err)
+			os.Exit(1)
+		}
+	}
+
 	if err := entryMain(prepare, create); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)

@@ -141,6 +141,8 @@ type TinyRangeConfig struct {
 	BaseDirectory string `json:"base_directory" yaml:"base_directory"`
 	// The CPU Architecture of the guest.
 	Architecture CPUArchitecture `json:"architecture" yaml:"architecture"`
+	// The Architecture of the root filesystem. This is a hint to enable vmm-specific optimizations.
+	RootArchitecture CPUArchitecture `json:"root_architecture" yaml:"root_architecture"`
 	// The kernel to boot.
 	KernelFilename string `json:"kernel_filename" yaml:"kernel_filename"`
 	// A initramfs to pass to the kernel or "" to disable passing a initramfs.

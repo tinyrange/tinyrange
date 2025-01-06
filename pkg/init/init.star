@@ -46,6 +46,12 @@ def main():
     set_env("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
     set_env("HOME", "/root")
 
+    # Run additional scripts.
+    if "additional_scripts" in args:
+        for script in args["additional_scripts"]:
+            run_starlark(script)
+
+    # Run the SSH server.
     if get_env("TINYRANGE_INTERACTION") == "serial" or nonet:
         if "ssh_command" in args:
             exec(*args["ssh_command"])

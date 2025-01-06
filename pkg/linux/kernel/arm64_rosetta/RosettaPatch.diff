@@ -1,0 +1,619 @@
+diff -Nur linux/arch/arm64/include/asm/processor.h linux-applied/arch/arm64/include/asm/processor.h
+--- linux/arch/arm64/include/asm/processor.h
++++ linux-applied/arch/arm64/include/asm/processor.h
+@@ -184,6 +184,46 @@
+ 	u64			sctlr_user;
+ 	u64			svcr;
+ 	u64			tpidr2_el0;
++
++/*
++ * Copyright © 2024 Apple Inc. All Rights Reserved.
++ * Disclaimer: IMPORTANT: This Apple software is supplied to you by Apple Inc.
++ * ("Apple") in consideration of your agreement to the following terms, and
++ * your use, installation, modification or redistribution of this Apple
++ * software constitutes acceptance of these terms. If you do not agree with
++ * these terms, please do not use, install, modify or redistribute this Apple
++ * software.
++ * In consideration of your agreement to abide by the following terms, and
++ * subject to these terms, Apple grants you a personal, non-exclusive license,
++ * under Apple's copyrights in this original Apple software (the "Apple
++ * Software"), to use, reproduce, modify and redistribute the Apple Software,
++ * with or without modifications, in source and/or binary forms; provided that
++ * if you redistribute the Apple Software in its entirety and without
++ * modifications, you must retain this notice and the following text and
++ * disclaimers in all such redistributions of the Apple Software. Neither the
++ * name, trademarks, service marks or logos of Apple Inc. may be used to
++ * endorse or promote products derived from the Apple Software without specific
++ * prior written permission from Apple. Except as expressly stated in this
++ * notice, no other rights or licenses, express or implied, are granted by
++ * Apple herein, including but not limited to any patent rights that may be
++ * infringed by your derivative works or by other works in which the Apple
++ * Software may be incorporated.
++ * The Apple Software is provided by Apple on an "AS IS" basis. APPLE MAKES NO
++ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED
++ * WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE, REGARDING THE APPLE SOFTWARE OR ITS USE AND OPERATION ALONE OR IN
++ * COMBINATION WITH YOUR PRODUCTS.
++ * IN NO EVENT SHALL APPLE BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) ARISING IN ANY WAY OUT OF THE USE, REPRODUCTION, MODIFICATION
++ * AND/OR DISTRIBUTION OF THE APPLE SOFTWARE, HOWEVER CAUSED AND WHETHER UNDER
++ * THEORY OF CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR
++ * OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++#ifdef CONFIG_ARM64_TSO
++	bool        tso;
++#endif
+ };
+ 
+ static inline unsigned int thread_get_vl(struct thread_struct *thread,
+diff -Nur linux/arch/arm64/include/asm/sysreg.h linux-applied/arch/arm64/include/asm/sysreg.h
+--- linux/arch/arm64/include/asm/sysreg.h
++++ linux-applied/arch/arm64/include/asm/sysreg.h
+@@ -276,7 +276,46 @@
+ #define SYS_MPIDR_EL1			sys_reg(3, 0, 0, 0, 5)
+ #define SYS_REVIDR_EL1			sys_reg(3, 0, 0, 0, 6)
+ 
++/*
++ * Copyright © 2024 Apple Inc. All Rights Reserved.
++ * Disclaimer: IMPORTANT: This Apple software is supplied to you by Apple Inc.
++ * ("Apple") in consideration of your agreement to the following terms, and
++ * your use, installation, modification or redistribution of this Apple
++ * software constitutes acceptance of these terms. If you do not agree with
++ * these terms, please do not use, install, modify or redistribute this Apple
++ * software.
++ * In consideration of your agreement to abide by the following terms, and
++ * subject to these terms, Apple grants you a personal, non-exclusive license,
++ * under Apple's copyrights in this original Apple software (the "Apple
++ * Software"), to use, reproduce, modify and redistribute the Apple Software,
++ * with or without modifications, in source and/or binary forms; provided that
++ * if you redistribute the Apple Software in its entirety and without
++ * modifications, you must retain this notice and the following text and
++ * disclaimers in all such redistributions of the Apple Software. Neither the
++ * name, trademarks, service marks or logos of Apple Inc. may be used to
++ * endorse or promote products derived from the Apple Software without specific
++ * prior written permission from Apple. Except as expressly stated in this
++ * notice, no other rights or licenses, express or implied, are granted by
++ * Apple herein, including but not limited to any patent rights that may be
++ * infringed by your derivative works or by other works in which the Apple
++ * Software may be incorporated.
++ * The Apple Software is provided by Apple on an "AS IS" basis. APPLE MAKES NO
++ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED
++ * WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE, REGARDING THE APPLE SOFTWARE OR ITS USE AND OPERATION ALONE OR IN
++ * COMBINATION WITH YOUR PRODUCTS.
++ * IN NO EVENT SHALL APPLE BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) ARISING IN ANY WAY OUT OF THE USE, REPRODUCTION, MODIFICATION
++ * AND/OR DISTRIBUTION OF THE APPLE SOFTWARE, HOWEVER CAUSED AND WHETHER UNDER
++ * THEORY OF CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR
++ * OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
+ #define SYS_ACTLR_EL1			sys_reg(3, 0, 1, 0, 1)
++#define SYS_ACTLR_EL1_TSOEN_SHIFT       1
++#define SYS_ACTLR_EL1_TSOEN_MASK        (1 << SYS_ACTLR_EL1_TSOEN_SHIFT)
++
+ #define SYS_RGSR_EL1			sys_reg(3, 0, 1, 0, 5)
+ #define SYS_GCR_EL1			sys_reg(3, 0, 1, 0, 6)
+ 
+@@ -394,6 +433,8 @@
+ #define SYS_CNTKCTL_EL1			sys_reg(3, 0, 14, 1, 0)
+ 
+ #define SYS_AIDR_EL1			sys_reg(3, 1, 0, 0, 7)
++#define SYS_AIDR_EL1_TSO_SHIFT          9
++#define SYS_AIDR_EL1_TSO_MASK           (1 << SYS_AIDR_EL1_TSO_SHIFT)
+ 
+ #define SYS_RNDR_EL0			sys_reg(3, 3, 2, 4, 0)
+ #define SYS_RNDRRS_EL0			sys_reg(3, 3, 2, 4, 1)
+diff -Nur linux/arch/arm64/include/asm/tso.h linux-applied/arch/arm64/include/asm/tso.h
+--- linux/arch/arm64/include/asm/tso.h
++++ linux-applied/arch/arm64/include/asm/tso.h
+@@ -0,0 +1,52 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright © 2024 Apple Inc. All Rights Reserved.
++ * Disclaimer: IMPORTANT: This Apple software is supplied to you by Apple Inc.
++ * ("Apple") in consideration of your agreement to the following terms, and
++ * your use, installation, modification or redistribution of this Apple
++ * software constitutes acceptance of these terms. If you do not agree with
++ * these terms, please do not use, install, modify or redistribute this Apple
++ * software.
++ * In consideration of your agreement to abide by the following terms, and
++ * subject to these terms, Apple grants you a personal, non-exclusive license,
++ * under Apple's copyrights in this original Apple software (the "Apple
++ * Software"), to use, reproduce, modify and redistribute the Apple Software,
++ * with or without modifications, in source and/or binary forms; provided that
++ * if you redistribute the Apple Software in its entirety and without
++ * modifications, you must retain this notice and the following text and
++ * disclaimers in all such redistributions of the Apple Software. Neither the
++ * name, trademarks, service marks or logos of Apple Inc. may be used to
++ * endorse or promote products derived from the Apple Software without specific
++ * prior written permission from Apple. Except as expressly stated in this
++ * notice, no other rights or licenses, express or implied, are granted by
++ * Apple herein, including but not limited to any patent rights that may be
++ * infringed by your derivative works or by other works in which the Apple
++ * Software may be incorporated.
++ * The Apple Software is provided by Apple on an "AS IS" basis. APPLE MAKES NO
++ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED
++ * WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE, REGARDING THE APPLE SOFTWARE OR ITS USE AND OPERATION ALONE OR IN
++ * COMBINATION WITH YOUR PRODUCTS.
++ * IN NO EVENT SHALL APPLE BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) ARISING IN ANY WAY OUT OF THE USE, REPRODUCTION, MODIFICATION
++ * AND/OR DISTRIBUTION OF THE APPLE SOFTWARE, HOWEVER CAUSED AND WHETHER UNDER
++ * THEORY OF CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR
++ * OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#ifndef __ASM_TSO_H
++#define __ASM_TSO_H
++
++#ifdef CONFIG_ARM64_TSO
++
++#include <linux/sched.h>
++#include <linux/types.h>
++
++int modify_tso_enable(bool tso_enable);
++void tso_thread_switch(struct task_struct *next);
++int arch_set_mem_model(struct task_struct *task, int memory_model);
++
++#endif /* CONFIG_ARM64_TSO */
++#endif /* __ASM_TSO_H */
+diff -Nur linux/arch/arm64/Kconfig linux-applied/arch/arm64/Kconfig
+--- linux/arch/arm64/Kconfig
++++ linux-applied/arch/arm64/Kconfig
+@@ -2124,6 +2124,58 @@
+ 
+ 	  Documentation/arch/arm64/memory-tagging-extension.rst.
+ 
++# Copyright © 2024 Apple Inc. All Rights Reserved.
++# Disclaimer: IMPORTANT: This Apple software is supplied to you by Apple Inc.
++# ("Apple") in consideration of your agreement to the following terms, and
++# your use, installation, modification or redistribution of this Apple
++# software constitutes acceptance of these terms. If you do not agree with
++# these terms, please do not use, install, modify or redistribute this Apple
++# software.
++# In consideration of your agreement to abide by the following terms, and
++# subject to these terms, Apple grants you a personal, non-exclusive license,
++# under Apple's copyrights in this original Apple software (the "Apple
++# Software"), to use, reproduce, modify and redistribute the Apple Software,
++# with or without modifications, in source and/or binary forms; provided that
++# if you redistribute the Apple Software in its entirety and without
++# modifications, you must retain this notice and the following text and
++# disclaimers in all such redistributions of the Apple Software. Neither the
++# name, trademarks, service marks or logos of Apple Inc. may be used to
++# endorse or promote products derived from the Apple Software without specific
++# prior written permission from Apple. Except as expressly stated in this
++# notice, no other rights or licenses, express or implied, are granted by
++# Apple herein, including but not limited to any patent rights that may be
++# infringed by your derivative works or by other works in which the Apple
++# Software may be incorporated.
++# The Apple Software is provided by Apple on an "AS IS" basis. APPLE MAKES NO
++# WARRANTIES, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED
++# WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++# PURPOSE, REGARDING THE APPLE SOFTWARE OR ITS USE AND OPERATION ALONE OR IN
++# COMBINATION WITH YOUR PRODUCTS.
++# IN NO EVENT SHALL APPLE BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL OR
++# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
++# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++# INTERRUPTION) ARISING IN ANY WAY OUT OF THE USE, REPRODUCTION, MODIFICATION
++# AND/OR DISTRIBUTION OF THE APPLE SOFTWARE, HOWEVER CAUSED AND WHETHER UNDER
++# THEORY OF CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR
++# OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++config ARM64_TSO
++	bool "ARM64 Apple Silicon TSO support"
++	default y
++	help
++	  Apple Silicon TSO mode allows the CPU's memory model to be
++	  dynamically switched between the default ARM64 memory model
++	  and x86_64's memory model (TSO).
++
++	  This option enables the support for toggling TSO mode for
++	  userspace threads.
++
++	  Selecting this option allows the feature to be detected at
++	  runtime. If the CPU doesn't implement TSO mode, then this
++	  feature will be disabled.
++
++	  Userspace threads that want to use this feature must
++	  explicitly opt in via a prctl().
++
+ endmenu # "ARMv8.5 architectural features"
+ 
+ menu "ARMv8.7 architectural features"
+diff -Nur linux/arch/arm64/kernel/Makefile linux-applied/arch/arm64/kernel/Makefile
+--- linux/arch/arm64/kernel/Makefile
++++ linux-applied/arch/arm64/kernel/Makefile
+@@ -25,6 +25,40 @@
+ KCOV_INSTRUMENT_entry-common.o := n
+ KCOV_INSTRUMENT_idle.o := n
+ 
++# Copyright © 2024 Apple Inc. All Rights Reserved.
++# Disclaimer: IMPORTANT: This Apple software is supplied to you by Apple Inc.
++# ("Apple") in consideration of your agreement to the following terms, and
++# your use, installation, modification or redistribution of this Apple
++# software constitutes acceptance of these terms. If you do not agree with
++# these terms, please do not use, install, modify or redistribute this Apple
++# software.
++# In consideration of your agreement to abide by the following terms, and
++# subject to these terms, Apple grants you a personal, non-exclusive license,
++# under Apple's copyrights in this original Apple software (the "Apple
++# Software"), to use, reproduce, modify and redistribute the Apple Software,
++# with or without modifications, in source and/or binary forms; provided that
++# if you redistribute the Apple Software in its entirety and without
++# modifications, you must retain this notice and the following text and
++# disclaimers in all such redistributions of the Apple Software. Neither the
++# name, trademarks, service marks or logos of Apple Inc. may be used to
++# endorse or promote products derived from the Apple Software without specific
++# prior written permission from Apple. Except as expressly stated in this
++# notice, no other rights or licenses, express or implied, are granted by
++# Apple herein, including but not limited to any patent rights that may be
++# infringed by your derivative works or by other works in which the Apple
++# Software may be incorporated.
++# The Apple Software is provided by Apple on an "AS IS" basis. APPLE MAKES NO
++# WARRANTIES, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED
++# WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++# PURPOSE, REGARDING THE APPLE SOFTWARE OR ITS USE AND OPERATION ALONE OR IN
++# COMBINATION WITH YOUR PRODUCTS.
++# IN NO EVENT SHALL APPLE BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL OR
++# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
++# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++# INTERRUPTION) ARISING IN ANY WAY OUT OF THE USE, REPRODUCTION, MODIFICATION
++# AND/OR DISTRIBUTION OF THE APPLE SOFTWARE, HOWEVER CAUSED AND WHETHER UNDER
++# THEORY OF CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR
++# OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ # Object file lists.
+ obj-y			:= debug-monitors.o entry.o irq.o fpsimd.o		\
+ 			   entry-common.o entry-fpsimd.o process.o ptrace.o	\
+@@ -33,7 +67,7 @@
+ 			   return_address.o cpuinfo.o cpu_errata.o		\
+ 			   cpufeature.o alternative.o cacheinfo.o		\
+ 			   smp.o smp_spin_table.o topology.o smccc-call.o	\
+-			   syscall.o proton-pack.o idle.o patching.o pi/
++			   syscall.o proton-pack.o idle.o patching.o tso.o pi/ \
+ 
+ obj-$(CONFIG_COMPAT)			+= sys32.o signal32.o			\
+ 					   sys_compat.o
+diff -Nur linux/arch/arm64/kernel/process.c linux-applied/arch/arm64/kernel/process.c
+--- linux/arch/arm64/kernel/process.c
++++ linux-applied/arch/arm64/kernel/process.c
+@@ -55,6 +55,43 @@
+ #include <asm/stacktrace.h>
+ #include <asm/switch_to.h>
+ #include <asm/system_misc.h>
++/*
++ * Copyright © 2024 Apple Inc. All Rights Reserved.
++ * Disclaimer: IMPORTANT: This Apple software is supplied to you by Apple Inc.
++ * ("Apple") in consideration of your agreement to the following terms, and
++ * your use, installation, modification or redistribution of this Apple
++ * software constitutes acceptance of these terms. If you do not agree with
++ * these terms, please do not use, install, modify or redistribute this Apple
++ * software.
++ * In consideration of your agreement to abide by the following terms, and
++ * subject to these terms, Apple grants you a personal, non-exclusive license,
++ * under Apple's copyrights in this original Apple software (the "Apple
++ * Software"), to use, reproduce, modify and redistribute the Apple Software,
++ * with or without modifications, in source and/or binary forms; provided that
++ * if you redistribute the Apple Software in its entirety and without
++ * modifications, you must retain this notice and the following text and
++ * disclaimers in all such redistributions of the Apple Software. Neither the
++ * name, trademarks, service marks or logos of Apple Inc. may be used to
++ * endorse or promote products derived from the Apple Software without specific
++ * prior written permission from Apple. Except as expressly stated in this
++ * notice, no other rights or licenses, express or implied, are granted by
++ * Apple herein, including but not limited to any patent rights that may be
++ * infringed by your derivative works or by other works in which the Apple
++ * Software may be incorporated.
++ * The Apple Software is provided by Apple on an "AS IS" basis. APPLE MAKES NO
++ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED
++ * WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE, REGARDING THE APPLE SOFTWARE OR ITS USE AND OPERATION ALONE OR IN
++ * COMBINATION WITH YOUR PRODUCTS.
++ * IN NO EVENT SHALL APPLE BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) ARISING IN ANY WAY OUT OF THE USE, REPRODUCTION, MODIFICATION
++ * AND/OR DISTRIBUTION OF THE APPLE SOFTWARE, HOWEVER CAUSED AND WHETHER UNDER
++ * THEORY OF CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR
++ * OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++#include <asm/tso.h>
+ 
+ #if defined(CONFIG_STACKPROTECTOR) && !defined(CONFIG_STACKPROTECTOR_PER_TASK)
+ #include <linux/stackprotector.h>
+@@ -530,6 +567,9 @@
+ 	ssbs_thread_switch(next);
+ 	erratum_1418040_thread_switch(next);
+ 	ptrauth_thread_switch_user(next);
++#ifdef CONFIG_ARM64_TSO
++	tso_thread_switch(next);
++#endif
+ 
+ 	/*
+ 	 * Complete any pending TLB or cache maintenance on this CPU in case
+@@ -651,6 +691,10 @@
+ 		arch_prctl_spec_ctrl_set(current, PR_SPEC_STORE_BYPASS,
+ 					 PR_SPEC_ENABLE);
+ 	}
++
++#ifdef CONFIG_ARM64_TSO
++	modify_tso_enable(false);
++#endif
+ }
+ 
+ #ifdef CONFIG_ARM64_TAGGED_ADDR_ABI
+@@ -754,3 +798,55 @@
+ 	return prot;
+ }
+ #endif
++
++static int arch_set_mem_model_default(struct task_struct *task)
++{
++	int return_error = 0;
++
++#ifdef CONFIG_ARM64_TSO
++	int modify_tso_enable_error = modify_tso_enable(false);
++
++	if (modify_tso_enable_error == -EOPNOTSUPP)
++		// TSO is the only other memory model on arm64.
++		// If TSO is not supported, then the default memory
++		// model must already be set.
++		return_error = 0;
++	else
++		return_error = modify_tso_enable_error;
++
++	if (!return_error)
++		task->thread.tso = false;
++
++	return return_error;
++#endif
++
++	return return_error;
++}
++
++#ifdef CONFIG_ARM64_TSO
++
++static int arch_set_mem_model_tso(struct task_struct *task)
++{
++	int error = modify_tso_enable(true);
++
++	if (!error)
++		task->thread.tso = true;
++
++	return error;
++}
++
++#endif /* CONFIG_ARM64_TSO */
++
++int arch_set_mem_model(struct task_struct *task, int memory_model)
++{
++	switch (memory_model) {
++	case PR_SET_MEM_MODEL_DEFAULT:
++		return arch_set_mem_model_default(task);
++#ifdef CONFIG_ARM64_TSO
++	case PR_SET_MEM_MODEL_TSO:
++		return arch_set_mem_model_tso(task);
++#endif /* CONFIG_ARM64_TSO */
++	default:
++		return -EINVAL;
++	}
++}
+diff -Nur linux/arch/arm64/kernel/tso.c linux-applied/arch/arm64/kernel/tso.c
+--- linux/arch/arm64/kernel/tso.c
++++ linux-applied/arch/arm64/kernel/tso.c
+@@ -0,0 +1,93 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright © 2024 Apple Inc. All Rights Reserved.
++ * Disclaimer: IMPORTANT: This Apple software is supplied to you by Apple Inc.
++ * ("Apple") in consideration of your agreement to the following terms, and
++ * your use, installation, modification or redistribution of this Apple
++ * software constitutes acceptance of these terms. If you do not agree with
++ * these terms, please do not use, install, modify or redistribute this Apple
++ * software.
++ * In consideration of your agreement to abide by the following terms, and
++ * subject to these terms, Apple grants you a personal, non-exclusive license,
++ * under Apple's copyrights in this original Apple software (the "Apple
++ * Software"), to use, reproduce, modify and redistribute the Apple Software,
++ * with or without modifications, in source and/or binary forms; provided that
++ * if you redistribute the Apple Software in its entirety and without
++ * modifications, you must retain this notice and the following text and
++ * disclaimers in all such redistributions of the Apple Software. Neither the
++ * name, trademarks, service marks or logos of Apple Inc. may be used to
++ * endorse or promote products derived from the Apple Software without specific
++ * prior written permission from Apple. Except as expressly stated in this
++ * notice, no other rights or licenses, express or implied, are granted by
++ * Apple herein, including but not limited to any patent rights that may be
++ * infringed by your derivative works or by other works in which the Apple
++ * Software may be incorporated.
++ * The Apple Software is provided by Apple on an "AS IS" basis. APPLE MAKES NO
++ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED
++ * WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE, REGARDING THE APPLE SOFTWARE OR ITS USE AND OPERATION ALONE OR IN
++ * COMBINATION WITH YOUR PRODUCTS.
++ * IN NO EVENT SHALL APPLE BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) ARISING IN ANY WAY OUT OF THE USE, REPRODUCTION, MODIFICATION
++ * AND/OR DISTRIBUTION OF THE APPLE SOFTWARE, HOWEVER CAUSED AND WHETHER UNDER
++ * THEORY OF CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR
++ * OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include <linux/sched.h>
++#include <linux/types.h>
++
++#include <asm/cputype.h>
++#include <asm/processor.h>
++#include <asm/sysreg.h>
++
++#ifdef CONFIG_ARM64_TSO
++
++static bool tso_supported(void)
++{
++	unsigned int cpuid_implementor = read_cpuid_implementor();
++	u64 aidr = read_sysreg(aidr_el1);
++
++	return (cpuid_implementor == ARM_CPU_IMP_APPLE) &&
++		(aidr & SYS_AIDR_EL1_TSO_MASK);
++}
++
++static int tso_enabled(void)
++{
++	if (!tso_supported())
++		return -EOPNOTSUPP;
++
++	u64 actlr_el1 = read_sysreg(actlr_el1);
++
++	return !!(actlr_el1 & SYS_ACTLR_EL1_TSOEN_MASK);
++}
++
++int modify_tso_enable(bool tso_enable)
++{
++	if (!tso_supported())
++		return -EOPNOTSUPP;
++
++	u64 actlr_el1_old = read_sysreg(actlr_el1);
++	u64 actlr_el1_new =
++		(actlr_el1_old & ~SYS_ACTLR_EL1_TSOEN_MASK) |
++		(tso_enable << SYS_ACTLR_EL1_TSOEN_SHIFT);
++
++	write_sysreg(actlr_el1_new, actlr_el1);
++
++	if (tso_enabled() != tso_enable)
++		return -EOPNOTSUPP;
++
++	return 0;
++}
++
++void tso_thread_switch(struct task_struct *next)
++{
++	if (tso_supported()) {
++		current->thread.tso = tso_enabled();
++		modify_tso_enable(next->thread.tso);
++	}
++}
++
++#endif /* CONFIG_ARM64_TSO */
+diff -Nur linux/include/uapi/linux/prctl.h linux-applied/include/uapi/linux/prctl.h
+--- linux/include/uapi/linux/prctl.h
++++ linux-applied/include/uapi/linux/prctl.h
+@@ -1,4 +1,5 @@
+ /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
++
+ #ifndef _LINUX_PRCTL_H
+ #define _LINUX_PRCTL_H
+ 
+@@ -328,4 +329,45 @@
+ # define PR_PPC_DEXCR_CTRL_CLEAR_ONEXEC	0x10 /* Clear the aspect on exec */
+ # define PR_PPC_DEXCR_CTRL_MASK		0x1f
+ 
++/*
++ * Copyright © 2024 Apple Inc. All Rights Reserved.
++ * Disclaimer: IMPORTANT: This Apple software is supplied to you by Apple Inc.
++ * ("Apple") in consideration of your agreement to the following terms, and
++ * your use, installation, modification or redistribution of this Apple
++ * software constitutes acceptance of these terms. If you do not agree with
++ * these terms, please do not use, install, modify or redistribute this Apple
++ * software.
++ * In consideration of your agreement to abide by the following terms, and
++ * subject to these terms, Apple grants you a personal, non-exclusive license,
++ * under Apple's copyrights in this original Apple software (the "Apple
++ * Software"), to use, reproduce, modify and redistribute the Apple Software,
++ * with or without modifications, in source and/or binary forms; provided that
++ * if you redistribute the Apple Software in its entirety and without
++ * modifications, you must retain this notice and the following text and
++ * disclaimers in all such redistributions of the Apple Software. Neither the
++ * name, trademarks, service marks or logos of Apple Inc. may be used to
++ * endorse or promote products derived from the Apple Software without specific
++ * prior written permission from Apple. Except as expressly stated in this
++ * notice, no other rights or licenses, express or implied, are granted by
++ * Apple herein, including but not limited to any patent rights that may be
++ * infringed by your derivative works or by other works in which the Apple
++ * Software may be incorporated.
++ * The Apple Software is provided by Apple on an "AS IS" basis. APPLE MAKES NO
++ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED
++ * WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE, REGARDING THE APPLE SOFTWARE OR ITS USE AND OPERATION ALONE OR IN
++ * COMBINATION WITH YOUR PRODUCTS.
++ * IN NO EVENT SHALL APPLE BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) ARISING IN ANY WAY OUT OF THE USE, REPRODUCTION, MODIFICATION
++ * AND/OR DISTRIBUTION OF THE APPLE SOFTWARE, HOWEVER CAUSED AND WHETHER UNDER
++ * THEORY OF CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR
++ * OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++/* Set the CPU memory model */
++#define PR_SET_MEM_MODEL		0x4d4d444c
++# define PR_SET_MEM_MODEL_DEFAULT	0
++# define PR_SET_MEM_MODEL_TSO		1
++
+ #endif /* _LINUX_PRCTL_H */
+diff -Nur linux/kernel/sys.c linux-applied/kernel/sys.c
+--- linux/kernel/sys.c
++++ linux-applied/kernel/sys.c
+@@ -2324,6 +2324,47 @@
+ 	return -EINVAL;
+ }
+ 
++/*
++ *  Copyright © 2024 Apple Inc. All Rights Reserved.
++ *  Disclaimer: IMPORTANT: This Apple software is supplied to you by Apple Inc.
++ *  ("Apple") in consideration of your agreement to the following terms, and
++ *  your use, installation, modification or redistribution of this Apple
++ *  software constitutes acceptance of these terms. If you do not agree with
++ *  these terms, please do not use, install, modify or redistribute this Apple
++ *  software.
++ *  In consideration of your agreement to abide by the following terms, and
++ *  subject to these terms, Apple grants you a personal, non-exclusive license,
++ *  under Apple's copyrights in this original Apple software (the "Apple
++ *  Software"), to use, reproduce, modify and redistribute the Apple Software,
++ *  with or without modifications, in source and/or binary forms; provided that
++ *  if you redistribute the Apple Software in its entirety and without
++ *  modifications, you must retain this notice and the following text and
++ *  disclaimers in all such redistributions of the Apple Software. Neither the
++ *  name, trademarks, service marks or logos of Apple Inc. may be used to
++ *  endorse or promote products derived from the Apple Software without
++ *  specific prior written permission from Apple. Except as expressly stated in
++ *  this notice, no other rights or licenses, express or implied, are granted
++ *  by Apple herein, including but not limited to any patent rights that may be
++ *  infringed by your derivative works or by other works in which the Apple
++ *  Software may be incorporated.
++ *  The Apple Software is provided by Apple on an "AS IS" basis. APPLE MAKES NO
++ *  WARRANTIES, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED
++ *  WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ *  PURPOSE, REGARDING THE APPLE SOFTWARE OR ITS USE AND OPERATION ALONE OR IN
++ *  COMBINATION WITH YOUR PRODUCTS.
++ *  IN NO EVENT SHALL APPLE BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL OR
++ *  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
++ *  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ *  INTERRUPTION) ARISING IN ANY WAY OUT OF THE USE, REPRODUCTION, MODIFICATION
++ *  AND/OR DISTRIBUTION OF THE APPLE SOFTWARE, HOWEVER CAUSED AND WHETHER UNDER
++ *  THEORY OF CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR
++ *  OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++int __weak arch_set_mem_model(struct task_struct *task, int memory_model)
++{
++	return -EINVAL;
++}
++
+ #define PR_IO_FLUSHER (PF_MEMALLOC_NOIO | PF_LOCAL_THROTTLE)
+ 
+ #ifdef CONFIG_ANON_VMA_NAME
+@@ -2782,6 +2823,11 @@
+ 	case PR_RISCV_SET_ICACHE_FLUSH_CTX:
+ 		error = RISCV_SET_ICACHE_FLUSH_CTX(arg2, arg3);
+ 		break;
++	case PR_SET_MEM_MODEL:
++		if (arg3 || arg4 || arg5)
++			return -EINVAL;
++		error = arch_set_mem_model(current, arg2);
++		break;
+ 	default:
+ 		error = -EINVAL;
+ 		break;

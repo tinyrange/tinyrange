@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"os"
 	"strconv"
 	"strings"
 
@@ -59,13 +60,175 @@ func generateMacAddress() (net.HardwareAddr, error) {
 }
 
 type NetworkInterface struct {
-	NetSend    net.Addr
-	NetRecv    net.Addr
+	ns *NetStack
+
+	netSend    net.Addr
+	netRecv    net.Addr
 	MacAddress net.HardwareAddr
 
 	udpConn *net.UDPConn
 
 	channel *channel.Endpoint
+}
+
+func (nic *NetworkInterface) GetUDPSocketPair() (net.Addr, net.Addr, error) {
+	if nic.netSend != nil {
+		return nic.netSend, nic.netRecv, nil
+	}
+
+	send, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	nic.netSend = send.LocalAddr()
+
+	go func() {
+		buf := make([]byte, 8192)
+
+		for {
+			n, _, err := send.ReadFromUDP(buf)
+			if err != nil {
+				slog.Error("failed to read send socket", "err", err)
+				return
+			}
+
+			pkt := buf[:n]
+
+			// slog.Info("got packet from client", "data", pkt)
+
+			if nic.ns.packetDump != nil {
+				nic.ns.packetDump.WritePacket(gopacket.CaptureInfo{
+					CaptureLength: len(pkt),
+					Length:        len(pkt),
+				}, pkt)
+			}
+
+			nic.onReceivePacket(buf[:n])
+		}
+	}()
+
+	recv, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	nic.netRecv = recv.LocalAddr()
+
+	recvPort := recv.LocalAddr().(*net.UDPAddr).Port
+
+	if err := recv.Close(); err != nil {
+		return nil, nil, err
+	}
+
+	nic.udpConn, err = net.DialUDP("udp", nil, &net.UDPAddr{
+		IP:   net.ParseIP("127.0.0.1"),
+		Port: recvPort,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	go func() {
+		for {
+			pkt := nic.channel.ReadContext(context.Background())
+
+			pktBytes := make([]byte, pkt.Size()+14)
+
+			copy(pktBytes[:6], nic.MacAddress)
+			copy(pktBytes[6:12], nic.ns.hostMac)
+			binary.BigEndian.PutUint16(pktBytes[12:14], uint16(pkt.NetworkProtocolNumber))
+
+			off := 14
+
+			for _, slice := range pkt.AsSlices() {
+				off += copy(pktBytes[off:], slice)
+			}
+
+			// slog.Info("got packet from host", "pktBytes", pktBytes)
+
+			if nic.ns.packetDump != nil {
+				nic.ns.packetDump.WritePacket(gopacket.CaptureInfo{
+					CaptureLength: len(pktBytes),
+					Length:        len(pktBytes),
+				}, pktBytes)
+			}
+
+			_, err := nic.udpConn.Write(pktBytes)
+			if err != nil {
+				slog.Debug("failed to write packet to guest", "err", err)
+			}
+
+			pkt.DecRef()
+		}
+	}()
+
+	return nic.netSend, nic.netRecv, nil
+}
+
+func (nic *NetworkInterface) AttachFile(file *os.File) error {
+	// handle packets from the guest
+	go func() {
+		buf := make([]byte, 8192)
+
+		for {
+			n, err := file.Read(buf)
+			if err != nil {
+				slog.Error("failed to read send socket", "err", err)
+				return
+			}
+
+			pkt := buf[:n]
+
+			// slog.Info("got packet from client", "data", pkt)
+
+			if nic.ns.packetDump != nil {
+				nic.ns.packetDump.WritePacket(gopacket.CaptureInfo{
+					CaptureLength: len(pkt),
+					Length:        len(pkt),
+				}, pkt)
+			}
+
+			nic.onReceivePacket(buf[:n])
+		}
+	}()
+
+	// handle packets from the host
+	go func() {
+		for {
+			pkt := nic.channel.ReadContext(context.Background())
+
+			pktBytes := make([]byte, pkt.Size()+14)
+
+			copy(pktBytes[:6], nic.MacAddress)
+			copy(pktBytes[6:12], nic.ns.hostMac)
+			binary.BigEndian.PutUint16(pktBytes[12:14], uint16(pkt.NetworkProtocolNumber))
+
+			off := 14
+
+			for _, slice := range pkt.AsSlices() {
+				off += copy(pktBytes[off:], slice)
+			}
+
+			// slog.Info("got packet from host", "pktBytes", pktBytes)
+
+			if nic.ns.packetDump != nil {
+				nic.ns.packetDump.WritePacket(gopacket.CaptureInfo{
+					CaptureLength: len(pktBytes),
+					Length:        len(pktBytes),
+				}, pktBytes)
+			}
+
+			_, err := file.Write(pktBytes)
+			if err != nil {
+				slog.Debug("failed to write packet to guest", "err", err)
+			}
+
+			pkt.DecRef()
+		}
+	}()
+
+	return nil
 }
 
 func (nic *NetworkInterface) onReceivePacket(pkt []byte) {
@@ -101,6 +264,7 @@ type NetStack struct {
 	nextNicId  int
 	packetDump *pcapgo.Writer
 	wg         *wireguard.Wireguard
+	hostMac    net.HardwareAddr
 }
 
 func (ns *NetStack) splitAddress(addr string) (tcpip.FullAddress, error) {
@@ -204,9 +368,13 @@ func (ns *NetStack) ListenPacketInternal(network string, address string) (net.Pa
 }
 
 func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
-	nic := &NetworkInterface{}
+	var err error
 
-	hostMac, err := generateMacAddress()
+	nic := &NetworkInterface{
+		ns: ns,
+	}
+
+	ns.hostMac, err = generateMacAddress()
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +383,7 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 
 	nicId := tcpip.NICID(ns.nextNicId)
 
-	nic.channel = channel.New(HOST_CHANNEL_SIZE, HOST_CHANNEL_MTU, tcpip.LinkAddress(hostMac))
+	nic.channel = channel.New(HOST_CHANNEL_SIZE, HOST_CHANNEL_MTU, tcpip.LinkAddress(ns.hostMac))
 
 	if err := ns.nStack.CreateNIC(nicId, nic.channel); err != nil {
 		return nil, fmt.Errorf("tcpip error: %v", err)
@@ -264,97 +432,10 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 		return nil, fmt.Errorf("failed to set spoofing mode: %s", err)
 	}
 
-	send, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
-	if err != nil {
-		return nil, err
-	}
-
-	nic.NetSend = send.LocalAddr()
-
-	go func() {
-		buf := make([]byte, 8192)
-
-		for {
-			n, _, err := send.ReadFromUDP(buf)
-			if err != nil {
-				slog.Error("failed to read send socket", "err", err)
-				return
-			}
-
-			pkt := buf[:n]
-
-			// slog.Info("got packet from client", "data", pkt)
-
-			if ns.packetDump != nil {
-				ns.packetDump.WritePacket(gopacket.CaptureInfo{
-					CaptureLength: len(pkt),
-					Length:        len(pkt),
-				}, pkt)
-			}
-
-			nic.onReceivePacket(buf[:n])
-		}
-	}()
-
-	recv, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
-	if err != nil {
-		return nil, err
-	}
-
-	nic.NetRecv = recv.LocalAddr()
-
-	recvPort := recv.LocalAddr().(*net.UDPAddr).Port
-
-	if err := recv.Close(); err != nil {
-		return nil, err
-	}
-
-	nic.udpConn, err = net.DialUDP("udp", nil, &net.UDPAddr{
-		IP:   net.ParseIP("127.0.0.1"),
-		Port: recvPort,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	deviceMac, err := generateMacAddress()
 	if err != nil {
 		return nil, err
 	}
-
-	go func() {
-		for {
-			pkt := nic.channel.ReadContext(context.Background())
-
-			pktBytes := make([]byte, pkt.Size()+14)
-
-			copy(pktBytes[:6], deviceMac)
-			copy(pktBytes[6:12], hostMac)
-			binary.BigEndian.PutUint16(pktBytes[12:14], uint16(pkt.NetworkProtocolNumber))
-
-			off := 14
-
-			for _, slice := range pkt.AsSlices() {
-				off += copy(pktBytes[off:], slice)
-			}
-
-			// slog.Info("got packet from host", "pktBytes", pktBytes)
-
-			if ns.packetDump != nil {
-				ns.packetDump.WritePacket(gopacket.CaptureInfo{
-					CaptureLength: len(pktBytes),
-					Length:        len(pktBytes),
-				}, pktBytes)
-			}
-
-			_, err := nic.udpConn.Write(pktBytes)
-			if err != nil {
-				slog.Debug("failed to write packet to guest", "err", err)
-			}
-
-			pkt.DecRef()
-		}
-	}()
 
 	nic.MacAddress = deviceMac
 

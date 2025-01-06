@@ -478,6 +478,8 @@ func loadStarlarkArgs() (starlark.Value, error) {
 		}
 	}
 
+	var additionalScripts []starlark.Value
+
 	if ok, _ := common.Exists("/init.d"); ok {
 		if args == nil {
 			args = starlark.NewDict(0)
@@ -512,7 +514,13 @@ func loadStarlarkArgs() (starlark.Value, error) {
 							return nil, err
 						}
 					}
+				} else if strings.HasSuffix(file.Name(), ".star") {
+					additionalScripts = append(additionalScripts, starlark.String("/init.d/"+file.Name()))
 				}
+			}
+
+			if len(additionalScripts) > 0 {
+				argsDict.SetKey(starlark.String("additional_scripts"), starlark.NewList(additionalScripts))
 			}
 		}
 	}
@@ -523,7 +531,7 @@ func loadStarlarkArgs() (starlark.Value, error) {
 func runStarlark(filename string) error {
 	args, err := loadStarlarkArgs()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load starlark args: %v", err)
 	}
 
 	globals := starlark.StringDict{}
@@ -1078,6 +1086,23 @@ func runStarlark(filename string) error {
 		return starlark.String(os.Getenv(key)), nil
 	})
 
+	globals["run_starlark"] = starlark.NewBuiltin("run_starlark", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var filename string
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"filename", &filename,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, runStarlark(filename)
+	})
+
 	globals["json"] = starlarkjson.Module
 
 	var uname unix.Utsname
@@ -1118,12 +1143,12 @@ func runStarlark(filename string) error {
 
 	mainFunc, ok := decls["main"]
 	if !ok {
-		return fmt.Errorf("expected Callable got %s", mainFunc.Type())
+		return fmt.Errorf("main not found")
 	}
 
 	_, err = starlark.Call(thread, mainFunc, starlark.Tuple{}, []starlark.Tuple{})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to run main: %v", err)
 	}
 
 	return nil
@@ -1406,7 +1431,7 @@ func initMain() error {
 	}
 
 	if err := runStarlark("/init.star"); err != nil {
-		return err
+		return fmt.Errorf("failed to run /init.star: %v", err)
 	}
 
 	return nil

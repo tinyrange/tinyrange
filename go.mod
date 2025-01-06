@@ -46,6 +46,8 @@ require (
 require (
 	github.com/BurntSushi/freetype-go v0.0.0-20160129220410-b763ddbfe298 // indirect
 	github.com/BurntSushi/graphics-go v0.0.0-20160129215708-b43f31a4a966 // indirect
+	github.com/Code-Hex/go-infinity-channel v1.0.0 // indirect
+	github.com/Code-Hex/vz/v3 v3.5.1 // indirect
 	github.com/Microsoft/go-winio v0.6.0 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect

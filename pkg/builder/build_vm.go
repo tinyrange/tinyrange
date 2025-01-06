@@ -133,6 +133,14 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		arch = config.HostArchitecture
 	}
 
+	rootArch, err := config.ArchitectureFromString(def.params.RootArchitecture)
+	if err != nil {
+		return config.TinyRangeConfig{}, err
+	}
+	if rootArch == config.ArchInvalid {
+		rootArch = arch
+	}
+
 	builderCfg := config.BuilderConfig{}
 
 	builderCfg.OutputFilename = def.params.OutputFile
@@ -173,6 +181,7 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 
 	vmCfg.BaseDirectory = wd
 	vmCfg.Architecture = arch
+	vmCfg.RootArchitecture = rootArch
 	vmCfg.KernelFilename = kernelFilename
 	vmCfg.CPUCores = def.params.CpuCores
 	vmCfg.MemoryMB = def.params.MemoryMB
@@ -408,6 +417,7 @@ func NewBuildVmDefinition(
 	cpuCores int,
 	memoryMb int,
 	architecture config.CPUArchitecture,
+	rootArchitecture config.CPUArchitecture,
 	storageSize int,
 	interaction string,
 	debug bool,
@@ -423,16 +433,17 @@ func NewBuildVmDefinition(
 	}
 	return &BuildVmDefinition{
 		params: BuildVmParameters{
-			Directives:   dir,
-			Kernel:       kernel,
-			InitRamFs:    initramfs,
-			OutputFile:   output,
-			CpuCores:     cpuCores,
-			MemoryMB:     memoryMb,
-			Architecture: string(architecture),
-			StorageSize:  storageSize,
-			Interaction:  interaction,
-			Debug:        debug,
+			Directives:       dir,
+			Kernel:           kernel,
+			InitRamFs:        initramfs,
+			OutputFile:       output,
+			CpuCores:         cpuCores,
+			MemoryMB:         memoryMb,
+			Architecture:     string(architecture),
+			RootArchitecture: string(rootArchitecture),
+			StorageSize:      storageSize,
+			Interaction:      interaction,
+			Debug:            debug,
 		},
 	}
 }

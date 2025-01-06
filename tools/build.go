@@ -112,17 +112,6 @@ func NewArchive(w io.Writer, prefix string) *ZipArchive {
 	return &ZipArchive{writer: zip.NewWriter(w), prefix: prefix}
 }
 
-var (
-	buildOs   = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
-	buildArch = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
-	buildDir  = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
-	cross     = flag.String("cross", "", "Specify another init executable architecture to build.")
-	debug     = flag.Bool("debug", false, "Print executed commands.")
-	run       = flag.Bool("run", false, "Run TinyRange with the remaining arguments.")
-	test      = flag.String("test", "", "Run all .yml files in a subdirectory using TinyRange.")
-	release   = flag.Bool("release", false, "Build a release version of TinyRange.")
-)
-
 func buildInitForTarget(buildArch string) error {
 	if buildArch == "wasm" {
 		buildArch = "amd64"
@@ -229,6 +218,7 @@ func buildTinyRangeForTarget(buildDir string, buildOs string, buildArch string) 
 
 	cmd.Env = append(cmd.Env, "GOOS="+buildOs)
 	cmd.Env = append(cmd.Env, "GOARCH="+buildArch)
+	cmd.Env = append(cmd.Env, "CGO_ENABLED=0")
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -247,7 +237,7 @@ func buildTinyRangeForTarget(buildDir string, buildOs string, buildArch string) 
 	return outputFilename, nil
 }
 
-func buildVMMForTarget(buildDir string, buildOs string, buildArch string, name string) (string, error) {
+func buildVMMForTarget(buildDir string, buildOs string, buildArch string, name string, cgo bool) (string, error) {
 	outputFilename := getTarget(buildDir, buildOs, "tinyrange_"+name)
 
 	args := []string{
@@ -264,6 +254,9 @@ func buildVMMForTarget(buildDir string, buildOs string, buildArch string, name s
 
 	cmd.Env = append(cmd.Env, "GOOS="+buildOs)
 	cmd.Env = append(cmd.Env, "GOARCH="+buildArch)
+	if !cgo {
+		cmd.Env = append(cmd.Env, "CGO_ENABLED=0")
+	}
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -277,6 +270,24 @@ func buildVMMForTarget(buildDir string, buildOs string, buildArch string, name s
 	err := cmd.Run()
 	if err != nil {
 		return "", err
+	}
+
+	if name == "vz" {
+		if runtime.GOOS != "darwin" {
+			return "", fmt.Errorf("vz is only supported on darwin")
+		}
+
+		csCmd := exec.Command("codesign", "--entitlements", "tools/tinyrange.entitlements", "-s", "-", outputFilename)
+
+		csCmd.Stdout = os.Stdout
+		csCmd.Stderr = os.Stderr
+		csCmd.Stdin = os.Stdin
+
+		log.Printf("Signing tinyrange_vz with Virtualization Entitlements")
+		err := csCmd.Run()
+		if err != nil {
+			log.Printf("Signing failed. The executable may already be signed.")
+		}
 	}
 
 	return outputFilename, nil
@@ -482,11 +493,64 @@ func buildRelease(buildOs string, buildArch string) error {
 	return nil
 }
 
+type VMMInfo struct {
+	Name           string
+	SupportedPairs []string
+	Cgo            bool
+}
+
+var vmmList = []VMMInfo{
+	{
+		Name: "qemu",
+		SupportedPairs: []string{
+			"windows/amd64",
+			// "windows/arm64", Not supported yet without a special build of QEMU.
+			"linux/amd64",
+			"linux/arm64",
+			"darwin/arm64",
+			"darwin/amd64",
+			"freebsd/amd64",
+			"openbsd/amd64",
+		},
+	},
+	{
+		Name: "vz",
+		SupportedPairs: []string{
+			"darwin/arm64",
+		},
+		Cgo: true,
+	},
+}
+
+var (
+	buildOs   = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
+	buildArch = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
+	buildDir  = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
+	cross     = flag.String("cross", "", "Specify another init executable architecture to build.")
+	debug     = flag.Bool("debug", false, "Print executed commands.")
+	run       = flag.Bool("run", false, "Run TinyRange with the remaining arguments.")
+	test      = flag.String("test", "", "Run all .yml files in a subdirectory using TinyRange.")
+	release   = flag.Bool("release", false, "Build a release version of TinyRange.")
+	cgo       = flag.Bool("cgo", false, "Build VMMs that require CGO.")
+)
+
 func main() {
 	flag.Parse()
 
-	if err := os.Setenv("CGO_ENABLED", "0"); err != nil {
-		log.Fatal(err)
+	var buildVmmList []VMMInfo
+
+	for _, vmm := range vmmList {
+	inner:
+		for _, pair := range vmm.SupportedPairs {
+			if pair == fmt.Sprintf("%s/%s", *buildOs, *buildArch) && (!vmm.Cgo || *cgo) {
+				buildVmmList = append(buildVmmList, vmm)
+				break inner
+			}
+		}
+	}
+
+	if len(buildVmmList) == 0 {
+		log.Fatalf("No VMMs supported for %s/%s", *buildOs, *buildArch)
 	}
 
 	if err := generateRev(); err != nil {
@@ -508,8 +572,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	for _, name := range []string{"qemu"} {
-		if _, err := buildVMMForTarget(target, *buildOs, *buildArch, name); err != nil {
+	for _, vmm := range buildVmmList {
+		if _, err := buildVMMForTarget(target, *buildOs, *buildArch, vmm.Name, vmm.Cgo); err != nil {
 			log.Fatal(err)
 		}
 	}

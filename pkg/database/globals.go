@@ -431,6 +431,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					cpuCores,
 					memoryMb,
 					arch,
+					arch,
 					storageSize,
 					interaction,
 					false,

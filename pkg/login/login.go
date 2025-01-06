@@ -207,6 +207,15 @@ func (config *Config) parseInclusion(db *database.PackageDatabase, inclusion str
 		return nil, err
 	}
 
+	vmArch := arch
+
+	if subConfig.RootArchitecture != "" {
+		arch, err = cfg.ArchitectureFromString(subConfig.RootArchitecture)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if config.Init != "" {
 		interaction = "init," + config.Init
 	}
@@ -217,7 +226,7 @@ func (config *Config) parseInclusion(db *database.PackageDatabase, inclusion str
 		directives,
 		nil, nil,
 		subConfig.Output,
-		subConfig.CpuCores, subConfig.MemorySize, arch,
+		subConfig.CpuCores, subConfig.MemorySize, vmArch, arch,
 		subConfig.StorageSize,
 		interaction, subConfig.Debug,
 	)
@@ -551,6 +560,13 @@ func (config *Config) MakeTemplate(db *database.PackageDatabase) (string, error)
 		return "", err
 	}
 
+	if config.RootArchitecture != "" {
+		arch, err = cfg.ArchitectureFromString(config.RootArchitecture)
+		if err != nil {
+			return "", err
+		}
+	}
+
 	vmArch := arch
 
 	if config.Init != "" {
@@ -567,7 +583,8 @@ func (config *Config) MakeTemplate(db *database.PackageDatabase) (string, error)
 		directives,
 		nil, nil,
 		config.Output,
-		config.CpuCores, config.MemorySize, vmArch,
+		config.CpuCores, config.MemorySize,
+		vmArch, arch,
 		config.StorageSize,
 		interaction, config.Debug,
 	)
@@ -786,7 +803,8 @@ func (config *Config) Run(db *database.PackageDatabase) error {
 			directives,
 			kernel, initramfs,
 			config.Output,
-			config.CpuCores, config.MemorySize, vmArch,
+			config.CpuCores, config.MemorySize,
+			vmArch, arch,
 			config.StorageSize,
 			interaction, config.Debug,
 		)

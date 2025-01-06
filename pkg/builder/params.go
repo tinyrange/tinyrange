@@ -17,9 +17,10 @@ type BuildFsParameters struct {
 // filesystem provided by a list of directives.
 // The output is either nothing or a file from the virtual machine.
 type BuildVmParameters struct {
-	Directives   []common.Directive // A list of directives to build the root filesystem from.
-	OutputFile   string             // The name inside of the guest of the file to copy as the build result.
-	Architecture string             // The CPU Architecture of the guest. If null defaults to the host architecture.
+	Directives       []common.Directive // A list of directives to build the root filesystem from.
+	OutputFile       string             // The name inside of the guest of the file to copy as the build result.
+	Architecture     string             // The CPU Architecture of the guest. If null defaults to the host architecture.
+	RootArchitecture string             // The CPU Architecture of the root filesystem. This is a hint to enable vmm-specific optimizations.
 
 	// TODO(joshua): Allow customizing the hypervisor, and startup script.
 	Kernel      common.BuildDefinition // A build definition that creates the kernel.
