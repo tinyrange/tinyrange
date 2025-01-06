@@ -17,6 +17,9 @@ import (
 	"github.com/Code-Hex/vz/v3"
 )
 
+//go:embed arm64_rosetta/vmlinux
+var KERNEL_ARM64_ROSETTA []byte
+
 const ROSETTA2_SCRIPT = `
 def main():
 	mount("virtiofs", "rosetta2", "/rosetta", ensure_path = True)
@@ -122,7 +125,10 @@ func main() {
 			return nil, fmt.Errorf("vz does not support emulation")
 		}
 
-		var rosetta2 bool
+		var (
+			rosetta2 bool
+			err      error
+		)
 
 		if dri.RootArchitecture() == config.ArchX8664 {
 			slog.Debug("Enabling Rosetta 2")
@@ -133,12 +139,7 @@ func main() {
 		kern := dri.Kernel()
 		if kern == nil {
 			if rosetta2 {
-				kernelBinary, err := kernel.GetRosettaKernel()
-				if err != nil {
-					return nil, fmt.Errorf("failed to get rosetta kernel: %w", err)
-				}
-
-				kern, err = dri.EnsureFile(kernelBinary)
+				kern, err = dri.EnsureFile(KERNEL_ARM64_ROSETTA)
 				if err != nil {
 					return nil, fmt.Errorf("failed to ensure file: %w", err)
 				}
