@@ -1,8 +1,8 @@
 #!/usr/bin/env tinyrange
 
 version: 1
-arch: x86_64
-builder: alpine@3.20
+arch: arm64
+builder: alpine@3.21
 commands:
   - mv /root/linux.config /root/linux-6.12.8/.config
   - cd /root/linux-6.12.8; make olddefconfig
