@@ -3,6 +3,7 @@ module github.com/tinyrange/tinyrange
 go 1.23.4
 
 require (
+	github.com/Code-Hex/vz/v3 v3.5.1
 	github.com/agnivade/levenshtein v1.2.0
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/basgys/goxml2json v1.1.0
@@ -36,7 +37,7 @@ require (
 	golang.org/x/crypto v0.31.0
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
 	golang.org/x/net v0.33.0
-	golang.org/x/sys v0.28.0
+	golang.org/x/sys v0.29.0
 	golang.org/x/term v0.27.0
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20241113022301-6fd8b69821a4
@@ -47,7 +48,6 @@ require (
 	github.com/BurntSushi/freetype-go v0.0.0-20160129220410-b763ddbfe298 // indirect
 	github.com/BurntSushi/graphics-go v0.0.0-20160129215708-b43f31a4a966 // indirect
 	github.com/Code-Hex/go-infinity-channel v1.0.0 // indirect
-	github.com/Code-Hex/vz/v3 v3.5.1 // indirect
 	github.com/Microsoft/go-winio v0.6.0 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
