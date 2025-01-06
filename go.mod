@@ -38,7 +38,7 @@ require (
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
 	golang.org/x/net v0.33.0
 	golang.org/x/sys v0.29.0
-	golang.org/x/term v0.27.0
+	golang.org/x/term v0.28.0
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20241113022301-6fd8b69821a4
 	mvdan.cc/sh/v3 v3.10.0
