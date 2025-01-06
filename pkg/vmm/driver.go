@@ -38,6 +38,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/sftp"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"golang.org/x/crypto/ssh"
+	"gopkg.in/yaml.v3"
 )
 
 type Filesystem interface {
@@ -53,6 +54,35 @@ type BlockDevice interface {
 	io.WriterAt
 	Size() int64
 }
+
+type fileBlockDevice struct {
+	*os.File
+	size int64
+}
+
+// // ReadAt implements BlockDevice.
+// // Subtle: this method shadows the method (*File).ReadAt of fileBlockDevice.File.
+// func (f *fileBlockDevice) ReadAt(p []byte, off int64) (n int, err error) {
+// 	slog.Debug("reading", "len", len(p), "off", off)
+// 	return f.File.ReadAt(p, off)
+// }
+
+// Size implements BlockDevice.
+func (f *fileBlockDevice) Size() int64 {
+	return f.size
+}
+
+// // WriteAt implements BlockDevice.
+// // Subtle: this method shadows the method (*File).WriteAt of fileBlockDevice.File.
+// func (f *fileBlockDevice) WriteAt(p []byte, off int64) (n int, err error) {
+// 	n, err = f.File.WriteAt(p, off)
+// 	slog.Debug("writing", "len", len(p), "off", off, "err", err)
+// 	return
+// }
+
+var (
+	_ BlockDevice = &fileBlockDevice{}
+)
 
 type vmBackend struct {
 	vm BlockDevice
@@ -610,7 +640,7 @@ func (tr *driver) createNbdListener(tryUnix bool) (*nbdAddress, net.Listener, er
 	if (runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows") && tr.persistPath != "" && tryUnix {
 		pid := os.Getpid()
 
-		filename := fmt.Sprintf("%s.%d.nbd.sock", tr.persistPath, pid)
+		filename := filepath.Join(tr.persistPath, fmt.Sprintf("%d.nbd.sock", pid))
 
 		listener, err := net.Listen("unix", filename)
 		if err != nil {
@@ -641,7 +671,7 @@ func (tr *driver) createNbdListener(tryUnix bool) (*nbdAddress, net.Listener, er
 	}
 }
 
-func (tr *driver) fragmentsToConfig() (filesystem.Directory, []int, []mountInfo, error) {
+func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []int, []mountInfo, error) {
 	var exportedPorts []int
 	var mountedHostDirectories []mountInfo
 
@@ -650,7 +680,12 @@ func (tr *driver) fragmentsToConfig() (filesystem.Directory, []int, []mountInfo,
 	tr.deletedFiles = make(map[string]bool)
 
 	for _, config := range tr.configs {
-		for _, frag := range config.RootFsFragments {
+		fsInfo, ok := config.Filesystems[name]
+		if !ok {
+			continue
+		}
+
+		for _, frag := range fsInfo.Fragments {
 			if port := frag.ExportPort; port != nil {
 				exportedPorts = append(exportedPorts, port.Port)
 			} else if mount := frag.MountHostDirectory; mount != nil {
@@ -708,44 +743,94 @@ func (tr *driver) configureSecureSSH(root filesystem.Directory) (SecureSSHConfig
 	return secureSSH, nil
 }
 
-func (tr *driver) buildFilesystem(root filesystem.Directory, fsSize int64) (BlockDevice, *ext4.Ext4Filesystem, int64, error) {
+func (tr *driver) buildFilesystem(rootInfo config.Filesystem, root filesystem.Directory) (BlockDevice, *ext4.Ext4Filesystem, int64, error) {
 	totalSize, err := filesystem.GetTotalSize(root)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("could not compute total size")
 	}
 
-	if int64(float64(totalSize)*1.5) > fsSize {
+	var fsSize int64
+	if int64(float64(totalSize)*1.5) > int64(rootInfo.StorageSize)*1024*1024 {
 		targetSize := int64(float64(totalSize)*1.5) / 128 / 1024 / 1024
 
 		slog.Debug("resize filesystem", "new", fmt.Sprintf("%dmb", targetSize*128))
 
 		fsSize = targetSize * 128 * 1024 * 1024
+	} else {
+		fsSize = int64(rootInfo.StorageSize) * 1024 * 1024
 	}
 
 	start := time.Now()
 
-	vmem := vm.NewVirtualMemory(fsSize, 4096)
+	if rootInfo.PersistPath != "" {
+		if tr.persistPath == "" {
+			return nil, nil, 0, fmt.Errorf("persist path not set for persistent filesystem")
+		}
+		if rootInfo.Kind != config.FilesystemKindRaw {
+			return nil, nil, 0, fmt.Errorf("only raw filesystems are supported for persistent filesystems")
+		}
 
-	slog.Debug("created virtual memory", "took", time.Since(start))
+		persistPath := filepath.Join(tr.persistPath, rootInfo.PersistPath)
 
-	start = time.Now()
+		fh, err := os.OpenFile(persistPath, os.O_RDWR, 0644)
+		if errors.Is(err, os.ErrNotExist) {
+			slog.Info("creating persistent filesystem", "size", fsSize, "path", persistPath)
 
-	fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to create ext4 filesystem: %w", err)
+			fh, err = os.Create(persistPath)
+			if err != nil {
+				return nil, nil, 0, fmt.Errorf("failed to create persistent filesystem: %w", err)
+			}
+
+			if err := fh.Truncate(fsSize); err != nil {
+				return nil, nil, 0, fmt.Errorf("failed to truncate persistent filesystem: %w", err)
+			}
+		} else if err == nil {
+			slog.Info("opened persistent filesystem", "size", fsSize, "path", persistPath)
+
+			info, err := fh.Stat()
+			if err != nil {
+				return nil, nil, 0, fmt.Errorf("failed to stat persistent filesystem: %w", err)
+			}
+
+			if info.Size() != fsSize {
+				return nil, nil, 0, fmt.Errorf("persistent filesystem size mismatch: %d != %d", info.Size(), fsSize)
+			}
+		} else {
+			return nil, nil, 0, fmt.Errorf("failed to open persistent filesystem: %w", err)
+		}
+
+		return &fileBlockDevice{File: fh, size: fsSize}, nil, fsSize, nil
+	} else {
+		vmem := vm.NewVirtualMemory(fsSize, 4096)
+
+		slog.Debug("created virtual memory", "took", time.Since(start))
+
+		switch rootInfo.Kind {
+		case config.FilesystemKindExt4:
+			start = time.Now()
+
+			fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
+			if err != nil {
+				return nil, nil, 0, fmt.Errorf("failed to create ext4 filesystem: %w", err)
+			}
+
+			slog.Debug("created ext4 filesystem", "took", time.Since(start))
+
+			start = time.Now()
+
+			if err := fs.AddDirectory(root); err != nil {
+				return nil, nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
+			}
+
+			slog.Debug("built filesystem", "took", time.Since(start))
+
+			return vmem, fs, fsSize, nil
+		case config.FilesystemKindRaw:
+			return vmem, nil, fsSize, nil
+		default:
+			return nil, nil, 0, fmt.Errorf("unknown filesystem kind: %s", rootInfo.Kind)
+		}
 	}
-
-	slog.Debug("created ext4 filesystem", "took", time.Since(start))
-
-	start = time.Now()
-
-	if err := fs.AddDirectory(root); err != nil {
-		return nil, nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
-	}
-
-	slog.Debug("built filesystem", "took", time.Since(start))
-
-	return vmem, fs, fsSize, nil
 }
 
 func (tr *driver) nbdLoop(listener net.Listener, backend *vmBackend) {
@@ -872,7 +957,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 	topConfig := d.topConfig()
 
-	if topConfig.StorageSize == 0 || topConfig.CPUCores == 0 || topConfig.MemoryMB == 0 {
+	if topConfig.CPUCores == 0 || topConfig.MemoryMB == 0 {
 		return fmt.Errorf("invalid config")
 	}
 
@@ -901,7 +986,12 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 	start := time.Now()
 
-	root, exportedPorts, mountedHostDirectories, err := d.fragmentsToConfig()
+	rootInfo, ok := topConfig.Filesystems["root"]
+	if !ok {
+		return fmt.Errorf("root filesystem not found")
+	}
+
+	root, exportedPorts, mountedHostDirectories, err := d.fragmentsToConfig("root")
 	if err != nil {
 		return fmt.Errorf("failed to convert fragments to config: %w", err)
 	}
@@ -913,7 +1003,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		return fmt.Errorf("failed to configure secure ssh: %w", err)
 	}
 
-	vmem, ext4Fs, fsSize, err := d.buildFilesystem(root, int64(topConfig.StorageSize)*1024*1024)
+	vmem, ext4Fs, fsSize, err := d.buildFilesystem(rootInfo, root)
 	if err != nil {
 		return fmt.Errorf("failed to build filesystem: %w", err)
 	}
@@ -960,10 +1050,14 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 	go d.nbdLoop(listener, backend)
 
-	d.diskImages = append(d.diskImages, &ext4Filesystem{
-		nbdAddress: nbdAddress,
-		fs:         ext4Fs,
-	})
+	if ext4Fs != nil {
+		d.diskImages = append(d.diskImages, &ext4Filesystem{
+			nbdAddress: nbdAddress,
+			fs:         ext4Fs,
+		})
+	} else {
+		d.diskImages = append(d.diskImages, nbdAddress)
+	}
 
 	ns := netstack.New()
 
@@ -1129,8 +1223,16 @@ func (d *driver) addConfig(path string) error {
 		return fmt.Errorf("failed to open config file: %w", err)
 	}
 
-	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
-		return fmt.Errorf("failed to decode config file: %w", err)
+	if filepath.Ext(path) == ".json" {
+		if err := json.NewDecoder(f).Decode(&cfg); err != nil {
+			return fmt.Errorf("failed to decode config file: %w", err)
+		}
+	} else if filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml" {
+		if err := yaml.NewDecoder(f).Decode(&cfg); err != nil {
+			return fmt.Errorf("failed to decode config file: %w", err)
+		}
+	} else {
+		return fmt.Errorf("unknown file extension: %s", filepath.Ext(path))
 	}
 
 	d.configs = append(d.configs, cfg)

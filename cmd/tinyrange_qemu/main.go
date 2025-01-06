@@ -36,12 +36,15 @@ func findQemu(driver vmm.Driver, name string) (string, error) {
 var (
 	qemuPath   = flag.String("qemu", "", "path to qemu executable")
 	kernelPath = flag.String("kernel", "", "path to linux kernel")
+	cdRomPath  = flag.String("cdrom", "", "path to cdrom image")
+	otherOs    = flag.Bool("other-os", false, "use other operating system (default is linux)")
 )
 
 type OperatingSystem string
 
 const (
 	OperatingSystemLinux OperatingSystem = "linux"
+	OperatingSystemOther OperatingSystem = "other"
 )
 
 func main() {
@@ -76,6 +79,9 @@ func main() {
 		kernelCmdline := []string{}
 
 		guestOs := OperatingSystemLinux
+		if *cdRomPath != "" || *otherOs {
+			guestOs = OperatingSystemOther
+		}
 
 		if driver.GuestArchitecture() == config.ArchARM64 {
 			args = append(args, "-machine", "virt")
@@ -105,7 +111,7 @@ func main() {
 		// Configure the console.
 		// Use the virtio console if enabled.
 		// Otherwise, use the serial console.
-		if CFG_USE_VIRTIO_CONSOLE {
+		if guestOs == OperatingSystemLinux && CFG_USE_VIRTIO_CONSOLE {
 			args = append(args, "-device", "virtio-serial-pci,id=virtio-serial0")
 			args = append(args, "-chardev", "stdio,id=charconsole0")
 			args = append(args, "-device", "virtconsole,chardev=charconsole0,id=console0")
@@ -242,6 +248,10 @@ func main() {
 				}
 
 				args = append(args, "-bios", filename)
+			}
+		} else if guestOs == OperatingSystemOther {
+			if *cdRomPath != "" {
+				args = append(args, "-cdrom", *cdRomPath)
 			}
 		}
 

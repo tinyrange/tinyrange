@@ -185,7 +185,6 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 	vmCfg.KernelFilename = kernelFilename
 	vmCfg.CPUCores = def.params.CpuCores
 	vmCfg.MemoryMB = def.params.MemoryMB
-	vmCfg.StorageSize = def.params.StorageSize
 	vmCfg.Interaction = vmInteraction
 	vmCfg.Debug = def.params.Debug
 
@@ -217,8 +216,10 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		return config.TinyRangeConfig{}, err
 	}
 
+	var rootFsFragments []config.Fragment
+
 	// Hard code the init file and script.
-	vmCfg.RootFsFragments = append(vmCfg.RootFsFragments,
+	rootFsFragments = append(rootFsFragments,
 		config.Fragment{Builtin: &config.BuiltinFragment{Name: "init", Architecture: arch, GuestFilename: "/init"}},
 		config.Fragment{Builtin: &config.BuiltinFragment{Name: "init.star", GuestFilename: "/init.star"}},
 		// Use init.json to set the builder entry point as the SSH command.
@@ -251,7 +252,7 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 			} else if frag.Environment != nil {
 				builderCfg.Environment = append(builderCfg.Environment, frag.Environment.Variables...)
 			} else {
-				vmCfg.RootFsFragments = append(vmCfg.RootFsFragments, frag)
+				rootFsFragments = append(rootFsFragments, frag)
 			}
 		}
 	}
@@ -261,12 +262,20 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		return config.TinyRangeConfig{}, err
 	}
 
-	vmCfg.RootFsFragments = append(vmCfg.RootFsFragments,
+	rootFsFragments = append(rootFsFragments,
 		config.Fragment{FileContents: &config.FileContentsFragment{
 			Contents:      buildConfig,
 			GuestFilename: "/builder.json",
 		}},
 	)
+
+	vmCfg.Filesystems = make(map[string]config.Filesystem)
+
+	vmCfg.Filesystems["root"] = config.Filesystem{
+		Kind:        config.FilesystemKindExt4,
+		Fragments:   rootFsFragments,
+		StorageSize: def.params.StorageSize,
+	}
 
 	return vmCfg, nil
 }

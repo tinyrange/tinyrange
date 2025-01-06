@@ -124,6 +124,24 @@ type Fragment struct {
 	Kernel             *KernelFragment             `json:"kernel,omitempty" yaml:"kernel"`
 }
 
+type FilesystemKind string
+
+const (
+	FilesystemKindRaw  FilesystemKind = "raw"
+	FilesystemKindExt4 FilesystemKind = "ext4"
+)
+
+type Filesystem struct {
+	// The kind of filesystem to create.
+	Kind FilesystemKind `json:"kind" yaml:"kind"`
+	// A list of Fragments to add to the Filesystem.
+	Fragments []Fragment `json:"rootfs_fragments" yaml:"rootfs_fragments"`
+	// The size of the rootfs in megabytes.
+	StorageSize int `json:"storage_size" yaml:"storage_size"`
+	// The path to persist the filesystem to. This creates a raw image and remounts it on subsequent runs.
+	PersistPath string `json:"persist_path" yaml:"persist_path"`
+}
+
 type InteractionKind string
 
 const (
@@ -147,18 +165,14 @@ type TinyRangeConfig struct {
 	KernelFilename string `json:"kernel_filename" yaml:"kernel_filename"`
 	// A initramfs to pass to the kernel or "" to disable passing a initramfs.
 	InitFilesystemFilename string `json:"init_filesystem_filename" yaml:"init_filesystem_filename"`
-	// A list of RootFsFragments.
-	RootFsFragments []Fragment `json:"rootfs_fragments" yaml:"rootfs_fragments"`
-	// The size of the rootfs in megabytes.
-	StorageSize int `json:"storage_size" yaml:"storage_size"`
+	// A list of filesystems to create.
+	Filesystems map[string]Filesystem `json:"filesystems" yaml:"filesystems"`
 	// The way the user will interact with the virtual machine (options: [ssh, serial], default: ssh).
 	Interaction InteractionKind `json:"interaction" yaml:"interaction"`
 	// The number of CPU cores to allocate to the virtual machine.
 	CPUCores int `json:"cpu_cores" yaml:"cpu_cores"`
 	// The amount of memory to allocate to the virtual machine.
 	MemoryMB int `json:"memory_mb" yaml:"memory_mb"`
-	// Config parameters to pass to the hypervisor.
-	HypervisorConfig map[string]string `json:"hypervisor_config" yaml:"hypervisor_config"`
 	// Redirect hypervisor input to the host. The VM will exit after it completes initialization.
 	Debug bool `json:"debug" yaml:"debug"`
 }
