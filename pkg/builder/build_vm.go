@@ -28,6 +28,10 @@ func init() {
 func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
 	persistPath := filepath.Join(buildDir, "persist")
 
+	if err := common.Ensure(persistPath, os.ModePerm); err != nil {
+		return nil, err
+	}
+
 	cmd := exec.Command(exe, "-build-dir", buildDir, "-persist-path", persistPath, configFilename)
 
 	cmd.Stdin = os.Stdin
