@@ -1,6 +1,6 @@
 //go:build windows
 
-package build2
+package internal
 
 import (
 	"fmt"

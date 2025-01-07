@@ -1,6 +1,6 @@
 //go:build unix
 
-package build2
+package internal
 
 import (
 	"os"

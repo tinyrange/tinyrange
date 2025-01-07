@@ -1,4 +1,4 @@
-package build2
+package internal
 
 import (
 	"fmt"
@@ -55,7 +55,7 @@ func (g *group) Logf(format string, args ...interface{}) {
 	g.sink.SendEvent(logEvent{Group: g.name, Message: fmt.Sprintf(format, args...)})
 }
 
-func (g *group) Subgroup(name string) Group {
+func (g *group) Subgroup(name string) LogGroup {
 	g.sink.SendEvent(newGroupEvent{Parent: g.name, Name: name})
 
 	return &group{name: name, sink: g.sink}
@@ -73,7 +73,7 @@ func (g *group) Close() error {
 }
 
 var (
-	_ Group = &group{}
+	_ LogGroup = &group{}
 )
 
 type logLine struct {
@@ -113,7 +113,7 @@ func (b *buildTui) SendEvent(event event) {
 	b.events <- event
 }
 
-func (b *buildTui) Group(name string) Group {
+func (b *buildTui) Group(name string) LogGroup {
 	b.SendEvent(newGroupEvent{Name: name})
 	return &group{
 		sink: b,
@@ -240,7 +240,7 @@ var (
 	_ EventSink = &buildTui{}
 )
 
-func NewBuildLogger(eventBacklog int) BuildLogger {
+func NewBuildLogger(eventBacklog int) Logger {
 	tui := &buildTui{
 		FrameRate:     30,
 		consoleWidth:  80,
@@ -287,7 +287,7 @@ func (s *simpleLogger) Run(out io.Writer) error {
 	return nil
 }
 
-func (s *simpleLogger) Group(name string) Group {
+func (s *simpleLogger) Group(name string) LogGroup {
 	return &group{
 		sink: s,
 		name: name,
@@ -299,10 +299,14 @@ func (s *simpleLogger) Close() error {
 }
 
 var (
-	_ EventSink   = &simpleLogger{}
-	_ BuildLogger = &simpleLogger{}
+	_ EventSink = &simpleLogger{}
+	_ Logger    = &simpleLogger{}
 )
 
-func NewSimpleLogger() BuildLogger {
+func NewSimpleLogger() Logger {
 	return &simpleLogger{}
+}
+
+type EventSink interface {
+	SendEvent(event)
 }

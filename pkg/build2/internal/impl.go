@@ -1,4 +1,4 @@
-package build2
+package internal
 
 import (
 	"crypto/sha256"
@@ -104,7 +104,7 @@ type builder struct {
 	hashDb         *hash.DefinitionDatabase
 	buildCache     map[hash.Hash]*buildInfo
 	tl             *tokenLocker
-	logger         BuildLogger
+	logger         Logger
 }
 
 // needsRebuild checks if a BuildDefinition needs to be rebuilt.
@@ -207,7 +207,7 @@ func (b *builder) BuildChild(parent BuildContext, def BuildDefinition, options B
 		return nil, fmt.Errorf("failed to hash definition: %w", err)
 	}
 
-	var logGroup Group
+	var logGroup LogGroup
 	if parent != nil {
 		logGroup = parent.LogGroup().Subgroup(uuid.NewString())
 	} else {
@@ -561,7 +561,7 @@ type buildContext struct {
 	receipt        BuildReceipt
 	outputs        map[string]*buildOutputWriter
 	artifact       BuildArtifact
-	group          Group
+	group          LogGroup
 }
 
 // Logf implements BuildContext.
@@ -570,7 +570,7 @@ func (b *buildContext) Logf(format string, args ...any) {
 }
 
 // LogGroup implements BuildContext.
-func (b *buildContext) LogGroup() Group {
+func (b *buildContext) LogGroup() LogGroup {
 	return b.group
 }
 
@@ -879,3 +879,14 @@ func (b *buildContext) build() (BuildArtifact, error) {
 var (
 	_ BuildContext = &buildContext{}
 )
+
+func NewBuilder(buildDirectory filesystem.MutableDirectory, maxParallelism int, logger Logger) Builder {
+	b := &builder{
+		buildDirectory: buildDirectory,
+		buildCache:     make(map[hash.Hash]*buildInfo),
+		tl:             newTokenLocker(maxParallelism),
+		logger:         logger,
+	}
+	b.hashDb = hash.NewDefinitionDatabase(b.hashCacheMiss)
+	return b
+}
