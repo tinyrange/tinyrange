@@ -117,7 +117,7 @@ func (parser *packageCollection) Tag() string {
 	return strings.Join([]string{parser.Filename, parser.Parser, parser.Install}, "_")
 }
 
-func (parser *packageCollection) Load(ctx common.BuildContext) error {
+func (parser *packageCollection) load(ctx *buildContext) error {
 	var records []starlark.Value
 
 	start := time.Now()
@@ -172,7 +172,7 @@ func (parser *packageCollection) Load(ctx common.BuildContext) error {
 		go func(records []starlark.Value) {
 			defer wg.Done()
 
-			child := ctx.ChildContext(parser, nil, "")
+			child := ctx.childContext(parser, nil, "")
 
 			thread := ctx.Database().NewThread(parser.Filename)
 

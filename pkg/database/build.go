@@ -1,17 +1,43 @@
 package database
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
+	"path/filepath"
 
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/record"
 	"go.starlark.net/starlark"
 )
+
+func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
+	persistPath := filepath.Join(buildDir, "persist")
+
+	if err := common.Ensure(persistPath, os.ModePerm); err != nil {
+		return nil, err
+	}
+
+	cmd := exec.Command(exe, "-build-dir", buildDir, "-persist-path", persistPath, configFilename)
+
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	slog.Debug("executing VMM", "args", cmd.Args)
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	return cmd, nil
+}
 
 type buildContext struct {
 	source   common.BuildSource
@@ -36,20 +62,35 @@ func (b *buildContext) BuildDir() string {
 	return b.database.buildDir
 }
 
-func (b *buildContext) DisplayTree() {
-	var dumpContext func(ctx *buildContext, prefix string)
-
-	dumpContext = func(ctx *buildContext, prefix string) {
-		fmt.Printf("%s%s\n", prefix, ctx.source)
-
-		for _, child := range ctx.children {
-			dumpContext(child, prefix+"  ")
-		}
+func (b *buildContext) RunVMM(name string, vmCfg config.TinyRangeConfig) (*exec.Cmd, error) {
+	configFilename, out, err := b.CreateFile(".json")
+	if err != nil {
+		return nil, err
 	}
 
-	fmt.Printf("\n")
+	enc := json.NewEncoder(out)
 
-	dumpContext(b, "")
+	if err := enc.Encode(&vmCfg); err != nil {
+		out.Close()
+		return nil, err
+	}
+
+	if err := out.Close(); err != nil {
+		return nil, err
+	}
+
+	var exe string
+
+	if name == "qemu" {
+		exe, err = common.GetAdjacentExecutable("tinyrange_qemu", "tinyqemu/tinyrange_qemu")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, fmt.Errorf("unknown VMM: %s", name)
+	}
+
+	return runVMM(exe, b.BuildDir(), configFilename)
 }
 
 // SetHasCached implements common.BuildContext.
@@ -105,7 +146,7 @@ func (b *buildContext) Database() common.PackageDatabase {
 	return b.database
 }
 
-func (b *buildContext) ChildContext(source common.BuildSource, status *common.BuildStatus, filename string) common.BuildContext {
+func (b *buildContext) childContext(source common.BuildSource, status *common.BuildStatus, filename string) *buildContext {
 	ctx := &buildContext{
 		parent:   b,
 		filename: filename,
@@ -170,7 +211,7 @@ func (b *buildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
 	// Check if the file already exists. If it does then return it.
 	if info, err := os.Stat(filename); err == nil {
 		// Get a child context for the build.
-		child := b.ChildContext(def, b.status, filename+".tmp")
+		child := b.childContext(def, b.status, filename+".tmp")
 
 		// If the file has already been created then check if a rebuild is needed.
 		needsRebuild, err := def.NeedsBuild(child, info.ModTime())

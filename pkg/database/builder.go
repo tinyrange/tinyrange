@@ -32,10 +32,10 @@ func (builder *containerBuilder) Packages() common.PackageCollection {
 }
 
 // EnsureLoaded ensures that the container builder is loaded.
-func (builder *containerBuilder) EnsureLoaded(ctx common.BuildContext) error {
+func (builder *containerBuilder) ensureLoaded(ctx *buildContext) error {
 	if !builder.Loaded() {
 		start := time.Now()
-		if err := builder.Load(ctx); err != nil {
+		if err := builder.load(ctx); err != nil {
 			return err
 		}
 		slog.Debug("loaded", "builder", builder.displayName, "arch", builder.architecture, "took", time.Since(start))
@@ -153,14 +153,14 @@ func (builder *containerBuilder) Loaded() bool {
 	return builder.loaded
 }
 
-func (builder *containerBuilder) Load(ctx common.BuildContext) error {
+func (builder *containerBuilder) load(ctx *buildContext) error {
 	if builder.Loaded() {
 		return nil
 	}
 
 	builder.db = ctx.Database()
 
-	if err := builder.packages.Load(ctx); err != nil {
+	if err := builder.packages.load(ctx); err != nil {
 		return err
 	}
 

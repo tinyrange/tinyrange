@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,28 +22,6 @@ import (
 
 func init() {
 	hash.RegisterType(&BuildVmDefinition{})
-}
-
-func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
-	persistPath := filepath.Join(buildDir, "persist")
-
-	if err := common.Ensure(persistPath, os.ModePerm); err != nil {
-		return nil, err
-	}
-
-	cmd := exec.Command(exe, "-build-dir", buildDir, "-persist-path", persistPath, configFilename)
-
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	slog.Debug("executing VMM", "args", cmd.Args)
-
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-
-	return cmd, nil
 }
 
 type ErrTemplateBuilt string
@@ -349,28 +326,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 		def.server.Serve(listener)
 	}()
 
-	configFilename, out, err := ctx.CreateFile(".json")
-	if err != nil {
-		return nil, err
-	}
-
-	enc := json.NewEncoder(out)
-
-	if err := enc.Encode(&vmCfg); err != nil {
-		out.Close()
-		return nil, err
-	}
-
-	if err := out.Close(); err != nil {
-		return nil, err
-	}
-
-	exe, err := common.GetAdjacentExecutable("tinyrange_qemu", "tinyqemu/tinyrange_qemu")
-	if err != nil {
-		return nil, err
-	}
-
-	cmd, err := runVMM(exe, ctx.BuildDir(), configFilename)
+	cmd, err := ctx.RunVMM("qemu", vmCfg)
 	if err != nil {
 		return nil, err
 	}

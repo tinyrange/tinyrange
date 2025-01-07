@@ -3,6 +3,7 @@ package common
 import (
 	"io"
 	"net/http"
+	"os/exec"
 
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -21,20 +22,27 @@ type PlanOptions struct {
 type BuildContext interface {
 	starlark.Value
 
-	BuildDir() string
-	DisplayTree()
+	// CreateOutput creates the main output file early.
 	CreateOutput() (io.WriteCloser, error)
+	// CreateFile creates a new file in the build directory.
 	CreateFile(name string) (string, io.WriteCloser, error)
-	HasCreatedOutput() bool
-	SetHasCached()
+	// HasCached returns whether the build context has a cached file for this build already.
+	// This can be used to skip building if the file is already cached.
 	HasCached() bool
+	// Database returns the package database.
 	Database() PackageDatabase
+	// BuildChild builds a given child definition.
 	BuildChild(def BuildDefinition) (filesystem.File, error)
+	// NeedsBuild returns whether the given definition needs to be rebuilt.
 	NeedsBuild(def BuildDefinition) (bool, error)
+	// Call calls a starlark function declared in a file.
 	Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error)
-	ChildContext(source BuildSource, status *BuildStatus, filename string) BuildContext
+	// FileFromDigest returns a file from a file digest.
 	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
+	// FilenameFromDigest returns a filename from a file digest.
 	FilenameFromDigest(digest *filesystem.FileDigest) (string, error)
+	// RunVMM runs a VMM with the given configuration.
+	RunVMM(vmm string, config config.TinyRangeConfig) (*exec.Cmd, error)
 	// ShouldRebuildUserDefinitions returns whether user definitions should be rebuilt.
 	ShouldRebuildUserDefinitions() bool
 }
@@ -74,9 +82,6 @@ type ContainerBuilder interface {
 	DisplayName() string
 	// Packages returns the package collection of the container builder.
 	Packages() PackageCollection
-
-	// EnsureLoaded ensures that the container builder is loaded. This needs to be called before any other methods.
-	EnsureLoaded(ctx BuildContext) error
 
 	// Plan creates an installation plan from a list of queries.
 	Plan(ctx BuildContext, packages []PackageQuery, tags TagList, opts PlanOptions) (InstallationPlan, error)

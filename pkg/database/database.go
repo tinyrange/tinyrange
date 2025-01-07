@@ -68,7 +68,7 @@ var (
 
 type packageDatabase struct {
 	// keys are name-arch
-	ContainerBuilders map[string]common.ContainerBuilder
+	ContainerBuilders map[string]*containerBuilder
 
 	rebuildUserDefinitions bool
 
@@ -214,7 +214,12 @@ func (db *packageDatabase) AddMirror(name string, options []string) error {
 	return nil
 }
 
-func (db *packageDatabase) AddContainerBuilder(builder common.ContainerBuilder) error {
+func (db *packageDatabase) AddContainerBuilder(b common.ContainerBuilder) error {
+	builder, ok := b.(*containerBuilder)
+	if !ok {
+		return fmt.Errorf("expected containerBuilder, got %T", b)
+	}
+
 	db.ContainerBuilders[builder.Key()] = builder
 
 	return nil
@@ -294,7 +299,7 @@ func (db *packageDatabase) RunScript(filename string, files map[string]filesyste
 }
 
 func (db *packageDatabase) LoadAll(parallel bool) error {
-	ctx := db.NewBuildContext(nil)
+	ctx := db.newBuildContext(nil)
 
 	if parallel {
 		var wg sync.WaitGroup
@@ -304,10 +309,10 @@ func (db *packageDatabase) LoadAll(parallel bool) error {
 		for _, builder := range db.ContainerBuilders {
 			wg.Add(1)
 
-			go func(builder common.ContainerBuilder) {
+			go func(builder *containerBuilder) {
 				defer wg.Done()
 
-				if err := builder.EnsureLoaded(ctx); err != nil {
+				if err := builder.ensureLoaded(ctx); err != nil {
 					errors <- err
 				}
 			}(builder)
@@ -327,7 +332,7 @@ func (db *packageDatabase) LoadAll(parallel bool) error {
 		}
 	} else {
 		for _, builder := range db.ContainerBuilders {
-			if err := builder.EnsureLoaded(ctx); err != nil {
+			if err := builder.ensureLoaded(ctx); err != nil {
 				return err
 			}
 		}
@@ -336,8 +341,12 @@ func (db *packageDatabase) LoadAll(parallel bool) error {
 	}
 }
 
-func (db *packageDatabase) NewBuildContext(source common.BuildSource) common.BuildContext {
+func (db *packageDatabase) newBuildContext(source common.BuildSource) *buildContext {
 	return &buildContext{source: source, database: db}
+}
+
+func (db *packageDatabase) NewBuildContext(source common.BuildSource) common.BuildContext {
+	return db.newBuildContext(source)
 }
 
 func (db *packageDatabase) updateBuildStatus(def common.BuildDefinition, status *common.BuildStatus) {
@@ -416,7 +425,7 @@ func (db *packageDatabase) downloadFromDistributionServer(hash hash.Hash, def co
 	return true, nil
 }
 
-func (db *packageDatabase) build(ctx common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (filesystem.File, error) {
+func (db *packageDatabase) build(c common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (filesystem.File, error) {
 	tag := def.Tag()
 
 	hash, err := db.HashDefinition(def)
@@ -442,8 +451,13 @@ func (db *packageDatabase) build(ctx common.BuildContext, def common.BuildDefini
 
 	tmpFilename := filename + ".tmp"
 
+	ctx, ok := c.(*buildContext)
+	if !ok {
+		return nil, fmt.Errorf("expected buildContext, got %T", c)
+	}
+
 	// Get a child context for the build.
-	child := ctx.ChildContext(def, status, tmpFilename)
+	child := ctx.childContext(def, status, tmpFilename)
 
 	if !opts.AlwaysRebuild {
 		// Check if the file already exists. If it does then return it.
@@ -641,13 +655,18 @@ func (db *packageDatabase) GetBuilder(filename string, builder string) (starlark
 	return callable, nil
 }
 
-func (db *packageDatabase) GetContainerBuilder(ctx common.BuildContext, name string, arch config.CPUArchitecture) (common.ContainerBuilder, error) {
+func (db *packageDatabase) GetContainerBuilder(c common.BuildContext, name string, arch config.CPUArchitecture) (common.ContainerBuilder, error) {
+	ctx, ok := c.(*buildContext)
+	if !ok {
+		return nil, fmt.Errorf("expected buildContext, got %T", ctx)
+	}
+
 	builder, ok := db.ContainerBuilders[fmt.Sprintf("%s-%s", name, arch)]
 	if !ok {
 		return nil, fmt.Errorf("builder %s not found for arch %s", name, arch)
 	}
 
-	if err := builder.EnsureLoaded(ctx); err != nil {
+	if err := builder.ensureLoaded(ctx); err != nil {
 		return nil, err
 	}
 
@@ -911,7 +930,7 @@ var (
 
 func New(buildDir string) common.PackageDatabase {
 	db := &packageDatabase{
-		ContainerBuilders: make(map[string]common.ContainerBuilder),
+		ContainerBuilders: make(map[string]*containerBuilder),
 		mirrors:           make(map[string][]string),
 		memoryCache:       make(map[string][]byte),
 		buildCache:        make(map[hash.Hash]filesystem.File),
