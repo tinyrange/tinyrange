@@ -382,7 +382,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext) (common.BuildResult
 
 // NeedsBuild implements common.BuildDefinition.
 func (def *BuildVmDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
-	if ctx.Database().ShouldRebuildUserDefinitions() {
+	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
 

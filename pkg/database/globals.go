@@ -22,7 +22,7 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-var START_TIME = time.Now()
+var startTime = time.Now()
 
 func asDirective(val starlark.Value) (common.Directive, error) {
 	if starDir, ok := val.(*common.StarDirective); ok {
@@ -88,7 +88,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 	ret["json"] = starlarkjson.Module
 	ret["re"] = regexp.Module
 
-	ret["db"] = db
+	ret["db"] = &packageDatabaseValue{db}
 
 	ret["load_fetcher"] = starlark.NewBuiltin("load_fetcher", func(
 		thread *starlark.Thread,
@@ -178,7 +178,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 
 				filename := thread.CallFrame(1).Pos.Filename()
 
-				return NewPackageCollection(filename, parser.Name(), install.Name(), defs)
+				return newPackageCollection(filename, parser.Name(), install.Name(), defs)
 			}),
 			"container_builder": starlark.NewBuiltin("define.container_builder", func(
 				thread *starlark.Thread,
@@ -235,7 +235,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 
 				filename := thread.CallFrame(1).Pos.Filename()
 
-				return NewContainerBuilder(
+				return newContainerBuilder(
 					name, arch, displayName,
 					filename, planCallback.Name(),
 					defaultPackages,
@@ -1336,7 +1336,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 		args starlark.Tuple,
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
-		return starlark.Float(time.Since(START_TIME).Seconds()), nil
+		return starlark.Float(time.Since(startTime).Seconds()), nil
 	})
 
 	return ret

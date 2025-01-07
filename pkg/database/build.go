@@ -1,4 +1,4 @@
-package builder
+package database
 
 import (
 	"fmt"
@@ -6,18 +6,19 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/record"
 	"go.starlark.net/starlark"
 )
 
-type BuildContext struct {
+type buildContext struct {
 	source   common.BuildSource
-	database common.PackageDatabase
-	parent   *BuildContext
+	database *packageDatabase
+	parent   *buildContext
 	status   *common.BuildStatus
-	children []*BuildContext
+	children []*buildContext
 
 	filename  string
 	output    io.WriteCloser
@@ -25,15 +26,20 @@ type BuildContext struct {
 	hasCached bool
 }
 
-// BuildDir implements common.BuildContext.
-func (b *BuildContext) BuildDir() string {
-	return b.database.BuildDir()
+// ShouldRebuildUserDefinitions implements common.BuildContext.
+func (b *buildContext) ShouldRebuildUserDefinitions() bool {
+	return b.database.rebuildUserDefinitions
 }
 
-func (b *BuildContext) DisplayTree() {
-	var dumpContext func(ctx *BuildContext, prefix string)
+// BuildDir implements common.BuildContext.
+func (b *buildContext) BuildDir() string {
+	return b.database.buildDir
+}
 
-	dumpContext = func(ctx *BuildContext, prefix string) {
+func (b *buildContext) DisplayTree() {
+	var dumpContext func(ctx *buildContext, prefix string)
+
+	dumpContext = func(ctx *buildContext, prefix string) {
 		fmt.Printf("%s%s\n", prefix, ctx.source)
 
 		for _, child := range ctx.children {
@@ -47,17 +53,17 @@ func (b *BuildContext) DisplayTree() {
 }
 
 // SetHasCached implements common.BuildContext.
-func (b *BuildContext) SetHasCached() {
+func (b *buildContext) SetHasCached() {
 	b.hasCached = true
 }
 
 // HasCached implements common.BuildContext.
-func (b *BuildContext) HasCached() bool {
+func (b *buildContext) HasCached() bool {
 	return b.hasCached
 }
 
 // CreateFile implements common.BuildContext.
-func (b *BuildContext) CreateFile(name string) (string, io.WriteCloser, error) {
+func (b *buildContext) CreateFile(name string) (string, io.WriteCloser, error) {
 	if b.IsInMemory() {
 		return "", nil, fmt.Errorf("creating files for in-memory items is not implemented")
 	}
@@ -71,12 +77,12 @@ func (b *BuildContext) CreateFile(name string) (string, io.WriteCloser, error) {
 }
 
 // FilenameFromDigest implements common.BuildContext.
-func (b *BuildContext) FilenameFromDigest(digest *filesystem.FileDigest) (string, error) {
+func (b *buildContext) FilenameFromDigest(digest *filesystem.FileDigest) (string, error) {
 	return digest.Hash, nil
 }
 
 // FileFromDigest implements common.BuildContext.
-func (b *BuildContext) FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error) {
+func (b *buildContext) FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error) {
 	if digest.Hash != "" {
 		return filesystem.NewLocalFile(digest.Hash, nil), nil
 	}
@@ -85,22 +91,22 @@ func (b *BuildContext) FileFromDigest(digest *filesystem.FileDigest) (filesystem
 }
 
 // IsInMemory implements common.BuildContext.
-func (b *BuildContext) IsInMemory() bool {
+func (b *buildContext) IsInMemory() bool {
 	return b.inMemory
 }
 
 // SetInMemory implements common.BuildContext.
-func (b *BuildContext) SetInMemory() {
+func (b *buildContext) SetInMemory() {
 	b.inMemory = true
 }
 
 // Database implements common.BuildContext.
-func (b *BuildContext) Database() common.PackageDatabase {
+func (b *buildContext) Database() common.PackageDatabase {
 	return b.database
 }
 
-func (b *BuildContext) ChildContext(source common.BuildSource, status *common.BuildStatus, filename string) common.BuildContext {
-	ctx := &BuildContext{
+func (b *buildContext) ChildContext(source common.BuildSource, status *common.BuildStatus, filename string) common.BuildContext {
+	ctx := &buildContext{
 		parent:   b,
 		filename: filename,
 		output:   nil,
@@ -115,7 +121,7 @@ func (b *BuildContext) ChildContext(source common.BuildSource, status *common.Bu
 	return ctx
 }
 
-func (b *BuildContext) CreateOutput() (io.WriteCloser, error) {
+func (b *buildContext) CreateOutput() (io.WriteCloser, error) {
 	if b.IsInMemory() {
 		return nil, fmt.Errorf("pre-creating output for in-memory items is not implemented")
 	}
@@ -134,19 +140,19 @@ func (b *BuildContext) CreateOutput() (io.WriteCloser, error) {
 	return b.output, nil
 }
 
-func (b *BuildContext) HasCreatedOutput() bool {
+func (b *buildContext) HasCreatedOutput() bool {
 	return b.output != nil
 }
 
-func (b *BuildContext) BuildChild(def common.BuildDefinition) (filesystem.File, error) {
+func (b *buildContext) BuildChild(def common.BuildDefinition) (filesystem.File, error) {
 	if b.status != nil {
 		b.status.Children = append(b.status.Children, def)
 	}
 
-	return b.database.Build(b, def, common.BuildOptions{})
+	return b.database.build(b, def, common.BuildOptions{})
 }
 
-func (b *BuildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
+func (b *buildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
 	if b.inMemory {
 		return true, nil
 	}
@@ -156,16 +162,16 @@ func (b *BuildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
 		return true, err
 	}
 
-	filename, err := b.database.FilenameFromHash(hash, ".bin")
+	filename, err := b.database.filenameFromHash(hash, ".bin")
 	if err != nil {
 		return true, err
 	}
 
-	// Get a child context for the build.
-	child := b.ChildContext(def, b.status, filename+".tmp")
-
 	// Check if the file already exists. If it does then return it.
 	if info, err := os.Stat(filename); err == nil {
+		// Get a child context for the build.
+		child := b.ChildContext(def, b.status, filename+".tmp")
+
 		// If the file has already been created then check if a rebuild is needed.
 		needsRebuild, err := def.NeedsBuild(child, info.ModTime())
 		if err != nil {
@@ -179,7 +185,7 @@ func (b *BuildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
 }
 
 // Attr implements starlark.HasAttrs.
-func (b *BuildContext) Attr(name string) (starlark.Value, error) {
+func (b *buildContext) Attr(name string) (starlark.Value, error) {
 	if name == "recordwriter" {
 		return starlark.NewBuiltin("BuildContext.recordwriter", func(
 			thread *starlark.Thread,
@@ -214,7 +220,7 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 			}
 
 			if kind == "" {
-				return &directoryToArchiveBuildResult{dir: dir}, nil
+				return builder.NewDirectoryToArchiveBuildResult(dir), nil
 			} else {
 				return starlark.None, fmt.Errorf("BuildContext.archive kind not implemented: %s", kind)
 			}
@@ -257,11 +263,11 @@ func (b *BuildContext) Attr(name string) (starlark.Value, error) {
 }
 
 // AttrNames implements starlark.HasAttrs.
-func (b *BuildContext) AttrNames() []string {
+func (b *buildContext) AttrNames() []string {
 	return []string{"recordwriter", "add_package", "build"}
 }
 
-func (ctx *BuildContext) Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error) {
+func (ctx *buildContext) Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error) {
 	target, err := ctx.database.GetBuilder(filename, builder)
 	if err != nil {
 		return starlark.None, fmt.Errorf("failed to GetBuilder in BuildContext.Call: %s", err)
@@ -278,18 +284,14 @@ func (ctx *BuildContext) Call(filename string, builder string, args ...starlark.
 	return result, nil
 }
 
-func (*BuildContext) String() string        { return "BuildContext" }
-func (*BuildContext) Type() string          { return "BuildContext" }
-func (*BuildContext) Hash() (uint32, error) { return 0, fmt.Errorf("BuildContext is not hashable") }
-func (*BuildContext) Truth() starlark.Bool  { return starlark.True }
-func (*BuildContext) Freeze()               {}
+func (*buildContext) String() string        { return "BuildContext" }
+func (*buildContext) Type() string          { return "BuildContext" }
+func (*buildContext) Hash() (uint32, error) { return 0, fmt.Errorf("BuildContext is not hashable") }
+func (*buildContext) Truth() starlark.Bool  { return starlark.True }
+func (*buildContext) Freeze()               {}
 
 var (
-	_ starlark.Value      = &BuildContext{}
-	_ starlark.HasAttrs   = &BuildContext{}
-	_ common.BuildContext = &BuildContext{}
+	_ starlark.Value      = &buildContext{}
+	_ starlark.HasAttrs   = &buildContext{}
+	_ common.BuildContext = &buildContext{}
 )
-
-func NewBuildContext(source common.BuildSource, db common.PackageDatabase) *BuildContext {
-	return &BuildContext{source: source, database: db}
-}

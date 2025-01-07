@@ -62,7 +62,7 @@ func (svr *distributionServer) handleGetResult(w http.ResponseWriter, r *http.Re
 	}
 
 	// Then check if the result is redistributable
-	redistributableFilename, err := svr.db.FilenameFromHash(validated, ".redistributable")
+	redistributableFilename, err := svr.db.filenameFromHash(validated, ".redistributable")
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (svr *distributionServer) handleGetResult(w http.ResponseWriter, r *http.Re
 	}
 
 	// Only then open the result file and serve it like normal.
-	filename, err := svr.db.FilenameFromHash(validated, ".bin")
+	filename, err := svr.db.filenameFromHash(validated, ".bin")
 	if err != nil {
 		return err
 	}

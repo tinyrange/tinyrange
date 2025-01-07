@@ -133,7 +133,7 @@ func (def *BuildEmulatorDefinition) Build(ctx common.BuildContext) (common.Build
 
 // NeedsBuild implements common.BuildDefinition.
 func (def *BuildEmulatorDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
-	if ctx.Database().ShouldRebuildUserDefinitions() {
+	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
 

@@ -253,9 +253,7 @@ func appMain() error {
 	} {
 		def := builder.NewFetchHttpBuildDefinition(url, 0, nil)
 
-		ctx := db.NewBuildContext(def)
-
-		f, err := db.Build(ctx, def, common.BuildOptions{})
+		f, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{})
 		if err != nil {
 			return err
 		}

@@ -166,8 +166,12 @@ var (
 	_ starlark.HasAttrs = &scriptArguments{}
 )
 
+type packageDatabaseValue struct {
+	*packageDatabase
+}
+
 // Attr implements starlark.HasAttrs.
-func (db *packageDatabase) Attr(name string) (starlark.Value, error) {
+func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 	if name == "add_mirror" {
 		return starlark.NewBuiltin("Database.add_mirror", func(
 			thread *starlark.Thread,
@@ -234,7 +238,7 @@ func (db *packageDatabase) Attr(name string) (starlark.Value, error) {
 
 			ctx := db.NewBuildContext(def)
 
-			result, err := db.Build(ctx, def, common.BuildOptions{
+			result, err := db.build(ctx, def, common.BuildOptions{
 				AlwaysRebuild: alwaysRebuild,
 			})
 			if err != nil {
@@ -356,12 +360,17 @@ func (db *packageDatabase) Attr(name string) (starlark.Value, error) {
 }
 
 // AttrNames implements starlark.HasAttrs.
-func (db *packageDatabase) AttrNames() []string {
-	return []string{"add_mirror"}
+func (db *packageDatabaseValue) AttrNames() []string {
+	return []string{"add_mirror", "add_container_builder", "build", "builder", "get_builtin_executable", "urls_for"}
 }
 
-func (*packageDatabase) String() string        { return "Database" }
-func (*packageDatabase) Type() string          { return "Database" }
-func (*packageDatabase) Hash() (uint32, error) { return 0, fmt.Errorf("Database is not hashable") }
-func (*packageDatabase) Truth() starlark.Bool  { return starlark.True }
-func (*packageDatabase) Freeze()               {}
+func (*packageDatabaseValue) String() string        { return "Database" }
+func (*packageDatabaseValue) Type() string          { return "Database" }
+func (*packageDatabaseValue) Hash() (uint32, error) { return 0, fmt.Errorf("Database is not hashable") }
+func (*packageDatabaseValue) Truth() starlark.Bool  { return starlark.True }
+func (*packageDatabaseValue) Freeze()               {}
+
+var (
+	_ starlark.Value    = &packageDatabaseValue{}
+	_ starlark.HasAttrs = &packageDatabaseValue{}
+)

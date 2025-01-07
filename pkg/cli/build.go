@@ -44,7 +44,7 @@ var buildCmd = &cobra.Command{
 		}
 
 		if def, ok := ret.(common.BuildDefinition); ok {
-			f, err := db.Build(db.NewBuildContext(def), def, common.BuildOptions{
+			f, err := db.Build(def, common.BuildOptions{
 				AlwaysRebuild: true,
 			})
 			if err != nil {

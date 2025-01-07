@@ -200,7 +200,7 @@ func (def *StarBuildDefinition) ToStarlark(ctx common.BuildContext, result files
 
 // NeedsBuild implements BuildDefinition.
 func (def *StarBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
-	if ctx.Database().ShouldRebuildUserDefinitions() {
+	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
 

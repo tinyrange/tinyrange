@@ -18,6 +18,27 @@ type PlanOptions struct {
 	Debug bool
 }
 
+type BuildContext interface {
+	starlark.Value
+
+	BuildDir() string
+	DisplayTree()
+	CreateOutput() (io.WriteCloser, error)
+	CreateFile(name string) (string, io.WriteCloser, error)
+	HasCreatedOutput() bool
+	SetHasCached()
+	HasCached() bool
+	Database() PackageDatabase
+	BuildChild(def BuildDefinition) (filesystem.File, error)
+	NeedsBuild(def BuildDefinition) (bool, error)
+	Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error)
+	ChildContext(source BuildSource, status *BuildStatus, filename string) BuildContext
+	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
+	FilenameFromDigest(digest *filesystem.FileDigest) (string, error)
+	// ShouldRebuildUserDefinitions returns whether user definitions should be rebuilt.
+	ShouldRebuildUserDefinitions() bool
+}
+
 // InstallationPlan represents a plan for installing packages.
 // A complete installation plan has a list of directives that are executed in order.
 type InstallationPlan interface {
@@ -138,8 +159,6 @@ type RequestManager interface {
 
 // PackageDatabase is the core interface.
 type PackageDatabase interface {
-	starlark.Value
-
 	MirrorManager
 	ScriptManager
 	ContainerBuilderManager
@@ -147,20 +166,13 @@ type PackageDatabase interface {
 	DistributionServerManager
 	RequestManager
 
-	// Get the build directory.
-	BuildDir() string
-	// Get the filename of a given hash.
-	FilenameFromHash(hash hash.Hash, suffix string) (string, error)
 	// Build a definition from a build context.
-	Build(ctx BuildContext, def BuildDefinition, opts BuildOptions) (filesystem.File, error)
-	// ShouldRebuildUserDefinitions returns whether user definitions should be rebuilt.
-	ShouldRebuildUserDefinitions() bool
+	Build(def BuildDefinition, opts BuildOptions) (filesystem.File, error)
 	// SetRebuildUserDefinitions sets whether user definitions should be rebuilt.
 	SetRebuildUserDefinitions(rebuild bool)
-	// HashDefinition creates a hash from a build definition.
-	HashDefinition(def BuildDefinition) (hash.Hash, error)
 	// NewBuildContext creates a new build context from a build source.
 	NewBuildContext(source BuildSource) BuildContext
+
 	// Get a build definition by hash.
 	GetDefinitionByHash(hash hash.Hash) (BuildDefinition, error)
 	// Pretty print a build definition and write the result to the given writer.

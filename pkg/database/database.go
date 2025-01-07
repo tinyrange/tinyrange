@@ -16,7 +16,6 @@ import (
 	"sync"
 
 	"github.com/schollz/progressbar/v3"
-	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -92,19 +91,9 @@ type packageDatabase struct {
 	distributionServer string
 }
 
-// BuildDir implements common.PackageDatabase.
-func (db *packageDatabase) BuildDir() string {
-	return db.buildDir
-}
-
 // HashDefinition implements common.PackageDatabase.
 func (db *packageDatabase) HashDefinition(def common.BuildDefinition) (hash.Hash, error) {
 	return db.defDb.HashDefinition(def)
-}
-
-// ShouldRebuildUserDefinitions implements common.PackageDatabase.
-func (db *packageDatabase) ShouldRebuildUserDefinitions() bool {
-	return db.rebuildUserDefinitions
 }
 
 // SetRebuildUserDefinitions implements common.PackageDatabase.
@@ -348,7 +337,7 @@ func (db *packageDatabase) LoadAll(parallel bool) error {
 }
 
 func (db *packageDatabase) NewBuildContext(source common.BuildSource) common.BuildContext {
-	return builder.NewBuildContext(source, db)
+	return &buildContext{source: source, database: db}
 }
 
 func (db *packageDatabase) updateBuildStatus(def common.BuildDefinition, status *common.BuildStatus) {
@@ -358,7 +347,7 @@ func (db *packageDatabase) updateBuildStatus(def common.BuildDefinition, status 
 	db.buildStatuses[def] = status
 }
 
-func (db *packageDatabase) FilenameFromHash(hash hash.Hash, suffix string) (string, error) {
+func (db *packageDatabase) filenameFromHash(hash hash.Hash, suffix string) (string, error) {
 	return filepath.Join(db.buildDir, string(hash)+suffix), nil
 }
 
@@ -386,7 +375,7 @@ func (db *packageDatabase) downloadFromDistributionServer(hash hash.Hash, def co
 		return false, fmt.Errorf("bad status %s", resp.Status)
 	}
 
-	filename, err := db.FilenameFromHash(hash, ".bin")
+	filename, err := db.filenameFromHash(hash, ".bin")
 	if err != nil {
 		return false, err
 	}
@@ -415,7 +404,7 @@ func (db *packageDatabase) downloadFromDistributionServer(hash hash.Hash, def co
 		return false, err
 	}
 
-	downloadedTag, err := db.FilenameFromHash(hash, ".downloaded")
+	downloadedTag, err := db.filenameFromHash(hash, ".downloaded")
 	if err != nil {
 		return false, err
 	}
@@ -427,7 +416,7 @@ func (db *packageDatabase) downloadFromDistributionServer(hash hash.Hash, def co
 	return true, nil
 }
 
-func (db *packageDatabase) Build(ctx common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (filesystem.File, error) {
+func (db *packageDatabase) build(ctx common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (filesystem.File, error) {
 	tag := def.Tag()
 
 	hash, err := db.HashDefinition(def)
@@ -441,12 +430,12 @@ func (db *packageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 
 	status := &common.BuildStatus{Tag: tag}
 
-	filename, err := db.FilenameFromHash(hash, ".bin")
+	filename, err := db.filenameFromHash(hash, ".bin")
 	if err != nil {
 		return nil, err
 	}
 
-	downloadedTag, err := db.FilenameFromHash(hash, ".downloaded")
+	downloadedTag, err := db.filenameFromHash(hash, ".downloaded")
 	if err != nil {
 		return nil, err
 	}
@@ -502,7 +491,7 @@ func (db *packageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 		return nil, fmt.Errorf("failed to marshal definition: %s", err)
 	}
 
-	defFilename, err := db.FilenameFromHash(hash, ".def")
+	defFilename, err := db.filenameFromHash(hash, ".def")
 	if err != nil {
 		return nil, err
 	}
@@ -524,7 +513,7 @@ func (db *packageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 			db.updateBuildStatus(def, status)
 
 			// This definition is redistributable so write a manifest.
-			redistributableTag, err := db.FilenameFromHash(hash, ".redistributable")
+			redistributableTag, err := db.filenameFromHash(hash, ".redistributable")
 			if err != nil {
 				return nil, err
 			}
@@ -601,7 +590,7 @@ func (db *packageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 	if redistributable, ok := def.(common.RedistributableDefinition); ok && redistributable.Redistributable() {
 		// This definition is redistributable so write a manifest.
 
-		redistributableTag, err := db.FilenameFromHash(hash, ".redistributable")
+		redistributableTag, err := db.filenameFromHash(hash, ".redistributable")
 		if err != nil {
 			return nil, err
 		}
@@ -617,6 +606,10 @@ func (db *packageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 
 	// Return the file.
 	return f, nil
+}
+
+func (db *packageDatabase) Build(def common.BuildDefinition, opts common.BuildOptions) (filesystem.File, error) {
+	return db.build(db.NewBuildContext(def), def, opts)
 }
 
 func (db *packageDatabase) GetBuildStatus(def common.BuildDefinition) (*common.BuildStatus, error) {
@@ -718,7 +711,7 @@ func (db *packageDatabase) GetMacroByDeclaredName(ctx common.MacroContext, name 
 }
 
 func (db *packageDatabase) missDefinitionCache(hash hash.Hash) (io.ReadCloser, error) {
-	filename, err := db.FilenameFromHash(hash, ".def")
+	filename, err := db.filenameFromHash(hash, ".def")
 	if err != nil {
 		return nil, err
 	}
@@ -736,7 +729,7 @@ func (db *packageDatabase) GetDefinitionByHash(hash hash.Hash) (common.BuildDefi
 		}
 	}
 
-	filename, err := db.FilenameFromHash(hash, ".def")
+	filename, err := db.filenameFromHash(hash, ".def")
 	if err != nil {
 		return nil, err
 	}
@@ -821,7 +814,7 @@ func (db *packageDatabase) Inspect(def common.BuildDefinition, out io.Writer) er
 		return err
 	}
 
-	filename, err := db.FilenameFromHash(hash, ".bin")
+	filename, err := db.filenameFromHash(hash, ".bin")
 	if err != nil {
 		return err
 	}
@@ -913,8 +906,6 @@ func (db *packageDatabase) GetContainerBuilders() map[string]common.ContainerBui
 }
 
 var (
-	_ starlark.Value         = &packageDatabase{}
-	_ starlark.HasAttrs      = &packageDatabase{}
 	_ common.PackageDatabase = &packageDatabase{}
 )
 

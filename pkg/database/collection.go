@@ -279,7 +279,7 @@ var (
 	_ common.BuildSource = &packageCollection{}
 )
 
-func NewPackageCollection(
+func newPackageCollection(
 	filename string,
 	parser string,
 	install string,

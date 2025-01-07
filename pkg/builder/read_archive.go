@@ -183,6 +183,15 @@ var (
 	_ common.BuildResult = &directoryToArchiveBuildResult{}
 )
 
+type StarBuildResult interface {
+	starlark.Value
+	common.BuildResult
+}
+
+func NewDirectoryToArchiveBuildResult(dir filesystem.Directory) StarBuildResult {
+	return &directoryToArchiveBuildResult{dir: dir}
+}
+
 type zipToArchiveBuildResult struct {
 	r *zip.Reader
 }

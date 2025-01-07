@@ -175,7 +175,7 @@ func (builder *containerBuilder) Plan(
 	tags common.TagList,
 	opts common.PlanOptions,
 ) (common.InstallationPlan, error) {
-	plan := NewInstallationPlan(tags, opts)
+	plan := newInstallationPlan(tags, opts)
 
 	if tags.Contains("defaults") {
 		for _, pkg := range builder.defaultPackages {
@@ -269,7 +269,7 @@ var (
 	_ common.ContainerBuilder = &containerBuilder{}
 )
 
-func NewContainerBuilder(
+func newContainerBuilder(
 	name string,
 	arch config.CPUArchitecture,
 	displayName string,
