@@ -76,7 +76,7 @@ type packageDatabase struct {
 	mirrors map[string][]string
 
 	memoryCache map[string][]byte
-	buildCache  map[string]filesystem.File
+	buildCache  map[hash.Hash]filesystem.File
 
 	buildStatusMtx sync.Mutex
 	buildStatuses  map[common.BuildDefinition]*common.BuildStatus
@@ -98,7 +98,7 @@ func (db *packageDatabase) BuildDir() string {
 }
 
 // HashDefinition implements common.PackageDatabase.
-func (db *packageDatabase) HashDefinition(def common.BuildDefinition) (string, error) {
+func (db *packageDatabase) HashDefinition(def common.BuildDefinition) (hash.Hash, error) {
 	return db.defDb.HashDefinition(def)
 }
 
@@ -358,11 +358,11 @@ func (db *packageDatabase) updateBuildStatus(def common.BuildDefinition, status 
 	db.buildStatuses[def] = status
 }
 
-func (db *packageDatabase) FilenameFromHash(hash string, suffix string) (string, error) {
-	return filepath.Join(db.buildDir, hash+suffix), nil
+func (db *packageDatabase) FilenameFromHash(hash hash.Hash, suffix string) (string, error) {
+	return filepath.Join(db.buildDir, string(hash)+suffix), nil
 }
 
-func (db *packageDatabase) downloadFromDistributionServer(hash string, def common.BuildDefinition) (bool, error) {
+func (db *packageDatabase) downloadFromDistributionServer(hash hash.Hash, def common.BuildDefinition) (bool, error) {
 	if redistributable, ok := def.(common.RedistributableDefinition); !ok || !redistributable.Redistributable() {
 		return false, nil // not redistributable
 	}
@@ -717,7 +717,7 @@ func (db *packageDatabase) GetMacroByDeclaredName(ctx common.MacroContext, name 
 	}
 }
 
-func (db *packageDatabase) missDefinitionCache(hash string) (io.ReadCloser, error) {
+func (db *packageDatabase) missDefinitionCache(hash hash.Hash) (io.ReadCloser, error) {
 	filename, err := db.FilenameFromHash(hash, ".def")
 	if err != nil {
 		return nil, err
@@ -726,7 +726,7 @@ func (db *packageDatabase) missDefinitionCache(hash string) (io.ReadCloser, erro
 	return os.Open(filename)
 }
 
-func (db *packageDatabase) GetDefinitionByHash(hash string) (common.BuildDefinition, error) {
+func (db *packageDatabase) GetDefinitionByHash(hash hash.Hash) (common.BuildDefinition, error) {
 	def, ok := db.defDb.GetDefinitionByHash(hash)
 	if ok {
 		if buildDef, ok := def.(common.BuildDefinition); ok {
@@ -765,7 +765,7 @@ func (db *packageDatabase) GetMacroByShorthand(ctx common.MacroContext, shorthan
 			return nil, fmt.Errorf("local definitions are not allowed in remote configs")
 		}
 
-		def, err := db.GetDefinitionByHash(shorthand)
+		def, err := db.GetDefinitionByHash(hash.Hash(shorthand))
 		if err != nil {
 			return nil, err
 		}
@@ -784,8 +784,8 @@ func (db *packageDatabase) NewMacroContext() common.MacroContext {
 	}
 }
 
-func (db *packageDatabase) GetAllHashes() ([]string, error) {
-	var ret []string
+func (db *packageDatabase) GetAllHashes() ([]hash.Hash, error) {
+	var ret []hash.Hash
 
 	ents, err := os.ReadDir(db.buildDir)
 	if err != nil {
@@ -795,7 +795,7 @@ func (db *packageDatabase) GetAllHashes() ([]string, error) {
 	for _, ent := range ents {
 		ext := filepath.Ext(ent.Name())
 		if ext == ".def" {
-			ret = append(ret, strings.TrimSuffix(ent.Name(), ext))
+			ret = append(ret, hash.Hash(strings.TrimSuffix(ent.Name(), ext)))
 		}
 	}
 
@@ -923,7 +923,7 @@ func New(buildDir string) common.PackageDatabase {
 		ContainerBuilders: make(map[string]common.ContainerBuilder),
 		mirrors:           make(map[string][]string),
 		memoryCache:       make(map[string][]byte),
-		buildCache:        make(map[string]filesystem.File),
+		buildCache:        make(map[hash.Hash]filesystem.File),
 		buildStatuses:     make(map[common.BuildDefinition]*common.BuildStatus),
 		buildDir:          buildDir,
 		defs:              make(map[string]starlark.Value),

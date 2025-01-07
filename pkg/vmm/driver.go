@@ -1297,7 +1297,7 @@ func (d *driver) EnsureFile(contents []byte) (File, error) {
 
 	hash := hash.GetSha256Hash(contents)
 
-	path := filepath.Join(d.buildDir, hash+".bin")
+	path := filepath.Join(d.buildDir, string(hash)+".bin")
 
 	slog.Debug("ensure file", "path", path, "length", len(contents))
 

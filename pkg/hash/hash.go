@@ -11,10 +11,12 @@ import (
 	"sync"
 )
 
-func GetSha256Hash(content []byte) string {
+type Hash string
+
+func GetSha256Hash(content []byte) Hash {
 	sum := sha256.Sum256(content)
 
-	return hex.EncodeToString(sum[:])
+	return Hash(hex.EncodeToString(sum[:]))
 }
 
 type SerializableValue interface {
@@ -76,7 +78,7 @@ type serializedValue struct {
 
 type definitionPointer struct {
 	TypeName string
-	Hash     string
+	Hash     Hash
 }
 
 type serializedDefinition struct {
@@ -84,20 +86,20 @@ type serializedDefinition struct {
 	Params   map[string]json.RawMessage
 }
 
-type CacheMissFunction func(hash string) (io.ReadCloser, error)
+type CacheMissFunction func(hash Hash) (io.ReadCloser, error)
 
 type DefinitionDatabase struct {
 	mtx   sync.RWMutex
-	cache map[string]Definition
+	cache map[Hash]Definition
 	miss  CacheMissFunction
 }
 
-func (db *DefinitionDatabase) GetDefinitionByHash(hash string) (Definition, bool) {
+func (db *DefinitionDatabase) GetDefinitionByHash(hash Hash) (Definition, bool) {
 	def, ok := db.cache[hash]
 	return def, ok
 }
 
-func (db *DefinitionDatabase) HashDefinition(d Definition) (string, error) {
+func (db *DefinitionDatabase) HashDefinition(d Definition) (Hash, error) {
 	val, err := db.MarshalDefinition(d)
 	if err != nil {
 		return "", err
@@ -511,7 +513,7 @@ func (db *DefinitionDatabase) UnmarshalDefinition(input io.Reader) (Definition, 
 	return fac.Create(params), nil
 }
 
-func (db *DefinitionDatabase) getFromCache(hash string) (Definition, bool) {
+func (db *DefinitionDatabase) getFromCache(hash Hash) (Definition, bool) {
 	db.mtx.RLock()
 	defer db.mtx.RUnlock()
 
@@ -585,5 +587,5 @@ func (db *DefinitionDatabase) unmarshalSerializableValue(typeName string, val js
 }
 
 func NewDefinitionDatabase(miss CacheMissFunction) *DefinitionDatabase {
-	return &DefinitionDatabase{cache: make(map[string]Definition), miss: miss}
+	return &DefinitionDatabase{cache: make(map[Hash]Definition), miss: miss}
 }

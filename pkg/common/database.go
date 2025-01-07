@@ -6,6 +6,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
 
@@ -149,7 +150,7 @@ type PackageDatabase interface {
 	// Get the build directory.
 	BuildDir() string
 	// Get the filename of a given hash.
-	FilenameFromHash(hash string, suffix string) (string, error)
+	FilenameFromHash(hash hash.Hash, suffix string) (string, error)
 	// Build a definition from a build context.
 	Build(ctx BuildContext, def BuildDefinition, opts BuildOptions) (filesystem.File, error)
 	// ShouldRebuildUserDefinitions returns whether user definitions should be rebuilt.
@@ -157,13 +158,13 @@ type PackageDatabase interface {
 	// SetRebuildUserDefinitions sets whether user definitions should be rebuilt.
 	SetRebuildUserDefinitions(rebuild bool)
 	// HashDefinition creates a hash from a build definition.
-	HashDefinition(def BuildDefinition) (string, error)
+	HashDefinition(def BuildDefinition) (hash.Hash, error)
 	// NewBuildContext creates a new build context from a build source.
 	NewBuildContext(source BuildSource) BuildContext
 	// Get a build definition by hash.
-	GetDefinitionByHash(hash string) (BuildDefinition, error)
+	GetDefinitionByHash(hash hash.Hash) (BuildDefinition, error)
 	// Pretty print a build definition and write the result to the given writer.
 	Inspect(def BuildDefinition, out io.Writer) error
 	// Get a list of all hashes in the database.
-	GetAllHashes() ([]string, error)
+	GetAllHashes() ([]hash.Hash, error)
 }

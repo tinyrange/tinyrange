@@ -8,6 +8,7 @@ import (
 	"regexp"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 )
 
 func logHandler(h http.Handler) http.Handler {
@@ -33,13 +34,13 @@ type distributionServer struct {
 	mux *http.ServeMux
 }
 
-func (svr *distributionServer) validateHash(hash string) (string, error) {
-	result := validHash.FindString(hash)
+func (svr *distributionServer) validateHash(h string) (hash.Hash, error) {
+	result := validHash.FindString(h)
 	if result == "" {
 		return "", fmt.Errorf("bad hash")
 	}
 
-	return result, nil
+	return hash.Hash(result), nil
 }
 
 func (svr *distributionServer) handleHealthCheck(w http.ResponseWriter, r *http.Request) error {
