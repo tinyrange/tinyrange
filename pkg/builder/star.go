@@ -287,7 +287,6 @@ func (*StarBuildDefinition) Freeze()              {}
 var (
 	_ starlark.Value                   = &StarBuildDefinition{}
 	_ starlark.HasAttrs                = &StarBuildDefinition{}
-	_ common.BuildSource               = &StarBuildDefinition{}
 	_ common.BuildDefinition           = &StarBuildDefinition{}
 	_ common.RedistributableDefinition = &StarBuildDefinition{}
 	_ common.Directive                 = &StarBuildDefinition{}

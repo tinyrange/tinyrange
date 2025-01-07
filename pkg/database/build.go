@@ -40,10 +40,10 @@ func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, erro
 }
 
 type buildContext struct {
-	source   common.BuildSource
+	def      common.BuildDefinition
 	database *packageDatabase
 	parent   *buildContext
-	status   *common.BuildStatus
+	status   *buildStatus
 	children []*buildContext
 
 	filename  string
@@ -146,13 +146,13 @@ func (b *buildContext) Database() common.PackageDatabase {
 	return b.database
 }
 
-func (b *buildContext) childContext(source common.BuildSource, status *common.BuildStatus, filename string) *buildContext {
+func (b *buildContext) childContext(def common.BuildDefinition, status *buildStatus, filename string) *buildContext {
 	ctx := &buildContext{
 		parent:   b,
 		filename: filename,
 		output:   nil,
 		status:   status,
-		source:   source,
+		def:      def,
 		database: b.database,
 		inMemory: b.inMemory,
 	}
@@ -309,12 +309,12 @@ func (b *buildContext) AttrNames() []string {
 }
 
 func (ctx *buildContext) Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error) {
-	target, err := ctx.database.GetBuilder(filename, builder)
+	target, err := ctx.database.getBuilder(filename, builder)
 	if err != nil {
 		return starlark.None, fmt.Errorf("failed to GetBuilder in BuildContext.Call: %s", err)
 	}
 
-	result, err := starlark.Call(ctx.database.NewThread(filename), target, append(starlark.Tuple{ctx}, args...), []starlark.Tuple{})
+	result, err := starlark.Call(ctx.database.newThread(filename), target, append(starlark.Tuple{ctx}, args...), []starlark.Tuple{})
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
 			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())

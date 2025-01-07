@@ -51,12 +51,6 @@ func (def *BuildEmulatorDefinition) ToStarlark(ctx common.BuildContext, result f
 func (def *BuildEmulatorDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
 	var commands []string
 
-	// Get the creation callback.
-	createFunc, err := ctx.Database().GetBuilder(def.params.ScriptFilename, def.params.CreateName)
-	if err != nil {
-		return nil, err
-	}
-
 	// Launch child builds for each directive.
 	for _, directive := range def.params.Directives {
 		frags, err := directive.AsFragments(ctx, common.SpecialDirectiveHandlers{})
@@ -101,10 +95,7 @@ func (def *BuildEmulatorDefinition) Build(ctx common.BuildContext) (common.Build
 	}
 
 	// Call the creation callback.
-	_, err = starlark.Call(
-		ctx.Database().NewThread(def.params.ScriptFilename),
-		createFunc, starlark.Tuple{emu}, []starlark.Tuple{},
-	)
+	_, err := ctx.Call(def.params.ScriptFilename, def.params.CreateName, emu)
 	if err != nil {
 		return nil, fmt.Errorf("failed to call emulator creation callback: %s", err)
 	}

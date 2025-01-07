@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/record"
 	"go.starlark.net/starlark"
 )
@@ -25,6 +27,41 @@ type packageCollection struct {
 	Packages    map[string][]*common.Package
 
 	pkgMtx sync.Mutex
+}
+
+// Build implements common.BuildDefinition.
+func (parser *packageCollection) Build(ctx common.BuildContext) (common.BuildResult, error) {
+	panic("unimplemented on packageCollection")
+}
+
+// Create implements common.BuildDefinition.
+func (parser *packageCollection) Create(params hash.SerializableValue) hash.Definition {
+	panic("unimplemented on packageCollection")
+}
+
+// Dependencies implements common.BuildDefinition.
+func (parser *packageCollection) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+	panic("unimplemented on packageCollection")
+}
+
+// NeedsBuild implements common.BuildDefinition.
+func (parser *packageCollection) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+	panic("unimplemented on packageCollection")
+}
+
+// Params implements common.BuildDefinition.
+func (parser *packageCollection) Params() hash.SerializableValue {
+	panic("unimplemented on packageCollection")
+}
+
+// SerializableType implements common.BuildDefinition.
+func (parser *packageCollection) SerializableType() string {
+	panic("unimplemented on packageCollection")
+}
+
+// ToStarlark implements common.BuildDefinition.
+func (parser *packageCollection) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+	panic("unimplemented on packageCollection")
 }
 
 func (parser *packageCollection) addPackage(pkg *common.Package) error {
@@ -152,7 +189,7 @@ func (parser *packageCollection) load(ctx *buildContext) error {
 	slog.Debug("built all package sources", "took", time.Since(start))
 	start = time.Now()
 
-	parserCallback, err := ctx.Database().GetBuilder(parser.Filename, parser.Parser)
+	parserCallback, err := ctx.database.getBuilder(parser.Filename, parser.Parser)
 	if err != nil {
 		return fmt.Errorf("failed to GetBuilder in PackageCollection.Load: %s", err)
 	}
@@ -174,7 +211,7 @@ func (parser *packageCollection) load(ctx *buildContext) error {
 
 			child := ctx.childContext(parser, nil, "")
 
-			thread := ctx.Database().NewThread(parser.Filename)
+			thread := ctx.database.newThread(parser.Filename)
 
 			_, err := starlark.Call(thread, parserCallback, starlark.Tuple{child, parser, starlark.NewList(records)}, []starlark.Tuple{})
 			if err != nil {
@@ -197,6 +234,8 @@ func (parser *packageCollection) load(ctx *buildContext) error {
 		return nil
 	}
 }
+
+//
 
 func (parser *packageCollection) Query(query common.PackageQuery) ([]*common.Package, error) {
 	var directs []*common.Package
@@ -242,13 +281,18 @@ func (parser *packageCollection) Query(query common.PackageQuery) ([]*common.Pac
 	return append(directs, aliases...), nil
 }
 
-func (parser *packageCollection) InstallerFor(ctx common.BuildContext, pkg *common.Package, tags common.TagList) (*common.Installer, error) {
-	getInstall, err := ctx.Database().GetBuilder(parser.Filename, parser.Install)
+func (parser *packageCollection) InstallerFor(c common.BuildContext, pkg *common.Package, tags common.TagList) (*common.Installer, error) {
+	ctx, ok := c.(*buildContext)
+	if !ok {
+		return nil, fmt.Errorf("could not convert %s to buildContext", c.Type())
+	}
+
+	getInstall, err := ctx.database.getBuilder(parser.Filename, parser.Install)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get builder in InstallerFor: %s", err)
 	}
 
-	ret, err := starlark.Call(ctx.Database().NewThread(parser.Filename), getInstall, starlark.Tuple{pkg, tags}, []starlark.Tuple{})
+	ret, err := starlark.Call(ctx.database.newThread(parser.Filename), getInstall, starlark.Tuple{pkg, tags}, []starlark.Tuple{})
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
 			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
@@ -274,9 +318,9 @@ func (*packageCollection) Truth() starlark.Bool { return starlark.True }
 func (*packageCollection) Freeze()              {}
 
 var (
-	_ starlark.Value     = &packageCollection{}
-	_ starlark.HasAttrs  = &packageCollection{}
-	_ common.BuildSource = &packageCollection{}
+	_ starlark.Value         = &packageCollection{}
+	_ starlark.HasAttrs      = &packageCollection{}
+	_ common.BuildDefinition = &packageCollection{}
 )
 
 func newPackageCollection(

@@ -26,6 +26,30 @@ import (
 	"go.starlark.net/syntax"
 )
 
+type buildStatusKind byte
+
+const (
+	buildStatusBuilt buildStatusKind = iota
+	buildStatusCached
+)
+
+func (s buildStatusKind) String() string {
+	switch s {
+	case buildStatusBuilt:
+		return "Built"
+	case buildStatusCached:
+		return "Cached"
+	default:
+		return "<unknown BuildStatusKind>"
+	}
+}
+
+type buildStatus struct {
+	Status   buildStatusKind
+	Tag      string
+	Children []common.BuildDefinition
+}
+
 type macroContext struct {
 	db        *packageDatabase
 	builders  map[string]common.InstallationPlanBuilder
@@ -59,7 +83,7 @@ func (m *macroContext) Builder(name string) (common.InstallationPlanBuilder, err
 
 // Thread implements common.MacroContext.
 func (m *macroContext) Thread() *starlark.Thread {
-	return m.db.NewThread("__macro__")
+	return m.db.newThread("__macro__")
 }
 
 var (
@@ -78,7 +102,7 @@ type packageDatabase struct {
 	buildCache  map[hash.Hash]filesystem.File
 
 	buildStatusMtx sync.Mutex
-	buildStatuses  map[common.BuildDefinition]*common.BuildStatus
+	buildStatuses  map[common.BuildDefinition]*buildStatus
 
 	loadedFiles map[string]bool
 	defs        map[string]starlark.Value
@@ -139,7 +163,7 @@ func (db *packageDatabase) onLoadFile(filename string, defs starlark.StringDict)
 	return nil
 }
 
-func (db *packageDatabase) NewThread(filename string) *starlark.Thread {
+func (db *packageDatabase) newThread(filename string) *starlark.Thread {
 	return &starlark.Thread{
 		Name: filename,
 		Load: func(thread *starlark.Thread, module string) (starlark.StringDict, error) {
@@ -150,7 +174,7 @@ func (db *packageDatabase) NewThread(filename string) *starlark.Thread {
 				return nil, err
 			}
 
-			newThread := db.NewThread(module)
+			newThread := db.newThread(module)
 
 			ret, err := starlark.ExecFileOptions(db.getFileOptions(), newThread, module, contents, globals)
 			if err != nil {
@@ -226,7 +250,7 @@ func (db *packageDatabase) AddContainerBuilder(b common.ContainerBuilder) error 
 }
 
 func (db *packageDatabase) LoadFile(filename string, allowLocal bool) error {
-	thread := db.NewThread(filename)
+	thread := db.newThread(filename)
 
 	globals := db.getGlobals("__main__")
 
@@ -253,7 +277,7 @@ func (db *packageDatabase) LoadFile(filename string, allowLocal bool) error {
 }
 
 func (db *packageDatabase) RunScript(filename string, files map[string]filesystem.File, additionalArgs []string, outputFilename string) error {
-	thread := db.NewThread(filename)
+	thread := db.newThread(filename)
 
 	globals := db.getGlobals("__main__")
 
@@ -341,15 +365,15 @@ func (db *packageDatabase) LoadAll(parallel bool) error {
 	}
 }
 
-func (db *packageDatabase) newBuildContext(source common.BuildSource) *buildContext {
-	return &buildContext{source: source, database: db}
+func (db *packageDatabase) newBuildContext(def common.BuildDefinition) *buildContext {
+	return &buildContext{def: def, database: db}
 }
 
-func (db *packageDatabase) NewBuildContext(source common.BuildSource) common.BuildContext {
-	return db.newBuildContext(source)
+func (db *packageDatabase) NewBuildContext(def common.BuildDefinition) common.BuildContext {
+	return db.newBuildContext(def)
 }
 
-func (db *packageDatabase) updateBuildStatus(def common.BuildDefinition, status *common.BuildStatus) {
+func (db *packageDatabase) updateBuildStatus(def common.BuildDefinition, status *buildStatus) {
 	db.buildStatusMtx.Lock()
 	defer db.buildStatusMtx.Unlock()
 
@@ -437,7 +461,7 @@ func (db *packageDatabase) build(c common.BuildContext, def common.BuildDefiniti
 		return f, nil
 	}
 
-	status := &common.BuildStatus{Tag: tag}
+	status := &buildStatus{Tag: tag}
 
 	filename, err := db.filenameFromHash(hash, ".bin")
 	if err != nil {
@@ -480,7 +504,7 @@ func (db *packageDatabase) build(c common.BuildContext, def common.BuildDefiniti
 
 			// If no rebuild is necessary then skip it.
 			if !needsRebuild {
-				status.Status = common.BuildStatusCached
+				status.Status = buildStatusCached
 
 				// Write the build status.
 				db.updateBuildStatus(def, status)
@@ -522,7 +546,7 @@ func (db *packageDatabase) build(c common.BuildContext, def common.BuildDefiniti
 		}
 
 		if ok {
-			status.Status = common.BuildStatusBuilt
+			status.Status = buildStatusBuilt
 
 			db.updateBuildStatus(def, status)
 
@@ -555,7 +579,7 @@ func (db *packageDatabase) build(c common.BuildContext, def common.BuildDefiniti
 
 	// If the result is nil then the builder is telling us to use the cached version.
 	if result == nil {
-		status.Status = common.BuildStatusCached
+		status.Status = buildStatusCached
 
 		// Write the build status.
 		db.updateBuildStatus(def, status)
@@ -596,7 +620,7 @@ func (db *packageDatabase) build(c common.BuildContext, def common.BuildDefiniti
 		return nil, err
 	}
 
-	status.Status = common.BuildStatusBuilt
+	status.Status = buildStatusBuilt
 
 	// Write the build status.
 	db.updateBuildStatus(def, status)
@@ -626,7 +650,7 @@ func (db *packageDatabase) Build(def common.BuildDefinition, opts common.BuildOp
 	return db.build(db.NewBuildContext(def), def, opts)
 }
 
-func (db *packageDatabase) GetBuildStatus(def common.BuildDefinition) (*common.BuildStatus, error) {
+func (db *packageDatabase) getBuildStatus(def common.BuildDefinition) (*buildStatus, error) {
 	status, ok := db.buildStatuses[def]
 	if !ok {
 		return nil, fmt.Errorf("build status not found")
@@ -642,7 +666,7 @@ func (db *packageDatabase) NewName(name string, version string, tags []string) (
 	}, nil
 }
 
-func (db *packageDatabase) GetBuilder(filename string, builder string) (starlark.Callable, error) {
+func (db *packageDatabase) getBuilder(filename string, builder string) (starlark.Callable, error) {
 	if filename == "" {
 		return nil, fmt.Errorf("no filename passed to GetBuilder")
 	}
@@ -873,7 +897,7 @@ func (db *packageDatabase) Inspect(def common.BuildDefinition, out io.Writer) er
 	return nil
 }
 
-func (db *packageDatabase) LoadBuiltinBuilders() error {
+func (db *packageDatabase) loadBuiltinBuilders() error {
 	for _, builder := range []string{
 		"//fetchers/alpine.star",
 		"//fetchers/rpm.star",
@@ -928,13 +952,13 @@ var (
 	_ common.PackageDatabase = &packageDatabase{}
 )
 
-func New(buildDir string) common.PackageDatabase {
+func New(buildDir string) (common.PackageDatabase, error) {
 	db := &packageDatabase{
 		ContainerBuilders: make(map[string]*containerBuilder),
 		mirrors:           make(map[string][]string),
 		memoryCache:       make(map[string][]byte),
 		buildCache:        make(map[hash.Hash]filesystem.File),
-		buildStatuses:     make(map[common.BuildDefinition]*common.BuildStatus),
+		buildStatuses:     make(map[common.BuildDefinition]*buildStatus),
 		buildDir:          buildDir,
 		defs:              make(map[string]starlark.Value),
 		loadedFiles:       make(map[string]bool),
@@ -943,5 +967,16 @@ func New(buildDir string) common.PackageDatabase {
 
 	db.defDb = hash.NewDefinitionDatabase(db.missDefinitionCache)
 
-	return db
+	// Check with Exists first so it doesn't have issues if the build dir is behind a symlink.
+	if ok, _ := common.Exists(buildDir); !ok {
+		if err := common.Ensure(buildDir, os.ModePerm); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := db.loadBuiltinBuilders(); err != nil {
+		return nil, err
+	}
+
+	return db, nil
 }

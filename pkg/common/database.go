@@ -4,12 +4,53 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
+
+// BuildResult is implemented by definitions and called with a writer.
+type BuildResult interface {
+	// WriteResult writes the result of the build to the given writer.
+	WriteResult(out io.Writer) error
+}
+
+// DependencyNode is a single dependency in the build graph.
+type DependencyNode interface {
+	hash.SerializableValue
+
+	// Dependencies returns the dependencies of the node.
+	// This doesn't have to return all dependencies just those that can be staticky determined.
+	Dependencies(ctx BuildContext) ([]DependencyNode, error)
+}
+
+// BuildDefinition is a definition that can be built and cached.
+type BuildDefinition interface {
+	hash.Definition
+	DependencyNode
+	MacroResult
+	// Tag returns a human readable name for the definition.
+	Tag() string
+	// NeedsBuild returns whether the definition needs to be rebuilt.
+	NeedsBuild(ctx BuildContext, cacheTime time.Time) (bool, error)
+	// Build builds the definition and returns the result.
+	Build(ctx BuildContext) (BuildResult, error)
+	// ToStarlark converts the definition to a starlark value.
+	ToStarlark(ctx BuildContext, result filesystem.File) (starlark.Value, error)
+}
+
+// RedistributableDefinition is a extension of BuildDefinition that can be redistributed.
+// Redistributable definitions can be downloaded from public servers.
+type RedistributableDefinition interface {
+	BuildDefinition
+	Redistributable() bool
+}
+
+type MacroResult interface {
+}
 
 type BuildOptions struct {
 	AlwaysRebuild bool
@@ -121,25 +162,16 @@ type MirrorManager interface {
 	AddMirror(name string, options []string) error
 }
 
-type ScriptManager interface {
-	GetBuilder(filename string, builder string) (starlark.Callable, error)
-	NewThread(filename string) *starlark.Thread
-	RunScript(filename string, files map[string]filesystem.File, additionalArgs []string, outputFilename string) error
-}
-
 // ContainerBuilders take a package collection and create an installation plan from a list of queries.
 // The manager is responsible for loading and managing container builders.
 type ContainerBuilderManager interface {
 	GetContainerBuilder(ctx BuildContext, name string, arch config.CPUArchitecture) (ContainerBuilder, error)
 	GetContainerBuilders() map[string]ContainerBuilder
-	LoadBuiltinBuilders() error
 }
 
 // Macros are functions that can be called to return definitions or directives.
 // The manager is responsible for creating a macro context and getting macros.
 type MacroManager interface {
-	ScriptManager
-
 	// NewMacroContext creates a new macro context.
 	// MacroContexts store builders and variables that can be used by macros.
 	NewMacroContext() MacroContext
@@ -165,7 +197,6 @@ type RequestManager interface {
 // PackageDatabase is the core interface.
 type PackageDatabase interface {
 	MirrorManager
-	ScriptManager
 	ContainerBuilderManager
 	MacroManager
 	DistributionServerManager
@@ -176,7 +207,7 @@ type PackageDatabase interface {
 	// SetRebuildUserDefinitions sets whether user definitions should be rebuilt.
 	SetRebuildUserDefinitions(rebuild bool)
 	// NewBuildContext creates a new build context from a build source.
-	NewBuildContext(source BuildSource) BuildContext
+	NewBuildContext(def BuildDefinition) BuildContext
 
 	// Get a build definition by hash.
 	GetDefinitionByHash(hash hash.Hash) (BuildDefinition, error)
@@ -184,4 +215,12 @@ type PackageDatabase interface {
 	Inspect(def BuildDefinition, out io.Writer) error
 	// Get a list of all hashes in the database.
 	GetAllHashes() ([]hash.Hash, error)
+
+	// Run a top-level script.
+	RunScript(
+		filename string,
+		files map[string]filesystem.File,
+		additionalArgs []string,
+		outputFilename string,
+	) error
 }

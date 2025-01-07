@@ -38,7 +38,10 @@ Complete documentation is available at https://github.com/tinyrange/tinyrange`, 
 }
 
 func newDb() (common.PackageDatabase, error) {
-	db := database.New(rootBuildDir)
+	db, err := database.New(rootBuildDir)
+	if err != nil {
+		return nil, err
+	}
 
 	if rootDistribution != "" {
 		if err := db.SetDistributionServer(rootDistribution); err != nil {
@@ -46,18 +49,7 @@ func newDb() (common.PackageDatabase, error) {
 		}
 	}
 
-	// Check with Exists first so it doesn't have issues if the build dir is behind a symlink.
-	if ok, _ := common.Exists(rootBuildDir); !ok {
-		if err := common.Ensure(rootBuildDir, os.ModePerm); err != nil {
-			return nil, err
-		}
-	}
-
 	db.SetRebuildUserDefinitions(rootRebuild)
-
-	if err := db.LoadBuiltinBuilders(); err != nil {
-		return nil, err
-	}
 
 	for _, mirror := range rootMirrors {
 		name, url, ok := strings.Cut(mirror, "=")

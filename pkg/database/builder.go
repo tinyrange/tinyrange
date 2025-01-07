@@ -170,11 +170,16 @@ func (builder *containerBuilder) load(ctx *buildContext) error {
 }
 
 func (builder *containerBuilder) Plan(
-	ctx common.BuildContext,
+	c common.BuildContext,
 	packages []common.PackageQuery,
 	tags common.TagList,
 	opts common.PlanOptions,
 ) (common.InstallationPlan, error) {
+	ctx, ok := c.(*buildContext)
+	if !ok {
+		return nil, fmt.Errorf("could not convert BuildContext to *buildContext")
+	}
+
 	plan := newInstallationPlan(tags, opts)
 
 	if tags.Contains("defaults") {
@@ -198,9 +203,9 @@ func (builder *containerBuilder) Plan(
 	}
 
 	// Call the plan callback.
-	thread := ctx.Database().NewThread(builder.filename)
+	thread := ctx.database.newThread(builder.filename)
 
-	callable, err := ctx.Database().GetBuilder(builder.filename, builder.planCallbackName)
+	callable, err := ctx.database.getBuilder(builder.filename, builder.planCallbackName)
 	if err != nil {
 		return nil, fmt.Errorf("could not get builder for ContainerBuilder.Plan: %s", err)
 	}
