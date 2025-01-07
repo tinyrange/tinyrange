@@ -8,24 +8,12 @@ import (
 	"go.starlark.net/starlark"
 )
 
-type MacroContext interface {
-	Thread() *starlark.Thread
-	Builder(name string) (common.InstallationPlanBuilder, error)
-	AddBuilder(name string, builder common.InstallationPlanBuilder)
-	Variable(name string) string
-	AddVariable(name string, value string)
-}
-
-type Macro interface {
-	Call(ctx MacroContext) (common.MacroResult, error)
-}
-
 type DefinitionMacro struct {
 	common.BuildDefinition
 }
 
 // Call implements Macro.
-func (d DefinitionMacro) Call(ctx MacroContext) (common.MacroResult, error) {
+func (d DefinitionMacro) Call(ctx common.MacroContext) (common.MacroResult, error) {
 	return d.BuildDefinition, nil
 }
 
@@ -34,37 +22,37 @@ type DirectiveMacro struct {
 }
 
 // Call implements Macro.
-func (d DirectiveMacro) Call(ctx MacroContext) (common.MacroResult, error) {
+func (d DirectiveMacro) Call(ctx common.MacroContext) (common.MacroResult, error) {
 	return d.Directive, nil
 }
 
 var (
-	_ Macro = DefinitionMacro{}
-	_ Macro = DirectiveMacro{}
+	_ common.Macro = DefinitionMacro{}
+	_ common.Macro = DirectiveMacro{}
 )
 
 type StarlarkMacroArgument interface {
-	Value(ctx MacroContext) (starlark.Value, error)
+	Value(ctx common.MacroContext) (starlark.Value, error)
 }
 
 type StarlarkMacroString string
 
 // Value implements StarlarkMacroArgument.
-func (s StarlarkMacroString) Value(ctx MacroContext) (starlark.Value, error) {
+func (s StarlarkMacroString) Value(ctx common.MacroContext) (starlark.Value, error) {
 	return starlark.String(s), nil
 }
 
 type StarlarkMacroBuilder string
 
 // Value implements StarlarkMacroArgument.
-func (s StarlarkMacroBuilder) Value(ctx MacroContext) (starlark.Value, error) {
+func (s StarlarkMacroBuilder) Value(ctx common.MacroContext) (starlark.Value, error) {
 	return ctx.Builder(string(s))
 }
 
 type StarlarkMacroVariable string
 
 // Value implements StarlarkMacroArgument.
-func (s StarlarkMacroVariable) Value(ctx MacroContext) (starlark.Value, error) {
+func (s StarlarkMacroVariable) Value(ctx common.MacroContext) (starlark.Value, error) {
 	return starlark.String(ctx.Variable(string(s))), nil
 }
 
@@ -80,7 +68,7 @@ type StarlarkMacro struct {
 }
 
 // Call implements Macro.
-func (s *StarlarkMacro) Call(ctx MacroContext) (common.MacroResult, error) {
+func (s *StarlarkMacro) Call(ctx common.MacroContext) (common.MacroResult, error) {
 	var args []starlark.Value
 
 	for _, arg := range s.args {
@@ -110,7 +98,7 @@ func (s *StarlarkMacro) Call(ctx MacroContext) (common.MacroResult, error) {
 }
 
 var (
-	_ Macro = &StarlarkMacro{}
+	_ common.Macro = &StarlarkMacro{}
 )
 
 func parseMacroArgument(desc string, args []string) (StarlarkMacroArgument, []string, error) {
@@ -138,7 +126,7 @@ func parseMacroArgument(desc string, args []string) (StarlarkMacroArgument, []st
 	}
 }
 
-func ParseMacro(ctx MacroContext, f *starlark.Function, args []string) (Macro, error) {
+func ParseMacro(ctx common.MacroContext, f *starlark.Function, args []string) (common.Macro, error) {
 	var err error
 
 	doc := f.Doc()

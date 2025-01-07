@@ -80,7 +80,7 @@ func asDirectiveList(it starlark.Iterable) ([]common.Directive, error) {
 	return directives, nil
 }
 
-func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
+func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 	ret := starlark.StringDict{}
 
 	ret["__name__"] = starlark.String(name)
@@ -191,7 +191,7 @@ func (db *PackageDatabase) getGlobals(name string) starlark.StringDict {
 					archString           string
 					displayName          string
 					planCallback         starlark.Callable
-					packages             *PackageCollection
+					packages             *packageCollection
 					defaultPackagesList  starlark.Iterable
 					metadata             starlark.Value
 					splitDefaultPackages bool

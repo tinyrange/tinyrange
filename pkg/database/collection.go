@@ -15,7 +15,7 @@ import (
 	"go.starlark.net/starlark"
 )
 
-type PackageCollection struct {
+type packageCollection struct {
 	Filename string
 	Parser   string
 	Install  string
@@ -27,7 +27,7 @@ type PackageCollection struct {
 	pkgMtx sync.Mutex
 }
 
-func (parser *PackageCollection) addPackage(pkg *common.Package) error {
+func (parser *packageCollection) addPackage(pkg *common.Package) error {
 	parser.pkgMtx.Lock()
 	defer parser.pkgMtx.Unlock()
 
@@ -43,7 +43,7 @@ func (parser *PackageCollection) addPackage(pkg *common.Package) error {
 }
 
 // Attr implements starlark.HasAttrs.
-func (parser *PackageCollection) Attr(name string) (starlark.Value, error) {
+func (parser *packageCollection) Attr(name string) (starlark.Value, error) {
 	if name == "add_package" {
 		return starlark.NewBuiltin("PackageCollection.add_package", func(
 			thread *starlark.Thread,
@@ -108,16 +108,16 @@ func (parser *PackageCollection) Attr(name string) (starlark.Value, error) {
 }
 
 // AttrNames implements starlark.HasAttrs.
-func (parser *PackageCollection) AttrNames() []string {
+func (parser *packageCollection) AttrNames() []string {
 	return []string{"add_package"}
 }
 
 // Tag implements BuildSource.
-func (parser *PackageCollection) Tag() string {
+func (parser *packageCollection) Tag() string {
 	return strings.Join([]string{parser.Filename, parser.Parser, parser.Install}, "_")
 }
 
-func (parser *PackageCollection) Load(ctx common.BuildContext) error {
+func (parser *packageCollection) Load(ctx common.BuildContext) error {
 	var records []starlark.Value
 
 	start := time.Now()
@@ -198,7 +198,7 @@ func (parser *PackageCollection) Load(ctx common.BuildContext) error {
 	}
 }
 
-func (parser *PackageCollection) Query(query common.PackageQuery) ([]*common.Package, error) {
+func (parser *packageCollection) Query(query common.PackageQuery) ([]*common.Package, error) {
 	var directs []*common.Package
 	var aliases []*common.Package
 
@@ -242,7 +242,7 @@ func (parser *PackageCollection) Query(query common.PackageQuery) ([]*common.Pac
 	return append(directs, aliases...), nil
 }
 
-func (parser *PackageCollection) InstallerFor(ctx common.BuildContext, pkg *common.Package, tags common.TagList) (*common.Installer, error) {
+func (parser *packageCollection) InstallerFor(ctx common.BuildContext, pkg *common.Package, tags common.TagList) (*common.Installer, error) {
 	getInstall, err := ctx.Database().GetBuilder(parser.Filename, parser.Install)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get builder in InstallerFor: %s", err)
@@ -265,18 +265,18 @@ func (parser *PackageCollection) InstallerFor(ctx common.BuildContext, pkg *comm
 	return install, nil
 }
 
-func (def *PackageCollection) String() string { return def.Tag() }
-func (*PackageCollection) Type() string       { return "PackageCollection" }
-func (*PackageCollection) Hash() (uint32, error) {
+func (def *packageCollection) String() string { return def.Tag() }
+func (*packageCollection) Type() string       { return "PackageCollection" }
+func (*packageCollection) Hash() (uint32, error) {
 	return 0, fmt.Errorf("PackageCollection is not hashable")
 }
-func (*PackageCollection) Truth() starlark.Bool { return starlark.True }
-func (*PackageCollection) Freeze()              {}
+func (*packageCollection) Truth() starlark.Bool { return starlark.True }
+func (*packageCollection) Freeze()              {}
 
 var (
-	_ starlark.Value     = &PackageCollection{}
-	_ starlark.HasAttrs  = &PackageCollection{}
-	_ common.BuildSource = &PackageCollection{}
+	_ starlark.Value     = &packageCollection{}
+	_ starlark.HasAttrs  = &packageCollection{}
+	_ common.BuildSource = &packageCollection{}
 )
 
 func NewPackageCollection(
@@ -284,8 +284,8 @@ func NewPackageCollection(
 	parser string,
 	install string,
 	sources []common.BuildDefinition,
-) (*PackageCollection, error) {
-	return &PackageCollection{
+) (common.PackageCollection, error) {
+	return &packageCollection{
 		Filename:    filename,
 		Parser:      parser,
 		Install:     install,

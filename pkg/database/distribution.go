@@ -29,7 +29,7 @@ func handler(f func(http.ResponseWriter, *http.Request) error) http.HandlerFunc 
 var validHash = regexp.MustCompile("[0-9a-f]{64}")
 
 type distributionServer struct {
-	db  *PackageDatabase
+	db  *packageDatabase
 	mux *http.ServeMux
 }
 
@@ -93,7 +93,7 @@ func (svr *distributionServer) handleGetResult(w http.ResponseWriter, r *http.Re
 	return nil
 }
 
-func (db *PackageDatabase) RunDistributionServer(addr string) error {
+func (db *packageDatabase) RunDistributionServer(addr string) error {
 	server := &distributionServer{
 		db:  db,
 		mux: http.NewServeMux(),

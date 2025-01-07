@@ -11,11 +11,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/builder"
@@ -23,7 +21,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
-	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/macro"
 	"github.com/tinyrange/tinyrange/stdlib"
 	"go.starlark.net/starlark"
@@ -31,7 +28,7 @@ import (
 )
 
 type macroContext struct {
-	db        *PackageDatabase
+	db        *packageDatabase
 	builders  map[string]common.InstallationPlanBuilder
 	variables map[string]string
 }
@@ -67,165 +64,14 @@ func (m *macroContext) Thread() *starlark.Thread {
 }
 
 var (
-	_ macro.MacroContext = &macroContext{}
+	_ common.MacroContext = &macroContext{}
 )
 
-type outputFile struct {
-	f io.Writer
-}
-
-// Attr implements starlark.HasAttrs.
-func (o *outputFile) Attr(name string) (starlark.Value, error) {
-	if name == "write" {
-		return starlark.NewBuiltin("OutputFile.write", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				contents string
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"contents", &contents,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			if _, err := fmt.Fprintf(o.f, "%s", contents); err != nil {
-				return starlark.None, err
-			}
-
-			return starlark.None, nil
-		}), nil
-	} else {
-		return nil, nil
-	}
-}
-
-// AttrNames implements starlark.HasAttrs.
-func (o *outputFile) AttrNames() []string {
-	return []string{"write"}
-}
-
-func (*outputFile) String() string        { return "OutputFile" }
-func (*outputFile) Type() string          { return "OutputFile" }
-func (*outputFile) Hash() (uint32, error) { return 0, fmt.Errorf("OutputFile is not hashable") }
-func (*outputFile) Truth() starlark.Bool  { return starlark.True }
-func (*outputFile) Freeze()               {}
-
-var (
-	_ starlark.Value    = &outputFile{}
-	_ starlark.HasAttrs = &outputFile{}
-)
-
-type scriptArguments struct {
-	args           map[string]starlark.Value
-	outputFilename string
-	additionalArgs []string
-}
-
-// Attr implements starlark.HasAttrs.
-func (s *scriptArguments) Attr(name string) (starlark.Value, error) {
-	if name == "output" {
-		return starlark.NewBuiltin("Arguments.output", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			if s.outputFilename == "" {
-				return starlark.None, fmt.Errorf("no output file specified. please specify one using the -o flag")
-			}
-
-			f, err := os.Create(s.outputFilename)
-			if err != nil {
-				return starlark.None, err
-			}
-
-			return &outputFile{f: f}, nil
-		}), nil
-	} else if name == "create_output" {
-		return starlark.NewBuiltin("Arguments.create_output", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				name string
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"name", &name,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			if strings.ContainsAny(name, "/\\") {
-				return starlark.None, fmt.Errorf("name for create_output can not contain path separators")
-			}
-
-			p := filepath.Join(s.outputFilename, name)
-
-			f, err := os.Create(p)
-			if err != nil {
-				return starlark.None, err
-			}
-
-			return &outputFile{f: f}, nil
-		}), nil
-	} else if name == "args" {
-		var ret []starlark.Value
-
-		for _, arg := range s.additionalArgs {
-			ret = append(ret, starlark.String(arg))
-		}
-
-		return starlark.NewList(ret), nil
-	} else {
-		return nil, nil
-	}
-}
-
-// AttrNames implements starlark.HasAttrs.
-func (s *scriptArguments) AttrNames() []string {
-	return []string{"output", "args"}
-}
-
-// Get implements starlark.Mapping.
-func (s *scriptArguments) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
-	key, ok := starlark.AsString(k)
-	if !ok {
-		return nil, false, fmt.Errorf("expected string got %s", k.Type())
-	}
-
-	val, ok := s.args[key]
-	if !ok {
-		return nil, false, nil
-	}
-
-	return val, true, nil
-}
-
-func (*scriptArguments) String() string        { return "Arguments" }
-func (*scriptArguments) Type() string          { return "Arguments" }
-func (*scriptArguments) Hash() (uint32, error) { return 0, fmt.Errorf("Arguments is not hashable") }
-func (*scriptArguments) Truth() starlark.Bool  { return starlark.True }
-func (*scriptArguments) Freeze()               {}
-
-var (
-	_ starlark.Value    = &scriptArguments{}
-	_ starlark.Mapping  = &scriptArguments{}
-	_ starlark.HasAttrs = &scriptArguments{}
-)
-
-type PackageDatabase struct {
+type packageDatabase struct {
 	// keys are name-arch
-	ContainerBuilders map[string]*ContainerBuilder
+	ContainerBuilders map[string]common.ContainerBuilder
 
-	RebuildUserDefinitions bool
+	rebuildUserDefinitions bool
 
 	mirrors map[string][]string
 
@@ -247,21 +93,26 @@ type PackageDatabase struct {
 }
 
 // BuildDir implements common.PackageDatabase.
-func (db *PackageDatabase) BuildDir() string {
+func (db *packageDatabase) BuildDir() string {
 	return db.buildDir
 }
 
 // HashDefinition implements common.PackageDatabase.
-func (db *PackageDatabase) HashDefinition(def common.BuildDefinition) (string, error) {
+func (db *packageDatabase) HashDefinition(def common.BuildDefinition) (string, error) {
 	return db.defDb.HashDefinition(def)
 }
 
 // ShouldRebuildUserDefinitions implements common.PackageDatabase.
-func (db *PackageDatabase) ShouldRebuildUserDefinitions() bool {
-	return db.RebuildUserDefinitions
+func (db *packageDatabase) ShouldRebuildUserDefinitions() bool {
+	return db.rebuildUserDefinitions
 }
 
-func (db *PackageDatabase) getFileContents(name string, allowLocal bool) (string, error) {
+// SetRebuildUserDefinitions implements common.PackageDatabase.
+func (db *packageDatabase) SetRebuildUserDefinitions(rebuild bool) {
+	db.rebuildUserDefinitions = rebuild
+}
+
+func (db *packageDatabase) getFileContents(name string, allowLocal bool) (string, error) {
 	if strings.HasPrefix(name, "//") {
 		f, err := stdlib.STDLIB.Open(strings.TrimPrefix(name, "//"))
 		if err != nil {
@@ -289,7 +140,7 @@ func (db *PackageDatabase) getFileContents(name string, allowLocal bool) (string
 	return string(contents), nil
 }
 
-func (db *PackageDatabase) onLoadFile(filename string, defs starlark.StringDict) error {
+func (db *packageDatabase) onLoadFile(filename string, defs starlark.StringDict) error {
 	for k, v := range defs {
 		if callable, ok := v.(starlark.Callable); ok {
 			db.builders[fmt.Sprintf("%s:%s", filename, k)] = callable
@@ -299,7 +150,7 @@ func (db *PackageDatabase) onLoadFile(filename string, defs starlark.StringDict)
 	return nil
 }
 
-func (db *PackageDatabase) NewThread(filename string) *starlark.Thread {
+func (db *packageDatabase) NewThread(filename string) *starlark.Thread {
 	return &starlark.Thread{
 		Name: filename,
 		Load: func(thread *starlark.Thread, module string) (starlark.StringDict, error) {
@@ -329,7 +180,7 @@ func (db *PackageDatabase) NewThread(filename string) *starlark.Thread {
 	}
 }
 
-func (db *PackageDatabase) getFileOptions() *syntax.FileOptions {
+func (db *packageDatabase) getFileOptions() *syntax.FileOptions {
 	return &syntax.FileOptions{
 		Set:             true,
 		While:           true,
@@ -338,11 +189,11 @@ func (db *PackageDatabase) getFileOptions() *syntax.FileOptions {
 	}
 }
 
-func (db *PackageDatabase) HttpClient() (*http.Client, error) {
+func (db *packageDatabase) HttpClient() (*http.Client, error) {
 	return &http.Client{}, nil
 }
 
-func (db *PackageDatabase) UrlsFor(urlStr string) ([]string, error) {
+func (db *packageDatabase) UrlsFor(urlStr string) ([]string, error) {
 	parsed, err := url.Parse(urlStr)
 	if err != nil {
 		return nil, err
@@ -369,18 +220,18 @@ func (db *PackageDatabase) UrlsFor(urlStr string) ([]string, error) {
 	return ret, nil
 }
 
-func (db *PackageDatabase) AddMirror(name string, options []string) error {
+func (db *packageDatabase) AddMirror(name string, options []string) error {
 	db.mirrors[name] = options
 	return nil
 }
 
-func (db *PackageDatabase) AddContainerBuilder(builder *ContainerBuilder) error {
-	db.ContainerBuilders[fmt.Sprintf("%s-%s", builder.Name, builder.Architecture)] = builder
+func (db *packageDatabase) AddContainerBuilder(builder common.ContainerBuilder) error {
+	db.ContainerBuilders[builder.Key()] = builder
 
 	return nil
 }
 
-func (db *PackageDatabase) LoadFile(filename string, allowLocal bool) error {
+func (db *packageDatabase) LoadFile(filename string, allowLocal bool) error {
 	thread := db.NewThread(filename)
 
 	globals := db.getGlobals("__main__")
@@ -407,7 +258,7 @@ func (db *PackageDatabase) LoadFile(filename string, allowLocal bool) error {
 	return nil
 }
 
-func (db *PackageDatabase) RunScript(filename string, files map[string]filesystem.File, additionalArgs []string, outputFilename string) error {
+func (db *packageDatabase) RunScript(filename string, files map[string]filesystem.File, additionalArgs []string, outputFilename string) error {
 	thread := db.NewThread(filename)
 
 	globals := db.getGlobals("__main__")
@@ -453,7 +304,7 @@ func (db *PackageDatabase) RunScript(filename string, files map[string]filesyste
 	return nil
 }
 
-func (db *PackageDatabase) LoadAll(parallel bool) error {
+func (db *packageDatabase) LoadAll(parallel bool) error {
 	ctx := db.NewBuildContext(nil)
 
 	if parallel {
@@ -464,10 +315,10 @@ func (db *PackageDatabase) LoadAll(parallel bool) error {
 		for _, builder := range db.ContainerBuilders {
 			wg.Add(1)
 
-			go func(builder *ContainerBuilder) {
+			go func(builder common.ContainerBuilder) {
 				defer wg.Done()
 
-				if err := builder.Load(ctx); err != nil {
+				if err := builder.EnsureLoaded(ctx); err != nil {
 					errors <- err
 				}
 			}(builder)
@@ -487,7 +338,7 @@ func (db *PackageDatabase) LoadAll(parallel bool) error {
 		}
 	} else {
 		for _, builder := range db.ContainerBuilders {
-			if err := builder.Load(ctx); err != nil {
+			if err := builder.EnsureLoaded(ctx); err != nil {
 				return err
 			}
 		}
@@ -496,22 +347,22 @@ func (db *PackageDatabase) LoadAll(parallel bool) error {
 	}
 }
 
-func (db *PackageDatabase) NewBuildContext(source common.BuildSource) common.BuildContext {
+func (db *packageDatabase) NewBuildContext(source common.BuildSource) common.BuildContext {
 	return builder.NewBuildContext(source, db)
 }
 
-func (db *PackageDatabase) updateBuildStatus(def common.BuildDefinition, status *common.BuildStatus) {
+func (db *packageDatabase) updateBuildStatus(def common.BuildDefinition, status *common.BuildStatus) {
 	db.buildStatusMtx.Lock()
 	defer db.buildStatusMtx.Unlock()
 
 	db.buildStatuses[def] = status
 }
 
-func (db *PackageDatabase) FilenameFromHash(hash string, suffix string) (string, error) {
+func (db *packageDatabase) FilenameFromHash(hash string, suffix string) (string, error) {
 	return filepath.Join(db.buildDir, hash+suffix), nil
 }
 
-func (db *PackageDatabase) downloadFromDistributionServer(hash string, def common.BuildDefinition) (bool, error) {
+func (db *packageDatabase) downloadFromDistributionServer(hash string, def common.BuildDefinition) (bool, error) {
 	if redistributable, ok := def.(common.RedistributableDefinition); !ok || !redistributable.Redistributable() {
 		return false, nil // not redistributable
 	}
@@ -576,7 +427,7 @@ func (db *PackageDatabase) downloadFromDistributionServer(hash string, def commo
 	return true, nil
 }
 
-func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (filesystem.File, error) {
+func (db *packageDatabase) Build(ctx common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (filesystem.File, error) {
 	tag := def.Tag()
 
 	hash, err := db.HashDefinition(def)
@@ -619,7 +470,7 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 				}
 			} else {
 				// Redistributed results are considered user definitions.
-				if db.RebuildUserDefinitions {
+				if db.rebuildUserDefinitions {
 					needsRebuild = true
 				}
 			}
@@ -768,7 +619,7 @@ func (db *PackageDatabase) Build(ctx common.BuildContext, def common.BuildDefini
 	return f, nil
 }
 
-func (db *PackageDatabase) GetBuildStatus(def common.BuildDefinition) (*common.BuildStatus, error) {
+func (db *packageDatabase) GetBuildStatus(def common.BuildDefinition) (*common.BuildStatus, error) {
 	status, ok := db.buildStatuses[def]
 	if !ok {
 		return nil, fmt.Errorf("build status not found")
@@ -776,7 +627,7 @@ func (db *PackageDatabase) GetBuildStatus(def common.BuildDefinition) (*common.B
 	return status, nil
 }
 
-func (db *PackageDatabase) NewName(name string, version string, tags []string) (common.PackageName, error) {
+func (db *packageDatabase) NewName(name string, version string, tags []string) (common.PackageName, error) {
 	return common.PackageName{
 		Name:    name,
 		Version: version,
@@ -784,7 +635,7 @@ func (db *PackageDatabase) NewName(name string, version string, tags []string) (
 	}, nil
 }
 
-func (db *PackageDatabase) GetBuilder(filename string, builder string) (starlark.Callable, error) {
+func (db *packageDatabase) GetBuilder(filename string, builder string) (starlark.Callable, error) {
 	if filename == "" {
 		return nil, fmt.Errorf("no filename passed to GetBuilder")
 	}
@@ -797,24 +648,20 @@ func (db *PackageDatabase) GetBuilder(filename string, builder string) (starlark
 	return callable, nil
 }
 
-func (db *PackageDatabase) GetContainerBuilder(ctx common.BuildContext, name string, arch config.CPUArchitecture) (common.ContainerBuilder, error) {
+func (db *packageDatabase) GetContainerBuilder(ctx common.BuildContext, name string, arch config.CPUArchitecture) (common.ContainerBuilder, error) {
 	builder, ok := db.ContainerBuilders[fmt.Sprintf("%s-%s", name, arch)]
 	if !ok {
 		return nil, fmt.Errorf("builder %s not found for arch %s", name, arch)
 	}
 
-	if !builder.Loaded() {
-		start := time.Now()
-		if err := builder.Load(ctx); err != nil {
-			return nil, err
-		}
-		slog.Debug("loaded", "builder", builder.DisplayName, "arch", builder.Architecture, "took", time.Since(start))
+	if err := builder.EnsureLoaded(ctx); err != nil {
+		return nil, err
 	}
 
 	return builder, nil
 }
 
-func (db *PackageDatabase) GetMacro(ctx macro.MacroContext, name string, args []string) (macro.Macro, error) {
+func (db *packageDatabase) GetMacro(ctx common.MacroContext, name string, args []string) (common.Macro, error) {
 	def, ok := db.defs[name]
 	if !ok {
 		return nil, fmt.Errorf("name %s not found", name)
@@ -828,7 +675,7 @@ func (db *PackageDatabase) GetMacro(ctx macro.MacroContext, name string, args []
 	return macro.ParseMacro(ctx, f, args)
 }
 
-func (db *PackageDatabase) GetMacroByDeclaredName(ctx macro.MacroContext, name string, allowLocal bool) (macro.Macro, error) {
+func (db *packageDatabase) GetMacroByDeclaredName(ctx common.MacroContext, name string, allowLocal bool) (common.Macro, error) {
 	filename, defName, ok := strings.Cut(name, ":")
 	if !ok {
 		return nil, fmt.Errorf("misformed declared name: %s", name)
@@ -870,7 +717,7 @@ func (db *PackageDatabase) GetMacroByDeclaredName(ctx macro.MacroContext, name s
 	}
 }
 
-func (db *PackageDatabase) missDefinitionCache(hash string) (io.ReadCloser, error) {
+func (db *packageDatabase) missDefinitionCache(hash string) (io.ReadCloser, error) {
 	filename, err := db.FilenameFromHash(hash, ".def")
 	if err != nil {
 		return nil, err
@@ -879,7 +726,7 @@ func (db *PackageDatabase) missDefinitionCache(hash string) (io.ReadCloser, erro
 	return os.Open(filename)
 }
 
-func (db *PackageDatabase) GetDefinitionByHash(hash string) (common.BuildDefinition, error) {
+func (db *packageDatabase) GetDefinitionByHash(hash string) (common.BuildDefinition, error) {
 	def, ok := db.defDb.GetDefinitionByHash(hash)
 	if ok {
 		if buildDef, ok := def.(common.BuildDefinition); ok {
@@ -912,7 +759,7 @@ func (db *PackageDatabase) GetDefinitionByHash(hash string) (common.BuildDefinit
 	}
 }
 
-func (db *PackageDatabase) GetMacroByShorthand(ctx macro.MacroContext, shorthand string, allowLocal bool) (macro.Macro, error) {
+func (db *packageDatabase) GetMacroByShorthand(ctx common.MacroContext, shorthand string, allowLocal bool) (common.Macro, error) {
 	if len(shorthand) == 64 && !strings.Contains(shorthand, ":") {
 		if !allowLocal {
 			return nil, fmt.Errorf("local definitions are not allowed in remote configs")
@@ -929,7 +776,7 @@ func (db *PackageDatabase) GetMacroByShorthand(ctx macro.MacroContext, shorthand
 	return db.GetMacroByDeclaredName(ctx, shorthand, allowLocal)
 }
 
-func (db *PackageDatabase) NewMacroContext() macro.MacroContext {
+func (db *packageDatabase) NewMacroContext() common.MacroContext {
 	return &macroContext{
 		db:        db,
 		builders:  make(map[string]common.InstallationPlanBuilder),
@@ -937,7 +784,7 @@ func (db *PackageDatabase) NewMacroContext() macro.MacroContext {
 	}
 }
 
-func (db *PackageDatabase) GetAllHashes() ([]string, error) {
+func (db *packageDatabase) GetAllHashes() ([]string, error) {
 	var ret []string
 
 	ents, err := os.ReadDir(db.buildDir)
@@ -955,7 +802,7 @@ func (db *PackageDatabase) GetAllHashes() ([]string, error) {
 	return ret, nil
 }
 
-func (db *PackageDatabase) Inspect(def common.BuildDefinition, out io.Writer) error {
+func (db *packageDatabase) Inspect(def common.BuildDefinition, out io.Writer) error {
 	defBytes, err := db.defDb.MarshalDefinition(def)
 	if err != nil {
 		return err
@@ -1014,7 +861,7 @@ func (db *PackageDatabase) Inspect(def common.BuildDefinition, out io.Writer) er
 	return nil
 }
 
-func (db *PackageDatabase) LoadBuiltinBuilders() error {
+func (db *packageDatabase) LoadBuiltinBuilders() error {
 	for _, builder := range []string{
 		"//fetchers/alpine.star",
 		"//fetchers/rpm.star",
@@ -1029,7 +876,7 @@ func (db *PackageDatabase) LoadBuiltinBuilders() error {
 	return nil
 }
 
-func (db *PackageDatabase) SetDistributionServer(server string) error {
+func (db *packageDatabase) SetDistributionServer(server string) error {
 	client, err := db.HttpClient()
 	if err != nil {
 		return err
@@ -1055,215 +902,25 @@ func (db *PackageDatabase) SetDistributionServer(server string) error {
 	return nil
 }
 
-// Attr implements starlark.HasAttrs.
-func (db *PackageDatabase) Attr(name string) (starlark.Value, error) {
-	if name == "add_mirror" {
-		return starlark.NewBuiltin("Database.add_mirror", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				name       string
-				mirrorsVal starlark.Iterable
-			)
+func (db *packageDatabase) GetContainerBuilders() map[string]common.ContainerBuilder {
+	ret := make(map[string]common.ContainerBuilder, len(db.ContainerBuilders))
 
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"name", &name,
-				"mirrors", &mirrorsVal,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			mirrors, err := common.ToStringList(mirrorsVal)
-			if err != nil {
-				return starlark.None, err
-			}
-
-			return starlark.None, db.AddMirror(name, mirrors)
-		}), nil
-	} else if name == "add_container_builder" {
-		return starlark.NewBuiltin("Database.add_container_builder", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				builder *ContainerBuilder
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"builder", &builder,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			return starlark.None, db.AddContainerBuilder(builder)
-		}), nil
-	} else if name == "build" {
-		return starlark.NewBuiltin("Database.build", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				def           common.BuildDefinition
-				alwaysRebuild bool
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"def", &def,
-				"always_rebuild?", &alwaysRebuild,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			ctx := db.NewBuildContext(def)
-
-			result, err := db.Build(ctx, def, common.BuildOptions{
-				AlwaysRebuild: alwaysRebuild,
-			})
-			if err != nil {
-				return starlark.None, err
-			}
-
-			return def.ToStarlark(ctx, result)
-		}), nil
-	} else if name == "builder" {
-		return starlark.NewBuiltin("Database.builder", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				name       string
-				archString string
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"name", &name,
-				"arch", &archString,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			arch, err := config.ArchitectureFromString(archString)
-			if err != nil {
-				return starlark.None, err
-			}
-
-			ctx := db.NewBuildContext(nil)
-
-			builder, err := db.GetContainerBuilder(ctx, name, arch)
-			if err != nil {
-				return starlark.None, err
-			}
-
-			return builder, nil
-		}), nil
-	} else if name == "get_builtin_executable" {
-		return starlark.NewBuiltin("Database.get_builtin_executable", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				name string
-				arch string
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"name", &name,
-				"arch", &arch,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			if name == "init" {
-				if config.CPUArchitecture(arch).IsNative() {
-					f := filesystem.NewMemoryFile(filesystem.TypeRegular)
-					f.Overwrite(initExec.INIT_EXECUTABLE)
-					return filesystem.NewStarFile(f, "init"), nil
-				} else {
-					return starlark.None, fmt.Errorf("invalid architecture for init: %s", arch)
-				}
-			} else if name == "tinyrange" {
-				// Assume that the user wants a Linux executable.
-				if config.CPUArchitecture(arch).IsNative() && runtime.GOOS == "linux" {
-					local, err := os.Executable()
-					if err != nil {
-						return nil, err
-					}
-
-					return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange"), nil
-				} else {
-					return starlark.None, fmt.Errorf("invalid architecture for tinyrange: %s", arch)
-				}
-			} else if name == "tinyrange_qemu" {
-				local, err := common.GetAdjacentExecutable("tinyrange_qemu", "tinyqemu/tinyrange_qemu")
-				if err != nil {
-					return nil, err
-				}
-
-				return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange_qemu"), nil
-			} else {
-				return starlark.None, fmt.Errorf("unknown builtin executable: %s", name)
-			}
-		}), nil
-	} else if name == "urls_for" {
-		return starlark.NewBuiltin("Database.urls_for", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				url string
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"url", &url,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			urls, err := db.UrlsFor(url)
-			if err != nil {
-				return starlark.None, err
-			}
-
-			return starlark.String(urls[0]), nil
-		}), nil
-	} else {
-		return nil, nil
+	for k, v := range db.ContainerBuilders {
+		ret[k] = v
 	}
-}
 
-// AttrNames implements starlark.HasAttrs.
-func (db *PackageDatabase) AttrNames() []string {
-	return []string{"add_mirror"}
+	return ret
 }
-
-func (*PackageDatabase) String() string        { return "Database" }
-func (*PackageDatabase) Type() string          { return "Database" }
-func (*PackageDatabase) Hash() (uint32, error) { return 0, fmt.Errorf("Database is not hashable") }
-func (*PackageDatabase) Truth() starlark.Bool  { return starlark.True }
-func (*PackageDatabase) Freeze()               {}
 
 var (
-	_ starlark.Value         = &PackageDatabase{}
-	_ starlark.HasAttrs      = &PackageDatabase{}
-	_ common.PackageDatabase = &PackageDatabase{}
+	_ starlark.Value         = &packageDatabase{}
+	_ starlark.HasAttrs      = &packageDatabase{}
+	_ common.PackageDatabase = &packageDatabase{}
 )
 
-func New(buildDir string) *PackageDatabase {
-	db := &PackageDatabase{
-		ContainerBuilders: make(map[string]*ContainerBuilder),
+func New(buildDir string) common.PackageDatabase {
+	db := &packageDatabase{
+		ContainerBuilders: make(map[string]common.ContainerBuilder),
 		mirrors:           make(map[string][]string),
 		memoryCache:       make(map[string][]byte),
 		buildCache:        make(map[string]filesystem.File),

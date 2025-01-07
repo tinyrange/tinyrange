@@ -37,7 +37,7 @@ Complete documentation is available at https://github.com/tinyrange/tinyrange`, 
 	},
 }
 
-func newDb() (*database.PackageDatabase, error) {
+func newDb() (common.PackageDatabase, error) {
 	db := database.New(rootBuildDir)
 
 	if rootDistribution != "" {
@@ -53,7 +53,7 @@ func newDb() (*database.PackageDatabase, error) {
 		}
 	}
 
-	db.RebuildUserDefinitions = rootRebuild
+	db.SetRebuildUserDefinitions(rootRebuild)
 
 	if err := db.LoadBuiltinBuilders(); err != nil {
 		return nil, err

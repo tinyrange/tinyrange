@@ -4,29 +4,58 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"go.starlark.net/starlark"
 )
 
-type ContainerBuilder struct {
-	Name                 string
-	Architecture         config.CPUArchitecture
-	DisplayName          string
-	Filename             string
-	PlanCallbackName     string
-	DefaultPackages      []common.PackageQuery
-	Packages             *PackageCollection
-	Metadata             starlark.Value
-	SplitDefaultPackages bool
+type containerBuilder struct {
+	name                 string
+	architecture         config.CPUArchitecture
+	displayName          string
+	filename             string
+	planCallbackName     string
+	defaultPackages      []common.PackageQuery
+	packages             *packageCollection
+	metadata             starlark.Value
+	splitDefaultPackages bool
 	db                   common.PackageDatabase
 
 	loaded bool
 }
 
+// Packages returns the package collection of the container builder.
+func (builder *containerBuilder) Packages() common.PackageCollection {
+	return builder.packages
+}
+
+// EnsureLoaded ensures that the container builder is loaded.
+func (builder *containerBuilder) EnsureLoaded(ctx common.BuildContext) error {
+	if !builder.Loaded() {
+		start := time.Now()
+		if err := builder.Load(ctx); err != nil {
+			return err
+		}
+		slog.Debug("loaded", "builder", builder.displayName, "arch", builder.architecture, "took", time.Since(start))
+	}
+
+	return nil
+}
+
+// Key returns the key of the container builder.
+func (builder *containerBuilder) Key() string {
+	return fmt.Sprintf("%s-%s", builder.name, builder.architecture)
+}
+
+// DisplayName returns the display name of the container builder.
+func (builder *containerBuilder) DisplayName() string {
+	return builder.displayName
+}
+
 // Attr implements starlark.HasAttrs.
-func (builder *ContainerBuilder) Attr(name string) (starlark.Value, error) {
+func (builder *containerBuilder) Attr(name string) (starlark.Value, error) {
 	if name == "plan" {
 		return starlark.NewBuiltin("ContainerBuilder.plan", func(
 			thread *starlark.Thread,
@@ -87,7 +116,7 @@ func (builder *ContainerBuilder) Attr(name string) (starlark.Value, error) {
 		}), nil
 	} else if name == "packages" {
 		packages := make(map[string]*common.Package)
-		for _, pkg := range builder.Packages.RawPackages {
+		for _, pkg := range builder.packages.RawPackages {
 			packages[pkg.Name.Key()] = pkg
 		}
 
@@ -107,31 +136,31 @@ func (builder *ContainerBuilder) Attr(name string) (starlark.Value, error) {
 
 		return starlark.NewList(ret), nil
 	} else if name == "metadata" {
-		return builder.Metadata, nil
+		return builder.metadata, nil
 	} else if name == "arch" {
-		return starlark.String(builder.Architecture), nil
+		return starlark.String(builder.architecture), nil
 	} else {
 		return nil, nil
 	}
 }
 
 // AttrNames implements starlark.HasAttrs.
-func (builder *ContainerBuilder) AttrNames() []string {
-	return []string{"plan", "metadata"}
+func (builder *containerBuilder) AttrNames() []string {
+	return []string{"plan", "metadata", "arch"}
 }
 
-func (builder *ContainerBuilder) Loaded() bool {
+func (builder *containerBuilder) Loaded() bool {
 	return builder.loaded
 }
 
-func (builder *ContainerBuilder) Load(ctx common.BuildContext) error {
+func (builder *containerBuilder) Load(ctx common.BuildContext) error {
 	if builder.Loaded() {
 		return nil
 	}
 
 	builder.db = ctx.Database()
 
-	if err := builder.Packages.Load(ctx); err != nil {
+	if err := builder.packages.Load(ctx); err != nil {
 		return err
 	}
 
@@ -140,7 +169,7 @@ func (builder *ContainerBuilder) Load(ctx common.BuildContext) error {
 	return nil
 }
 
-func (builder *ContainerBuilder) Plan(
+func (builder *containerBuilder) Plan(
 	ctx common.BuildContext,
 	packages []common.PackageQuery,
 	tags common.TagList,
@@ -149,8 +178,8 @@ func (builder *ContainerBuilder) Plan(
 	plan := NewInstallationPlan(tags, opts)
 
 	if tags.Contains("defaults") {
-		for _, pkg := range builder.DefaultPackages {
-			if err := plan.Add(ctx, builder, pkg, builder.SplitDefaultPackages); err != nil {
+		for _, pkg := range builder.defaultPackages {
+			if err := plan.Add(ctx, builder, pkg, builder.splitDefaultPackages); err != nil {
 				return nil, err
 			}
 		}
@@ -169,9 +198,9 @@ func (builder *ContainerBuilder) Plan(
 	}
 
 	// Call the plan callback.
-	thread := ctx.Database().NewThread(builder.Filename)
+	thread := ctx.Database().NewThread(builder.filename)
 
-	callable, err := ctx.Database().GetBuilder(builder.Filename, builder.PlanCallbackName)
+	callable, err := ctx.Database().GetBuilder(builder.filename, builder.planCallbackName)
 	if err != nil {
 		return nil, fmt.Errorf("could not get builder for ContainerBuilder.Plan: %s", err)
 	}
@@ -215,29 +244,29 @@ func (builder *ContainerBuilder) Plan(
 	return plan, nil
 }
 
-func (builder *ContainerBuilder) Search(pkg common.PackageQuery) ([]*common.Package, error) {
-	return builder.Packages.Query(pkg)
+func (builder *containerBuilder) Search(pkg common.PackageQuery) ([]*common.Package, error) {
+	return builder.packages.Query(pkg)
 }
 
-func (builder *ContainerBuilder) Get(key string) (*common.Package, bool) {
-	pkg, ok := builder.Packages.RawPackages[key]
+func (builder *containerBuilder) Get(key string) (*common.Package, bool) {
+	pkg, ok := builder.packages.RawPackages[key]
 	return pkg, ok
 }
 
-func (builder *ContainerBuilder) String() string {
-	return fmt.Sprintf("ContainerBuilder{%s}", builder.Packages)
+func (builder *containerBuilder) String() string {
+	return fmt.Sprintf("ContainerBuilder{%s}", builder.packages)
 }
-func (*ContainerBuilder) Type() string { return "ContainerBuilder" }
-func (*ContainerBuilder) Hash() (uint32, error) {
+func (*containerBuilder) Type() string { return "ContainerBuilder" }
+func (*containerBuilder) Hash() (uint32, error) {
 	return 0, fmt.Errorf("ContainerBuilder is not hashable")
 }
-func (*ContainerBuilder) Truth() starlark.Bool { return starlark.True }
-func (*ContainerBuilder) Freeze()              {}
+func (*containerBuilder) Truth() starlark.Bool { return starlark.True }
+func (*containerBuilder) Freeze()              {}
 
 var (
-	_ starlark.Value          = &ContainerBuilder{}
-	_ starlark.HasAttrs       = &ContainerBuilder{}
-	_ common.ContainerBuilder = &ContainerBuilder{}
+	_ starlark.Value          = &containerBuilder{}
+	_ starlark.HasAttrs       = &containerBuilder{}
+	_ common.ContainerBuilder = &containerBuilder{}
 )
 
 func NewContainerBuilder(
@@ -247,19 +276,19 @@ func NewContainerBuilder(
 	filename string,
 	planCallbackName string,
 	defaultPackages []common.PackageQuery,
-	packages *PackageCollection,
+	packages *packageCollection,
 	metadata starlark.Value,
 	splitDefaultPackages bool,
-) (*ContainerBuilder, error) {
-	return &ContainerBuilder{
-		Name:                 name,
-		Architecture:         arch,
-		DisplayName:          displayName,
-		Filename:             filename,
-		PlanCallbackName:     planCallbackName,
-		DefaultPackages:      defaultPackages,
-		Packages:             packages,
-		Metadata:             metadata,
-		SplitDefaultPackages: splitDefaultPackages,
+) (common.ContainerBuilder, error) {
+	return &containerBuilder{
+		name:                 name,
+		architecture:         arch,
+		displayName:          displayName,
+		filename:             filename,
+		planCallbackName:     planCallbackName,
+		defaultPackages:      defaultPackages,
+		packages:             packages,
+		metadata:             metadata,
+		splitDefaultPackages: splitDefaultPackages,
 	}, nil
 }

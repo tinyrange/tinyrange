@@ -22,7 +22,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	cfg "github.com/tinyrange/tinyrange/pkg/config"
-	"github.com/tinyrange/tinyrange/pkg/database"
 	"gopkg.in/yaml.v3"
 )
 
@@ -174,7 +173,7 @@ func (config *Config) resolvePath(filename string) (string, error) {
 	return filepath.Join(config.basePath, filename), nil
 }
 
-func (config *Config) parseInclusion(db *database.PackageDatabase, inclusion string) (common.Directive, error) {
+func (config *Config) parseInclusion(db common.PackageDatabase, inclusion string) (common.Directive, error) {
 	if !strings.HasSuffix(inclusion, ".yaml") {
 		return nil, nil
 	}
@@ -237,7 +236,7 @@ func (config *Config) parseInclusion(db *database.PackageDatabase, inclusion str
 	}, nil
 }
 
-func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Directive, string, error) {
+func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directive, string, error) {
 	var directives []common.Directive
 
 	if config.Builder == "" {
@@ -545,7 +544,7 @@ func (config *Config) getDirectives(db *database.PackageDatabase) ([]common.Dire
 	return directives, interaction, nil
 }
 
-func (config *Config) MakeTemplate(db *database.PackageDatabase) (string, error) {
+func (config *Config) MakeTemplate(db common.PackageDatabase) (string, error) {
 	if config.Version > CURRENT_CONFIG_VERSION {
 		return "", fmt.Errorf("attempt to run config version %d on TinyRange version %d", config.Version, CURRENT_CONFIG_VERSION)
 	}
@@ -603,14 +602,14 @@ func (config *Config) MakeTemplate(db *database.PackageDatabase) (string, error)
 	}
 }
 
-func (config *Config) Run(db *database.PackageDatabase) error {
+func (config *Config) Run(db common.PackageDatabase) error {
 	if config.Version > CURRENT_CONFIG_VERSION {
 		return fmt.Errorf("attempt to run config version %d on TinyRange version %d", config.Version, CURRENT_CONFIG_VERSION)
 	}
 
 	if config.Builder == "list" {
-		for name, builder := range db.ContainerBuilders {
-			fmt.Printf(" - %s - %s\n", name, builder.DisplayName)
+		for name, builder := range db.GetContainerBuilders() {
+			fmt.Printf(" - %s - %s\n", name, builder.DisplayName())
 		}
 
 		return nil

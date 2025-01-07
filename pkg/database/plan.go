@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/fatih/color"
-	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"go.starlark.net/starlark"
 )
@@ -77,7 +76,7 @@ type installInfo struct {
 	pkg     *common.Package
 }
 
-type InstallationPlan struct {
+type installationPlan struct {
 	trees          []*installationTree
 	directives     []common.Directive
 	baseDirectives []common.Directive
@@ -88,7 +87,7 @@ type InstallationPlan struct {
 }
 
 // WriteTree implements common.InstallationPlan.
-func (plan *InstallationPlan) WriteTree() error {
+func (plan *installationPlan) WriteTree() error {
 	for _, tree := range plan.trees {
 		if err := tree.writeTree(""); err != nil {
 			return err
@@ -99,17 +98,17 @@ func (plan *InstallationPlan) WriteTree() error {
 }
 
 // SetDirectives implements common.InstallationPlan.
-func (plan *InstallationPlan) SetDirectives(directives []common.Directive) {
+func (plan *installationPlan) SetDirectives(directives []common.Directive) {
 	plan.directives = directives
 }
 
 // Directives implements common.InstallationPlan.
-func (plan *InstallationPlan) Directives() []common.Directive {
+func (plan *installationPlan) Directives() []common.Directive {
 	return plan.directives
 }
 
 // Attr implements starlark.HasAttrs.
-func (plan *InstallationPlan) Attr(name string) (starlark.Value, error) {
+func (plan *installationPlan) Attr(name string) (starlark.Value, error) {
 	if name == "packages" {
 		var elems []starlark.Value
 
@@ -153,11 +152,11 @@ func (plan *InstallationPlan) Attr(name string) (starlark.Value, error) {
 }
 
 // AttrNames implements starlark.HasAttrs.
-func (plan *InstallationPlan) AttrNames() []string {
+func (plan *installationPlan) AttrNames() []string {
 	return []string{"packages", "directives", "base_directives", "tags"}
 }
 
-func (plan *InstallationPlan) checkName(name common.PackageName) (*common.Package, bool) {
+func (plan *installationPlan) checkName(name common.PackageName) (*common.Package, bool) {
 	// slog.Info("checkName", "name", name)
 
 	installed, ok := plan.installedNames[name.Name]
@@ -168,7 +167,7 @@ func (plan *InstallationPlan) checkName(name common.PackageName) (*common.Packag
 	return installed.pkg, true
 }
 
-func (plan *InstallationPlan) addName(name common.PackageName, pkg *common.Package) {
+func (plan *installationPlan) addName(name common.PackageName, pkg *common.Package) {
 	// slog.Info("addName", "name", name, "pkg", pkg)
 
 	plan.installedNames[name.Name] = &installInfo{
@@ -177,9 +176,9 @@ func (plan *InstallationPlan) addName(name common.PackageName, pkg *common.Packa
 	}
 }
 
-func (plan *InstallationPlan) addInternal(
+func (plan *installationPlan) addInternal(
 	ctx common.BuildContext,
-	builder *ContainerBuilder,
+	builder common.ContainerBuilder,
 	query common.PackageQuery,
 	options []installOption,
 	option installOption,
@@ -238,11 +237,11 @@ func (plan *InstallationPlan) addInternal(
 	return
 }
 
-func (plan *InstallationPlan) add(ctx common.BuildContext, builder *ContainerBuilder, query common.PackageQuery, isDefault bool) (ret *installationTree) {
+func (plan *installationPlan) add(ctx common.BuildContext, builder common.ContainerBuilder, query common.PackageQuery, isDefault bool) (ret *installationTree) {
 	ret = &installationTree{Query: query}
 
 	// Query for any packages matching the query.
-	results, err := builder.Packages.Query(query)
+	results, err := builder.Packages().Query(query)
 	if err != nil {
 		ret.Error = err
 		return
@@ -258,7 +257,7 @@ func (plan *InstallationPlan) add(ctx common.BuildContext, builder *ContainerBui
 	var options []installOption
 
 	for _, result := range results {
-		installer, err := builder.Packages.InstallerFor(ctx, result, plan.tags)
+		installer, err := builder.Packages().InstallerFor(ctx, result, plan.tags)
 		if err != nil {
 			ret.Error = fmt.Errorf("failed to get installer for %s", result.Name)
 			return
@@ -296,7 +295,7 @@ func (plan *InstallationPlan) add(ctx common.BuildContext, builder *ContainerBui
 	}
 }
 
-func (plan *InstallationPlan) Add(ctx common.BuildContext, builder *ContainerBuilder, query common.PackageQuery, isDefault bool) error {
+func (plan *installationPlan) Add(ctx common.BuildContext, builder common.ContainerBuilder, query common.PackageQuery, isDefault bool) error {
 	tree := plan.add(ctx, builder, query, isDefault)
 	if tree.Error != nil && !plan.options.Debug {
 		return tree.Error
@@ -307,41 +306,24 @@ func (plan *InstallationPlan) Add(ctx common.BuildContext, builder *ContainerBui
 	return nil
 }
 
-func (*InstallationPlan) String() string { return "InstallationPlan" }
-func (*InstallationPlan) Type() string   { return "InstallationPlan" }
-func (*InstallationPlan) Hash() (uint32, error) {
+func (*installationPlan) String() string { return "InstallationPlan" }
+func (*installationPlan) Type() string   { return "InstallationPlan" }
+func (*installationPlan) Hash() (uint32, error) {
 	return 0, fmt.Errorf("InstallationPlan is not hashable")
 }
-func (*InstallationPlan) Truth() starlark.Bool { return starlark.True }
-func (*InstallationPlan) Freeze()              {}
+func (*installationPlan) Truth() starlark.Bool { return starlark.True }
+func (*installationPlan) Freeze()              {}
 
 var (
-	_ starlark.Value          = &InstallationPlan{}
-	_ starlark.HasAttrs       = &InstallationPlan{}
-	_ common.InstallationPlan = &InstallationPlan{}
+	_ starlark.Value          = &installationPlan{}
+	_ starlark.HasAttrs       = &installationPlan{}
+	_ common.InstallationPlan = &installationPlan{}
 )
 
-func NewInstallationPlan(tags common.TagList, opts common.PlanOptions) *InstallationPlan {
-	return &InstallationPlan{
+func NewInstallationPlan(tags common.TagList, opts common.PlanOptions) common.InstallationPlan {
+	return &installationPlan{
 		installedNames: make(map[string]*installInfo),
 		tags:           tags,
 		options:        opts,
 	}
-}
-
-func EmitDockerfile(plan common.InstallationPlan) (string, error) {
-	ret := ""
-
-	for _, directive := range plan.Directives() {
-		switch directive := directive.(type) {
-		case *builder.FetchOciImageDefinition:
-			ret += fmt.Sprintf("FROM %s\n", directive.FromDirective())
-		case common.DirectiveRunCommand:
-			ret += fmt.Sprintf("RUN %s\n", directive.Command)
-		default:
-			return "", fmt.Errorf("directive %T not handled for docker", directive)
-		}
-	}
-
-	return ret, nil
 }

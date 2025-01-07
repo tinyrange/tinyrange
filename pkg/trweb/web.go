@@ -12,7 +12,6 @@ import (
 	"github.com/agnivade/levenshtein"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
-	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/htm"
 	"github.com/tinyrange/tinyrange/pkg/htm/bootstrap"
 	"github.com/tinyrange/tinyrange/pkg/htm/html"
@@ -22,7 +21,7 @@ import (
 
 type WebApplication struct {
 	mux           *http.ServeMux
-	db            *database.PackageDatabase
+	db            common.PackageDatabase
 	webSshAddress string
 	runningCmd    *exec.Cmd
 }
@@ -330,7 +329,7 @@ func (app *WebApplication) Run(listen string) error {
 	return http.ListenAndServe(listen, app.mux)
 }
 
-func New(db *database.PackageDatabase) *WebApplication {
+func New(db common.PackageDatabase) *WebApplication {
 	return &WebApplication{
 		db:            db,
 		mux:           http.NewServeMux(),
