@@ -2,10 +2,17 @@ package database
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/fatih/color"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"go.starlark.net/starlark"
+)
+
+var (
+	colorRed   = color.New(color.FgRed)
+	colorGreen = color.New(color.FgGreen)
+	colorFaint = color.New(color.Faint)
 )
 
 type installOption struct {
@@ -22,9 +29,9 @@ type installationTree struct {
 	Dependencies []*installationTree
 }
 
-func (t *installationTree) writeTree(prefix string) error {
+func (t *installationTree) writeTree(output io.Writer, prefix string) error {
 	if t.Error != nil {
-		color.Red("%s- [%s]", prefix, t.Error)
+		colorRed.Fprintf(output, "%s- [%s]\n", prefix, t.Error)
 		return nil
 	}
 
@@ -34,22 +41,22 @@ func (t *installationTree) writeTree(prefix string) error {
 		}
 
 		if t.Package == nil {
-			color.New(color.Faint).Printf("%s- %s (installed)\n", prefix, t.Query)
+			colorFaint.Fprintf(output, "%s- %s (installed)\n", prefix, t.Query)
 		} else {
-			color.New(color.Faint).Printf("%s- %s (installed %s)\n", prefix, t.Query, t.Package.Name)
+			colorFaint.Fprintf(output, "%s- %s (installed %s)\n", prefix, t.Query, t.Package.Name)
 		}
 	} else if t.Query.Equals(t.Package.Name) {
-		color.Green("%s- %s", prefix, t.Query)
+		colorGreen.Fprintf(output, "%s- %s\n", prefix, t.Query)
 	} else {
 		if t.Package == nil {
-			color.Green("%s- (%s)", prefix, t.Query)
+			colorGreen.Fprintf(output, "%s- (%s)\n", prefix, t.Query)
 		} else {
-			color.Green("%s- %s(%s)", prefix, t.Package.Name, t.Query)
+			colorGreen.Fprintf(output, "%s- %s(%s)\n", prefix, t.Package.Name, t.Query)
 		}
 	}
 
 	for _, depend := range t.Dependencies {
-		if err := depend.writeTree(prefix + "  "); err != nil {
+		if err := depend.writeTree(output, prefix+"  "); err != nil {
 			return err
 		}
 	}
@@ -87,9 +94,9 @@ type installationPlan struct {
 }
 
 // WriteTree implements common.InstallationPlan.
-func (plan *installationPlan) WriteTree() error {
+func (plan *installationPlan) WriteTree(output io.Writer) error {
 	for _, tree := range plan.trees {
-		if err := tree.writeTree(""); err != nil {
+		if err := tree.writeTree(output, ""); err != nil {
 			return err
 		}
 	}

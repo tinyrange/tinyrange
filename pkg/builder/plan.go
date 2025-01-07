@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -277,12 +278,12 @@ func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, e
 			Debug: true,
 		})
 
-		plan.WriteTree()
+		plan.WriteTree(os.Stderr)
 
 		return nil, err
 	}
 
-	if err := plan.WriteTree(); err != nil {
+	if err := plan.WriteTree(os.Stderr); err != nil {
 		return nil, err
 	}
 
