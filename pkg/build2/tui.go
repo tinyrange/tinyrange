@@ -1,18 +1,16 @@
-package main
+package build2
 
 import (
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"golang.org/x/term"
 )
 
-type Event interface {
+type event interface {
 	tagEvent()
 }
 
@@ -20,41 +18,27 @@ type baseEvent struct{}
 
 func (baseEvent) tagEvent() {}
 
-type NewGroupEvent struct {
+type newGroupEvent struct {
 	baseEvent
 	Parent string
 	Name   string
 }
 
-type SetGroupDescriptionEvent struct {
+type setGroupDescriptionEvent struct {
 	baseEvent
 	Group       string
 	Description string
 }
 
-type LogEvent struct {
+type logEvent struct {
 	baseEvent
 	Group   string
 	Message string
 }
 
-type GroupClosedEvent struct {
+type groupClosedEvent struct {
 	baseEvent
 	Group string
-}
-
-type Group interface {
-	io.Closer
-
-	Logf(string, ...interface{})
-	Subgroup(name string) Group
-	Description(string, ...interface{})
-}
-
-type BuildLogger interface {
-	Run(io.Writer) error
-	Group(name string) Group
-	Close() error
 }
 
 type group struct {
@@ -64,15 +48,15 @@ type group struct {
 }
 
 func (g *group) Description(format string, args ...interface{}) {
-	g.sink.SendEvent(SetGroupDescriptionEvent{Group: g.name, Description: fmt.Sprintf(format, args...)})
+	g.sink.SendEvent(setGroupDescriptionEvent{Group: g.name, Description: fmt.Sprintf(format, args...)})
 }
 
 func (g *group) Logf(format string, args ...interface{}) {
-	g.sink.SendEvent(LogEvent{Group: g.name, Message: fmt.Sprintf(format, args...)})
+	g.sink.SendEvent(logEvent{Group: g.name, Message: fmt.Sprintf(format, args...)})
 }
 
 func (g *group) Subgroup(name string) Group {
-	g.sink.SendEvent(NewGroupEvent{Parent: g.name, Name: name})
+	g.sink.SendEvent(newGroupEvent{Parent: g.name, Name: name})
 
 	return &group{name: name, sink: g.sink}
 }
@@ -83,7 +67,7 @@ func (g *group) Close() error {
 	}
 
 	g.closed = true
-	g.sink.SendEvent(GroupClosedEvent{Group: g.name})
+	g.sink.SendEvent(groupClosedEvent{Group: g.name})
 
 	return nil
 }
@@ -91,10 +75,6 @@ func (g *group) Close() error {
 var (
 	_ Group = &group{}
 )
-
-type EventSink interface {
-	SendEvent(Event)
-}
 
 type logLine struct {
 	timestamp time.Time
@@ -116,10 +96,10 @@ func (l *logLine) render(out io.Writer, prefix string, height int, width int) in
 	return totalHeight
 }
 
-type BuildTui struct {
+type buildTui struct {
 	FrameRate int // in frames per second
 
-	events        chan Event
+	events        chan event
 	closed        chan struct{}
 	consoleWidth  int
 	consoleHeight int
@@ -129,25 +109,25 @@ type BuildTui struct {
 	root          *logLine
 }
 
-func (b *BuildTui) SendEvent(event Event) {
+func (b *buildTui) SendEvent(event event) {
 	b.events <- event
 }
 
-func (b *BuildTui) Group(name string) Group {
-	b.SendEvent(NewGroupEvent{Name: name})
+func (b *buildTui) Group(name string) Group {
+	b.SendEvent(newGroupEvent{Name: name})
 	return &group{
 		sink: b,
 		name: name,
 	}
 }
 
-func (b *BuildTui) Close() error {
+func (b *buildTui) Close() error {
 	close(b.closed)
 
 	return nil
 }
 
-func (b *BuildTui) render() error {
+func (b *buildTui) render() error {
 	for i := 0; i < b.lastHeight-1; i++ {
 		// clear the line
 		fmt.Fprintf(b.output, "\033[2K\033[A\r")
@@ -158,7 +138,7 @@ func (b *BuildTui) render() error {
 	return nil
 }
 
-func (b *BuildTui) getGroup(name string) (*logLine, error) {
+func (b *buildTui) getGroup(name string) (*logLine, error) {
 	group, ok := b.namedGroups[name]
 	if !ok {
 		return nil, fmt.Errorf("group not found: %s", name)
@@ -167,9 +147,9 @@ func (b *BuildTui) getGroup(name string) (*logLine, error) {
 	return group, nil
 }
 
-func (b *BuildTui) processEvent(ev Event) error {
+func (b *buildTui) processEvent(ev event) error {
 	switch e := ev.(type) {
-	case NewGroupEvent:
+	case newGroupEvent:
 		parent, err := b.getGroup(e.Parent)
 		if err != nil {
 			return err
@@ -181,7 +161,7 @@ func (b *BuildTui) processEvent(ev Event) error {
 		})
 
 		b.namedGroups[e.Name] = parent.children[len(parent.children)-1]
-	case LogEvent:
+	case logEvent:
 		group, err := b.getGroup(e.Group)
 		if err != nil {
 			return err
@@ -191,14 +171,14 @@ func (b *BuildTui) processEvent(ev Event) error {
 			timestamp: time.Now(),
 			line:      e.Message,
 		})
-	case SetGroupDescriptionEvent:
+	case setGroupDescriptionEvent:
 		group, err := b.getGroup(e.Group)
 		if err != nil {
 			return err
 		}
 
 		group.line = e.Description
-	case GroupClosedEvent:
+	case groupClosedEvent:
 		group, err := b.getGroup(e.Group)
 		if err != nil {
 			return err
@@ -216,32 +196,7 @@ type termSize struct {
 	height int
 }
 
-func getAndWatchSize(fd int,
-	closeChan chan struct{},
-	errChan chan error,
-	resizeChan chan termSize,
-) {
-	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, syscall.SIGWINCH)
-	defer signal.Stop(sigc)
-
-	for {
-		select {
-		case <-closeChan:
-			return
-		case <-sigc:
-			width, height, err := term.GetSize(fd)
-			if err != nil {
-				errChan <- err
-				return
-			}
-
-			resizeChan <- termSize{width: width, height: height}
-		}
-	}
-}
-
-func (b *BuildTui) Run(out io.Writer) error {
+func (b *buildTui) Run(out io.Writer) error {
 	b.output = out
 
 	errChan := make(chan error, 1)
@@ -282,16 +237,16 @@ func (b *BuildTui) Run(out io.Writer) error {
 }
 
 var (
-	_ EventSink = &BuildTui{}
+	_ EventSink = &buildTui{}
 )
 
 func NewBuildLogger(eventBacklog int) BuildLogger {
-	tui := &BuildTui{
+	tui := &buildTui{
 		FrameRate:     30,
 		consoleWidth:  80,
 		consoleHeight: 24,
 		closed:        make(chan struct{}),
-		events:        make(chan Event, eventBacklog),
+		events:        make(chan event, eventBacklog),
 		namedGroups:   make(map[string]*logLine),
 	}
 
@@ -308,9 +263,9 @@ func NewBuildLogger(eventBacklog int) BuildLogger {
 type simpleLogger struct {
 }
 
-func (s *simpleLogger) SendEvent(ev Event) {
+func (s *simpleLogger) SendEvent(ev event) {
 	switch e := ev.(type) {
-	case NewGroupEvent:
+	case newGroupEvent:
 		parentStr := e.Parent
 		if parentStr == "" {
 			parentStr = "root"
@@ -319,11 +274,11 @@ func (s *simpleLogger) SendEvent(ev Event) {
 			parentStr = parentStr[:8]
 		}
 		slog.Info("New group", "parent", parentStr, "name", e.Name[:8])
-	case SetGroupDescriptionEvent:
+	case setGroupDescriptionEvent:
 		slog.Info("Set group description", "group", e.Group[:8], "description", e.Description)
-	case LogEvent:
+	case logEvent:
 		slog.Info("Log", "group", e.Group[:8], "message", e.Message)
-	case GroupClosedEvent:
+	case groupClosedEvent:
 		slog.Info("Group closed", "group", e.Group[:8])
 	}
 }

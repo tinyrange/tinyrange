@@ -1,6 +1,6 @@
 //go:build unix
 
-package main
+package build2
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func ProcessRunning(pid int) (bool, error) {
+func processRunning(pid int) (bool, error) {
 	proc, err := os.FindProcess(pid)
 	if err != nil {
 		return false, fmt.Errorf("failed to find process: %w", err)
