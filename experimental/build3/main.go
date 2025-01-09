@@ -49,7 +49,7 @@ type BuildDefinition interface {
 	fmt.Stringer
 
 	NeedsBuild(ctx BuildContext) (bool, error)
-	Dependencies(ctx BuildContext) ([]BuildDefinition, error)
+	Dependencies() ([]BuildDefinition, error)
 	Build(ctx BuildContext) error
 }
 
@@ -58,13 +58,6 @@ type Builder interface {
 }
 
 // Implementation
-
-type token struct {
-}
-
-func (t *token) Close() error {
-	return nil
-}
 
 type buildArtifact struct {
 	*buildContext
@@ -91,22 +84,16 @@ type buildContext struct {
 	state        buildContextState
 	wg           sync.WaitGroup
 	logger       Logger
-}
-
-func (c *buildContext) waitForToken() (io.Closer, error) {
-	return &token{}, nil
+	token        *token
 }
 
 // Precondition: The definition has to be rebuilt.
 func (c *buildContext) build() error {
-	tk, err := c.waitForToken()
-	if err != nil {
-		return err
-	}
-	defer tk.Close()
+	defer c.token.Lock().Close()
 
 	// Update the state.
 	atomic.StoreUint32((*uint32)(&c.state), uint32(buildContextStateBuilding))
+	c.logger.Describe("building %s", c.def.String())
 
 	// Save the definition to the build directory.
 	def, err := c.builder.defDb.MarshalDefinition(c.def)
@@ -124,7 +111,7 @@ func (c *buildContext) build() error {
 	c.recept = &BuildRecept{}
 
 	// Build the dependencies.
-	deps, err := c.def.Dependencies(c)
+	deps, err := c.def.Dependencies()
 	if err != nil {
 		return err
 	}
@@ -153,6 +140,7 @@ func (c *buildContext) build() error {
 
 	// Update the state.
 	atomic.StoreUint32((*uint32)(&c.state), uint32(buildContextStateBuilt))
+	c.logger.Describe("built %s", c.def.String())
 
 	return nil
 }
@@ -260,7 +248,7 @@ func (c *buildContext) BuildChild(def BuildDefinition) (BuildArtifact, error) {
 	child := c.builder.contextForDefinition(c, def, BuildOptions{})
 
 	if state := atomic.LoadUint32((*uint32)(&child.state)); state == uint32(buildContextStateNew) {
-		// TODO(joshua): donate the token
+		child.token.Donate()
 	}
 
 	artifact, err := child.getArtifact()
@@ -282,6 +270,7 @@ type builder struct {
 	defDb        *hash.DefinitionDatabase
 	contextCache sync.Map
 	logger       Logger
+	tokenLocker  *tokenLocker
 }
 
 func (b *builder) contextForDefinition(parent *buildContext, def BuildDefinition, opts BuildOptions) *buildContext {
@@ -291,6 +280,7 @@ func (b *builder) contextForDefinition(parent *buildContext, def BuildDefinition
 		def:          def,
 		requirements: make(map[hash.Hash]struct{}),
 		options:      opts,
+		token:        b.tokenLocker.New(),
 	}
 	maybeCtx.wg.Add(1)
 
@@ -314,10 +304,33 @@ func (b *builder) contextForDefinition(parent *buildContext, def BuildDefinition
 	return ctx
 }
 
+func (b *builder) cacheDefinitionHash(def BuildDefinition) error {
+	deps, err := def.Dependencies()
+	if err != nil {
+		return err
+	}
+
+	for _, dep := range deps {
+		if err := b.cacheDefinitionHash(dep); err != nil {
+			return err
+		}
+	}
+
+	if _, err := b.defDb.HashDefinition(def); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Build implements Builder.
 func (b *builder) Build(def BuildDefinition, opts BuildOptions) (BuildArtifact, error) {
 	if def == nil {
 		return nil, fmt.Errorf("definition is nil")
+	}
+
+	if err := b.cacheDefinitionHash(def); err != nil {
+		return nil, err
 	}
 
 	ctx := b.contextForDefinition(nil, def, opts)
@@ -333,10 +346,11 @@ var (
 	_ Builder = &builder{}
 )
 
-func New(buildDir filesystem.MutableDirectory, logger Logger) Builder {
+func New(buildDir filesystem.MutableDirectory, maxJobs int, logger Logger) Builder {
 	b := &builder{
-		buildDir: buildDir,
-		logger:   logger,
+		buildDir:    buildDir,
+		logger:      logger,
+		tokenLocker: newTokenLocker(maxJobs),
 	}
 
 	b.defDb = hash.NewDefinitionDatabase(b.loadDefinition)
@@ -387,7 +401,7 @@ func (d *basicBuildDefinition) NeedsBuild(ctx BuildContext) (bool, error) {
 }
 
 // Dependencies implements BuildDefinition.
-func (d *basicBuildDefinition) Dependencies(ctx BuildContext) ([]BuildDefinition, error) {
+func (d *basicBuildDefinition) Dependencies() ([]BuildDefinition, error) {
 	return d.params.Children, nil
 }
 
@@ -440,29 +454,63 @@ var (
 	_ Logger = &basicLogger{}
 )
 
+func graphToBuildDefinition(graph []Edge) (map[int]BuildDefinition, error) {
+	defs := make(map[int]BuildDefinition)
+
+	for _, edge := range graph {
+		if _, ok := defs[edge.From]; !ok {
+			defs[edge.From] = newBasicBuildDefinition(fmt.Sprintf("node%d", edge.From))
+		}
+
+		if _, ok := defs[edge.To]; !ok {
+			defs[edge.To] = newBasicBuildDefinition(fmt.Sprintf("node%d", edge.To))
+		}
+
+		parent := defs[edge.From]
+		child := defs[edge.To]
+
+		if parent == child {
+			continue
+		}
+
+		parent.(*basicBuildDefinition).params.Children = append(parent.(*basicBuildDefinition).params.Children, child)
+	}
+
+	return defs, nil
+}
+
+var (
+	jobs = flag.Int("jobs", 1, "number of jobs to run in parallel")
+)
+
 func appMain() error {
 	flag.Parse()
 
 	hash.RegisterType(&basicBuildDefinition{})
 
+	slog.Info("generating graph")
+
+	graph, root, err := GenerateRandomDAG(25000, 25000)
+	if err != nil {
+		return err
+	}
+
+	slog.Info("converting graph to build definition")
+
+	buildGraph, err := graphToBuildDefinition(graph)
+	if err != nil {
+		return err
+	}
+
+	slog.Info("generated graph")
+
+	rootDef := buildGraph[root]
+
 	buildDir := filesystem.NewMemoryDirectory()
 
-	builder := New(buildDir, &basicLogger{})
+	builder := New(buildDir, *jobs, &basicLogger{})
 
-	child2 := newBasicBuildDefinition("child2")
-
-	testDef := newBasicBuildDefinition(
-		"test",
-		newBasicBuildDefinition("child1"),
-		newBasicBuildDefinition(
-			"bigChild",
-			newBasicBuildDefinition("grandchild1"),
-			child2,
-		),
-		child2,
-	)
-
-	if _, err := builder.Build(testDef, BuildOptions{}); err != nil {
+	if _, err := builder.Build(rootDef, BuildOptions{}); err != nil {
 		return err
 	}
 

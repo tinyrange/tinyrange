@@ -93,9 +93,10 @@ type serializedDefinition struct {
 type CacheMissFunction func(hash Hash) (io.ReadCloser, error)
 
 type DefinitionDatabase struct {
-	mtx   sync.RWMutex
-	cache map[Hash]Definition
-	miss  CacheMissFunction
+	mtx          sync.RWMutex
+	cache        map[Hash]Definition
+	cacheInverse map[Definition]Hash
+	miss         CacheMissFunction
 }
 
 func (db *DefinitionDatabase) GetDefinitionByHash(hash Hash) (Definition, error) {
@@ -120,8 +121,18 @@ func (db *DefinitionDatabase) GetDefinitionByHash(hash Hash) (Definition, error)
 	return def, nil
 }
 
+func (db *DefinitionDatabase) getHash(d Definition) (Hash, bool) {
+	db.mtx.RLock()
+	defer db.mtx.RUnlock()
+
+	hash, ok := db.cacheInverse[d]
+	return hash, ok
+}
+
 func (db *DefinitionDatabase) HashDefinition(d Definition) (Hash, error) {
-	// TODO(joshua): Memorize the results of this function since MarshalDefinition is expensive.
+	if hash, ok := db.getHash(d); ok {
+		return hash, nil
+	}
 
 	val, err := db.MarshalDefinition(d)
 	if err != nil {
@@ -134,6 +145,7 @@ func (db *DefinitionDatabase) HashDefinition(d Definition) (Hash, error) {
 	defer db.mtx.Unlock()
 
 	db.cache[hash] = d
+	db.cacheInverse[d] = hash
 
 	return hash, nil
 }
@@ -610,5 +622,9 @@ func (db *DefinitionDatabase) unmarshalSerializableValue(typeName string, val js
 }
 
 func NewDefinitionDatabase(miss CacheMissFunction) *DefinitionDatabase {
-	return &DefinitionDatabase{cache: make(map[Hash]Definition), miss: miss}
+	return &DefinitionDatabase{
+		cache:        make(map[Hash]Definition),
+		cacheInverse: make(map[Definition]Hash),
+		miss:         miss,
+	}
 }

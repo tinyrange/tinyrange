@@ -156,31 +156,6 @@ func newBasicBuildDefinition(
 	}
 }
 
-// Helper function to check if a child with a given name is already in the children slice
-func containsChild(children []build2.BuildDefinition, childName string) bool {
-	for _, child := range children {
-		if child.(*basicBuildDefinition).params.Name == childName {
-			return true
-		}
-	}
-	return false
-}
-
-// Helper function to remove an element from a slice of strings
-func removeFromSlice(slice []string, element string) []string {
-	index := -1
-	for i, name := range slice {
-		if name == element {
-			index = i
-			break
-		}
-	}
-	if index == -1 {
-		return slice
-	}
-	return append(slice[:index], slice[index+1:]...)
-}
-
 var (
 	buildPath = flag.String("build-dir", "", "The build directory")
 	jobs      = flag.Int("jobs", 1, "The number of parallel jobs")
