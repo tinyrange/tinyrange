@@ -233,9 +233,9 @@ func (c *buildContext) addDependency(def BuildDefinition) {
 }
 
 func (c *buildContext) addRequirement(hash hash.Hash) {
-	if c.parent != nil {
-		c.parent.addRequirement(hash)
-	}
+	// if c.parent != nil {
+	// 	c.parent.addRequirement(hash)
+	// }
 
 	if _, ok := c.requirements[hash]; ok {
 		return
@@ -480,7 +480,9 @@ func graphToBuildDefinition(graph []Edge) (map[int]BuildDefinition, error) {
 }
 
 var (
-	jobs = flag.Int("jobs", 1, "number of jobs to run in parallel")
+	jobs  = flag.Int("jobs", 1, "number of jobs to run in parallel")
+	nodes = flag.Int("nodes", 100, "number of nodes in the graph")
+	edges = flag.Int("edges", 100, "number of edges in the graph")
 )
 
 func appMain() error {
@@ -490,7 +492,7 @@ func appMain() error {
 
 	slog.Info("generating graph")
 
-	graph, root, err := GenerateRandomDAG(25000, 25000)
+	graph, root, err := GenerateRandomDAG(*nodes, *edges)
 	if err != nil {
 		return err
 	}

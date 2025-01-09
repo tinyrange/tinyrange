@@ -28,7 +28,6 @@ func (t *token) Donate() {
 
 	t.donated = true
 
-	// Non-blocking send to avoid deadlock if no one is listening.
 	t.donate <- struct{}{}
 }
 
@@ -75,7 +74,7 @@ type tokenLocker struct {
 func (t *tokenLocker) New() *token {
 	return &token{
 		locker: t,
-		donate: make(chan struct{}), // Unbuffered channel to sync donate signal.
+		donate: make(chan struct{}, 1),
 	}
 }
 
