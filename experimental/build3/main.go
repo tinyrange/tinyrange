@@ -11,6 +11,7 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -430,22 +431,27 @@ func newBasicBuildDefinition(name string, children ...BuildDefinition) *basicBui
 }
 
 type basicLogger struct {
-	id string
+	id      string
+	disable bool
 }
 
 // Logf implements Logger.
 func (l *basicLogger) Logf(format string, args ...interface{}) {
-	slog.Info("log", "id", l.id, "msg", fmt.Sprintf(format, args...))
+	if !l.disable {
+		slog.Info("log", "id", l.id, "msg", fmt.Sprintf(format, args...))
+	}
 }
 
 // Describe implements Logger.
 func (l *basicLogger) Describe(format string, args ...interface{}) {
-	slog.Info("desc", "id", l.id, "msg", fmt.Sprintf(format, args...))
+	if !l.disable {
+		slog.Info("desc", "id", l.id, "msg", fmt.Sprintf(format, args...))
+	}
 }
 
 // Child implements Logger.
 func (l *basicLogger) Child(description string) Logger {
-	child := &basicLogger{id: uuid.NewString()}
+	child := &basicLogger{id: uuid.NewString(), disable: l.disable}
 	child.Describe(description)
 	return child
 }
@@ -510,11 +516,15 @@ func appMain() error {
 
 	buildDir := filesystem.NewMemoryDirectory()
 
-	builder := New(buildDir, *jobs, &basicLogger{})
+	builder := New(buildDir, *jobs, &basicLogger{disable: true})
+
+	start := time.Now()
 
 	if _, err := builder.Build(rootDef, BuildOptions{}); err != nil {
 		return err
 	}
+
+	slog.Info("built graph", "duration", time.Since(start))
 
 	return nil
 }
