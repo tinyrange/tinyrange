@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"time"
@@ -29,6 +30,52 @@ var (
 
 type basicBuildDefinition struct {
 	params basicBuildDefinitionParams
+}
+
+func (b *basicBuildDefinition) OutputDot(out io.Writer) error {
+	added := make(map[build2.BuildDefinition]struct{})
+
+	if _, err := fmt.Fprintf(out, "digraph G {\n"); err != nil {
+		return err
+	}
+
+	var addNode func(def build2.BuildDefinition) error
+
+	addNode = func(def build2.BuildDefinition) error {
+		if _, ok := added[def]; ok {
+			return nil
+		}
+
+		added[def] = struct{}{}
+
+		// slog.Info("adding node", "def", def)
+
+		if _, err := fmt.Fprintf(out, "  \"%p\" [label=\"%s\"];\n", def, def); err != nil {
+			return err
+		}
+
+		deps, err := def.Dependencies()
+		if err != nil {
+			panic(err)
+		}
+
+		for _, dep := range deps {
+			if _, err := fmt.Fprintf(out, "  \"%p\" -> \"%p\";\n", def, dep); err != nil {
+				return err
+			}
+			addNode(dep)
+		}
+
+		return nil
+	}
+
+	addNode(b)
+
+	if _, err := fmt.Fprintf(out, "}\n"); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (b *basicBuildDefinition) String() string {
@@ -93,7 +140,12 @@ var (
 	_ build2.BuildDefinition = &basicBuildDefinition{}
 )
 
-func newBasicBuildDefinition(name string, expireTime time.Duration, sleepTime time.Duration, children ...build2.BuildDefinition) *basicBuildDefinition {
+func newBasicBuildDefinition(
+	name string,
+	expireTime time.Duration,
+	sleepTime time.Duration,
+	children ...build2.BuildDefinition,
+) *basicBuildDefinition {
 	return &basicBuildDefinition{
 		params: basicBuildDefinitionParams{
 			Name:       name,
@@ -104,29 +156,30 @@ func newBasicBuildDefinition(name string, expireTime time.Duration, sleepTime ti
 	}
 }
 
-// func dumpTree(b build2.Builder, art build2.BuildArtifact, info *build2.DependencyInfo, prefix string) {
-// 	def, err := b.DefinitionFromArtifact(art)
-// 	if err != nil {
-// 		fmt.Fprintf(os.Stderr, "%sfailed to get definition: %v\n", prefix, err)
-// 		return
-// 	}
+// Helper function to check if a child with a given name is already in the children slice
+func containsChild(children []build2.BuildDefinition, childName string) bool {
+	for _, child := range children {
+		if child.(*basicBuildDefinition).params.Name == childName {
+			return true
+		}
+	}
+	return false
+}
 
-// 	usedCache := "fresh"
-// 	if info != nil && info.UsedCache {
-// 		usedCache = "cache"
-// 	}
-
-// 	fmt.Fprintf(os.Stderr, "[%s] %s%s [%s, %s]\n", formatHash(art.Hash()), prefix, def, art.Receipt().BuildDuration, usedCache)
-// 	for _, dep := range art.Receipt().Dependencies {
-// 		child, err := b.ArtifactFromHash(dep.Hash)
-// 		if err != nil {
-// 			fmt.Fprintf(os.Stderr, "%sfailed to get child: %v\n", prefix, err)
-// 			continue
-// 		}
-
-// 		dumpTree(b, child, dep, prefix+"  ")
-// 	}
-// }
+// Helper function to remove an element from a slice of strings
+func removeFromSlice(slice []string, element string) []string {
+	index := -1
+	for i, name := range slice {
+		if name == element {
+			index = i
+			break
+		}
+	}
+	if index == -1 {
+		return slice
+	}
+	return append(slice[:index], slice[index+1:]...)
+}
 
 var (
 	buildPath = flag.String("build-dir", "", "The build directory")
@@ -147,8 +200,9 @@ func appMain() error {
 		buildDir = filesystem.NewLocalMutableDirectory(*buildPath)
 	}
 
-	// tui := NewSimpleLogger()
-	tui := build2.NewBuildLogger(32)
+	// tui := build2.NewSimpleLogger()
+	// tui := build2.NewBuildLogger(32)
+	tui := build2.NewEventDrivenLogger(30)
 
 	builder := build2.NewBuilder(buildDir, *jobs, tui)
 

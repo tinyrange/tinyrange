@@ -317,10 +317,6 @@ func (m *memoryDirectory) create(name string, f File) (File, error) {
 		return nil, fmt.Errorf("MutableDirectory methods can not handle paths: %s", name)
 	}
 
-	if _, exists := m.entries[name]; exists {
-		return nil, nil
-	}
-
 	if f == nil {
 		f = NewMemoryFile(TypeRegular)
 	}

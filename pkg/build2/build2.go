@@ -40,3 +40,7 @@ func NewBuildLogger(eventBacklog int) Logger {
 func NewSimpleLogger() Logger {
 	return internal.NewSimpleLogger()
 }
+
+func NewEventDrivenLogger(maxHeight int) Logger {
+	return internal.NewEventDrivenLogger(maxHeight)
+}

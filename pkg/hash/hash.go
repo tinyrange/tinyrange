@@ -13,6 +13,10 @@ import (
 
 type Hash string
 
+func (h Hash) String() string {
+	return string(h)
+}
+
 func GetSha256Hash(content []byte) Hash {
 	sum := sha256.Sum256(content)
 
@@ -94,12 +98,31 @@ type DefinitionDatabase struct {
 	miss  CacheMissFunction
 }
 
-func (db *DefinitionDatabase) GetDefinitionByHash(hash Hash) (Definition, bool) {
+func (db *DefinitionDatabase) GetDefinitionByHash(hash Hash) (Definition, error) {
+	db.mtx.RLock()
+	defer db.mtx.RUnlock()
+
 	def, ok := db.cache[hash]
-	return def, ok
+	if !ok {
+		f, err := db.miss(hash)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+
+		def, err = db.UnmarshalDefinition(f)
+		if err != nil {
+			return nil, err
+		}
+
+		db.cache[hash] = def
+	}
+	return def, nil
 }
 
 func (db *DefinitionDatabase) HashDefinition(d Definition) (Hash, error) {
+	// TODO(joshua): Memorize the results of this function since MarshalDefinition is expensive.
+
 	val, err := db.MarshalDefinition(d)
 	if err != nil {
 		return "", err

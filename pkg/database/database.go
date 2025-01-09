@@ -763,36 +763,12 @@ func (db *packageDatabase) missDefinitionCache(hash hash.Hash) (io.ReadCloser, e
 }
 
 func (db *packageDatabase) GetDefinitionByHash(hash hash.Hash) (common.BuildDefinition, error) {
-	def, ok := db.defDb.GetDefinitionByHash(hash)
-	if ok {
-		if buildDef, ok := def.(common.BuildDefinition); ok {
-			return buildDef, nil
-		} else {
-			return nil, fmt.Errorf("could not convert %T to BuildDefinition", def)
-		}
-	}
-
-	filename, err := db.filenameFromHash(hash, ".def")
+	def, err := db.defDb.GetDefinitionByHash(hash)
 	if err != nil {
 		return nil, err
 	}
 
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	def, err = db.defDb.UnmarshalDefinition(f)
-	if err != nil {
-		return nil, err
-	}
-
-	if buildDef, ok := def.(common.BuildDefinition); ok {
-		return buildDef, nil
-	} else {
-		return nil, fmt.Errorf("could not convert %T to BuildDefinition", def)
-	}
+	return def.(common.BuildDefinition), nil
 }
 
 func (db *packageDatabase) GetMacroByShorthand(ctx common.MacroContext, shorthand string, allowLocal bool) (common.Macro, error) {

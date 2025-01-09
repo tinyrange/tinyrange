@@ -10,6 +10,10 @@ import (
 	"golang.org/x/term"
 )
 
+type EventSink interface {
+	SendEvent(event)
+}
+
 type event interface {
 	tagEvent()
 }
@@ -305,8 +309,4 @@ var (
 
 func NewSimpleLogger() Logger {
 	return &simpleLogger{}
-}
-
-type EventSink interface {
-	SendEvent(event)
 }
