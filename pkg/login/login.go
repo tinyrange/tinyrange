@@ -149,6 +149,24 @@ type Config struct {
 	basePath    string
 }
 
+// replaceVariables replaces variables like $VAR or ${VAR} in a string with the value of the variable.
+func (config *Config) replaceVariables(s string) string {
+	return os.Expand(s, func(key string) string {
+		for _, env := range config.Environment {
+			k, v, ok := strings.Cut(env, "=")
+			if !ok {
+				continue
+			}
+
+			if k == key {
+				return v
+			}
+		}
+
+		return ""
+	})
+}
+
 func (config *Config) SetBasePath(path string) { config.basePath = path }
 
 func (config *Config) SetLocalConfig() { config.localConfig = true }
@@ -224,14 +242,14 @@ func (config *Config) parseInclusion(db common.PackageDatabase, inclusion string
 	def := builder.NewBuildVmDefinition(
 		directives,
 		nil, nil,
-		subConfig.Output,
+		subConfig.replaceVariables(subConfig.Output),
 		subConfig.CpuCores, subConfig.MemorySize, vmArch, arch,
 		subConfig.StorageSize,
 		interaction, subConfig.Debug,
 	)
 
 	return common.DirectiveAddFile{
-		Filename:   subConfig.Output,
+		Filename:   subConfig.replaceVariables(subConfig.Output),
 		Definition: def,
 	}, nil
 }
@@ -270,6 +288,8 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 	}
 
 	for _, filename := range config.Files {
+		filename = config.replaceVariables(filename)
+
 		if strings.HasPrefix(filename, "http://") || strings.HasPrefix(filename, "https://") {
 			parsed, err := url.Parse(filename)
 			if err != nil {
@@ -300,6 +320,8 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 	}
 
 	for _, filename := range config.Archives {
+		filename = config.replaceVariables(filename)
+
 		var def common.BuildDefinition
 
 		filename, target, ok := strings.Cut(filename, ",")
@@ -581,7 +603,7 @@ func (config *Config) MakeTemplate(db common.PackageDatabase) (string, error) {
 	def := builder.NewBuildVmDefinition(
 		directives,
 		nil, nil,
-		config.Output,
+		config.replaceVariables(config.Output),
 		config.CpuCores, config.MemorySize,
 		vmArch, arch,
 		config.StorageSize,
@@ -795,7 +817,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		def := builder.NewBuildVmDefinition(
 			directives,
 			kernel, initramfs,
-			config.Output,
+			config.replaceVariables(config.Output),
 			config.CpuCores, config.MemorySize,
 			vmArch, arch,
 			config.StorageSize,
@@ -834,7 +856,9 @@ func (config *Config) Run(db common.PackageDatabase) error {
 			}
 			defer fh.Close()
 
-			out, err := os.Create(path.Base(config.Output))
+			output := config.replaceVariables(config.Output)
+
+			out, err := os.Create(path.Base(output))
 			if err != nil {
 				return err
 			}
@@ -845,7 +869,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 			}
 
 			if config.Hash {
-				slog.Info("wrote output", "filename", path.Base(config.Output))
+				slog.Info("wrote output", "filename", path.Base(output))
 			}
 
 			return nil

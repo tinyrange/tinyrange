@@ -2,16 +2,18 @@
 
 version: 1
 arch: x86_64
-builder: alpine@3.20
+builder: alpine@3.21
+environment:
+  - KERNEL_VERSION=6.12.9
 commands:
-  - mv /root/linux.config /root/linux-6.12.8/.config
-  - cd /root/linux-6.12.8; make olddefconfig
-  - mv /root/linux-6.12.8/.config /root/linux.proposed.config
+  - mv /root/linux.config /root/linux-$KERNEL_VERSION/.config
+  - cd /root/linux-$KERNEL_VERSION; make olddefconfig
+  - mv /root/linux-$KERNEL_VERSION/.config /root/linux-$KERNEL_VERSION.proposed.config
 files:
   - linux.config
 archives:
-  - https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.8.tar.xz
-output: /root/linux.proposed.config
+  - https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-$KERNEL_VERSION.tar.xz
+output: /root/linux-$KERNEL_VERSION.proposed.config
 packages:
   - build-base
   - flex

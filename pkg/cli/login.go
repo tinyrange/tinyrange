@@ -48,7 +48,15 @@ func runLogin(args []string) error {
 			return err
 		}
 
-		return os.WriteFile(loginSaveConfig, cfg, os.FileMode(0644))
+		if loginSaveConfig == "-" {
+			_, err := os.Stdout.Write(cfg)
+			if err != nil {
+				return err
+			}
+			return nil
+		} else {
+			return os.WriteFile(loginSaveConfig, cfg, os.FileMode(0644))
+		}
 	} else {
 		db, err := newDb()
 		if err != nil {

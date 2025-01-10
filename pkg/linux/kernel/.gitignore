@@ -1,2 +1,2 @@
-linux.proposed.config
-vmlinux.proposed
+linux*.proposed.config
+vmlinux*.proposed
