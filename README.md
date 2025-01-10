@@ -1,5 +1,7 @@
 # TinyRange
 
+![Alt](https://repobeats.axiom.co/api/embed/5e4b724db82dc0b0fb2c39977c6f7c9ac39447d5.svg "Repobeats analytics image")
+
 TinyRange is a light-weight scriptable orchestration system for building and running virtual machines with a focus on speed and flexibility for development.
 
 TinyRange is currently a Pre-Alpha and expect major breaking changes as the architecture is improved and features are explored.
