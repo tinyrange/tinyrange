@@ -408,6 +408,8 @@ func (d *basicBuildDefinition) Dependencies() ([]BuildDefinition, error) {
 
 // Build implements BuildDefinition.
 func (d *basicBuildDefinition) Build(ctx BuildContext) error {
+	time.Sleep(250 * time.Millisecond)
+
 	for _, child := range d.params.Children {
 		if _, err := ctx.BuildChild(child); err != nil {
 			return err
@@ -516,7 +518,16 @@ func appMain() error {
 
 	buildDir := filesystem.NewMemoryDirectory()
 
-	builder := New(buildDir, *jobs, &basicLogger{disable: true})
+	logger := NewEventDrivenLogger(80)
+
+	builder := New(buildDir, *jobs, logger.Group("build"))
+
+	go func() {
+		if err := logger.Run(os.Stdout); err != nil {
+			slog.Error("logger error", "err", err)
+		}
+	}()
+	defer logger.Close()
 
 	start := time.Now()
 
