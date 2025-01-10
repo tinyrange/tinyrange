@@ -20,6 +20,7 @@ type eventDrivenGroup struct {
 	lastUpdate  time.Time
 	parentChain []string
 	id          string
+	color       Color
 	description string
 	closed      bool
 	lowPriority bool
@@ -35,9 +36,10 @@ func (g *eventDrivenGroup) Close() error {
 	return nil
 }
 
-func (g *eventDrivenGroup) Describe(format string, args ...interface{}) {
+func (g *eventDrivenGroup) Describe(color Color, format string, args ...interface{}) {
 	g.description = fmt.Sprintf(format, args...)
 	g.lastUpdate = time.Now()
+	g.color = color
 
 	g.groupStream <- g
 }
@@ -161,11 +163,29 @@ func (l *eventDrivenLogger) render(w io.Writer) error {
 	root := &printTree{}
 
 	for _, group := range l.currentEvents {
+		groupLine := fmt.Sprintf("[%s]: %s", group.lastUpdate.Format(time.RFC822), group.description)
+		if group.closed {
+			groupLine = fmt.Sprintf("\033[90m%s\033[0m", groupLine)
+		} else {
+			switch group.color {
+			case ColorBlue:
+				groupLine = fmt.Sprintf("\033[34m%s\033[0m", groupLine)
+			case ColorGreen:
+				groupLine = fmt.Sprintf("\033[32m%s\033[0m", groupLine)
+			case ColorRed:
+				groupLine = fmt.Sprintf("\033[31m%s\033[0m", groupLine)
+			case ColorYellow:
+				groupLine = fmt.Sprintf("\033[33m%s\033[0m", groupLine)
+			case ColorGrey:
+				groupLine = fmt.Sprintf("\033[90m%s\033[0m", groupLine)
+			}
+		}
+
 		if len(group.parentChain) > 0 {
 			parent, ok := printTreeMap[group.parentChain[len(group.parentChain)-1]]
 			if ok {
 				printTreeMap[group.id] = &printTree{
-					line: group.description,
+					line: groupLine,
 				}
 				parent.children = append(parent.children, printTreeMap[group.id])
 				continue
@@ -173,7 +193,7 @@ func (l *eventDrivenLogger) render(w io.Writer) error {
 		}
 
 		printTreeMap[group.id] = &printTree{
-			line: group.description,
+			line: groupLine,
 		}
 		root.children = append(root.children, printTreeMap[group.id])
 	}

@@ -8,12 +8,12 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
@@ -25,9 +25,22 @@ const (
 	receptFileName     = "recept.json"
 )
 
+type Color int
+
+const (
+	ColorDefault Color = iota
+	ColorRed
+	ColorGreen
+	ColorYellow
+	ColorBlue
+	ColorGrey
+)
+
 type Logger interface {
+	io.Closer
+
 	Logf(format string, args ...interface{})
-	Describe(format string, args ...interface{})
+	Describe(color Color, format string, args ...interface{})
 	Child(description string) Logger
 }
 
@@ -43,6 +56,9 @@ type BuildArtifact interface {
 
 type BuildContext interface {
 	BuildChild(def BuildDefinition) (BuildArtifact, error)
+
+	Describe(format string, args ...interface{})
+	Logf(format string, args ...interface{})
 }
 
 type BuildDefinition interface {
@@ -90,11 +106,13 @@ type buildContext struct {
 
 // Precondition: The definition has to be rebuilt.
 func (c *buildContext) build() error {
+	c.logger.Describe(ColorYellow, "%s : waiting for token", c.def.String())
 	defer c.token.Lock().Close()
+	defer c.logger.Close()
 
 	// Update the state.
 	atomic.StoreUint32((*uint32)(&c.state), uint32(buildContextStateBuilding))
-	c.logger.Describe("building %s", c.def.String())
+	c.logger.Describe(ColorGreen, "%s : starting build", c.def.String())
 
 	// Save the definition to the build directory.
 	def, err := c.builder.defDb.MarshalDefinition(c.def)
@@ -141,7 +159,7 @@ func (c *buildContext) build() error {
 
 	// Update the state.
 	atomic.StoreUint32((*uint32)(&c.state), uint32(buildContextStateBuilt))
-	c.logger.Describe("built %s", c.def.String())
+	c.logger.Describe(ColorRed, "%s : finished building", c.def.String())
 
 	return nil
 }
@@ -262,6 +280,14 @@ func (c *buildContext) BuildChild(def BuildDefinition) (BuildArtifact, error) {
 	return artifact, nil
 }
 
+func (c *buildContext) Describe(format string, args ...interface{}) {
+	c.logger.Describe(ColorDefault, c.def.String()+" : "+format, args...)
+}
+
+func (c *buildContext) Logf(format string, args ...interface{}) {
+	c.logger.Logf(c.def.String()+" : "+format, args...)
+}
+
 var (
 	_ BuildContext = &buildContext{}
 )
@@ -363,6 +389,7 @@ func New(buildDir filesystem.MutableDirectory, maxJobs int, logger Logger) Build
 
 type basicBuildDefinitionParams struct {
 	Name     string
+	WaitTime int // in milliseconds
 	Children []BuildDefinition
 }
 
@@ -408,9 +435,13 @@ func (d *basicBuildDefinition) Dependencies() ([]BuildDefinition, error) {
 
 // Build implements BuildDefinition.
 func (d *basicBuildDefinition) Build(ctx BuildContext) error {
-	time.Sleep(250 * time.Millisecond)
+	waitTime := time.Duration(d.params.WaitTime) * time.Millisecond
+	ctx.Describe("waiting for %s", waitTime)
+
+	time.Sleep(waitTime)
 
 	for _, child := range d.params.Children {
+		ctx.Describe("waiting for child %s", child.String())
 		if _, err := ctx.BuildChild(child); err != nil {
 			return err
 		}
@@ -427,40 +458,11 @@ func newBasicBuildDefinition(name string, children ...BuildDefinition) *basicBui
 	return &basicBuildDefinition{
 		params: basicBuildDefinitionParams{
 			Name:     name,
+			WaitTime: int(rand.NormFloat64()*2500 + 50),
 			Children: children,
 		},
 	}
 }
-
-type basicLogger struct {
-	id      string
-	disable bool
-}
-
-// Logf implements Logger.
-func (l *basicLogger) Logf(format string, args ...interface{}) {
-	if !l.disable {
-		slog.Info("log", "id", l.id, "msg", fmt.Sprintf(format, args...))
-	}
-}
-
-// Describe implements Logger.
-func (l *basicLogger) Describe(format string, args ...interface{}) {
-	if !l.disable {
-		slog.Info("desc", "id", l.id, "msg", fmt.Sprintf(format, args...))
-	}
-}
-
-// Child implements Logger.
-func (l *basicLogger) Child(description string) Logger {
-	child := &basicLogger{id: uuid.NewString(), disable: l.disable}
-	child.Describe(description)
-	return child
-}
-
-var (
-	_ Logger = &basicLogger{}
-)
 
 func graphToBuildDefinition(graph []Edge) (map[int]BuildDefinition, error) {
 	defs := make(map[int]BuildDefinition)
@@ -488,9 +490,10 @@ func graphToBuildDefinition(graph []Edge) (map[int]BuildDefinition, error) {
 }
 
 var (
-	jobs  = flag.Int("jobs", 1, "number of jobs to run in parallel")
-	nodes = flag.Int("nodes", 100, "number of nodes in the graph")
-	edges = flag.Int("edges", 100, "number of edges in the graph")
+	jobs   = flag.Int("jobs", 1, "number of jobs to run in parallel")
+	nodes  = flag.Int("nodes", 100, "number of nodes in the graph")
+	edges  = flag.Int("edges", 100, "number of edges in the graph")
+	height = flag.Int("height", 30, "height of the logger")
 )
 
 func appMain() error {
@@ -518,7 +521,7 @@ func appMain() error {
 
 	buildDir := filesystem.NewMemoryDirectory()
 
-	logger := NewEventDrivenLogger(80)
+	logger := NewEventDrivenLogger(*height)
 
 	builder := New(buildDir, *jobs, logger.Group("build"))
 
@@ -535,7 +538,9 @@ func appMain() error {
 		return err
 	}
 
-	slog.Info("built graph", "duration", time.Since(start))
+	logger.Group("build").Describe(ColorGreen, "total time: %s", time.Since(start))
+
+	time.Sleep(1 * time.Second)
 
 	return nil
 }
