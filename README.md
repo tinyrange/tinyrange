@@ -10,11 +10,9 @@ TinyRange is currently a Pre-Alpha and expect major breaking changes as the arch
 
 Currently TinyRange only runs on Linux x86_64 and Windows x86_64 but support for other operating systems (MacOS, BSDs) and architectures (ARM64, RISC-V) is on the roadmap.
 
-TinyRange has to be built from source right now. Support for binaries and `go install` will come later.
+TinyRange has to be built from source right now. Binaries can be downloaded from the releases tab https://github.com/tinyrange/tinyrange/releases.
 
-<!-- TinyRange can be installed like a regular Go executable using `go install github.com/tinyrange/tinyrange`. You'll also need [build/tinyrange_qemu.star](build/tinyrange_qemu.star) and QEMU somewhere in your PATH as well.
-
-QEMU can be installed with `apt install qemu-system-x86_64` on Debian derived distributions and `dnf install qemu-system-x86_64` on Red Hat derived distributions. -->
+QEMU can be installed with `apt install qemu-system-x86_64` on Debian derived distributions and `dnf install qemu-system-x86_64` on Red Hat derived distributions.
 
 ## Building from Source
 
@@ -27,42 +25,6 @@ git clone https://github.com/tinyrange/tinyrange
 cd tinyrange
 ./tools/build.go -run -- login
 ```
-
-## Scripting
-
-```py
-load_fetcher("fetchers/alpine.star")
-
-def main(args):
-    directives = [
-        define.plan(
-            builder = "alpine@3.20",
-            packages = [
-                query("busybox"),
-                query("busybox-binsh"),
-                query("alpine-baselayout"),
-            ],
-            tags = ["level3"],
-        ),
-        directive.run_command("interactive"),
-    ]
-
-    # Run the virtual machine using TinyRange.
-    # The final run_command makes it interactive.
-    db.build(
-        define.build_vm(
-            directives = directives,
-        ),
-        always_rebuild = True,
-    )
-```
-
-The scripting in TinyRange is built around making build definitions which are built with `db.build`. Here we are using two definitions `define.build_vm` and `define.plan`.
-
-- `define.plan` creates a list of directives containing archives and commands to be used in a virtual machine.
-- `define.build_vm` runs a virtual machine with a list of directives, it can optionally specify a output file which will be copied from the VM as the build result.
-
-One easy change here is adding additional `query` lines to install packages inside the virtual machine. Try adding `query("build-base")` to get a C and C++ compiler or `query("go")` to get a Go compiler. These packages names come from [Alpine Linux](https://www.alpinelinux.org/).
 
 ## Rebuilding `pkg/filesystem/ext4/ext4_gen.go`
 
