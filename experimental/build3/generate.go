@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"math/rand"
+
+	"github.com/tinyrange/tinyrange/pkg/build2"
 )
 
 // Edge represents a directed edge from a node to another node.
@@ -95,8 +97,8 @@ func printDot(out io.Writer, edges []Edge) {
 	fmt.Fprintln(out, "}")
 }
 
-func graphToBuildDefinition(graph []Edge) (map[int]BuildDefinition, error) {
-	defs := make(map[int]BuildDefinition)
+func graphToBuildDefinition(graph []Edge) (map[int]build2.BuildDefinition, error) {
+	defs := make(map[int]build2.BuildDefinition)
 
 	for _, edge := range graph {
 		waitTime := int(math.Abs(rand.NormFloat64()*250 + 50))
@@ -144,7 +146,7 @@ func saveGraph(out io.Writer, graph []Edge, root int) error {
 	return nil
 }
 
-func loadGraph(in io.Reader) (BuildDefinition, error) {
+func loadGraph(in io.Reader) (build2.BuildDefinition, error) {
 	scanner := bufio.NewScanner(in)
 
 	nodes := make(map[int]*basicBuildDefinition)

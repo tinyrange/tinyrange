@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/tinyrange/tinyrange/pkg/build2"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
@@ -17,7 +18,7 @@ type basicBuildDefinitionParams struct {
 	Name       string
 	WaitTime   int // in milliseconds
 	ExpireTime int // in milliseconds
-	Children   []BuildDefinition
+	Children   []build2.BuildDefinition
 }
 
 func (p basicBuildDefinitionParams) SerializableType() string { return "basic" }
@@ -51,7 +52,7 @@ func (d *basicBuildDefinition) SerializableType() string {
 }
 
 // NeedsBuild implements BuildDefinition.
-func (d *basicBuildDefinition) NeedsBuild(ctx BuildContext) (bool, error) {
+func (d *basicBuildDefinition) NeedsBuild(ctx build2.BuildContext) (bool, error) {
 	lastBuild := ctx.LastBuild()
 
 	if lastBuild.IsZero() {
@@ -66,12 +67,12 @@ func (d *basicBuildDefinition) NeedsBuild(ctx BuildContext) (bool, error) {
 }
 
 // Dependencies implements BuildDefinition.
-func (d *basicBuildDefinition) Dependencies() ([]BuildDefinition, error) {
+func (d *basicBuildDefinition) Dependencies() ([]build2.BuildDefinition, error) {
 	return d.params.Children, nil
 }
 
 // Build implements BuildDefinition.
-func (d *basicBuildDefinition) Build(ctx BuildContext) error {
+func (d *basicBuildDefinition) Build(ctx build2.BuildContext) error {
 	waitTime := time.Duration(d.params.WaitTime) * time.Millisecond
 	ctx.Describe("waiting for %s", waitTime)
 
@@ -112,10 +113,10 @@ func (d *basicBuildDefinition) Build(ctx BuildContext) error {
 }
 
 var (
-	_ BuildDefinition = &basicBuildDefinition{}
+	_ build2.BuildDefinition = &basicBuildDefinition{}
 )
 
-func newBasicBuildDefinition(name string, waitTime int, expireTime int, children ...BuildDefinition) *basicBuildDefinition {
+func newBasicBuildDefinition(name string, waitTime int, expireTime int, children ...build2.BuildDefinition) *basicBuildDefinition {
 	return &basicBuildDefinition{
 		params: basicBuildDefinitionParams{
 			Name:       name,
@@ -165,7 +166,7 @@ func appMain() error {
 		return nil
 	}
 
-	var rootDef BuildDefinition
+	var rootDef build2.BuildDefinition
 
 	if *load != "" {
 		f, err := os.Open(*load)
@@ -198,7 +199,7 @@ func appMain() error {
 		rootDef = buildGraph[root]
 	}
 
-	logger := NewSimpleLogger()
+	logger := build2.NewSimpleLogger()
 
 	var buildMut filesystem.MutableDirectory
 
@@ -211,7 +212,7 @@ func appMain() error {
 
 		if *garbageCollect {
 
-			builder := New(buildMut, *jobs, logger.Group("build"))
+			builder := build2.New(buildMut, *jobs, logger.Group("build"))
 
 			hashes, err := builder.GarbageCollect(time.Now().Add(-time.Minute * 10))
 			if err != nil {
@@ -228,7 +229,7 @@ func appMain() error {
 		buildMut = filesystem.NewMemoryDirectory()
 	}
 
-	builder := New(buildMut, *jobs, logger.Group("build"))
+	builder := build2.New(buildMut, *jobs, logger.Group("build"))
 
 	go func() {
 		if err := logger.Run(os.Stdout); err != nil {
@@ -237,7 +238,7 @@ func appMain() error {
 	}()
 	defer logger.Close()
 
-	art, err := builder.Build(rootDef, BuildOptions{})
+	art, err := builder.Build(rootDef, build2.BuildOptions{})
 	if err != nil {
 		return err
 	}

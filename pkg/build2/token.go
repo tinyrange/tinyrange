@@ -1,4 +1,4 @@
-package main
+package build2
 
 import (
 	"errors"
