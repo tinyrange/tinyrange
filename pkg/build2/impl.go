@@ -18,6 +18,12 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
 
+const (
+	definitionFileName = "definition.json"
+	receiptFileName    = "receipt.json"
+	outputPrefix       = "output."
+)
+
 type buildArtifact struct {
 	*buildContext
 }
@@ -34,6 +40,20 @@ func (a *buildArtifact) OpenFile(name string) (filesystem.FileHandle, error) {
 	}
 
 	return f.File.Open()
+}
+
+// Default implements BuildArtifact.
+func (a *buildArtifact) Default() (filesystem.File, error) {
+	if _, ok := a.recept.Files["default"]; !ok {
+		return nil, fmt.Errorf("file default not found")
+	}
+
+	f, err := a.buildDir.GetChild(outputPrefix + "default")
+	if err != nil {
+		return nil, err
+	}
+
+	return f.File, nil
 }
 
 // Receipt implements BuildArtifact.

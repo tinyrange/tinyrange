@@ -9,12 +9,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type RootLogger interface {
-	io.Closer
-	Run(w io.Writer) error
-	Group(name string) Logger
-}
-
 type eventDrivenGroup struct {
 	groupStream chan *eventDrivenGroup
 	lastUpdate  time.Time

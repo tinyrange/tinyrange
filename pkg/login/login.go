@@ -612,7 +612,7 @@ func (config *Config) MakeTemplate(db common.PackageDatabase) (string, error) {
 
 	def.SetBuildTemplateMode()
 
-	_, err = db.Build(def, common.BuildOptions{AlwaysRebuild: true})
+	_, err = db.Builder().Build(def, common.BuildOptions{AlwaysRebuild: true})
 	if built, ok := err.(builder.ErrTemplateBuilt); ok {
 		return string(built), nil
 	} else if err != nil {
@@ -659,7 +659,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 		def := builder.NewBuildFsDefinition(directives, "tar")
 
-		f, err := db.Build(def, common.BuildOptions{})
+		f, err := db.Builder().Build(def, common.BuildOptions{})
 		if err != nil {
 			slog.Error("fatal", "err", err)
 			os.Exit(1)
@@ -696,7 +696,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 		def := builder.NewBuildFsDefinition(directives, "tar")
 
-		f, err := db.Build(def, common.BuildOptions{})
+		f, err := db.Builder().Build(def, common.BuildOptions{})
 		if err != nil {
 			slog.Error("fatal", "err", err)
 			os.Exit(1)
@@ -827,7 +827,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		if config.WriteTemplate {
 			def.SetBuildTemplateMode()
 
-			_, err := db.Build(def, common.BuildOptions{AlwaysRebuild: true})
+			_, err := db.Builder().Build(def, common.BuildOptions{AlwaysRebuild: true})
 			if built, ok := err.(builder.ErrTemplateBuilt); ok {
 				fmt.Printf("%s\n", string(built))
 
@@ -844,7 +844,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 				opts.AlwaysRebuild = true
 			}
 
-			f, err := db.Build(def, opts)
+			f, err := db.Builder().Build(def, opts)
 			if err != nil {
 				slog.Error("fatal", "err", err)
 				os.Exit(1)
@@ -874,7 +874,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 			return nil
 		} else {
-			if _, err := db.Build(def, common.BuildOptions{
+			if _, err := db.Builder().Build(def, common.BuildOptions{
 				AlwaysRebuild: true,
 			}); err != nil {
 				slog.Error("fatal", "err", err)

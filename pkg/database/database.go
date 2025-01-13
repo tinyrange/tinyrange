@@ -919,6 +919,10 @@ func (db *packageDatabase) GetContainerBuilders() map[string]common.ContainerBui
 	return ret
 }
 
+func (db *packageDatabase) Builder() common.Builder {
+	return db
+}
+
 var (
 	_ common.PackageDatabase = &packageDatabase{}
 )

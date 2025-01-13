@@ -76,7 +76,7 @@ func runLogin(args []string) error {
 				// expire after 1 hour
 				def := builder.NewFetchHttpBuildDefinition(loginLoadConfig, 1*time.Hour, nil)
 
-				f, err := db.Build(def, common.BuildOptions{})
+				f, err := db.Builder().Build(def, common.BuildOptions{})
 				if err != nil {
 					return err
 				}

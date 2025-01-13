@@ -49,7 +49,7 @@ func newDb() (common.PackageDatabase, error) {
 		}
 	}
 
-	db.SetRebuildUserDefinitions(rootRebuild)
+	db.Builder().SetRebuildUserDefinitions(rootRebuild)
 
 	for _, mirror := range rootMirrors {
 		name, url, ok := strings.Cut(mirror, "=")

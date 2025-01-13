@@ -158,7 +158,7 @@ func (builder *containerBuilder) load(ctx *buildContext) error {
 		return nil
 	}
 
-	builder.db = ctx.Database().(*packageDatabase)
+	builder.db = ctx.database
 
 	if err := builder.packages.load(ctx); err != nil {
 		return err

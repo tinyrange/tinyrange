@@ -208,7 +208,7 @@ type PackageDatabase interface {
 	MacroManager
 	DistributionServerManager
 	RequestManager
-	Builder
+	Builder() Builder
 
 	// Run a top-level script.
 	RunScript(
