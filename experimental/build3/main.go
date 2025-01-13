@@ -12,6 +12,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,7 +27,8 @@ import (
 
 const (
 	definitionFileName = "definition.json"
-	receptFileName     = "recept.json"
+	receiptFileName    = "receipt.json"
+	outputPrefix       = "output."
 )
 
 type Color int
@@ -51,7 +53,7 @@ type Logger interface {
 type BuildOptions struct {
 }
 
-type BuildRecept struct {
+type BuildReceipt struct {
 	Requirements []hash.Hash   `json:"requirements"`
 	StartTime    time.Time     `json:"start_time"`
 	Duration     time.Duration `json:"duration"`
@@ -80,6 +82,7 @@ type BuildDefinition interface {
 
 type Builder interface {
 	Build(def BuildDefinition, opts BuildOptions) (BuildArtifact, error)
+	GarbageCollect(olderThan time.Time) ([]hash.Hash, error)
 }
 
 // Implementation
@@ -104,7 +107,7 @@ type buildContext struct {
 	def          BuildDefinition
 	buildDir     filesystem.MutableDirectory
 	options      BuildOptions
-	recept       *BuildRecept
+	recept       *BuildReceipt
 	requirements map[hash.Hash]struct{}
 	err          error
 	state        buildContextState
@@ -135,7 +138,7 @@ func (c *buildContext) build() error {
 		return err
 	}
 
-	c.recept = &BuildRecept{
+	c.recept = &BuildReceipt{
 		StartTime: time.Now(),
 	}
 
@@ -165,7 +168,7 @@ func (c *buildContext) build() error {
 	if err := memFile.Overwrite(recept); err != nil {
 		return err
 	}
-	if _, err := c.buildDir.Create(receptFileName, memFile); err != nil {
+	if _, err := c.buildDir.Create(receiptFileName, memFile); err != nil {
 		return err
 	}
 
@@ -176,8 +179,8 @@ func (c *buildContext) build() error {
 	return nil
 }
 
-func (c *buildContext) loadRecept() (*BuildRecept, error) {
-	dh, err := c.buildDir.GetChild(receptFileName)
+func (c *buildContext) loadRecept() (*BuildReceipt, error) {
+	dh, err := c.buildDir.GetChild(receiptFileName)
 	if err != nil {
 		// This error could not not-exist so we propagate it.
 		return nil, err
@@ -188,7 +191,7 @@ func (c *buildContext) loadRecept() (*BuildRecept, error) {
 		return nil, err
 	}
 
-	var recept BuildRecept
+	var recept BuildReceipt
 	if err := json.NewDecoder(f).Decode(&recept); err != nil {
 		return nil, err
 	}
@@ -437,6 +440,112 @@ func (b *builder) contextForHash(parent *buildContext, hash hash.Hash, opts Buil
 	}
 
 	return b.contextForDefinition(parent, buildDef, opts), nil
+}
+
+func (b *builder) receiptFromHash(hash hash.Hash) (*BuildReceipt, error) {
+	hashDir, err := b.buildDir.GetChild(hash.String())
+	if err != nil {
+		return nil, err
+	}
+
+	mutDir, ok := hashDir.File.(filesystem.MutableDirectory)
+	if !ok {
+		return nil, fmt.Errorf("directory is not mutable: %T", hashDir)
+	}
+
+	fakeCtx := &buildContext{buildDir: mutDir}
+
+	return fakeCtx.loadRecept()
+}
+
+var validSha256 = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+type garbageCollectorState struct {
+	receipt    BuildReceipt
+	references int
+}
+
+// GarbageCollect implements Builder.
+func (b *builder) GarbageCollect(olderThan time.Time) ([]hash.Hash, error) {
+	ents, err := b.buildDir.Readdir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	receipts := make(map[hash.Hash]*garbageCollectorState)
+
+	// Populate the receipts map.
+	for _, ent := range ents {
+		if !validSha256.MatchString(ent.Name) {
+			continue
+		}
+
+		receipt, err := b.receiptFromHash(hash.Hash(ent.Name))
+		if err != nil {
+			slog.Warn("failed to load receipt", "err", err)
+			continue
+		}
+
+		receipts[hash.Hash(ent.Name)] = &garbageCollectorState{
+			receipt:    *receipt,
+			references: 0,
+		}
+	}
+
+	// Count the references.
+	for _, state := range receipts {
+		for _, hash := range state.receipt.Requirements {
+			if _, ok := receipts[hash]; ok {
+				receipts[hash].references++
+			}
+		}
+	}
+
+	// Look for any receipts with no references.
+	var checkNext []hash.Hash
+	for hash, state := range receipts {
+		// Don't delete receipts that have references.
+		if state.references > 0 {
+			continue
+		}
+
+		// Don't delete receipts that were built after the cutoff time.
+		if state.receipt.StartTime.After(olderThan) {
+			continue
+		}
+
+		checkNext = append(checkNext, hash)
+	}
+
+	deleted := make(map[hash.Hash]bool)
+	for len(checkNext) > 0 {
+		// Pop the first element.
+		hash := checkNext[0]
+		checkNext = checkNext[1:]
+
+		if receipts[hash].references > 0 {
+			continue
+		}
+
+		deleted[hash] = true
+
+		// reduce the reference count of each dependency.
+		for _, depHash := range receipts[hash].receipt.Requirements {
+			receipts[depHash].references--
+
+			if receipts[depHash].receipt.StartTime.After(olderThan) {
+				continue
+			}
+
+			checkNext = append(checkNext, depHash)
+		}
+	}
+
+	var ret []hash.Hash
+	for hash := range deleted {
+		ret = append(ret, hash)
+	}
+	return ret, nil
 }
 
 var (
@@ -704,13 +813,14 @@ func LoadGraph(in io.Reader) (BuildDefinition, error) {
 }
 
 var (
-	jobs     = flag.Int("jobs", 1, "number of jobs to run in parallel")
-	nodes    = flag.Int("nodes", 100, "number of nodes in the graph")
-	edges    = flag.Int("edges", 100, "number of edges in the graph")
-	height   = flag.Int("height", 30, "height of the logger")
-	buildDir = flag.String("build-dir", "", "set to use a real build directory")
-	generate = flag.String("generate", "", "generate a graph to a file")
-	load     = flag.String("load", "", "load a graph from a file")
+	jobs           = flag.Int("jobs", 1, "number of jobs to run in parallel")
+	nodes          = flag.Int("nodes", 100, "number of nodes in the graph")
+	edges          = flag.Int("edges", 100, "number of edges in the graph")
+	height         = flag.Int("height", 30, "height of the logger")
+	buildDir       = flag.String("build-dir", "", "set to use a real build directory")
+	generate       = flag.String("generate", "", "generate a graph to a file")
+	load           = flag.String("load", "", "load a graph from a file")
+	garbageCollect = flag.Bool("gc", false, "run garbage collection")
 )
 
 func appMain() error {
@@ -782,6 +892,23 @@ func appMain() error {
 		}
 
 		buildMut = filesystem.NewLocalMutableDirectory(*buildDir)
+
+		if *garbageCollect {
+			logger := &simpleLogger{}
+
+			builder := New(buildMut, *jobs, logger.Group("build"))
+
+			hashes, err := builder.GarbageCollect(time.Now().Add(-time.Minute * 10))
+			if err != nil {
+				return err
+			}
+
+			for _, hash := range hashes {
+				fmt.Printf("deleted %s\n", hash)
+			}
+
+			return nil
+		}
 	} else {
 		buildMut = filesystem.NewMemoryDirectory()
 	}
