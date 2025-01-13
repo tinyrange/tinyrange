@@ -28,15 +28,15 @@ require (
 	github.com/miekg/dns v1.1.62
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/ramr/go-reaper v0.2.3
-	github.com/schollz/progressbar/v3 v3.17.1
+	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/spf13/cobra v1.8.1
 	github.com/tinyrange/wireguard v0.1.0
 	github.com/wader/readline v0.0.0-20230307172220-bcb7158e7448
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
 	go.starlark.net v0.0.0-20241125201518-c05ff208a98f
-	golang.org/x/crypto v0.31.0
+	golang.org/x/crypto v0.32.0
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
-	golang.org/x/net v0.33.0
+	golang.org/x/net v0.34.0
 	golang.org/x/sys v0.29.0
 	golang.org/x/term v0.28.0
 	gopkg.in/yaml.v3 v3.0.1
