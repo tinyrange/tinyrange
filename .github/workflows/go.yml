@@ -44,7 +44,7 @@ jobs:
 
       - name: Build
         run: |
-          go run ./tools/build.go
+          go run ./tools/build.go -cgo
 
       - name: Install QEMU
         run: |
