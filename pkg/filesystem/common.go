@@ -41,9 +41,12 @@ type FileDigest struct {
 type File interface {
 	Open() (FileHandle, error)
 	Stat() (FileInfo, error)
+}
 
-	// Returns nil if it's not supported.
-	Digest() *FileDigest
+type HostFile interface {
+	File
+
+	Filename() (string, error)
 }
 
 // MutableFile is a file that can be modified.

@@ -144,7 +144,12 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 			return config.TinyRangeConfig{}, err
 		}
 
-		kernelFilename, err = ctx.FilenameFromDigest(kernel.Digest())
+		digest, err := ctx.DigestFromFile(kernel)
+		if err != nil {
+			return config.TinyRangeConfig{}, err
+		}
+
+		kernelFilename, err = ctx.FilenameFromDigest(digest)
 		if err != nil {
 			return config.TinyRangeConfig{}, err
 		}
@@ -178,7 +183,12 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 			return config.TinyRangeConfig{}, err
 		}
 
-		initRamFsFilename, err := ctx.FilenameFromDigest(initRamFs.Digest())
+		initRamFsDigest, err := ctx.DigestFromFile(initRamFs)
+		if err != nil {
+			return config.TinyRangeConfig{}, err
+		}
+
+		initRamFsFilename, err := ctx.FilenameFromDigest(initRamFsDigest)
 		if err != nil {
 			return config.TinyRangeConfig{}, err
 		}

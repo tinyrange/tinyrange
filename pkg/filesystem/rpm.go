@@ -224,11 +224,6 @@ func (s *starRpm) ReadAt(p []byte, off int64) (n int, err error) {
 	panic("unimplemented")
 }
 
-// Digest implements File.
-func (s *starRpm) Digest() *FileDigest {
-	return nil
-}
-
 // Open implements File.
 func (s *starRpm) Open() (FileHandle, error) {
 	return s, nil

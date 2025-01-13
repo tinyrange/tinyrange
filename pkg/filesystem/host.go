@@ -37,11 +37,6 @@ type LocalFile struct {
 	source   hash.SerializableValue
 }
 
-// Digest implements File.
-func (l *LocalFile) Digest() *FileDigest {
-	return &FileDigest{Hash: l.filename}
-}
-
 // Open implements File.
 func (l *LocalFile) Open() (FileHandle, error) {
 	return os.OpenFile(l.filename, os.O_RDONLY, 0)
@@ -57,8 +52,14 @@ func (l *LocalFile) Stat() (FileInfo, error) {
 	return &osStat{FileInfo: s}, nil
 }
 
+// Filename implements HostFile.
+func (l *LocalFile) Filename() (string, error) {
+	return l.filename, nil
+}
+
 var (
-	_ File = &LocalFile{}
+	_ File     = &LocalFile{}
+	_ HostFile = &LocalFile{}
 )
 
 func NewLocalFile(filename string, source hash.SerializableValue) File {
@@ -332,4 +333,13 @@ var (
 
 func NewLocalMutableDirectory(filename string) *LocalMutableDirectory {
 	return &LocalMutableDirectory{LocalMutableFile: NewLocalMutableFile(filename, nil)}
+}
+
+func GetHostFilename(f File) (string, error) {
+	hostFile, ok := f.(HostFile)
+	if !ok {
+		return "", fmt.Errorf("file is not a host file")
+	}
+
+	return hostFile.Filename()
 }

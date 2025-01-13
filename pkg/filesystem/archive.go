@@ -235,7 +235,12 @@ func ExtractArchiveToStreamableIndex(file File, idx io.Writer, w StreamableWrite
 
 	idxWriter := json.NewEncoder(idx)
 
-	pb := progressbar.Default(int64(len(ents)), file.Digest().Hash)
+	filename, err := GetHostFilename(file)
+	if err != nil {
+		return err
+	}
+
+	pb := progressbar.Default(int64(len(ents)), filename)
 	defer pb.Close()
 
 	for _, ent := range ents {
@@ -348,11 +353,6 @@ type CacheEntry struct {
 	// Used for streaming files only.
 	Hash             string `json:"hash,omitempty"`
 	ContentsFilename string `json:"contents,omitempty"`
-}
-
-// Digest implements Entry.
-func (e *CacheEntry) Digest() *FileDigest {
-	return nil
 }
 
 // IsDir implements FileInfo.

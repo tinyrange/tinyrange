@@ -343,7 +343,7 @@ func (def *FetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext, re
 
 		// Only persist the file digests.
 		// These can be used to reopen the file without requiring the entire def to be rebuilt.
-		layerDigest := layerArchive.Digest()
+		layerDigest, err := ctx.DigestFromFile(layerArchive)
 		if layerDigest == nil {
 			return nil, fmt.Errorf("%T does not support digests", layerArchive)
 		}
@@ -377,7 +377,7 @@ func (def *FetchOciImageDefinition) buildFromManifest(
 
 		// Only persist the file digests.
 		// These can be used to reopen the file without requiring the entire def to be rebuilt.
-		layerDigest := layerArchive.Digest()
+		layerDigest, err := ctx.DigestFromFile(layerArchive)
 		if layerDigest == nil {
 			return nil, fmt.Errorf("%T does not support digests", layerArchive)
 		}

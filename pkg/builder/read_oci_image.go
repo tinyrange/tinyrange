@@ -144,7 +144,12 @@ func (r *ReadOciImageDefinition) Build(ctx common.BuildContext) (common.BuildRes
 			return nil, err
 		}
 
-		out.LayerArchives = append(out.LayerArchives, layerFile.Digest())
+		layerFileDigest, err := ctx.DigestFromFile(layerFile)
+		if err != nil {
+			return nil, err
+		}
+
+		out.LayerArchives = append(out.LayerArchives, layerFileDigest)
 	}
 
 	out.Config = config

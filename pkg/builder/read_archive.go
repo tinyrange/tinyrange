@@ -450,7 +450,10 @@ func (r *ReadArchiveBuildDefinition) AsFragments(ctx common.BuildContext, specia
 		return nil, err
 	}
 
-	digest := res.Digest()
+	digest, err := ctx.DigestFromFile(res)
+	if err != nil {
+		return nil, err
+	}
 
 	filename, err := ctx.FilenameFromDigest(digest)
 	if err != nil {

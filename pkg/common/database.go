@@ -78,6 +78,8 @@ type BuildContext interface {
 	NeedsBuild(def BuildDefinition) (bool, error)
 	// Call calls a starlark function declared in a file.
 	Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error)
+	// DigestFromFile returns a file digest from a file.
+	DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error)
 	// FileFromDigest returns a file from a file digest.
 	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
 	// FilenameFromDigest returns a filename from a file digest.

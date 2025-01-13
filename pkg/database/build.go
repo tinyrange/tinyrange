@@ -117,6 +117,16 @@ func (b *buildContext) CreateFile(name string) (string, io.WriteCloser, error) {
 	return out.Name(), out, nil
 }
 
+// DigestFromFile implements common.BuildContext.
+func (b *buildContext) DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error) {
+	filename, err := filesystem.GetHostFilename(file)
+	if err != nil {
+		return nil, err
+	}
+
+	return &filesystem.FileDigest{Hash: filename}, nil
+}
+
 // FilenameFromDigest implements common.BuildContext.
 func (b *buildContext) FilenameFromDigest(digest *filesystem.FileDigest) (string, error) {
 	return digest.Hash, nil

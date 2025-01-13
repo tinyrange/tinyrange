@@ -146,11 +146,6 @@ func (r *RemoteFile) loadContents() error {
 	return nil
 }
 
-// Digest implements File.
-func (r *RemoteFile) Digest() *FileDigest {
-	return nil
-}
-
 // Open implements File.
 func (r *RemoteFile) Open() (FileHandle, error) {
 	if r.contents == nil {
@@ -237,14 +232,13 @@ func (m *overlayFile) OpenMut() (WritableFileHandle, error) {
 	return nil, fmt.Errorf("OverlayFiles do not support being opened for writing")
 }
 
-func (m *overlayFile) Kind() FileType      { return m.kind }
-func (m *overlayFile) Digest() *FileDigest { return nil }
-func (m *overlayFile) IsDir() bool         { return false }
-func (m *overlayFile) ModTime() time.Time  { return m.mTime }
-func (m *overlayFile) Mode() fs.FileMode   { return m.mode }
-func (m *overlayFile) Name() string        { return "" }
-func (m *overlayFile) Size() int64         { return m.size }
-func (m *overlayFile) Sys() any            { return m }
+func (m *overlayFile) Kind() FileType     { return m.kind }
+func (m *overlayFile) IsDir() bool        { return false }
+func (m *overlayFile) ModTime() time.Time { return m.mTime }
+func (m *overlayFile) Mode() fs.FileMode  { return m.mode }
+func (m *overlayFile) Name() string       { return "" }
+func (m *overlayFile) Size() int64        { return m.size }
+func (m *overlayFile) Sys() any           { return m }
 
 // Chmod implements MutableFile.
 func (m *overlayFile) Chmod(mode fs.FileMode) error {
@@ -426,14 +420,13 @@ type memoryFile struct {
 	contents []byte
 }
 
-func (m *memoryFile) Kind() FileType      { return m.kind }
-func (m *memoryFile) Digest() *FileDigest { return nil }
-func (m *memoryFile) IsDir() bool         { return false }
-func (m *memoryFile) ModTime() time.Time  { return m.mTime }
-func (m *memoryFile) Mode() fs.FileMode   { return m.mode }
-func (m *memoryFile) Name() string        { return "" }
-func (m *memoryFile) Size() int64         { return int64(len(m.contents)) }
-func (m *memoryFile) Sys() any            { return m }
+func (m *memoryFile) Kind() FileType     { return m.kind }
+func (m *memoryFile) IsDir() bool        { return false }
+func (m *memoryFile) ModTime() time.Time { return m.mTime }
+func (m *memoryFile) Mode() fs.FileMode  { return m.mode }
+func (m *memoryFile) Name() string       { return "" }
+func (m *memoryFile) Size() int64        { return int64(len(m.contents)) }
+func (m *memoryFile) Sys() any           { return m }
 
 // Chmod implements MutableFile.
 func (m *memoryFile) Chmod(mode fs.FileMode) error {
