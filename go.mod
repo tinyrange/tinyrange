@@ -28,7 +28,7 @@ require (
 	github.com/miekg/dns v1.1.62
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/ramr/go-reaper v0.2.3
-	github.com/schollz/progressbar/v3 v3.17.1
+	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/spf13/cobra v1.8.1
 	github.com/tinyrange/wireguard v0.1.0
 	github.com/wader/readline v0.0.0-20230307172220-bcb7158e7448
