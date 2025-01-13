@@ -19,10 +19,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
 
-type Archive interface {
-	Entries() ([]Entry, error)
-}
-
 type ArrayArchive []Entry
 
 // Entries implements Archive.
@@ -135,15 +131,6 @@ func ExtractArchive(ark Archive, mut MutableDirectory) error {
 	// }
 
 	return nil
-}
-
-type StreamableTempFile interface {
-	io.WriteCloser
-	FilenameAndHash() (string, string)
-}
-
-type StreamableWriter interface {
-	Writer() (StreamableTempFile, error)
 }
 
 type tempFile struct {

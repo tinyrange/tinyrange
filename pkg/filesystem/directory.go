@@ -10,18 +10,6 @@ import (
 	"sync"
 )
 
-type DirectoryEntry struct {
-	File
-	Name string
-}
-
-type Directory interface {
-	File
-
-	GetChild(name string) (DirectoryEntry, error)
-	Readdir() ([]DirectoryEntry, error)
-}
-
 func getMutable(dir Directory) MutableDirectory {
 	if mut, ok := dir.(MutableDirectory); ok {
 		return mut
@@ -252,15 +240,6 @@ func GetTotalSize(dir Directory) (int64, error) {
 	}
 
 	return total, nil
-}
-
-type MutableDirectory interface {
-	Directory
-	MutableFile
-
-	Mkdir(name string) (MutableDirectory, error)
-	Create(name string, f File) (File, error)
-	Unlink(name string) error
 }
 
 type memoryDirectory struct {

@@ -73,22 +73,6 @@ func GetUidAndGid(ent File) (int, int, error) {
 	}
 }
 
-type BasicFileHandle interface {
-	io.Reader
-	io.ReaderAt
-}
-
-type FileHandle interface {
-	BasicFileHandle
-	io.Closer
-}
-
-type WritableFileHandle interface {
-	FileHandle
-	io.Writer
-	io.WriterAt
-}
-
 type nopCloserFileHandle struct {
 	BasicFileHandle
 }
@@ -102,34 +86,6 @@ var (
 
 func NewNopCloserFileHandle(fh BasicFileHandle) FileHandle {
 	return &nopCloserFileHandle{BasicFileHandle: fh}
-}
-
-type FileInfo interface {
-	fs.FileInfo
-
-	Kind() FileType
-}
-
-type FileDigest struct {
-	Hash string
-}
-
-type File interface {
-	Open() (FileHandle, error)
-	Stat() (FileInfo, error)
-
-	// Returns nil if it's not supported.
-	Digest() *FileDigest
-}
-
-type MutableFile interface {
-	File
-	OpenMut() (WritableFileHandle, error)
-
-	Chmod(mode fs.FileMode) error
-	Chown(uid int, gid int) error
-	Chtimes(mtime time.Time) error
-	Overwrite(contents []byte) error
 }
 
 type FileType byte
@@ -157,25 +113,6 @@ func (t FileType) String() string {
 	default:
 		return "<unknown>"
 	}
-}
-
-type Entry interface {
-	File
-
-	Typeflag() FileType
-
-	Name() string     // Name of file entry
-	Linkname() string // Target name of link (valid for TypeLink or TypeSymlink)
-
-	Size() int64       // Logical file size in bytes
-	Mode() fs.FileMode // Permission and mode bits
-	Uid() int          // User ID of owner
-	Gid() int          // Group ID of owner
-
-	ModTime() time.Time // Modification time
-
-	Devmajor() int64 // Major device number (valid for TypeChar or TypeBlock)
-	Devminor() int64 // Minor device number (valid for TypeChar or TypeBlock)
 }
 
 type RemoteFile struct {
