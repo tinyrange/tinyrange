@@ -116,7 +116,6 @@ type buildContext struct {
 // Precondition: The definition has to be rebuilt.
 func (c *buildContext) build() error {
 	// c.logger.Describe(ColorYellow, "%s : waiting for token", c.def.String())
-	defer c.token.Lock().Close()
 	defer c.logger.Close()
 
 	// Update the state.
@@ -226,6 +225,8 @@ func (c *buildContext) ensureUpToDate() error {
 		// load the recept
 		c.recept, err = c.loadRecept()
 		if errors.Is(err, fs.ErrNotExist) {
+			defer c.token.Lock().Close()
+
 			return c.build()
 		} else if err != nil {
 			return fmt.Errorf("failed to load recept: %w", err)
@@ -238,13 +239,14 @@ func (c *buildContext) ensureUpToDate() error {
 	}
 	if needsBuild {
 		c.logger.Describe(ColorYellow, "rebuilding due to user NeedsBuild")
+
+		defer c.token.Lock().Close()
+
 		return c.build()
 	}
 
-	wg := sync.WaitGroup{}
-	errChan := make(chan error)
-	doneChan := make(chan struct{})
-	needsBuildChan := make(chan BuildDefinition)
+	// Lock a token since we might be triggering rebuilds of children so we need to ensure we have a token.
+	defer c.token.Lock().Close()
 
 	// Check all requirements in parallel.
 	for _, req := range c.recept.Requirements {
@@ -253,36 +255,25 @@ func (c *buildContext) ensureUpToDate() error {
 			return fmt.Errorf("failed to load requirement: %w", err)
 		}
 
-		wg.Add(1)
-		go func(child *buildContext) {
-			defer wg.Done()
-			art, err := child.getArtifact()
-			if err != nil {
-				errChan <- err
-			}
+		// Ensure the child has a token.
+		if state := atomic.LoadUint32((*uint32)(&child.state)); state == uint32(buildContextStateNew) {
+			child.token.Donate()
+		}
 
-			if art.freshlyBuilt() {
-				needsBuildChan <- child.def
-			}
-		}(child)
+		art, err := child.getArtifact()
+		if err != nil {
+			return fmt.Errorf("failed to get requirement artifact: %w", err)
+		}
+
+		if art.freshlyBuilt() {
+			c.logger.Describe(ColorYellow, "rebuilding due to requirement %s", child.def.String())
+			return c.build()
+		}
 	}
 
-	go func() {
-		defer close(doneChan)
-		wg.Wait()
-	}()
+	atomic.StoreUint32((*uint32)(&c.state), uint32(buildContextStateUsedCache))
 
-	select {
-	case err := <-errChan:
-		return err
-	case def := <-needsBuildChan:
-		c.logger.Describe(ColorYellow, "rebuilding due to requirement %s", def.String())
-		return c.build()
-	case <-doneChan:
-		atomic.StoreUint32((*uint32)(&c.state), uint32(buildContextStateUsedCache))
-
-		return nil
-	}
+	return nil
 }
 
 func (c *buildContext) getArtifact() (*buildArtifact, error) {
