@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
+	"math"
+	"strconv"
+	"strings"
 
 	"math/rand"
 )
@@ -13,9 +17,9 @@ type Edge struct {
 	To   int
 }
 
-// GenerateRandomDAG generates a random DAG with nodeCount nodes and edgeCount edges.
+// generateRandomDAG generates a random DAG with nodeCount nodes and edgeCount edges.
 // The graph will always have a single root node.
-func GenerateRandomDAG(nodeCount, edgeCount int) ([]Edge, int, error) {
+func generateRandomDAG(nodeCount, edgeCount int) ([]Edge, int, error) {
 	if edgeCount > nodeCount*(nodeCount-1)/2 {
 		return nil, -1, fmt.Errorf("too many edges for a DAG with %d nodes", nodeCount)
 	}
@@ -89,4 +93,92 @@ func printDot(out io.Writer, edges []Edge) {
 		fmt.Fprintf(out, "  %d -> %d;\n", edge.From, edge.To)
 	}
 	fmt.Fprintln(out, "}")
+}
+
+func graphToBuildDefinition(graph []Edge) (map[int]BuildDefinition, error) {
+	defs := make(map[int]BuildDefinition)
+
+	for _, edge := range graph {
+		waitTime := int(math.Abs(rand.NormFloat64()*250 + 50))
+		if _, ok := defs[edge.From]; !ok {
+			defs[edge.From] = newBasicBuildDefinition(fmt.Sprintf("node%d", edge.From), waitTime, 0)
+		}
+
+		if _, ok := defs[edge.To]; !ok {
+			defs[edge.To] = newBasicBuildDefinition(fmt.Sprintf("node%d", edge.To), waitTime, 0)
+		}
+
+		parent := defs[edge.From]
+		child := defs[edge.To]
+
+		if parent == child {
+			continue
+		}
+
+		parent.(*basicBuildDefinition).params.Children = append(parent.(*basicBuildDefinition).params.Children, child)
+	}
+
+	return defs, nil
+}
+
+func saveGraph(out io.Writer, graph []Edge, root int) error {
+	nodes := make(map[int]struct{})
+
+	fmt.Fprintf(out, "root\t%d\n", root)
+
+	for _, edge := range graph {
+		nodes[edge.From] = struct{}{}
+		nodes[edge.To] = struct{}{}
+	}
+
+	for node := range nodes {
+		waitTime := int(math.Abs(rand.NormFloat64()*250 + 50))
+		expireTime := int(math.Abs(rand.NormFloat64()*25000 + 50))
+		fmt.Fprintf(out, "node\t%d\t%d\t%d\n", node, waitTime, expireTime)
+	}
+
+	for _, edge := range graph {
+		fmt.Fprintf(out, "edge\t%d\t%d\n", edge.From, edge.To)
+	}
+
+	return nil
+}
+
+func loadGraph(in io.Reader) (BuildDefinition, error) {
+	scanner := bufio.NewScanner(in)
+
+	nodes := make(map[int]*basicBuildDefinition)
+
+	var root int
+
+	for scanner.Scan() {
+		tokens := strings.Split(scanner.Text(), "\t")
+
+		switch tokens[0] {
+		case "root":
+			root, _ = strconv.Atoi(tokens[1])
+		case "node":
+			node, _ := strconv.Atoi(tokens[1])
+			waitTime, _ := strconv.Atoi(tokens[2])
+			expireTime, _ := strconv.Atoi(tokens[3])
+
+			nodes[node] = newBasicBuildDefinition(fmt.Sprintf("node%d", node), waitTime, expireTime)
+		case "edge":
+			from, _ := strconv.Atoi(tokens[1])
+			to, _ := strconv.Atoi(tokens[2])
+
+			parent := nodes[from]
+			child := nodes[to]
+
+			if parent == child {
+				continue
+			}
+
+			parent.params.Children = append(parent.params.Children, child)
+		default:
+			return nil, fmt.Errorf("unknown token: %s", tokens[0])
+		}
+	}
+
+	return nodes[root], nil
 }
