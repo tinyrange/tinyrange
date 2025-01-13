@@ -23,9 +23,7 @@ var queryCmd = &cobra.Command{
 			return err
 		}
 
-		ctx := db.NewBuildContext(nil)
-
-		b, err := db.GetContainerBuilder(ctx, queryBuilder, config.HostArchitecture)
+		b, err := db.GetContainerBuilder(queryBuilder, config.HostArchitecture)
 		if err != nil {
 			return err
 		}

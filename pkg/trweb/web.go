@@ -205,9 +205,7 @@ func (app *WebApplication) handlePackageResults(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	ctx := app.db.NewBuildContext(nil)
-
-	b, err := app.db.GetContainerBuilder(ctx, builder, config.HostArchitecture)
+	b, err := app.db.GetContainerBuilder(builder, config.HostArchitecture)
 	if err != nil {
 		slog.Error("Failed to get container builder", "error", err)
 		http.Error(w, "Failed to get container builder", http.StatusInternalServerError)

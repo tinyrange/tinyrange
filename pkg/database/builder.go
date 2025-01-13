@@ -21,7 +21,7 @@ type containerBuilder struct {
 	packages             *packageCollection
 	metadata             starlark.Value
 	splitDefaultPackages bool
-	db                   common.PackageDatabase
+	db                   *packageDatabase
 
 	loaded bool
 }
@@ -158,7 +158,7 @@ func (builder *containerBuilder) load(ctx *buildContext) error {
 		return nil
 	}
 
-	builder.db = ctx.Database()
+	builder.db = ctx.Database().(*packageDatabase)
 
 	if err := builder.packages.load(ctx); err != nil {
 		return err

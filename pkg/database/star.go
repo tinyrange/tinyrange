@@ -271,9 +271,7 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			ctx := db.NewBuildContext(nil)
-
-			builder, err := db.GetContainerBuilder(ctx, name, arch)
+			builder, err := db.GetContainerBuilder(name, arch)
 			if err != nil {
 				return starlark.None, err
 			}

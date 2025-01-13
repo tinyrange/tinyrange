@@ -267,7 +267,7 @@ func (def *PlanDefinition) Build(ctx common.BuildContext) (common.BuildResult, e
 		arch = config.HostArchitecture
 	}
 
-	builder, err := ctx.Database().GetContainerBuilder(ctx, def.params.Builder, arch)
+	builder, err := ctx.Database().GetContainerBuilder(def.params.Builder, arch)
 	if err != nil {
 		return nil, err
 	}

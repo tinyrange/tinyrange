@@ -679,18 +679,13 @@ func (db *packageDatabase) getBuilder(filename string, builder string) (starlark
 	return callable, nil
 }
 
-func (db *packageDatabase) GetContainerBuilder(c common.BuildContext, name string, arch config.CPUArchitecture) (common.ContainerBuilder, error) {
-	ctx, ok := c.(*buildContext)
-	if !ok {
-		return nil, fmt.Errorf("expected buildContext, got %T", ctx)
-	}
-
+func (db *packageDatabase) GetContainerBuilder(name string, arch config.CPUArchitecture) (common.ContainerBuilder, error) {
 	builder, ok := db.ContainerBuilders[fmt.Sprintf("%s-%s", name, arch)]
 	if !ok {
 		return nil, fmt.Errorf("builder %s not found for arch %s", name, arch)
 	}
 
-	if err := builder.ensureLoaded(ctx); err != nil {
+	if err := builder.ensureLoaded(db.newBuildContext(nil)); err != nil {
 		return nil, err
 	}
 

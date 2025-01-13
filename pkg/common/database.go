@@ -165,7 +165,7 @@ type MirrorManager interface {
 // ContainerBuilders take a package collection and create an installation plan from a list of queries.
 // The manager is responsible for loading and managing container builders.
 type ContainerBuilderManager interface {
-	GetContainerBuilder(ctx BuildContext, name string, arch config.CPUArchitecture) (ContainerBuilder, error)
+	GetContainerBuilder(name string, arch config.CPUArchitecture) (ContainerBuilder, error)
 	GetContainerBuilders() map[string]ContainerBuilder
 }
 
@@ -194,6 +194,13 @@ type RequestManager interface {
 	HttpClient() (*http.Client, error)
 }
 
+type Builder interface {
+	// Build a definition from a build context.
+	Build(def BuildDefinition, opts BuildOptions) (filesystem.File, error)
+	// SetRebuildUserDefinitions sets whether user definitions should be rebuilt.
+	SetRebuildUserDefinitions(rebuild bool)
+}
+
 // PackageDatabase is the core interface.
 type PackageDatabase interface {
 	MirrorManager
@@ -201,20 +208,7 @@ type PackageDatabase interface {
 	MacroManager
 	DistributionServerManager
 	RequestManager
-
-	// Build a definition from a build context.
-	Build(def BuildDefinition, opts BuildOptions) (filesystem.File, error)
-	// SetRebuildUserDefinitions sets whether user definitions should be rebuilt.
-	SetRebuildUserDefinitions(rebuild bool)
-	// NewBuildContext creates a new build context from a build source.
-	NewBuildContext(def BuildDefinition) BuildContext
-
-	// Get a build definition by hash.
-	GetDefinitionByHash(hash hash.Hash) (BuildDefinition, error)
-	// Pretty print a build definition and write the result to the given writer.
-	Inspect(def BuildDefinition, out io.Writer) error
-	// Get a list of all hashes in the database.
-	GetAllHashes() ([]hash.Hash, error)
+	Builder
 
 	// Run a top-level script.
 	RunScript(
