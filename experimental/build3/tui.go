@@ -259,3 +259,76 @@ func NewEventDrivenLogger(maxHeight int) RootLogger {
 		currentEvents: make([]*eventDrivenGroup, 0, maxHeight+1),
 	}
 }
+
+type simpleLoggerGroup struct {
+	id     string
+	parent string
+}
+
+// Child implements Logger.
+func (s *simpleLoggerGroup) Child(description string) Logger {
+	return &simpleLoggerGroup{id: description, parent: s.id}
+}
+
+// Close implements Logger.
+func (s *simpleLoggerGroup) Close() error {
+	return nil
+}
+
+// Describe implements Logger.
+func (s *simpleLoggerGroup) Describe(color Color, format string, args ...interface{}) {
+	currentTime := time.Now().Format("15:04:05.000")
+	logString := fmt.Sprintf(format, args...)
+
+	switch color {
+	default:
+		fallthrough
+	case ColorDefault:
+		fmt.Printf("[%s] %s: %s\n", currentTime, s.id, logString)
+	case ColorRed:
+		fmt.Printf("[%s] \033[31m%s\033[0m: %s\n", currentTime, s.id, logString)
+	case ColorGreen:
+		fmt.Printf("[%s] \033[32m%s\033[0m: %s\n", currentTime, s.id, logString)
+	case ColorYellow:
+		fmt.Printf("[%s] \033[33m%s\033[0m: %s\n", currentTime, s.id, logString)
+	case ColorBlue:
+		fmt.Printf("[%s] \033[34m%s\033[0m: %s\n", currentTime, s.id, logString)
+	case ColorGrey:
+		fmt.Printf("[%s] \033[90m%s\033[0m: %s\n", currentTime, s.id, logString)
+	}
+}
+
+// Logf implements Logger.
+func (s *simpleLoggerGroup) Logf(format string, args ...interface{}) {
+	s.Describe(ColorDefault, format, args...)
+}
+
+var (
+	_ Logger = &simpleLoggerGroup{}
+)
+
+type simpleLogger struct {
+}
+
+// Close implements RootLogger.
+func (s *simpleLogger) Close() error {
+	return nil
+}
+
+// Group implements RootLogger.
+func (s *simpleLogger) Group(name string) Logger {
+	return &simpleLoggerGroup{id: name}
+}
+
+// Run implements RootLogger.
+func (s *simpleLogger) Run(w io.Writer) error {
+	return nil
+}
+
+var (
+	_ RootLogger = &simpleLogger{}
+)
+
+func NewSimpleLogger() RootLogger {
+	return &simpleLogger{}
+}

@@ -155,6 +155,11 @@ func (l *LocalMutableFile) Open() (FileHandle, error) {
 	return os.OpenFile(l.filename, os.O_RDWR, 0)
 }
 
+// OpenMut implements MutableFile.
+func (l *LocalMutableFile) OpenMut() (WritableFileHandle, error) {
+	return os.OpenFile(l.filename, os.O_RDWR, 0)
+}
+
 var (
 	_ MutableFile = &LocalMutableFile{}
 )
@@ -278,6 +283,11 @@ func (l *LocalMutableDirectory) Mkdir(name string) (MutableDirectory, error) {
 // Open implements MutableDirectory.
 // Subtle: this method shadows the method (*LocalMutableFile).Open of LocalMutableDirectory.LocalMutableFile.
 func (l *LocalMutableDirectory) Open() (FileHandle, error) {
+	return nil, fs.ErrInvalid
+}
+
+// OpenMut implements MutableDirectory.
+func (l *LocalMutableDirectory) OpenMut() (WritableFileHandle, error) {
 	return nil, fs.ErrInvalid
 }
 

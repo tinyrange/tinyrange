@@ -124,6 +124,7 @@ type File interface {
 
 type MutableFile interface {
 	File
+	OpenMut() (WritableFileHandle, error)
 
 	Chmod(mode fs.FileMode) error
 	Chown(uid int, gid int) error
@@ -292,6 +293,11 @@ type overlayFile struct {
 	mode  fs.FileMode
 	uid   int
 	gid   int
+}
+
+// OpenMut implements MutableFile.
+func (m *overlayFile) OpenMut() (WritableFileHandle, error) {
+	return nil, fmt.Errorf("OverlayFiles do not support being opened for writing")
 }
 
 func (m *overlayFile) Kind() FileType      { return m.kind }
@@ -525,6 +531,11 @@ func (m *memoryFile) Chtimes(mtime time.Time) error {
 
 // Open implements MutableFile.
 func (m *memoryFile) Open() (FileHandle, error) {
+	return m.OpenMut()
+}
+
+// OpenMut implements MutableFile.
+func (m *memoryFile) OpenMut() (WritableFileHandle, error) {
 	return &memoryFileHandle{f: m}, nil
 }
 

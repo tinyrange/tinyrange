@@ -2,10 +2,12 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	cryptoHash "hash"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -51,15 +53,21 @@ type Logger interface {
 }
 
 type BuildOptions struct {
+	ForceRebuild bool
 }
 
 type BuildReceipt struct {
-	Requirements []hash.Hash   `json:"requirements"`
-	StartTime    time.Time     `json:"start_time"`
-	Duration     time.Duration `json:"duration"`
+	Requirements []hash.Hash       `json:"requirements"`
+	StartTime    time.Time         `json:"start_time"`
+	Duration     time.Duration     `json:"duration"`
+	Files        map[string]string `json:"files"` // map of filename to sha256 hash
 }
 
 type BuildArtifact interface {
+	Hash() hash.Hash
+	Receipt() BuildReceipt
+
+	OpenFile(name string) (filesystem.FileHandle, error)
 }
 
 type BuildContext interface {
@@ -68,6 +76,9 @@ type BuildContext interface {
 	Describe(format string, args ...interface{})
 	Logf(format string, args ...interface{})
 
+	CreateFile(name string) (io.WriteCloser, error)
+
+	Hash() hash.Hash
 	LastBuild() time.Time
 }
 
@@ -90,6 +101,53 @@ type Builder interface {
 type buildArtifact struct {
 	*buildContext
 }
+
+// OpenFile implements BuildArtifact.
+func (a *buildArtifact) OpenFile(name string) (filesystem.FileHandle, error) {
+	if _, ok := a.recept.Files[name]; !ok {
+		return nil, fmt.Errorf("file %s not found", name)
+	}
+
+	f, err := a.buildDir.GetChild(outputPrefix + name)
+	if err != nil {
+		return nil, err
+	}
+
+	return f.File.Open()
+}
+
+// Receipt implements BuildArtifact.
+func (a *buildArtifact) Receipt() BuildReceipt {
+	return *a.recept
+}
+
+var (
+	_ BuildArtifact = &buildArtifact{}
+)
+
+type contextFile struct {
+	writer io.WriteCloser
+	multi  io.Writer
+	hash   cryptoHash.Hash
+}
+
+// Write implements io.Writer.
+func (f *contextFile) Write(p []byte) (n int, err error) {
+	return f.multi.Write(p)
+}
+
+// Close implements io.Closer.
+func (f *contextFile) Close() error {
+	if err := f.writer.Close(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+var (
+	_ io.WriteCloser = &contextFile{}
+)
 
 type buildContextState uint32
 
@@ -114,6 +172,7 @@ type buildContext struct {
 	wg           sync.WaitGroup
 	logger       Logger
 	token        *token
+	files        map[string]*contextFile
 }
 
 // Precondition: The definition has to be rebuilt.
@@ -140,6 +199,7 @@ func (c *buildContext) build() error {
 
 	c.recept = &BuildReceipt{
 		StartTime: time.Now(),
+		Files:     make(map[string]string),
 	}
 
 	// Build the dependencies.
@@ -158,6 +218,11 @@ func (c *buildContext) build() error {
 	}
 
 	c.recept.Duration = time.Since(c.recept.StartTime)
+
+	// Set all the hashes in the recept.
+	for name, file := range c.files {
+		c.recept.Files[name] = fmt.Sprintf("%x", file.hash.Sum(nil))
+	}
 
 	// Save the recept to the build directory.
 	recept, err := json.Marshal(c.recept)
@@ -222,6 +287,13 @@ func (c *buildContext) ensureUpToDate() error {
 		if err != nil {
 			return fmt.Errorf("failed to create build directory: %w", err)
 		}
+	}
+
+	if c.options.ForceRebuild {
+		// force a rebuild
+		defer c.token.Lock().Close()
+
+		return c.build()
 	}
 
 	if c.recept == nil {
@@ -303,10 +375,6 @@ func (c *buildContext) addDependency(def BuildDefinition) {
 }
 
 func (c *buildContext) addRequirement(hash hash.Hash) {
-	// if c.parent != nil {
-	// 	c.parent.addRequirement(hash)
-	// }
-
 	if _, ok := c.requirements[hash]; ok {
 		return
 	}
@@ -347,6 +415,53 @@ func (c *buildContext) LastBuild() time.Time {
 	return c.recept.StartTime
 }
 
+var validFilename = regexp.MustCompile(`^[a-zA-Z0-9._]+$`)
+
+func (c *buildContext) CreateFile(name string) (io.WriteCloser, error) {
+	if !validFilename.MatchString(name) {
+		return nil, fmt.Errorf("invalid filename: %s", name)
+	}
+
+	// Check if the file already exists.
+	if _, ok := c.files[name]; ok {
+		return nil, fmt.Errorf("file %s already exists", name)
+	}
+
+	// Create the file.
+	f, err := c.buildDir.Create(outputPrefix+name, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	mut, ok := f.(filesystem.MutableFile)
+	if !ok {
+		return nil, fmt.Errorf("file %T is not mutable", f)
+	}
+
+	mutHandle, err := mut.OpenMut()
+	if err != nil {
+		return nil, err
+	}
+
+	// Automatically hash the file as it's written.
+	hash := sha256.New()
+
+	multi := io.MultiWriter(mutHandle, hash)
+
+	c.files[name] = &contextFile{
+		writer: mutHandle,
+		multi:  multi,
+		hash:   hash,
+	}
+
+	return c.files[name], nil
+}
+
+// Hash implements BuildContext.
+func (a *buildContext) Hash() hash.Hash {
+	return a.hash
+}
+
 var (
 	_ BuildContext = &buildContext{}
 )
@@ -367,6 +482,7 @@ func (b *builder) contextForDefinition(parent *buildContext, def BuildDefinition
 		requirements: make(map[hash.Hash]struct{}),
 		options:      opts,
 		token:        b.tokenLocker.New(),
+		files:        make(map[string]*contextFile),
 	}
 	maybeCtx.wg.Add(1)
 
@@ -630,10 +746,34 @@ func (d *basicBuildDefinition) Build(ctx BuildContext) error {
 
 	time.Sleep(waitTime)
 
+	out, err := ctx.CreateFile("txt")
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := fmt.Fprintf(out, "- %s\n", ctx.Hash()); err != nil {
+		return err
+	}
+
 	for _, child := range d.params.Children {
 		ctx.Describe("waiting for child %s", child.String())
-		if _, err := ctx.BuildChild(child); err != nil {
+		art, err := ctx.BuildChild(child)
+		if err != nil {
 			return err
+		}
+
+		childOut, err := art.OpenFile("txt")
+		if err != nil {
+			return err
+		}
+
+		scanner := bufio.NewScanner(childOut)
+
+		for scanner.Scan() {
+			if _, err := fmt.Fprintf(out, "  %s\n", scanner.Text()); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -680,75 +820,6 @@ func graphToBuildDefinition(graph []Edge) (map[int]BuildDefinition, error) {
 
 	return defs, nil
 }
-
-type simpleLoggerGroup struct {
-	id     string
-	parent string
-}
-
-// Child implements Logger.
-func (s *simpleLoggerGroup) Child(description string) Logger {
-	return &simpleLoggerGroup{id: description, parent: s.id}
-}
-
-// Close implements Logger.
-func (s *simpleLoggerGroup) Close() error {
-	return nil
-}
-
-// Describe implements Logger.
-func (s *simpleLoggerGroup) Describe(color Color, format string, args ...interface{}) {
-	currentTime := time.Now().Format("15:04:05.000")
-	logString := fmt.Sprintf(format, args...)
-
-	switch color {
-	default:
-		fallthrough
-	case ColorDefault:
-		fmt.Printf("[%s] %s: %s\n", currentTime, s.id, logString)
-	case ColorRed:
-		fmt.Printf("[%s] \033[31m%s\033[0m: %s\n", currentTime, s.id, logString)
-	case ColorGreen:
-		fmt.Printf("[%s] \033[32m%s\033[0m: %s\n", currentTime, s.id, logString)
-	case ColorYellow:
-		fmt.Printf("[%s] \033[33m%s\033[0m: %s\n", currentTime, s.id, logString)
-	case ColorBlue:
-		fmt.Printf("[%s] \033[34m%s\033[0m: %s\n", currentTime, s.id, logString)
-	case ColorGrey:
-		fmt.Printf("[%s] \033[90m%s\033[0m: %s\n", currentTime, s.id, logString)
-	}
-}
-
-// Logf implements Logger.
-func (s *simpleLoggerGroup) Logf(format string, args ...interface{}) {
-	s.Describe(ColorDefault, format, args...)
-}
-
-var (
-	_ Logger = &simpleLoggerGroup{}
-)
-
-type simpleLogger struct {
-}
-
-// Close implements RootLogger.
-func (s *simpleLogger) Close() error {
-	return nil
-}
-
-// Group implements RootLogger.
-func (s *simpleLogger) Group(name string) Logger {
-	return &simpleLoggerGroup{id: name}
-}
-
-// Run implements RootLogger.
-func (s *simpleLogger) Run(w io.Writer) error {
-	return nil
-}
-
-var (
-	_ RootLogger = &simpleLogger{}
-)
 
 func SaveGraph(out io.Writer, graph []Edge, root int) error {
 	nodes := make(map[int]struct{})
@@ -884,6 +955,8 @@ func appMain() error {
 		rootDef = buildGraph[root]
 	}
 
+	logger := NewSimpleLogger()
+
 	var buildMut filesystem.MutableDirectory
 
 	if *buildDir != "" {
@@ -894,7 +967,6 @@ func appMain() error {
 		buildMut = filesystem.NewLocalMutableDirectory(*buildDir)
 
 		if *garbageCollect {
-			logger := &simpleLogger{}
 
 			builder := New(buildMut, *jobs, logger.Group("build"))
 
@@ -913,9 +985,6 @@ func appMain() error {
 		buildMut = filesystem.NewMemoryDirectory()
 	}
 
-	// logger := NewEventDrivenLogger(*height)
-	logger := &simpleLogger{}
-
 	builder := New(buildMut, *jobs, logger.Group("build"))
 
 	go func() {
@@ -925,7 +994,18 @@ func appMain() error {
 	}()
 	defer logger.Close()
 
-	if _, err := builder.Build(rootDef, BuildOptions{}); err != nil {
+	art, err := builder.Build(rootDef, BuildOptions{})
+	if err != nil {
+		return err
+	}
+
+	f, err := art.OpenFile("txt")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, err := io.Copy(os.Stdout, f); err != nil {
 		return err
 	}
 
