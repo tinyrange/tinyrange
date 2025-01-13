@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -264,8 +265,8 @@ func (l *LocalMutableDirectory) GetChild(name string) (DirectoryEntry, error) {
 // Mkdir implements MutableDirectory.
 func (l *LocalMutableDirectory) Mkdir(name string) (MutableDirectory, error) {
 	if err := os.Mkdir(filepath.Join(l.filename, name), 0755); err != nil {
-		if os.IsExist(err) {
-			return NewLocalMutableDirectory(filepath.Join(l.filename, name)), err
+		if errors.Is(err, fs.ErrExist) {
+			return NewLocalMutableDirectory(filepath.Join(l.filename, name)), nil
 		} else {
 			return nil, err
 		}

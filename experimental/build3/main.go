@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -8,8 +9,11 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"math/rand/v2"
+	"math"
+	"math/rand"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -48,7 +52,9 @@ type BuildOptions struct {
 }
 
 type BuildRecept struct {
-	Requirements []hash.Hash `json:"requirements"`
+	Requirements []hash.Hash   `json:"requirements"`
+	StartTime    time.Time     `json:"start_time"`
+	Duration     time.Duration `json:"duration"`
 }
 
 type BuildArtifact interface {
@@ -59,6 +65,8 @@ type BuildContext interface {
 
 	Describe(format string, args ...interface{})
 	Logf(format string, args ...interface{})
+
+	LastBuild() time.Time
 }
 
 type BuildDefinition interface {
@@ -86,6 +94,7 @@ const (
 	buildContextStateNew buildContextState = iota
 	buildContextStateBuilding
 	buildContextStateBuilt
+	buildContextStateUsedCache
 )
 
 type buildContext struct {
@@ -106,13 +115,13 @@ type buildContext struct {
 
 // Precondition: The definition has to be rebuilt.
 func (c *buildContext) build() error {
-	c.logger.Describe(ColorYellow, "%s : waiting for token", c.def.String())
+	// c.logger.Describe(ColorYellow, "%s : waiting for token", c.def.String())
 	defer c.token.Lock().Close()
 	defer c.logger.Close()
 
 	// Update the state.
 	atomic.StoreUint32((*uint32)(&c.state), uint32(buildContextStateBuilding))
-	c.logger.Describe(ColorGreen, "%s : starting build", c.def.String())
+	c.logger.Describe(ColorYellow, "starting build")
 
 	// Save the definition to the build directory.
 	def, err := c.builder.defDb.MarshalDefinition(c.def)
@@ -127,7 +136,9 @@ func (c *buildContext) build() error {
 		return err
 	}
 
-	c.recept = &BuildRecept{}
+	c.recept = &BuildRecept{
+		StartTime: time.Now(),
+	}
 
 	// Build the dependencies.
 	deps, err := c.def.Dependencies()
@@ -144,6 +155,8 @@ func (c *buildContext) build() error {
 		return err
 	}
 
+	c.recept.Duration = time.Since(c.recept.StartTime)
+
 	// Save the recept to the build directory.
 	recept, err := json.Marshal(c.recept)
 	if err != nil {
@@ -159,7 +172,7 @@ func (c *buildContext) build() error {
 
 	// Update the state.
 	atomic.StoreUint32((*uint32)(&c.state), uint32(buildContextStateBuilt))
-	c.logger.Describe(ColorRed, "%s : finished building", c.def.String())
+	c.logger.Describe(ColorGreen, "built successfully in %s", c.recept.Duration)
 
 	return nil
 }
@@ -196,7 +209,7 @@ func (c *buildContext) ensureUpToDate() error {
 		// compute the definition hash
 		c.hash, err = c.builder.defDb.HashDefinition(c.def)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to hash definition: %w", err)
 		}
 	}
 
@@ -205,7 +218,7 @@ func (c *buildContext) ensureUpToDate() error {
 		// If it already exists, it will be reused.
 		c.buildDir, err = c.builder.buildDir.Mkdir(c.hash.String())
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create build directory: %w", err)
 		}
 	}
 
@@ -215,21 +228,61 @@ func (c *buildContext) ensureUpToDate() error {
 		if errors.Is(err, fs.ErrNotExist) {
 			return c.build()
 		} else if err != nil {
-			return err
+			return fmt.Errorf("failed to load recept: %w", err)
 		}
 	}
 
 	needsBuild, err := c.def.NeedsBuild(c)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to check if build is needed: %w", err)
 	}
 	if needsBuild {
+		c.logger.Describe(ColorYellow, "rebuilding due to user NeedsBuild")
 		return c.build()
 	}
 
-	// TODO(joshua): Check the requirements.
+	wg := sync.WaitGroup{}
+	errChan := make(chan error)
+	doneChan := make(chan struct{})
+	needsBuildChan := make(chan BuildDefinition)
 
-	return nil
+	// Check all requirements in parallel.
+	for _, req := range c.recept.Requirements {
+		child, err := c.builder.contextForHash(c, req, BuildOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to load requirement: %w", err)
+		}
+
+		wg.Add(1)
+		go func(child *buildContext) {
+			defer wg.Done()
+			art, err := child.getArtifact()
+			if err != nil {
+				errChan <- err
+			}
+
+			if art.freshlyBuilt() {
+				needsBuildChan <- child.def
+			}
+		}(child)
+	}
+
+	go func() {
+		defer close(doneChan)
+		wg.Wait()
+	}()
+
+	select {
+	case err := <-errChan:
+		return err
+	case def := <-needsBuildChan:
+		c.logger.Describe(ColorYellow, "rebuilding due to requirement %s", def.String())
+		return c.build()
+	case <-doneChan:
+		atomic.StoreUint32((*uint32)(&c.state), uint32(buildContextStateUsedCache))
+
+		return nil
+	}
 }
 
 func (c *buildContext) getArtifact() (*buildArtifact, error) {
@@ -243,6 +296,10 @@ func (c *buildContext) getArtifact() (*buildArtifact, error) {
 
 	// Check the state.
 	return &buildArtifact{c}, nil
+}
+
+func (c *buildContext) freshlyBuilt() bool {
+	return atomic.LoadUint32((*uint32)(&c.state)) == uint32(buildContextStateBuilt)
 }
 
 func (c *buildContext) addDependency(def BuildDefinition) {
@@ -281,11 +338,19 @@ func (c *buildContext) BuildChild(def BuildDefinition) (BuildArtifact, error) {
 }
 
 func (c *buildContext) Describe(format string, args ...interface{}) {
-	c.logger.Describe(ColorDefault, c.def.String()+" : "+format, args...)
+	c.logger.Describe(ColorDefault, format, args...)
 }
 
 func (c *buildContext) Logf(format string, args ...interface{}) {
-	c.logger.Logf(c.def.String()+" : "+format, args...)
+	c.logger.Logf(format, args...)
+}
+
+func (c *buildContext) LastBuild() time.Time {
+	if c.recept == nil {
+		return time.Time{}
+	}
+
+	return c.recept.StartTime
 }
 
 var (
@@ -369,6 +434,20 @@ func (b *builder) loadDefinition(hash hash.Hash) (io.ReadCloser, error) {
 	return nil, fmt.Errorf("loadDefinition not implemented")
 }
 
+func (b *builder) contextForHash(parent *buildContext, hash hash.Hash, opts BuildOptions) (*buildContext, error) {
+	def, err := b.defDb.GetDefinitionByHash(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	buildDef, ok := def.(BuildDefinition)
+	if !ok {
+		return nil, fmt.Errorf("definition %T is not a BuildDefinition", def)
+	}
+
+	return b.contextForDefinition(parent, buildDef, opts), nil
+}
+
 var (
 	_ Builder = &builder{}
 )
@@ -388,9 +467,10 @@ func New(buildDir filesystem.MutableDirectory, maxJobs int, logger Logger) Build
 // Main
 
 type basicBuildDefinitionParams struct {
-	Name     string
-	WaitTime int // in milliseconds
-	Children []BuildDefinition
+	Name       string
+	WaitTime   int // in milliseconds
+	ExpireTime int // in milliseconds
+	Children   []BuildDefinition
 }
 
 func (p basicBuildDefinitionParams) SerializableType() string { return "basic" }
@@ -425,6 +505,16 @@ func (d *basicBuildDefinition) SerializableType() string {
 
 // NeedsBuild implements BuildDefinition.
 func (d *basicBuildDefinition) NeedsBuild(ctx BuildContext) (bool, error) {
+	lastBuild := ctx.LastBuild()
+
+	if lastBuild.IsZero() {
+		return true, nil
+	}
+
+	if d.params.ExpireTime > 0 && time.Since(lastBuild) > time.Duration(d.params.ExpireTime)*time.Millisecond {
+		return true, nil
+	}
+
 	return false, nil
 }
 
@@ -454,12 +544,13 @@ var (
 	_ BuildDefinition = &basicBuildDefinition{}
 )
 
-func newBasicBuildDefinition(name string, children ...BuildDefinition) *basicBuildDefinition {
+func newBasicBuildDefinition(name string, waitTime int, expireTime int, children ...BuildDefinition) *basicBuildDefinition {
 	return &basicBuildDefinition{
 		params: basicBuildDefinitionParams{
-			Name:     name,
-			WaitTime: int(rand.NormFloat64()*2500 + 50),
-			Children: children,
+			Name:       name,
+			WaitTime:   waitTime,
+			ExpireTime: expireTime,
+			Children:   children,
 		},
 	}
 }
@@ -468,12 +559,13 @@ func graphToBuildDefinition(graph []Edge) (map[int]BuildDefinition, error) {
 	defs := make(map[int]BuildDefinition)
 
 	for _, edge := range graph {
+		waitTime := int(math.Abs(rand.NormFloat64()*250 + 50))
 		if _, ok := defs[edge.From]; !ok {
-			defs[edge.From] = newBasicBuildDefinition(fmt.Sprintf("node%d", edge.From))
+			defs[edge.From] = newBasicBuildDefinition(fmt.Sprintf("node%d", edge.From), waitTime, 0)
 		}
 
 		if _, ok := defs[edge.To]; !ok {
-			defs[edge.To] = newBasicBuildDefinition(fmt.Sprintf("node%d", edge.To))
+			defs[edge.To] = newBasicBuildDefinition(fmt.Sprintf("node%d", edge.To), waitTime, 0)
 		}
 
 		parent := defs[edge.From]
@@ -489,11 +581,145 @@ func graphToBuildDefinition(graph []Edge) (map[int]BuildDefinition, error) {
 	return defs, nil
 }
 
+type simpleLoggerGroup struct {
+	id     string
+	parent string
+}
+
+// Child implements Logger.
+func (s *simpleLoggerGroup) Child(description string) Logger {
+	return &simpleLoggerGroup{id: description, parent: s.id}
+}
+
+// Close implements Logger.
+func (s *simpleLoggerGroup) Close() error {
+	return nil
+}
+
+// Describe implements Logger.
+func (s *simpleLoggerGroup) Describe(color Color, format string, args ...interface{}) {
+	currentTime := time.Now().Format("15:04:05.000")
+	logString := fmt.Sprintf(format, args...)
+
+	switch color {
+	default:
+		fallthrough
+	case ColorDefault:
+		fmt.Printf("[%s] %s: %s\n", currentTime, s.id, logString)
+	case ColorRed:
+		fmt.Printf("[%s] \033[31m%s\033[0m: %s\n", currentTime, s.id, logString)
+	case ColorGreen:
+		fmt.Printf("[%s] \033[32m%s\033[0m: %s\n", currentTime, s.id, logString)
+	case ColorYellow:
+		fmt.Printf("[%s] \033[33m%s\033[0m: %s\n", currentTime, s.id, logString)
+	case ColorBlue:
+		fmt.Printf("[%s] \033[34m%s\033[0m: %s\n", currentTime, s.id, logString)
+	case ColorGrey:
+		fmt.Printf("[%s] \033[90m%s\033[0m: %s\n", currentTime, s.id, logString)
+	}
+}
+
+// Logf implements Logger.
+func (s *simpleLoggerGroup) Logf(format string, args ...interface{}) {
+	s.Describe(ColorDefault, format, args...)
+}
+
 var (
-	jobs   = flag.Int("jobs", 1, "number of jobs to run in parallel")
-	nodes  = flag.Int("nodes", 100, "number of nodes in the graph")
-	edges  = flag.Int("edges", 100, "number of edges in the graph")
-	height = flag.Int("height", 30, "height of the logger")
+	_ Logger = &simpleLoggerGroup{}
+)
+
+type simpleLogger struct {
+}
+
+// Close implements RootLogger.
+func (s *simpleLogger) Close() error {
+	return nil
+}
+
+// Group implements RootLogger.
+func (s *simpleLogger) Group(name string) Logger {
+	return &simpleLoggerGroup{id: name}
+}
+
+// Run implements RootLogger.
+func (s *simpleLogger) Run(w io.Writer) error {
+	return nil
+}
+
+var (
+	_ RootLogger = &simpleLogger{}
+)
+
+func SaveGraph(out io.Writer, graph []Edge, root int) error {
+	nodes := make(map[int]struct{})
+
+	fmt.Fprintf(out, "root\t%d\n", root)
+
+	for _, edge := range graph {
+		nodes[edge.From] = struct{}{}
+		nodes[edge.To] = struct{}{}
+	}
+
+	for node := range nodes {
+		waitTime := int(math.Abs(rand.NormFloat64()*250 + 50))
+		expireTime := int(math.Abs(rand.NormFloat64()*25000 + 50))
+		fmt.Fprintf(out, "node\t%d\t%d\t%d\n", node, waitTime, expireTime)
+	}
+
+	for _, edge := range graph {
+		fmt.Fprintf(out, "edge\t%d\t%d\n", edge.From, edge.To)
+	}
+
+	return nil
+}
+
+func LoadGraph(in io.Reader) (BuildDefinition, error) {
+	scanner := bufio.NewScanner(in)
+
+	nodes := make(map[int]*basicBuildDefinition)
+
+	var root int
+
+	for scanner.Scan() {
+		tokens := strings.Split(scanner.Text(), "\t")
+
+		switch tokens[0] {
+		case "root":
+			root, _ = strconv.Atoi(tokens[1])
+		case "node":
+			node, _ := strconv.Atoi(tokens[1])
+			waitTime, _ := strconv.Atoi(tokens[2])
+			expireTime, _ := strconv.Atoi(tokens[3])
+
+			nodes[node] = newBasicBuildDefinition(fmt.Sprintf("node%d", node), waitTime, expireTime)
+		case "edge":
+			from, _ := strconv.Atoi(tokens[1])
+			to, _ := strconv.Atoi(tokens[2])
+
+			parent := nodes[from]
+			child := nodes[to]
+
+			if parent == child {
+				continue
+			}
+
+			parent.params.Children = append(parent.params.Children, child)
+		default:
+			return nil, fmt.Errorf("unknown token: %s", tokens[0])
+		}
+	}
+
+	return nodes[root], nil
+}
+
+var (
+	jobs     = flag.Int("jobs", 1, "number of jobs to run in parallel")
+	nodes    = flag.Int("nodes", 100, "number of nodes in the graph")
+	edges    = flag.Int("edges", 100, "number of edges in the graph")
+	height   = flag.Int("height", 30, "height of the logger")
+	buildDir = flag.String("build-dir", "", "set to use a real build directory")
+	generate = flag.String("generate", "", "generate a graph to a file")
+	load     = flag.String("load", "", "load a graph from a file")
 )
 
 func appMain() error {
@@ -501,29 +727,78 @@ func appMain() error {
 
 	hash.RegisterType(&basicBuildDefinition{})
 
-	slog.Info("generating graph")
+	if *generate != "" {
+		slog.Info("generating graph")
 
-	graph, root, err := GenerateRandomDAG(*nodes, *edges)
-	if err != nil {
-		return err
+		graph, root, err := GenerateRandomDAG(*nodes, *edges)
+		if err != nil {
+			return err
+		}
+
+		slog.Info("saving graph to file")
+
+		out, err := os.Create(*generate)
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+
+		if err := SaveGraph(out, graph, root); err != nil {
+			return err
+		}
+
+		return nil
 	}
 
-	slog.Info("converting graph to build definition")
+	var rootDef BuildDefinition
 
-	buildGraph, err := graphToBuildDefinition(graph)
-	if err != nil {
-		return err
+	if *load != "" {
+		f, err := os.Open(*load)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		rootDef, err = LoadGraph(f)
+		if err != nil {
+			return err
+		}
+	} else {
+		slog.Info("generating graph")
+
+		graph, root, err := GenerateRandomDAG(*nodes, *edges)
+		if err != nil {
+			return err
+		}
+
+		slog.Info("converting graph to build definition")
+
+		buildGraph, err := graphToBuildDefinition(graph)
+		if err != nil {
+			return err
+		}
+
+		slog.Info("generated graph")
+
+		rootDef = buildGraph[root]
 	}
 
-	slog.Info("generated graph")
+	var buildMut filesystem.MutableDirectory
 
-	rootDef := buildGraph[root]
+	if *buildDir != "" {
+		if err := os.MkdirAll(*buildDir, 0755); err != nil {
+			return err
+		}
 
-	buildDir := filesystem.NewMemoryDirectory()
+		buildMut = filesystem.NewLocalMutableDirectory(*buildDir)
+	} else {
+		buildMut = filesystem.NewMemoryDirectory()
+	}
 
-	logger := NewEventDrivenLogger(*height)
+	// logger := NewEventDrivenLogger(*height)
+	logger := &simpleLogger{}
 
-	builder := New(buildDir, *jobs, logger.Group("build"))
+	builder := New(buildMut, *jobs, logger.Group("build"))
 
 	go func() {
 		if err := logger.Run(os.Stdout); err != nil {
@@ -532,15 +807,9 @@ func appMain() error {
 	}()
 	defer logger.Close()
 
-	start := time.Now()
-
 	if _, err := builder.Build(rootDef, BuildOptions{}); err != nil {
 		return err
 	}
-
-	logger.Group("build").Describe(ColorGreen, "total time: %s", time.Since(start))
-
-	time.Sleep(1 * time.Second)
 
 	return nil
 }

@@ -5,7 +5,6 @@ import (
 	"io"
 
 	"math/rand"
-	"time"
 )
 
 // Edge represents a directed edge from a node to another node.
@@ -20,9 +19,6 @@ func GenerateRandomDAG(nodeCount, edgeCount int) ([]Edge, int, error) {
 	if edgeCount > nodeCount*(nodeCount-1)/2 {
 		return nil, -1, fmt.Errorf("too many edges for a DAG with %d nodes", nodeCount)
 	}
-
-	// Initialize random seed
-	rand.Seed(time.Now().UnixNano())
 
 	// Generates a random order of nodes
 	nodes := make([]int, nodeCount)
