@@ -417,7 +417,7 @@ func NewMemoryDirectory() MutableDirectory {
 	}
 }
 
-func ExtractEntry(ent Entry, dir MutableDirectory) (File, error) {
+func extractEntry(ent Entry, dir MutableDirectory) (File, error) {
 	switch ent.Typeflag() {
 	case TypeDirectory:
 		name := strings.TrimSuffix(ent.Name(), "/")

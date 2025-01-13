@@ -27,7 +27,7 @@ func GetLinkName(ent File) (string, error) {
 		return string(ent.contents), nil
 	case *overlayFile:
 		return GetLinkName(ent.File)
-	case SimpleEntry:
+	case simpleEntry:
 		return ent.linkName, nil
 	default:
 		return "", fmt.Errorf("GetLinkName not implemented: %T", ent)
@@ -48,20 +48,20 @@ func GetUidAndGid(ent File) (int, int, error) {
 		return ent.uid, ent.gid, nil
 	case *CacheEntry:
 		return ent.CUid, ent.CGid, nil
-	case SimpleEntry:
+	case simpleEntry:
 		return ent.uid, ent.gid, nil
-	case *LocalFile:
+	case *localFile:
 		return 0, 0, nil
-	case *LocalDirectory:
+	case *localDirectory:
 		return 0, 0, nil
-	case *LocalMutableFile:
+	case *localMutableFile:
 		stat, err := ent.Stat()
 		if err != nil {
 			return -1, -1, err
 		}
 
 		return GetUidAndGidNative(stat)
-	case *LocalMutableDirectory:
+	case *localMutableDirectory:
 		stat, err := ent.Stat()
 		if err != nil {
 			return -1, -1, err
@@ -115,13 +115,13 @@ func (t FileType) String() string {
 	}
 }
 
-type RemoteFile struct {
+type remoteFile struct {
 	client   *http.Client
 	url      string
 	contents MutableFile
 }
 
-func (r *RemoteFile) loadContents() error {
+func (r *remoteFile) loadContents() error {
 	resp, err := r.client.Get(r.url)
 	if err != nil {
 		return err
@@ -147,7 +147,7 @@ func (r *RemoteFile) loadContents() error {
 }
 
 // Open implements File.
-func (r *RemoteFile) Open() (FileHandle, error) {
+func (r *remoteFile) Open() (FileHandle, error) {
 	if r.contents == nil {
 		if err := r.loadContents(); err != nil {
 			return nil, err
@@ -158,7 +158,7 @@ func (r *RemoteFile) Open() (FileHandle, error) {
 }
 
 // Stat implements File.
-func (r *RemoteFile) Stat() (FileInfo, error) {
+func (r *remoteFile) Stat() (FileInfo, error) {
 	if r.contents == nil {
 		if err := r.loadContents(); err != nil {
 			return nil, err
@@ -169,11 +169,11 @@ func (r *RemoteFile) Stat() (FileInfo, error) {
 }
 
 var (
-	_ File = &RemoteFile{}
+	_ File = &remoteFile{}
 )
 
 func NewRemoteFile(client *http.Client, url string) File {
-	return &RemoteFile{client: client, url: url}
+	return &remoteFile{client: client, url: url}
 }
 
 type lazyRemoteFile struct {
@@ -308,7 +308,7 @@ var (
 
 func SourceFromFile(f File) (hash.SerializableValue, error) {
 	switch f := f.(type) {
-	case *LocalFile:
+	case *localFile:
 		return f.source, nil
 	case *StarFile:
 		return SourceFromFile(f.File)
@@ -517,7 +517,7 @@ func NewHardLink(target string) (MutableFile, error) {
 	}, nil
 }
 
-type SimpleEntry struct {
+type simpleEntry struct {
 	File
 
 	uid      int
@@ -530,17 +530,17 @@ type SimpleEntry struct {
 	typeFlag FileType
 }
 
-func (s SimpleEntry) Devmajor() int64    { return 0 }
-func (s SimpleEntry) Devminor() int64    { return 0 }
-func (s SimpleEntry) Uid() int           { return s.uid }
-func (s SimpleEntry) Gid() int           { return s.gid }
-func (s SimpleEntry) Linkname() string   { return s.linkName }
-func (s SimpleEntry) ModTime() time.Time { return s.modTime }
-func (s SimpleEntry) Mode() fs.FileMode  { return s.mode }
-func (s SimpleEntry) Name() string       { return s.name }
-func (s SimpleEntry) Size() int64        { return s.size }
-func (s SimpleEntry) Typeflag() FileType { return s.typeFlag }
+func (s simpleEntry) Devmajor() int64    { return 0 }
+func (s simpleEntry) Devminor() int64    { return 0 }
+func (s simpleEntry) Uid() int           { return s.uid }
+func (s simpleEntry) Gid() int           { return s.gid }
+func (s simpleEntry) Linkname() string   { return s.linkName }
+func (s simpleEntry) ModTime() time.Time { return s.modTime }
+func (s simpleEntry) Mode() fs.FileMode  { return s.mode }
+func (s simpleEntry) Name() string       { return s.name }
+func (s simpleEntry) Size() int64        { return s.size }
+func (s simpleEntry) Typeflag() FileType { return s.typeFlag }
 
 var (
-	_ Entry = SimpleEntry{}
+	_ Entry = simpleEntry{}
 )

@@ -2,7 +2,6 @@ package filesystem
 
 import (
 	"crypto/sha256"
-	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -19,15 +18,15 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
 
-type ArrayArchive []Entry
+type arrayArchive []Entry
 
 // Entries implements Archive.
-func (a ArrayArchive) Entries() ([]Entry, error) {
+func (a arrayArchive) Entries() ([]Entry, error) {
 	return a, nil
 }
 
 var (
-	_ Archive = ArrayArchive{}
+	_ Archive = arrayArchive{}
 )
 
 func ReadArchiveFromFile(f File) (Archive, error) {
@@ -42,7 +41,7 @@ func ReadArchiveFromFile(f File) (Archive, error) {
 		source = src
 	}
 
-	var ret ArrayArchive
+	var ret arrayArchive
 
 	var off int64 = 0
 
@@ -87,11 +86,8 @@ func ReadArchiveFromStreamingServer(client *http.Client, server string, f File) 
 	}
 
 	dec := json.NewDecoder(fh)
-	if err != nil {
-		return nil, err
-	}
 
-	var ret ArrayArchive
+	var ret arrayArchive
 
 	for {
 		var cacheEnt CacheEntry
@@ -121,7 +117,7 @@ func ExtractArchive(ark Archive, mut MutableDirectory) error {
 	}
 
 	for _, ent := range ents {
-		if _, err := ExtractEntry(ent, mut); err != nil {
+		if _, err := extractEntry(ent, mut); err != nil {
 			return fmt.Errorf("failed to extract archive: %w", err)
 		}
 	}
@@ -277,59 +273,6 @@ func ExtractArchiveToStreamableIndex(file File, idx io.Writer, w StreamableWrite
 	}
 
 	return nil
-}
-
-func ArchiveFromFS(eFs embed.FS, base string) (ArrayArchive, error) {
-	var ents ArrayArchive
-
-	if err := fs.WalkDir(eFs, base, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-
-		if info.IsDir() {
-			ents = append(ents, SimpleEntry{
-				File:     NewMemoryDirectory(),
-				mode:     info.Mode(),
-				name:     path,
-				size:     info.Size(),
-				typeFlag: TypeDirectory,
-			})
-		} else {
-			f, err := eFs.Open(path)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-
-			contents, err := io.ReadAll(f)
-			if err != nil {
-				return err
-			}
-
-			mf := NewMemoryFile(TypeRegular)
-			mf.Overwrite(contents)
-
-			ents = append(ents, SimpleEntry{
-				File:     mf,
-				mode:     info.Mode(),
-				name:     path,
-				size:     info.Size(),
-				typeFlag: TypeRegular,
-			})
-		}
-
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-
-	return ents, nil
 }
 
 const CACHE_ENTRY_SIZE = 1024
