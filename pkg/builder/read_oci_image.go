@@ -20,42 +20,42 @@ type OciManifest []struct {
 	Layers   []string `json:"Layers"`
 }
 
-type ReadOciImageDefinition struct {
+type readOciImageDefinition struct {
 	params ReadOciImageParameters
 }
 
 // Dependencies implements common.BuildDefinition.
-func (r *ReadOciImageDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
+func (r *readOciImageDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	return []common.DependencyNode{r.params.Base}, nil
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (r *ReadOciImageDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (r *readOciImageDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	return ctx.NeedsBuild(r.params.Base)
 }
 
 // Params implements common.BuildDefinition.
-func (r *ReadOciImageDefinition) Params() hash.SerializableValue { return r.params }
-func (r *ReadOciImageDefinition) SerializableType() string       { return "ReadOciImageDefinition" }
-func (r *ReadOciImageDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &ReadOciImageDefinition{params: params.(ReadOciImageParameters)}
+func (r *readOciImageDefinition) Params() hash.SerializableValue { return r.params }
+func (r *readOciImageDefinition) SerializableType() string       { return "ReadOciImageDefinition" }
+func (r *readOciImageDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &readOciImageDefinition{params: params.(ReadOciImageParameters)}
 }
 
 // Tag implements common.BuildDefinition.
-func (r *ReadOciImageDefinition) Tag() string {
+func (r *readOciImageDefinition) Tag() string {
 	tag := []string{"ReadOciImage"}
 	tag = append(tag, r.params.Base.Tag())
 	return strings.Join(tag, "_")
 }
 
 // AsFragments implements common.Directive.
-func (r *ReadOciImageDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+func (r *readOciImageDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(r)
 	if err != nil {
 		return nil, err
 	}
 
-	var def FetchOciImageDefinition
+	var def fetchOciImageDefinition
 
 	if err := ParseJsonFromFile(res, &def); err != nil {
 		return nil, err
@@ -82,14 +82,14 @@ func (r *ReadOciImageDefinition) AsFragments(ctx common.BuildContext1, special c
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (r *ReadOciImageDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
-	var def FetchOciImageDefinition
+func (r *readOciImageDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+	var def fetchOciImageDefinition
 
 	return def.ToStarlark(ctx, result)
 }
 
 // Build implements common.BuildDefinition.
-func (r *ReadOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (r *readOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	child, err := ctx.BuildChild(r.params.Base)
 	if err != nil {
 		return nil, err
@@ -129,7 +129,7 @@ func (r *ReadOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildRe
 		return nil, err
 	}
 
-	out := &FetchOciImageDefinition{}
+	out := &fetchOciImageDefinition{}
 
 	for _, layer := range mainManifest.Layers {
 		layerDef, err := NewDefinitionFromFile(filenames[layer])
@@ -158,11 +158,11 @@ func (r *ReadOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildRe
 }
 
 var (
-	_ common.BuildDefinition1 = &ReadOciImageDefinition{}
+	_ common.BuildDefinition1 = &readOciImageDefinition{}
 )
 
-func NewReadOCIImageDefinition(base common.BuildDefinition1) *ReadOciImageDefinition {
-	return &ReadOciImageDefinition{
+func NewReadOCIImageDefinition(base common.BuildDefinition1) *readOciImageDefinition {
+	return &readOciImageDefinition{
 		params: ReadOciImageParameters{
 			Base: base,
 		},

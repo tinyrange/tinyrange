@@ -15,17 +15,17 @@ import (
 )
 
 func init() {
-	hash.RegisterType(&DecompressFileBuildDefinition{})
+	hash.RegisterType(&decompressFileBuildDefinition{})
 }
 
-type DecompressFileBuildDefinition struct {
+type decompressFileBuildDefinition struct {
 	params DecompressFileParameters
 
 	r io.ReadCloser
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *DecompressFileBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
+func (def *decompressFileBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	if def.params.Base != nil {
 		return []common.DependencyNode{def.params.Base}, nil
 	} else {
@@ -34,21 +34,21 @@ func (def *DecompressFileBuildDefinition) Dependencies(ctx common.BuildContext1)
 }
 
 // implements common.BuildDefinition.
-func (def *DecompressFileBuildDefinition) Params() hash.SerializableValue { return def.params }
-func (def *DecompressFileBuildDefinition) SerializableType() string {
+func (def *decompressFileBuildDefinition) Params() hash.SerializableValue { return def.params }
+func (def *decompressFileBuildDefinition) SerializableType() string {
 	return "DecompressFileBuildDefinition"
 }
-func (def *DecompressFileBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &DecompressFileBuildDefinition{params: params.(DecompressFileParameters)}
+func (def *decompressFileBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &decompressFileBuildDefinition{params: params.(DecompressFileParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *DecompressFileBuildDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (def *decompressFileBuildDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return filesystem.NewStarFile(result, def.Tag()), nil
 }
 
 // NeedsBuild implements BuildDefinition.
-func (def *DecompressFileBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *decompressFileBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	build, err := ctx.NeedsBuild(def.params.Base)
 	if err != nil {
 		return true, err
@@ -61,7 +61,7 @@ func (def *DecompressFileBuildDefinition) NeedsBuild(ctx common.BuildContext1, c
 }
 
 // WriteTo implements BuildResult.
-func (def *DecompressFileBuildDefinition) WriteResult(w io.Writer) error {
+func (def *decompressFileBuildDefinition) WriteResult(w io.Writer) error {
 	if _, err := io.Copy(w, def.r); err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (def *DecompressFileBuildDefinition) WriteResult(w io.Writer) error {
 }
 
 // Build implements BuildDefinition.
-func (def *DecompressFileBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *decompressFileBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	f, err := ctx.BuildChild(def.params.Base)
 	if err != nil {
 		return nil, err
@@ -104,26 +104,26 @@ func (def *DecompressFileBuildDefinition) Build(ctx common.BuildContext1) (commo
 }
 
 // Tag implements BuildDefinition.
-func (def *DecompressFileBuildDefinition) Tag() string {
+func (def *decompressFileBuildDefinition) Tag() string {
 	return strings.Join([]string{"DecompressFile", def.params.Base.Tag(), def.params.Kind}, "_")
 }
 
-func (def *DecompressFileBuildDefinition) String() string { return def.Tag() }
-func (*DecompressFileBuildDefinition) Type() string       { return "DecompressFileBuildDefinition" }
-func (*DecompressFileBuildDefinition) Hash() (uint32, error) {
+func (def *decompressFileBuildDefinition) String() string { return def.Tag() }
+func (*decompressFileBuildDefinition) Type() string       { return "DecompressFileBuildDefinition" }
+func (*decompressFileBuildDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("DecompressFileBuildDefinition is not hashable")
 }
-func (*DecompressFileBuildDefinition) Truth() starlark.Bool { return starlark.True }
-func (*DecompressFileBuildDefinition) Freeze()              {}
+func (*decompressFileBuildDefinition) Truth() starlark.Bool { return starlark.True }
+func (*decompressFileBuildDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &DecompressFileBuildDefinition{}
-	_ common.BuildDefinition1 = &DecompressFileBuildDefinition{}
-	_ common.BuildResult      = &DecompressFileBuildDefinition{}
+	_ starlark.Value          = &decompressFileBuildDefinition{}
+	_ common.BuildDefinition1 = &decompressFileBuildDefinition{}
+	_ common.BuildResult      = &decompressFileBuildDefinition{}
 )
 
-func NewDecompressFileBuildDefinition(base common.BuildDefinition1, kind string) *DecompressFileBuildDefinition {
-	return &DecompressFileBuildDefinition{
+func NewDecompressFileBuildDefinition(base common.BuildDefinition1, kind string) *decompressFileBuildDefinition {
+	return &decompressFileBuildDefinition{
 		params: DecompressFileParameters{Base: base, Kind: kind},
 	}
 }

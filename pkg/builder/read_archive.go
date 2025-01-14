@@ -23,7 +23,7 @@ import (
 )
 
 func init() {
-	hash.RegisterType(&ReadArchiveBuildDefinition{})
+	hash.RegisterType(&readArchiveBuildDefinition{})
 }
 
 type directoryToArchiveBuildResult struct {
@@ -423,12 +423,12 @@ func ReadArchiveSupportsExtracting(kind string) bool {
 	}
 }
 
-type ReadArchiveBuildDefinition struct {
+type readArchiveBuildDefinition struct {
 	params ReadArchiveParameters
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *ReadArchiveBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
+func (def *readArchiveBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	if def.params.Base != nil {
 		return []common.DependencyNode{def.params.Base}, nil
 	} else {
@@ -437,14 +437,14 @@ func (def *ReadArchiveBuildDefinition) Dependencies(ctx common.BuildContext1) ([
 }
 
 // implements common.BuildDefinition.
-func (def *ReadArchiveBuildDefinition) Params() hash.SerializableValue { return def.params }
-func (def *ReadArchiveBuildDefinition) SerializableType() string       { return "ReadArchiveBuildDefinition" }
-func (def *ReadArchiveBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &ReadArchiveBuildDefinition{params: params.(ReadArchiveParameters)}
+func (def *readArchiveBuildDefinition) Params() hash.SerializableValue { return def.params }
+func (def *readArchiveBuildDefinition) SerializableType() string       { return "ReadArchiveBuildDefinition" }
+func (def *readArchiveBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &readArchiveBuildDefinition{params: params.(ReadArchiveParameters)}
 }
 
 // AsFragments implements common.Directive.
-func (r *ReadArchiveBuildDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+func (r *readArchiveBuildDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(r)
 	if err != nil {
 		return nil, err
@@ -466,7 +466,7 @@ func (r *ReadArchiveBuildDefinition) AsFragments(ctx common.BuildContext1, speci
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (r *ReadArchiveBuildDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (r *readArchiveBuildDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	ark, err := filesystem.ReadArchiveFromFile(result)
 	if err != nil {
 		return starlark.None, err
@@ -476,7 +476,7 @@ func (r *ReadArchiveBuildDefinition) ToStarlark(ctx common.BuildContext1, result
 }
 
 // NeedsBuild implements BuildDefinition.
-func (r *ReadArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (r *readArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	build, err := ctx.NeedsBuild(r.params.Base)
 	if err != nil {
 		return true, err
@@ -489,7 +489,7 @@ func (r *ReadArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheT
 }
 
 // Build implements BuildDefinition.
-func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (r *readArchiveBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	f, err := ctx.BuildChild(r.params.Base)
 	if err != nil {
 		return nil, err
@@ -557,24 +557,24 @@ func (r *ReadArchiveBuildDefinition) Build(ctx common.BuildContext1) (common.Bui
 }
 
 // Tag implements BuildDefinition.
-func (r *ReadArchiveBuildDefinition) Tag() string {
+func (r *readArchiveBuildDefinition) Tag() string {
 	return strings.Join([]string{"ReadArchive", r.params.Base.Tag(), r.params.Kind}, "_")
 }
 
-func (def *ReadArchiveBuildDefinition) String() string { return def.Tag() }
-func (*ReadArchiveBuildDefinition) Type() string       { return "ReadArchiveBuildDefinition" }
-func (*ReadArchiveBuildDefinition) Hash() (uint32, error) {
+func (def *readArchiveBuildDefinition) String() string { return def.Tag() }
+func (*readArchiveBuildDefinition) Type() string       { return "ReadArchiveBuildDefinition" }
+func (*readArchiveBuildDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("ReadArchiveBuildDefinition is not hashable")
 }
-func (*ReadArchiveBuildDefinition) Truth() starlark.Bool { return starlark.True }
-func (*ReadArchiveBuildDefinition) Freeze()              {}
+func (*readArchiveBuildDefinition) Truth() starlark.Bool { return starlark.True }
+func (*readArchiveBuildDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &ReadArchiveBuildDefinition{}
-	_ common.BuildDefinition1 = &ReadArchiveBuildDefinition{}
-	_ common.Directive        = &ReadArchiveBuildDefinition{}
+	_ starlark.Value          = &readArchiveBuildDefinition{}
+	_ common.BuildDefinition1 = &readArchiveBuildDefinition{}
+	_ common.Directive        = &readArchiveBuildDefinition{}
 )
 
-func NewReadArchiveBuildDefinition(base common.BuildDefinition1, kind string) *ReadArchiveBuildDefinition {
-	return &ReadArchiveBuildDefinition{params: ReadArchiveParameters{Base: base, Kind: kind}}
+func NewReadArchiveBuildDefinition(base common.BuildDefinition1, kind string) *readArchiveBuildDefinition {
+	return &readArchiveBuildDefinition{params: ReadArchiveParameters{Base: base, Kind: kind}}
 }

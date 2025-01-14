@@ -16,30 +16,38 @@ import (
 )
 
 func init() {
-	hash.RegisterType(&PlanDefinition{})
+	hash.RegisterType(&planDefinition{})
 }
 
-type PlanDefinition struct {
+type PlanDefinition interface {
+	common.BuildDefinition1
+	common.InstallationPlanBuilder
+	common.Directive
+
+	AddPackage(name common.PackageQuery) (PlanDefinition, error)
+}
+
+type planDefinition struct {
 	params PlanParameters
 
 	Fragments []config.Fragment
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *PlanDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
+func (def *planDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	// The builder is a dynamic dependency.
 	return []common.DependencyNode{}, nil
 }
 
 // implements common.BuildDefinition.
-func (def *PlanDefinition) Params() hash.SerializableValue { return def.params }
-func (def *PlanDefinition) SerializableType() string       { return "PlanDefinition" }
-func (def *PlanDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &PlanDefinition{params: params.(PlanParameters)}
+func (def *planDefinition) Params() hash.SerializableValue { return def.params }
+func (def *planDefinition) SerializableType() string       { return "PlanDefinition" }
+func (def *planDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &planDefinition{params: params.(PlanParameters)}
 }
 
 // AsFragments implements common.Directive.
-func (def *PlanDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+func (def *planDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(def)
 	if err != nil {
 		return nil, err
@@ -69,8 +77,8 @@ func (def *PlanDefinition) AsFragments(ctx common.BuildContext1, special common.
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *PlanDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
-	var plan *PlanDefinition
+func (def *planDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+	var plan *planDefinition
 
 	if err := ParseJsonFromFile(result, &plan); err != nil {
 		return nil, err
@@ -83,7 +91,7 @@ func (def *PlanDefinition) ToStarlark(ctx common.BuildContext1, result filesyste
 }
 
 // Attr implements starlark.HasAttrs.
-func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
+func (def *planDefinition) Attr(name string) (starlark.Value, error) {
 	if name == "filesystem" {
 		return starlark.NewBuiltin("PlanDefinition.filesystem", func(
 			thread *starlark.Thread,
@@ -154,7 +162,7 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 				}
 			}
 
-			return &PlanDefinition{
+			return &planDefinition{
 				params: PlanParameters{
 					Builder:      def.params.Builder,
 					Architecture: def.params.Architecture,
@@ -198,7 +206,7 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 				}
 			}
 
-			return &PlanDefinition{
+			return &planDefinition{
 				params: PlanParameters{
 					Builder:      def.params.Builder,
 					Architecture: def.params.Architecture,
@@ -227,7 +235,7 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return &PlanDefinition{
+			return &planDefinition{
 				params: PlanParameters{
 					Builder:      def.params.Builder,
 					Architecture: def.params.Architecture,
@@ -242,12 +250,12 @@ func (def *PlanDefinition) Attr(name string) (starlark.Value, error) {
 }
 
 // AttrNames implements starlark.HasAttrs.
-func (def *PlanDefinition) AttrNames() []string {
+func (def *planDefinition) AttrNames() []string {
 	return []string{"filesystem", "add_packages"}
 }
 
 // WriteTo implements common.BuildResult.
-func (def *PlanDefinition) WriteResult(w io.Writer) error {
+func (def *planDefinition) WriteResult(w io.Writer) error {
 	enc := json.NewEncoder(w)
 
 	if err := enc.Encode(&def); err != nil {
@@ -258,7 +266,7 @@ func (def *PlanDefinition) WriteResult(w io.Writer) error {
 }
 
 // Build implements common.BuildDefinition.
-func (def *PlanDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *planDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	arch, err := config.ArchitectureFromString(def.params.Architecture)
 	if err != nil {
 		return nil, err
@@ -300,7 +308,7 @@ func (def *PlanDefinition) Build(ctx common.BuildContext1) (common.BuildResult, 
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *PlanDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *planDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
@@ -309,7 +317,7 @@ func (def *PlanDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.T
 }
 
 // Tag implements common.BuildDefinition.
-func (def *PlanDefinition) Tag() string {
+func (def *planDefinition) Tag() string {
 	return strings.Join([]string{
 		"PlanDefinition",
 		def.params.Builder,
@@ -318,8 +326,8 @@ func (def *PlanDefinition) Tag() string {
 	}, "_")
 }
 
-func (def *PlanDefinition) AddPackage(name common.PackageQuery) (*PlanDefinition, error) {
-	return &PlanDefinition{
+func (def *planDefinition) AddPackage(name common.PackageQuery) (PlanDefinition, error) {
+	return &planDefinition{
 		params: PlanParameters{
 			Builder:      def.params.Builder,
 			Architecture: def.params.Architecture,
@@ -329,28 +337,28 @@ func (def *PlanDefinition) AddPackage(name common.PackageQuery) (*PlanDefinition
 	}, nil
 }
 
-func (def *PlanDefinition) String() string { return def.Tag() }
-func (*PlanDefinition) Type() string       { return "PlanDefinition" }
-func (*PlanDefinition) Hash() (uint32, error) {
+func (def *planDefinition) String() string { return def.Tag() }
+func (*planDefinition) Type() string       { return "PlanDefinition" }
+func (*planDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("PlanDefinition is not hashable")
 }
-func (*PlanDefinition) Truth() starlark.Bool { return starlark.True }
-func (*PlanDefinition) Freeze()              {}
+func (*planDefinition) Truth() starlark.Bool { return starlark.True }
+func (*planDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &PlanDefinition{}
-	_ starlark.HasAttrs       = &PlanDefinition{}
-	_ common.BuildDefinition1 = &PlanDefinition{}
-	_ common.BuildResult      = &PlanDefinition{}
-	_ common.Directive        = &PlanDefinition{}
+	_ starlark.Value          = &planDefinition{}
+	_ starlark.HasAttrs       = &planDefinition{}
+	_ common.BuildDefinition1 = &planDefinition{}
+	_ common.BuildResult      = &planDefinition{}
+	_ common.Directive        = &planDefinition{}
 )
 
-func NewPlanDefinition(builder string, arch config.CPUArchitecture, search []common.PackageQuery, tagList common.TagList) (*PlanDefinition, error) {
+func NewPlanDefinition(builder string, arch config.CPUArchitecture, search []common.PackageQuery, tagList common.TagList) (PlanDefinition, error) {
 	if builder == "" {
 		return nil, fmt.Errorf("no builder specified")
 	}
 
-	return &PlanDefinition{
+	return &planDefinition{
 		params: PlanParameters{
 			Builder:      builder,
 			Architecture: string(arch),

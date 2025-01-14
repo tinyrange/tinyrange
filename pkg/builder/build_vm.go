@@ -21,7 +21,7 @@ import (
 )
 
 func init() {
-	hash.RegisterType(&BuildVmDefinition{})
+	hash.RegisterType(&buildVmDefinition{})
 }
 
 type ErrTemplateBuilt string
@@ -33,7 +33,7 @@ var (
 	_ error = ErrTemplateBuilt("")
 )
 
-type BuildVmDefinition struct {
+type buildVmDefinition struct {
 	params BuildVmParameters
 
 	buildTemplateOutput bool
@@ -45,12 +45,12 @@ type BuildVmDefinition struct {
 	gotOutput bool
 }
 
-func (def *BuildVmDefinition) SetBuildTemplateMode() {
+func (def *buildVmDefinition) SetBuildTemplateMode() {
 	def.buildTemplateOutput = true
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *BuildVmDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
+func (def *buildVmDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	var ret []common.DependencyNode
 
 	arch, err := config.ArchitectureFromString(def.params.Architecture)
@@ -77,19 +77,19 @@ func (def *BuildVmDefinition) Dependencies(ctx common.BuildContext1) ([]common.D
 }
 
 // implements common.BuildDefinition.
-func (def *BuildVmDefinition) Params() hash.SerializableValue { return def.params }
-func (def *BuildVmDefinition) SerializableType() string       { return "BuildVmDefinition" }
-func (def *BuildVmDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &BuildVmDefinition{params: params.(BuildVmParameters)}
+func (def *buildVmDefinition) Params() hash.SerializableValue { return def.params }
+func (def *buildVmDefinition) SerializableType() string       { return "BuildVmDefinition" }
+func (def *buildVmDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &buildVmDefinition{params: params.(BuildVmParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *BuildVmDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (def *buildVmDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return filesystem.NewStarFile(result, def.Tag()), nil
 }
 
 // WriteTo implements common.BuildResult.
-func (def *BuildVmDefinition) WriteResult(w io.Writer) error {
+func (def *buildVmDefinition) WriteResult(w io.Writer) error {
 	if err := def.cmd.Wait(); err != nil {
 		return err
 	}
@@ -105,7 +105,7 @@ func (def *BuildVmDefinition) WriteResult(w io.Writer) error {
 	return nil
 }
 
-func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext1, hostAddress string) (config.TinyRangeConfig, error) {
+func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext1, hostAddress string) (config.TinyRangeConfig, error) {
 	arch, err := config.ArchitectureFromString(def.params.Architecture)
 	if err != nil {
 		return config.TinyRangeConfig{}, err
@@ -272,7 +272,7 @@ func (def *BuildVmDefinition) BuildTemplate(ctx common.BuildContext1, hostAddres
 }
 
 // Build implements common.BuildDefinition.
-func (def *BuildVmDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *buildVmDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	if def.buildTemplateOutput {
 		vmCfg, err := def.BuildTemplate(ctx, "")
 		if err != nil {
@@ -347,7 +347,7 @@ func (def *BuildVmDefinition) Build(ctx common.BuildContext1) (common.BuildResul
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *BuildVmDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *buildVmDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
@@ -357,7 +357,7 @@ func (def *BuildVmDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime tim
 }
 
 // Tag implements common.BuildDefinition.
-func (def *BuildVmDefinition) Tag() string {
+func (def *buildVmDefinition) Tag() string {
 	out := []string{"BuildVm"}
 
 	for _, dir := range def.params.Directives {
@@ -374,18 +374,18 @@ func (def *BuildVmDefinition) Tag() string {
 	return strings.Join(out, "_")
 }
 
-func (def *BuildVmDefinition) String() string { return def.Tag() }
-func (*BuildVmDefinition) Type() string       { return "BuildVmDefinition" }
-func (*BuildVmDefinition) Hash() (uint32, error) {
+func (def *buildVmDefinition) String() string { return def.Tag() }
+func (*buildVmDefinition) Type() string       { return "BuildVmDefinition" }
+func (*buildVmDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("BuildVmDefinition is not hashable")
 }
-func (*BuildVmDefinition) Truth() starlark.Bool { return starlark.True }
-func (*BuildVmDefinition) Freeze()              {}
+func (*buildVmDefinition) Truth() starlark.Bool { return starlark.True }
+func (*buildVmDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &BuildVmDefinition{}
-	_ common.BuildDefinition1 = &BuildVmDefinition{}
-	_ common.BuildResult      = &BuildVmDefinition{}
+	_ starlark.Value          = &buildVmDefinition{}
+	_ common.BuildDefinition1 = &buildVmDefinition{}
+	_ common.BuildResult      = &buildVmDefinition{}
 )
 
 func NewBuildVmDefinition(
@@ -400,7 +400,7 @@ func NewBuildVmDefinition(
 	storageSize int,
 	interaction string,
 	debug bool,
-) *BuildVmDefinition {
+) *buildVmDefinition {
 	if storageSize == 0 {
 		storageSize = 1024
 	}
@@ -410,7 +410,7 @@ func NewBuildVmDefinition(
 	if memoryMb == 0 {
 		memoryMb = 1024
 	}
-	return &BuildVmDefinition{
+	return &buildVmDefinition{
 		params: BuildVmParameters{
 			Directives:       dir,
 			Kernel:           kernel,

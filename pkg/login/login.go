@@ -396,7 +396,7 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 		macroCtx.AddVariable("guest_arch", string(vmArch))
 	}
 
-	var planDirective *builder.PlanDefinition
+	var planDirective builder.PlanDefinition
 	if config.OciImage != "" {
 		if strings.HasPrefix(config.OciImage, "./") {
 			// assume this is a local archive which needs to be imported.

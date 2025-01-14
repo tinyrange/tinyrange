@@ -21,7 +21,7 @@ import (
 
 func init() {
 	hash.RegisterType(&registryRequestDefinition{})
-	hash.RegisterType(&FetchOciImageDefinition{})
+	hash.RegisterType(&fetchOciImageDefinition{})
 }
 
 const (
@@ -212,7 +212,7 @@ var (
 	_ common.BuildDefinition1 = &registryRequestDefinition{}
 )
 
-type FetchOciImageDefinition struct {
+type fetchOciImageDefinition struct {
 	params FetchOciImageParameters
 
 	LayerArchives []*filesystem.FileDigest
@@ -220,23 +220,23 @@ type FetchOciImageDefinition struct {
 }
 
 // Dependencies implements common.Directive.
-func (def *FetchOciImageDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
+func (def *fetchOciImageDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	// The requests are dynamic dependencies.
 
 	return []common.DependencyNode{}, nil
 }
 
 // implements common.BuildDefinition.
-func (def *FetchOciImageDefinition) Params() hash.SerializableValue { return def.params }
-func (def *FetchOciImageDefinition) SerializableType() string {
+func (def *fetchOciImageDefinition) Params() hash.SerializableValue { return def.params }
+func (def *fetchOciImageDefinition) SerializableType() string {
 	return "FetchOciImageDefinition"
 }
-func (def *FetchOciImageDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &FetchOciImageDefinition{params: params.(FetchOciImageParameters)}
+func (def *fetchOciImageDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &fetchOciImageDefinition{params: params.(FetchOciImageParameters)}
 }
 
 // AsFragments implements common.Directive.
-func (def *FetchOciImageDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+func (def *fetchOciImageDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(def)
 	if err != nil {
 		return nil, err
@@ -267,7 +267,7 @@ func (def *FetchOciImageDefinition) AsFragments(ctx common.BuildContext1, specia
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *FetchOciImageDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (def *fetchOciImageDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	if err := ParseJsonFromFile(result, &def); err != nil {
 		return nil, err
 	}
@@ -294,13 +294,13 @@ func (def *FetchOciImageDefinition) ToStarlark(ctx common.BuildContext1, result 
 }
 
 // tagDirective implements common.Directive.
-func (def *FetchOciImageDefinition) TagDirective() { panic("unimplemented") }
+func (def *fetchOciImageDefinition) TagDirective() { panic("unimplemented") }
 
-func (def *FetchOciImageDefinition) FromDirective() string {
+func (def *fetchOciImageDefinition) FromDirective() string {
 	return fmt.Sprintf("%s:%s", def.params.Image, def.params.Tag)
 }
 
-func (def *FetchOciImageDefinition) setDefaults() {
+func (def *fetchOciImageDefinition) setDefaults() {
 	if def.params.Registry == "" {
 		def.params.Registry = DEFAULT_REGISTRY
 	}
@@ -312,7 +312,7 @@ func (def *FetchOciImageDefinition) setDefaults() {
 	}
 }
 
-func (def *FetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.BuildDefinition1 {
+func (def *fetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.BuildDefinition1 {
 	return &registryRequestDefinition{
 		ctx: regCtx,
 		params: RegistryRequestParameters{
@@ -326,7 +326,7 @@ func (def *FetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.
 	}
 }
 
-func (def *FetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext1, regCtx *ociRegistryContext, index oci.ImageIndexV1) (common.BuildResult, error) {
+func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext1, regCtx *ociRegistryContext, index oci.ImageIndexV1) (common.BuildResult, error) {
 	// Request all the layers.
 	for _, layer := range index.FsLayers {
 		layerArchive, err := ctx.BuildChild(
@@ -355,7 +355,7 @@ func (def *FetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext1, r
 
 }
 
-func (def *FetchOciImageDefinition) buildFromManifest(
+func (def *fetchOciImageDefinition) buildFromManifest(
 	ctx common.BuildContext1,
 	regCtx *ociRegistryContext,
 	manifest oci.ImageManifest,
@@ -390,7 +390,7 @@ func (def *FetchOciImageDefinition) buildFromManifest(
 	return def, nil
 }
 
-func (def *FetchOciImageDefinition) buildFromIndex(ctx common.BuildContext1, regCtx *ociRegistryContext, index oci.ImageIndexV2) (common.BuildResult, error) {
+func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext1, regCtx *ociRegistryContext, index oci.ImageIndexV2) (common.BuildResult, error) {
 	// Get the right manifest for the architecture.
 	var manifestId oci.ImageManifestIdentifier
 	for _, manifest := range index.Manifests {
@@ -445,7 +445,7 @@ func (def *FetchOciImageDefinition) buildFromIndex(ctx common.BuildContext1, reg
 }
 
 // Build implements common.BuildDefinition.
-func (def *FetchOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *fetchOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	regCtx := &ociRegistryContext{registry: def.params.Registry}
 
 	// Get the index for the image tag.
@@ -485,7 +485,7 @@ func (def *FetchOciImageDefinition) Build(ctx common.BuildContext1) (common.Buil
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *FetchOciImageDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *fetchOciImageDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
@@ -494,14 +494,14 @@ func (def *FetchOciImageDefinition) NeedsBuild(ctx common.BuildContext1, cacheTi
 }
 
 // Tag implements common.BuildDefinition.
-func (def *FetchOciImageDefinition) Tag() string {
+func (def *fetchOciImageDefinition) Tag() string {
 	tag := []string{"fetchOciImage", def.params.Registry, def.params.Image, def.params.Tag, def.params.Architecture}
 
 	return strings.Join(tag, "_")
 }
 
 // WriteTo implements common.BuildResult.
-func (def *FetchOciImageDefinition) WriteResult(w io.Writer) error {
+func (def *fetchOciImageDefinition) WriteResult(w io.Writer) error {
 	enc := json.NewEncoder(w)
 
 	if err := enc.Encode(&def); err != nil {
@@ -511,23 +511,23 @@ func (def *FetchOciImageDefinition) WriteResult(w io.Writer) error {
 	return nil
 }
 
-func (def *FetchOciImageDefinition) String() string { return def.Tag() }
-func (*FetchOciImageDefinition) Type() string       { return "FetchOciImageDefinition" }
-func (*FetchOciImageDefinition) Hash() (uint32, error) {
+func (def *fetchOciImageDefinition) String() string { return def.Tag() }
+func (*fetchOciImageDefinition) Type() string       { return "FetchOciImageDefinition" }
+func (*fetchOciImageDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("fetchOciImageDefinition is not hashable")
 }
-func (*FetchOciImageDefinition) Truth() starlark.Bool { return starlark.True }
-func (*FetchOciImageDefinition) Freeze()              {}
+func (*fetchOciImageDefinition) Truth() starlark.Bool { return starlark.True }
+func (*fetchOciImageDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &FetchOciImageDefinition{}
-	_ common.BuildDefinition1 = &FetchOciImageDefinition{}
-	_ common.BuildResult      = &FetchOciImageDefinition{}
-	_ common.Directive        = &FetchOciImageDefinition{}
+	_ starlark.Value          = &fetchOciImageDefinition{}
+	_ common.BuildDefinition1 = &fetchOciImageDefinition{}
+	_ common.BuildResult      = &fetchOciImageDefinition{}
+	_ common.Directive        = &fetchOciImageDefinition{}
 )
 
-func NewFetchOCIImageDefinition(registry, image, tag, architecture string) *FetchOciImageDefinition {
-	ret := &FetchOciImageDefinition{
+func NewFetchOCIImageDefinition(registry, image, tag, architecture string) *fetchOciImageDefinition {
+	ret := &fetchOciImageDefinition{
 		params: FetchOciImageParameters{
 			Registry:     registry,
 			Image:        image,

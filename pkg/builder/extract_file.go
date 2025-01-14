@@ -11,15 +11,15 @@ import (
 )
 
 func init() {
-	hash.RegisterType(&ExtractFileDefinition{})
+	hash.RegisterType(&extractFileDefinition{})
 }
 
-type ExtractFileDefinition struct {
+type extractFileDefinition struct {
 	params ExtractFileParameters
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *ExtractFileDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
+func (def *extractFileDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	if def.params.Base != nil {
 		return []common.DependencyNode{def.params.Base}, nil
 	} else {
@@ -28,7 +28,7 @@ func (def *ExtractFileDefinition) Dependencies(ctx common.BuildContext1) ([]comm
 }
 
 // Build implements common.BuildDefinition.
-func (def *ExtractFileDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *extractFileDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	base, err := ctx.BuildChild(def.params.Base)
 	if err != nil {
 		return nil, err
@@ -59,33 +59,33 @@ func (def *ExtractFileDefinition) Build(ctx common.BuildContext1) (common.BuildR
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *ExtractFileDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *extractFileDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	return ctx.NeedsBuild(def.params.Base)
 }
 
 // Tag implements common.BuildDefinition.
-func (def *ExtractFileDefinition) Tag() string {
+func (def *extractFileDefinition) Tag() string {
 	return fmt.Sprintf("ExtractFile_%s_%s", def.params.Base.Tag(), def.params.Name)
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *ExtractFileDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (def *extractFileDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return nil, fmt.Errorf("ExtractFileDefinition can not be converted into a Starlark value")
 }
 
 // implements common.BuildDefinition.
-func (def *ExtractFileDefinition) Params() hash.SerializableValue { return def.params }
-func (def *ExtractFileDefinition) SerializableType() string {
+func (def *extractFileDefinition) Params() hash.SerializableValue { return def.params }
+func (def *extractFileDefinition) SerializableType() string {
 	return "ExtractFileDefinition"
 }
-func (def *ExtractFileDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &ExtractFileDefinition{params: params.(ExtractFileParameters)}
+func (def *extractFileDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &extractFileDefinition{params: params.(ExtractFileParameters)}
 }
 
 var (
-	_ common.BuildDefinition1 = &ExtractFileDefinition{}
+	_ common.BuildDefinition1 = &extractFileDefinition{}
 )
 
-func NewExtractFileDefinition(base common.BuildDefinition1, name string) *ExtractFileDefinition {
-	return &ExtractFileDefinition{params: ExtractFileParameters{Base: base, Name: name}}
+func NewExtractFileDefinition(base common.BuildDefinition1, name string) *extractFileDefinition {
+	return &extractFileDefinition{params: ExtractFileParameters{Base: base, Name: name}}
 }

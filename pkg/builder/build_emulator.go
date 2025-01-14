@@ -15,17 +15,17 @@ import (
 )
 
 func init() {
-	hash.RegisterType(&BuildEmulatorDefinition{})
+	hash.RegisterType(&buildEmulatorDefinition{})
 }
 
-type BuildEmulatorDefinition struct {
+type buildEmulatorDefinition struct {
 	params BuildEmulatorParameters
 
 	frags []config.Fragment
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *BuildEmulatorDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
+func (def *buildEmulatorDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	var ret []common.DependencyNode
 
 	for _, directive := range def.params.Directives {
@@ -36,19 +36,19 @@ func (def *BuildEmulatorDefinition) Dependencies(ctx common.BuildContext1) ([]co
 }
 
 // implements common.BuildDefinition.
-func (def *BuildEmulatorDefinition) Params() hash.SerializableValue { return def.params }
-func (def *BuildEmulatorDefinition) SerializableType() string       { return "BuildEmulatorDefinition" }
-func (def *BuildEmulatorDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &BuildVmDefinition{params: params.(BuildVmParameters)}
+func (def *buildEmulatorDefinition) Params() hash.SerializableValue { return def.params }
+func (def *buildEmulatorDefinition) SerializableType() string       { return "BuildEmulatorDefinition" }
+func (def *buildEmulatorDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &buildVmDefinition{params: params.(BuildVmParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *BuildEmulatorDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (def *buildEmulatorDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return filesystem.NewStarFile(result, def.Tag()), nil
 }
 
 // Build implements common.BuildDefinition.
-func (def *BuildEmulatorDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *buildEmulatorDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	var commands []string
 
 	// Launch child builds for each directive.
@@ -123,7 +123,7 @@ func (def *BuildEmulatorDefinition) Build(ctx common.BuildContext1) (common.Buil
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *BuildEmulatorDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *buildEmulatorDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
@@ -133,7 +133,7 @@ func (def *BuildEmulatorDefinition) NeedsBuild(ctx common.BuildContext1, cacheTi
 }
 
 // Tag implements common.BuildDefinition.
-func (def *BuildEmulatorDefinition) Tag() string {
+func (def *buildEmulatorDefinition) Tag() string {
 	out := []string{"BuildEmulator"}
 
 	for _, dir := range def.params.Directives {
@@ -147,17 +147,17 @@ func (def *BuildEmulatorDefinition) Tag() string {
 	return strings.Join(out, "_")
 }
 
-func (def *BuildEmulatorDefinition) String() string { return def.Tag() }
-func (*BuildEmulatorDefinition) Type() string       { return "BuildEmulatorDefinition" }
-func (*BuildEmulatorDefinition) Hash() (uint32, error) {
+func (def *buildEmulatorDefinition) String() string { return def.Tag() }
+func (*buildEmulatorDefinition) Type() string       { return "BuildEmulatorDefinition" }
+func (*buildEmulatorDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("BuildEmulatorDefinition is not hashable")
 }
-func (*BuildEmulatorDefinition) Truth() starlark.Bool { return starlark.True }
-func (*BuildEmulatorDefinition) Freeze()              {}
+func (*buildEmulatorDefinition) Truth() starlark.Bool { return starlark.True }
+func (*buildEmulatorDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &BuildEmulatorDefinition{}
-	_ common.BuildDefinition1 = &BuildEmulatorDefinition{}
+	_ starlark.Value          = &buildEmulatorDefinition{}
+	_ common.BuildDefinition1 = &buildEmulatorDefinition{}
 )
 
 func NewBuildEmulatorDefinition(
@@ -165,8 +165,8 @@ func NewBuildEmulatorDefinition(
 	output string,
 	scriptFilename string,
 	createCallbackName string,
-) *BuildEmulatorDefinition {
-	return &BuildEmulatorDefinition{
+) *buildEmulatorDefinition {
+	return &buildEmulatorDefinition{
 		params: BuildEmulatorParameters{
 			Directives:     dir,
 			OutputFile:     output,

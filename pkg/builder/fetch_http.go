@@ -16,41 +16,41 @@ import (
 )
 
 func init() {
-	hash.RegisterType(&FetchHttpBuildDefinition{})
+	hash.RegisterType(&fetchHttpBuildDefinition{})
 }
 
 var ErrNotFound = errors.New("HTTP 404: Not Found")
 
-type FetchHttpBuildDefinition struct {
+type fetchHttpBuildDefinition struct {
 	params FetchHttpParameters
 
 	resp *http.Response
 }
 
 // Redistributable implements common.RedistributableDefinition.
-func (def *FetchHttpBuildDefinition) Redistributable() bool {
+func (def *fetchHttpBuildDefinition) Redistributable() bool {
 	return true
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *FetchHttpBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
+func (def *fetchHttpBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	return []common.DependencyNode{}, nil
 }
 
 // implements common.BuildDefinition.
-func (def *FetchHttpBuildDefinition) Params() hash.SerializableValue { return def.params }
-func (def *FetchHttpBuildDefinition) SerializableType() string       { return "FetchHttpBuildDefinition" }
-func (def *FetchHttpBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &FetchHttpBuildDefinition{params: params.(FetchHttpParameters)}
+func (def *fetchHttpBuildDefinition) Params() hash.SerializableValue { return def.params }
+func (def *fetchHttpBuildDefinition) SerializableType() string       { return "FetchHttpBuildDefinition" }
+func (def *fetchHttpBuildDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &fetchHttpBuildDefinition{params: params.(FetchHttpParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (f *FetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (f *fetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return filesystem.NewStarFile(result, f.Tag()), nil
 }
 
 // NeedsBuild implements BuildDefinition.
-func (f *FetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (f *fetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	if f.params.ExpireTime != 0 {
 		return time.Now().After(cacheTime.Add(time.Duration(f.params.ExpireTime))), nil
 	}
@@ -60,7 +60,7 @@ func (f *FetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTim
 }
 
 // WriteTo implements BuildResult.
-func (f *FetchHttpBuildDefinition) WriteResult(w io.Writer) error {
+func (f *fetchHttpBuildDefinition) WriteResult(w io.Writer) error {
 	if f.resp == nil {
 		return fmt.Errorf("FetchHttpBuildDefinition: f.resp == nil")
 	}
@@ -77,7 +77,7 @@ func (f *FetchHttpBuildDefinition) WriteResult(w io.Writer) error {
 }
 
 // Build implements BuildDefinition.
-func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	urls, err := ctx.Database().UrlsFor(f.params.Url)
 	if err != nil {
 		return nil, err
@@ -139,25 +139,25 @@ func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext1) (common.Build
 }
 
 // Tag implements BuildDefinition.
-func (f *FetchHttpBuildDefinition) Tag() string {
+func (f *fetchHttpBuildDefinition) Tag() string {
 	return f.params.Url
 }
 
-func (def *FetchHttpBuildDefinition) String() string { return def.Tag() }
-func (*FetchHttpBuildDefinition) Type() string       { return "FetchHttpBuildDefinition" }
-func (*FetchHttpBuildDefinition) Hash() (uint32, error) {
+func (def *fetchHttpBuildDefinition) String() string { return def.Tag() }
+func (*fetchHttpBuildDefinition) Type() string       { return "FetchHttpBuildDefinition" }
+func (*fetchHttpBuildDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("FetchHttpBuildDefinition is not hashable")
 }
-func (*FetchHttpBuildDefinition) Truth() starlark.Bool { return starlark.True }
-func (*FetchHttpBuildDefinition) Freeze()              {}
+func (*fetchHttpBuildDefinition) Truth() starlark.Bool { return starlark.True }
+func (*fetchHttpBuildDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value                   = &FetchHttpBuildDefinition{}
-	_ common.BuildDefinition1          = &FetchHttpBuildDefinition{}
-	_ common.RedistributableDefinition = &FetchHttpBuildDefinition{}
-	_ common.BuildResult               = &FetchHttpBuildDefinition{}
+	_ starlark.Value                   = &fetchHttpBuildDefinition{}
+	_ common.BuildDefinition1          = &fetchHttpBuildDefinition{}
+	_ common.RedistributableDefinition = &fetchHttpBuildDefinition{}
+	_ common.BuildResult               = &fetchHttpBuildDefinition{}
 )
 
-func NewFetchHttpBuildDefinition(url string, expireTime time.Duration, headers map[string]string) *FetchHttpBuildDefinition {
-	return &FetchHttpBuildDefinition{params: FetchHttpParameters{Url: url, ExpireTime: int64(expireTime), Headers: headers}}
+func NewFetchHttpBuildDefinition(url string, expireTime time.Duration, headers map[string]string) *fetchHttpBuildDefinition {
+	return &fetchHttpBuildDefinition{params: FetchHttpParameters{Url: url, ExpireTime: int64(expireTime), Headers: headers}}
 }

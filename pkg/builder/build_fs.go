@@ -19,7 +19,7 @@ import (
 )
 
 func init() {
-	hash.RegisterType(&BuildFsDefinition{})
+	hash.RegisterType(&buildFsDefinition{})
 }
 
 func toTarTypeFlag(flag filesystem.FileType) byte {
@@ -257,14 +257,14 @@ var (
 	_ common.BuildResult = &tarBuilderResult{}
 )
 
-type BuildFsDefinition struct {
+type buildFsDefinition struct {
 	params BuildFsParameters
 
 	frags []config.Fragment
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *BuildFsDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
+func (def *buildFsDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	var ret []common.DependencyNode
 
 	for _, directive := range def.params.Directives {
@@ -275,19 +275,19 @@ func (def *BuildFsDefinition) Dependencies(ctx common.BuildContext1) ([]common.D
 }
 
 // implements common.BuildDefinition.
-func (def *BuildFsDefinition) Params() hash.SerializableValue { return def.params }
-func (def *BuildFsDefinition) SerializableType() string       { return "BuildFsDefinition" }
-func (def *BuildFsDefinition) Create(params hash.SerializableValue) hash.Definition {
-	return &BuildFsDefinition{params: params.(BuildFsParameters)}
+func (def *buildFsDefinition) Params() hash.SerializableValue { return def.params }
+func (def *buildFsDefinition) SerializableType() string       { return "BuildFsDefinition" }
+func (def *buildFsDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &buildFsDefinition{params: params.(BuildFsParameters)}
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *BuildFsDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (def *buildFsDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return filesystem.NewStarFile(result, def.Tag()), nil
 }
 
 // Build implements common.BuildDefinition.
-func (def *BuildFsDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *buildFsDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	// Launch child builds for each directive.
 	for _, directive := range def.params.Directives {
 		frags, err := directive.AsFragments(ctx, common.SpecialDirectiveHandlers{})
@@ -308,7 +308,7 @@ func (def *BuildFsDefinition) Build(ctx common.BuildContext1) (common.BuildResul
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *BuildFsDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *buildFsDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
@@ -318,7 +318,7 @@ func (def *BuildFsDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime tim
 }
 
 // Tag implements common.BuildDefinition.
-func (def *BuildFsDefinition) Tag() string {
+func (def *buildFsDefinition) Tag() string {
 	out := []string{"BuildFs"}
 
 	for _, dir := range def.params.Directives {
@@ -330,19 +330,19 @@ func (def *BuildFsDefinition) Tag() string {
 	return strings.Join(out, "_")
 }
 
-func (def *BuildFsDefinition) String() string { return def.Tag() }
-func (*BuildFsDefinition) Type() string       { return "BuildFsDefinition" }
-func (*BuildFsDefinition) Hash() (uint32, error) {
+func (def *buildFsDefinition) String() string { return def.Tag() }
+func (*buildFsDefinition) Type() string       { return "BuildFsDefinition" }
+func (*buildFsDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("BuildFsDefinition is not hashable")
 }
-func (*BuildFsDefinition) Truth() starlark.Bool { return starlark.True }
-func (*BuildFsDefinition) Freeze()              {}
+func (*buildFsDefinition) Truth() starlark.Bool { return starlark.True }
+func (*buildFsDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &BuildFsDefinition{}
-	_ common.BuildDefinition1 = &BuildFsDefinition{}
+	_ starlark.Value          = &buildFsDefinition{}
+	_ common.BuildDefinition1 = &buildFsDefinition{}
 )
 
-func NewBuildFsDefinition(dir []common.Directive, kind string) *BuildFsDefinition {
-	return &BuildFsDefinition{params: BuildFsParameters{Directives: dir, Kind: kind}}
+func NewBuildFsDefinition(dir []common.Directive, kind string) *buildFsDefinition {
+	return &buildFsDefinition{params: BuildFsParameters{Directives: dir, Kind: kind}}
 }
