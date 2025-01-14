@@ -158,6 +158,6 @@ var (
 	_ common.BuildResult               = &fetchHttpBuildDefinition{}
 )
 
-func NewFetchHttpBuildDefinition(url string, expireTime time.Duration, headers map[string]string) *fetchHttpBuildDefinition {
+func newFetchHttpBuildDefinition(url string, expireTime time.Duration, headers map[string]string) common.StarBuildDefinition1 {
 	return &fetchHttpBuildDefinition{params: FetchHttpParameters{Url: url, ExpireTime: int64(expireTime), Headers: headers}}
 }

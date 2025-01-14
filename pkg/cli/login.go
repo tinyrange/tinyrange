@@ -74,7 +74,7 @@ func runLogin(args []string) error {
 			// check if loginLoadConfig is a URL
 			if strings.HasPrefix(loginLoadConfig, "http://") || strings.HasPrefix(loginLoadConfig, "https://") {
 				// expire after 1 hour
-				def := builder.NewFetchHttpBuildDefinition(loginLoadConfig, 1*time.Hour, nil)
+				def := builder.Factory.NewFetchHttpBuildDefinition(loginLoadConfig, 1*time.Hour, nil)
 
 				f, err := db.Builder().Build(def, common.BuildOptions{})
 				if err != nil {

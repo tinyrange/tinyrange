@@ -295,7 +295,7 @@ var (
 	_ common.Directive                 = &starBuildDefinition{}
 )
 
-func NewStarBuildDefinition(filename string, builder string, args []hash.SerializableValue) (*starBuildDefinition, error) {
+func newStarBuildDefinition(filename string, builder string, args []hash.SerializableValue) (common.StarBuildDefinition1, error) {
 	if filename == "" || builder == "" {
 		return nil, fmt.Errorf("no filename or builder passed to NewStarBuildDefinition")
 	}

@@ -86,6 +86,6 @@ var (
 	_ common.BuildDefinition1 = &extractFileDefinition{}
 )
 
-func NewExtractFileDefinition(base common.BuildDefinition1, name string) *extractFileDefinition {
+func newExtractFileDefinition(base common.BuildDefinition1, name string) common.BuildDefinition1 {
 	return &extractFileDefinition{params: ExtractFileParameters{Base: base, Name: name}}
 }

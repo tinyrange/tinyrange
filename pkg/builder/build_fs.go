@@ -343,6 +343,6 @@ var (
 	_ common.BuildDefinition1 = &buildFsDefinition{}
 )
 
-func NewBuildFsDefinition(dir []common.Directive, kind string) *buildFsDefinition {
+func newBuildFsDefinition(dir []common.Directive, kind string) common.StarBuildDefinition1 {
 	return &buildFsDefinition{params: BuildFsParameters{Directives: dir, Kind: kind}}
 }

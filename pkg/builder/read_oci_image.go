@@ -132,12 +132,12 @@ func (r *readOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildRe
 	out := &fetchOciImageDefinition{}
 
 	for _, layer := range mainManifest.Layers {
-		layerDef, err := NewDefinitionFromFile(filenames[layer])
+		layerDef, err := newDefinitionFromFile(filenames[layer])
 		if err != nil {
 			return nil, err
 		}
 
-		readArchiveDef := NewReadArchiveBuildDefinition(layerDef, ".tar$oci.gz")
+		readArchiveDef := newReadArchiveBuildDefinition(layerDef, ".tar$oci.gz")
 
 		layerFile, err := ctx.BuildChild(readArchiveDef)
 		if err != nil {
@@ -161,7 +161,7 @@ var (
 	_ common.BuildDefinition1 = &readOciImageDefinition{}
 )
 
-func NewReadOCIImageDefinition(base common.BuildDefinition1) *readOciImageDefinition {
+func newReadOCIImageDefinition(base common.BuildDefinition1) ReadOCIImageDefinition {
 	return &readOciImageDefinition{
 		params: ReadOciImageParameters{
 			Base: base,

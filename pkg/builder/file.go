@@ -135,8 +135,6 @@ var (
 	_ common.Directive        = &fileDefinition{}
 )
 
-type BuilderFunc func() (io.ReadCloser, error)
-
 type constantHashDefinition struct {
 	params  ConstantHashParameters
 	builder BuilderFunc
@@ -194,13 +192,13 @@ func definitionFromSource(source hash.SerializableValue) (common.BuildDefinition
 			return nil, err
 		}
 
-		return NewExtractFileDefinition(base, child.Name), nil
+		return newExtractFileDefinition(base, child.Name), nil
 	} else {
 		return nil, fmt.Errorf("NewDefinitionFromFile: unimplemented Source: %T %+v", source, source)
 	}
 }
 
-func NewDefinitionFromFile(f filesystem.File) (common.BuildDefinition1, error) {
+func newDefinitionFromFile(f filesystem.File) (common.BuildDefinition1, error) {
 	if source, err := filesystem.SourceFromFile(f); err == nil {
 		return definitionFromSource(source)
 	} else {
@@ -214,6 +212,6 @@ func SourceFromArchive(archive filesystem.Archive) (hash.SerializableValue, erro
 	return filesystem.SourceFromArchive(archive)
 }
 
-func NewConstantHashDefinition(hash string, builder BuilderFunc) *constantHashDefinition {
+func newConstantHashDefinition(hash string, builder BuilderFunc) common.BuildDefinition1 {
 	return &constantHashDefinition{params: ConstantHashParameters{Hash: hash}, builder: builder}
 }

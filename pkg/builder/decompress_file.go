@@ -122,7 +122,7 @@ var (
 	_ common.BuildResult      = &decompressFileBuildDefinition{}
 )
 
-func NewDecompressFileBuildDefinition(base common.BuildDefinition1, kind string) *decompressFileBuildDefinition {
+func newDecompressFileBuildDefinition(base common.BuildDefinition1, kind string) common.StarBuildDefinition1 {
 	return &decompressFileBuildDefinition{
 		params: DecompressFileParameters{Base: base, Kind: kind},
 	}

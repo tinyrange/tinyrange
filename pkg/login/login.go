@@ -27,7 +27,7 @@ import (
 
 func detectArchiveExtractor(base common.BuildDefinition1, filename string) (common.BuildDefinition1, error) {
 	if builder.ReadArchiveSupportsExtracting(filename) {
-		return builder.NewReadArchiveBuildDefinition(base, filename), nil
+		return builder.Factory.NewReadArchiveBuildDefinition(base, filename), nil
 	} else if strings.HasSuffix(filename, ".archive") {
 		return base, nil
 	} else {
@@ -239,7 +239,7 @@ func (config *Config) parseInclusion(db common.PackageDatabase, inclusion string
 
 	subConfig.SetVmSpec()
 
-	def := builder.NewBuildVmDefinition(
+	def := builder.Factory.NewBuildVmDefinition(
 		directives,
 		nil, nil,
 		subConfig.replaceVariables(subConfig.Output),
@@ -299,7 +299,7 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 			base := path.Base(parsed.Path)
 
 			directives = append(directives, common.DirectiveAddFile{
-				Definition: builder.NewFetchHttpBuildDefinition(filename, 0, nil),
+				Definition: builder.Factory.NewFetchHttpBuildDefinition(filename, 0, nil),
 				Filename:   path.Join("/root", base),
 			})
 		} else {
@@ -335,7 +335,7 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 		}
 
 		if strings.HasPrefix(filename, "http://") || strings.HasPrefix(filename, "https://") {
-			def = builder.NewFetchHttpBuildDefinition(filename, 0, nil)
+			def = builder.Factory.NewFetchHttpBuildDefinition(filename, 0, nil)
 
 			parsed, err := url.Parse(filename)
 			if err != nil {
@@ -358,7 +358,7 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 				return nil, "", err
 			}
 
-			def = builder.NewConstantHashDefinition(hash, func() (io.ReadCloser, error) {
+			def = builder.Factory.NewConstantHashDefinition(hash, func() (io.ReadCloser, error) {
 				return os.Open(filePath)
 			})
 		}
@@ -414,13 +414,13 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 				return nil, "", err
 			}
 
-			def := builder.NewConstantHashDefinition(hash, func() (io.ReadCloser, error) {
+			def := builder.Factory.NewConstantHashDefinition(hash, func() (io.ReadCloser, error) {
 				return os.Open(filePath)
 			})
 
-			readArchiveDef := builder.NewReadArchiveBuildDefinition(def, filePath)
+			readArchiveDef := builder.Factory.NewReadArchiveBuildDefinition(def, filePath)
 
-			ociDef := builder.NewReadOCIImageDefinition(readArchiveDef)
+			ociDef := builder.Factory.NewReadOCIImageDefinition(readArchiveDef)
 
 			directives = append(directives, ociDef)
 		} else {
@@ -434,12 +434,12 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 				return nil, "", err
 			}
 
-			ociDef := builder.NewFetchOCIImageDefinition(registry, image, tag, ociArch)
+			ociDef := builder.Factory.NewFetchOCIImageDefinition(registry, image, tag, ociArch)
 
 			directives = append(directives, ociDef)
 		}
 	} else {
-		planDirective, err = builder.NewPlanDefinition(config.Builder, arch, pkgs, tags)
+		planDirective, err = builder.Factory.NewPlanDefinition(config.Builder, arch, pkgs, tags)
 		if err != nil {
 			return nil, "", err
 		}
@@ -600,7 +600,7 @@ func (config *Config) MakeTemplate(db common.PackageDatabase) (string, error) {
 
 	config.SetVmSpec()
 
-	def := builder.NewBuildVmDefinition(
+	def := builder.Factory.NewBuildVmDefinition(
 		directives,
 		nil, nil,
 		config.replaceVariables(config.Output),
@@ -657,7 +657,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 	if config.WriteRoot != "" {
 		directives = append(directives, common.DirectiveBuiltin{Name: "init", Architecture: string(arch), GuestFilename: "init"})
 
-		def := builder.NewBuildFsDefinition(directives, "tar")
+		def := builder.Factory.NewBuildFsDefinition(directives, "tar")
 
 		f, err := db.Builder().Build(def, common.BuildOptions{})
 		if err != nil {
@@ -694,7 +694,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 		directives = append(directives, common.DirectiveBuiltin{Name: "init", Architecture: string(arch), GuestFilename: "init"})
 
-		def := builder.NewBuildFsDefinition(directives, "tar")
+		def := builder.Factory.NewBuildFsDefinition(directives, "tar")
 
 		f, err := db.Builder().Build(def, common.BuildOptions{})
 		if err != nil {
@@ -814,7 +814,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 		config.SetVmSpec()
 
-		def := builder.NewBuildVmDefinition(
+		def := builder.Factory.NewBuildVmDefinition(
 			directives,
 			kernel, initramfs,
 			config.replaceVariables(config.Output),

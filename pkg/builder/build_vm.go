@@ -388,7 +388,7 @@ var (
 	_ common.BuildResult      = &buildVmDefinition{}
 )
 
-func NewBuildVmDefinition(
+func newBuildVmDefinition(
 	dir []common.Directive,
 	kernel common.BuildDefinition1,
 	initramfs common.BuildDefinition1,
@@ -400,7 +400,7 @@ func NewBuildVmDefinition(
 	storageSize int,
 	interaction string,
 	debug bool,
-) *buildVmDefinition {
+) BuildVmDefinition {
 	if storageSize == 0 {
 		storageSize = 1024
 	}

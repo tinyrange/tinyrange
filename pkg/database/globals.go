@@ -30,7 +30,7 @@ func asDirective(val starlark.Value) (common.Directive, error) {
 	} else if directive, ok := val.(common.Directive); ok {
 		return directive, nil
 	} else if file, ok := val.(filesystem.File); ok {
-		def, err := builder.NewDefinitionFromFile(file)
+		def, err := builder.Factory.NewDefinitionFromFile(file)
 		if err != nil {
 			return nil, err
 		}
@@ -143,7 +143,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 
 				filename := thread.CallFrame(1).Pos.Filename()
 
-				return builder.NewStarBuildDefinition(filename, builderFunc.Name(), buildArgs)
+				return builder.Factory.NewStarBuildDefinition(filename, builderFunc.Name(), buildArgs)
 			}),
 			"package_collection": starlark.NewBuiltin("define.package_collection", func(
 				thread *starlark.Thread,
@@ -282,7 +282,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					}
 				}
 
-				return builder.NewFetchHttpBuildDefinition(url, time.Duration(expireTime), headers), nil
+				return builder.Factory.NewFetchHttpBuildDefinition(url, time.Duration(expireTime), headers), nil
 			}),
 			"read_archive": starlark.NewBuiltin("define.read_archive", func(
 				thread *starlark.Thread,
@@ -303,14 +303,14 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 				}
 
 				if def, ok := val.(common.BuildDefinition1); ok {
-					return builder.NewReadArchiveBuildDefinition(def, kind), nil
+					return builder.Factory.NewReadArchiveBuildDefinition(def, kind), nil
 				} else if file, ok := val.(filesystem.File); ok {
-					fileDef, err := builder.NewDefinitionFromFile(file)
+					fileDef, err := builder.Factory.NewDefinitionFromFile(file)
 					if err != nil {
 						return starlark.None, err
 					}
 
-					return builder.NewReadArchiveBuildDefinition(fileDef, kind), nil
+					return builder.Factory.NewReadArchiveBuildDefinition(fileDef, kind), nil
 				} else {
 					return starlark.None, fmt.Errorf("expected BuildDefinition got %s", val.Type())
 				}
@@ -333,7 +333,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				decompressDef := builder.NewDecompressFileBuildDefinition(def, kind)
+				decompressDef := builder.Factory.NewDecompressFileBuildDefinition(def, kind)
 
 				return decompressDef, nil
 			}),
@@ -359,7 +359,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				return builder.NewFetchOCIImageDefinition(registry, image, tag, architecture), nil
+				return builder.Factory.NewFetchOCIImageDefinition(registry, image, tag, architecture), nil
 			}),
 			"build_vm": starlark.NewBuiltin("define.build_vm", func(
 				thread *starlark.Thread,
@@ -423,7 +423,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				return builder.NewBuildVmDefinition(
+				return builder.Factory.NewBuildVmDefinition(
 					directives,
 					kernelDef,
 					initramfsDef,
@@ -460,7 +460,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				return builder.NewBuildFsDefinition(directives, kind), nil
+				return builder.Factory.NewBuildFsDefinition(directives, kind), nil
 			}),
 			"build_emulator": starlark.NewBuiltin("define.build_emulator", func(
 				thread *starlark.Thread,
@@ -489,7 +489,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 
 				filename := thread.CallFrame(1).Pos.Filename()
 
-				return builder.NewBuildEmulatorDefinition(
+				return builder.Factory.NewBuildEmulatorDefinition(
 					directives,
 					outputFilename,
 					filename,
@@ -553,7 +553,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				return builder.NewPlanDefinition(builderName, arch, search, tagList)
+				return builder.Factory.NewPlanDefinition(builderName, arch, search, tagList)
 			}),
 		},
 	}

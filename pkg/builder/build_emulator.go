@@ -160,12 +160,12 @@ var (
 	_ common.BuildDefinition1 = &buildEmulatorDefinition{}
 )
 
-func NewBuildEmulatorDefinition(
+func newBuildEmulatorDefinition(
 	dir []common.Directive,
 	output string,
 	scriptFilename string,
 	createCallbackName string,
-) *buildEmulatorDefinition {
+) common.StarBuildDefinition1 {
 	return &buildEmulatorDefinition{
 		params: BuildEmulatorParameters{
 			Directives:     dir,

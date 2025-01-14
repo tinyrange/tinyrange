@@ -353,7 +353,7 @@ var (
 	_ common.Directive        = &planDefinition{}
 )
 
-func NewPlanDefinition(builder string, arch config.CPUArchitecture, search []common.PackageQuery, tagList common.TagList) (PlanDefinition, error) {
+func newPlanDefinition(builder string, arch config.CPUArchitecture, search []common.PackageQuery, tagList common.TagList) (PlanDefinition, error) {
 	if builder == "" {
 		return nil, fmt.Errorf("no builder specified")
 	}

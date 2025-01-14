@@ -330,7 +330,7 @@ func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext1, r
 	// Request all the layers.
 	for _, layer := range index.FsLayers {
 		layerArchive, err := ctx.BuildChild(
-			NewReadArchiveBuildDefinition(&registryRequestDefinition{
+			newReadArchiveBuildDefinition(&registryRequestDefinition{
 				ctx: regCtx,
 				params: RegistryRequestParameters{
 					Url: fmt.Sprintf("/%s/blobs/%s", def.params.Image, layer.BlobSum),
@@ -364,7 +364,7 @@ func (def *fetchOciImageDefinition) buildFromManifest(
 	// Request all the layers.
 	for _, layer := range manifest.Layers {
 		layerArchive, err := ctx.BuildChild(
-			NewReadArchiveBuildDefinition(&registryRequestDefinition{
+			newReadArchiveBuildDefinition(&registryRequestDefinition{
 				ctx: regCtx,
 				params: RegistryRequestParameters{
 					Url: fmt.Sprintf("/%s/blobs/%s", def.params.Image, layer.Digest),
@@ -526,7 +526,7 @@ var (
 	_ common.Directive        = &fetchOciImageDefinition{}
 )
 
-func NewFetchOCIImageDefinition(registry, image, tag, architecture string) *fetchOciImageDefinition {
+func newFetchOCIImageDefinition(registry, image, tag, architecture string) FetchOciImageDefinition {
 	ret := &fetchOciImageDefinition{
 		params: FetchOciImageParameters{
 			Registry:     registry,

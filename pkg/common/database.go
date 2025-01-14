@@ -43,6 +43,11 @@ type BuildDefinition1 interface {
 	ToStarlark(ctx BuildContext1, result filesystem.File) (starlark.Value, error)
 }
 
+type StarBuildDefinition1 interface {
+	starlark.Value
+	BuildDefinition1
+}
+
 // ALPHA: From Build2
 // BuildDefinition is a definition that can be built and cached.
 type BuildDefinition interface {
