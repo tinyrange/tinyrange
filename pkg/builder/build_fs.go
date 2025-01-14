@@ -264,7 +264,7 @@ type BuildFsDefinition struct {
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *BuildFsDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+func (def *BuildFsDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	var ret []common.DependencyNode
 
 	for _, directive := range def.params.Directives {
@@ -282,12 +282,12 @@ func (def *BuildFsDefinition) Create(params hash.SerializableValue) hash.Definit
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *BuildFsDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+func (def *BuildFsDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return filesystem.NewStarFile(result, def.Tag()), nil
 }
 
 // Build implements common.BuildDefinition.
-func (def *BuildFsDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+func (def *BuildFsDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	// Launch child builds for each directive.
 	for _, directive := range def.params.Directives {
 		frags, err := directive.AsFragments(ctx, common.SpecialDirectiveHandlers{})
@@ -308,7 +308,7 @@ func (def *BuildFsDefinition) Build(ctx common.BuildContext) (common.BuildResult
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *BuildFsDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+func (def *BuildFsDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
@@ -339,8 +339,8 @@ func (*BuildFsDefinition) Truth() starlark.Bool { return starlark.True }
 func (*BuildFsDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value         = &BuildFsDefinition{}
-	_ common.BuildDefinition = &BuildFsDefinition{}
+	_ starlark.Value          = &BuildFsDefinition{}
+	_ common.BuildDefinition1 = &BuildFsDefinition{}
 )
 
 func NewBuildFsDefinition(dir []common.Directive, kind string) *BuildFsDefinition {

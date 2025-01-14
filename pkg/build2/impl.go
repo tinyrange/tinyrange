@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
@@ -22,6 +23,7 @@ const (
 	definitionFileName = "definition.json"
 	receiptFileName    = "receipt.json"
 	outputPrefix       = "output."
+	defaultSuffix      = "default"
 )
 
 type buildArtifact struct {
@@ -44,11 +46,11 @@ func (a *buildArtifact) OpenFile(name string) (filesystem.FileHandle, error) {
 
 // Default implements BuildArtifact.
 func (a *buildArtifact) Default() (filesystem.File, error) {
-	if _, ok := a.recept.Files["default"]; !ok {
+	if _, ok := a.recept.Files[defaultSuffix]; !ok {
 		return nil, fmt.Errorf("file default not found")
 	}
 
-	f, err := a.buildDir.GetChild(outputPrefix + "default")
+	f, err := a.buildDir.GetChild(outputPrefix + defaultSuffix)
 	if err != nil {
 		return nil, err
 	}
@@ -57,12 +59,12 @@ func (a *buildArtifact) Default() (filesystem.File, error) {
 }
 
 // Receipt implements BuildArtifact.
-func (a *buildArtifact) Receipt() BuildReceipt {
+func (a *buildArtifact) Receipt() common.BuildReceipt {
 	return *a.recept
 }
 
 var (
-	_ BuildArtifact = &buildArtifact{}
+	_ common.BuildArtifact = &buildArtifact{}
 )
 
 type contextFile struct {
@@ -102,10 +104,10 @@ type buildContext struct {
 	builder      *builder
 	parent       *buildContext
 	hash         hash.Hash
-	def          BuildDefinition
+	def          common.BuildDefinition
 	buildDir     filesystem.MutableDirectory
-	options      BuildOptions
-	recept       *BuildReceipt
+	options      common.BuildOptions
+	recept       *common.BuildReceipt
 	requirements map[hash.Hash]struct{}
 	err          error
 	state        buildContextState
@@ -137,7 +139,7 @@ func (c *buildContext) build() error {
 		return err
 	}
 
-	c.recept = &BuildReceipt{
+	c.recept = &common.BuildReceipt{
 		StartTime: time.Now(),
 		Files:     make(map[string]string),
 	}
@@ -184,7 +186,7 @@ func (c *buildContext) build() error {
 	return nil
 }
 
-func (c *buildContext) loadRecept() (*BuildReceipt, error) {
+func (c *buildContext) loadRecept() (*common.BuildReceipt, error) {
 	dh, err := c.buildDir.GetChild(receiptFileName)
 	if err != nil {
 		// This error could not not-exist so we propagate it.
@@ -196,7 +198,7 @@ func (c *buildContext) loadRecept() (*BuildReceipt, error) {
 		return nil, err
 	}
 
-	var recept BuildReceipt
+	var recept common.BuildReceipt
 	if err := json.NewDecoder(f).Decode(&recept); err != nil {
 		return nil, err
 	}
@@ -229,7 +231,7 @@ func (c *buildContext) ensureUpToDate() error {
 		}
 	}
 
-	if c.options.ForceRebuild {
+	if c.options.AlwaysRebuild {
 		// force a rebuild
 		defer c.token.Lock().Close()
 
@@ -265,7 +267,7 @@ func (c *buildContext) ensureUpToDate() error {
 
 	// Check all requirements in parallel.
 	for _, req := range c.recept.Requirements {
-		child, err := c.builder.contextForHash(c, req, BuildOptions{})
+		child, err := c.builder.contextForHash(c, req, common.BuildOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to load requirement: %w", err)
 		}
@@ -308,10 +310,10 @@ func (c *buildContext) freshlyBuilt() bool {
 	return atomic.LoadUint32((*uint32)(&c.state)) == uint32(buildContextStateBuilt)
 }
 
-func (c *buildContext) addDependency(def BuildDefinition) {
+func (c *buildContext) addDependency(def common.BuildDefinition) {
 	// blindly add the dependency to trigger the build or load.
 	// it will only turn into a requirement if it's used as a child.
-	c.builder.contextForDefinition(c, def, BuildOptions{})
+	c.builder.contextForDefinition(c, def, common.BuildOptions{})
 }
 
 func (c *buildContext) addRequirement(hash hash.Hash) {
@@ -322,8 +324,8 @@ func (c *buildContext) addRequirement(hash hash.Hash) {
 	c.recept.Requirements = append(c.recept.Requirements, hash)
 }
 
-func (c *buildContext) BuildChild(def BuildDefinition) (BuildArtifact, error) {
-	child := c.builder.contextForDefinition(c, def, BuildOptions{})
+func (c *buildContext) BuildChild(def common.BuildDefinition) (common.BuildArtifact, error) {
+	child := c.builder.contextForDefinition(c, def, common.BuildOptions{})
 
 	if state := atomic.LoadUint32((*uint32)(&child.state)); state == uint32(buildContextStateNew) {
 		child.token.Donate()
@@ -402,8 +404,23 @@ func (a *buildContext) Hash() hash.Hash {
 	return a.hash
 }
 
+// WriteDefault implements common.BuildContext.
+func (c *buildContext) WriteDefault(result common.BuildResult) error {
+	out, err := c.CreateFile(defaultSuffix)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if err := result.WriteResult(out); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 var (
-	_ BuildContext = &buildContext{}
+	_ common.BuildContext = &buildContext{}
 )
 
 type builder struct {
@@ -414,7 +431,7 @@ type builder struct {
 	tokenLocker  *tokenLocker
 }
 
-func (b *builder) contextForDefinition(parent *buildContext, def BuildDefinition, opts BuildOptions) *buildContext {
+func (b *builder) contextForDefinition(parent *buildContext, def common.BuildDefinition, opts common.BuildOptions) *buildContext {
 	maybeCtx := &buildContext{
 		parent:       parent,
 		builder:      b,
@@ -446,7 +463,7 @@ func (b *builder) contextForDefinition(parent *buildContext, def BuildDefinition
 	return ctx
 }
 
-func (b *builder) cacheDefinitionHash(def BuildDefinition) error {
+func (b *builder) cacheDefinitionHash(def common.BuildDefinition) error {
 	deps, err := def.Dependencies()
 	if err != nil {
 		return err
@@ -466,7 +483,7 @@ func (b *builder) cacheDefinitionHash(def BuildDefinition) error {
 }
 
 // Build implements Builder.
-func (b *builder) Build(def BuildDefinition, opts BuildOptions) (BuildArtifact, error) {
+func (b *builder) Build(def common.BuildDefinition, opts common.BuildOptions) (common.BuildArtifact, error) {
 	if def == nil {
 		return nil, fmt.Errorf("definition is nil")
 	}
@@ -484,13 +501,13 @@ func (b *builder) loadDefinition(hash hash.Hash) (io.ReadCloser, error) {
 	return nil, fmt.Errorf("loadDefinition not implemented")
 }
 
-func (b *builder) contextForHash(parent *buildContext, hash hash.Hash, opts BuildOptions) (*buildContext, error) {
+func (b *builder) contextForHash(parent *buildContext, hash hash.Hash, opts common.BuildOptions) (*buildContext, error) {
 	def, err := b.defDb.GetDefinitionByHash(hash)
 	if err != nil {
 		return nil, err
 	}
 
-	buildDef, ok := def.(BuildDefinition)
+	buildDef, ok := def.(common.BuildDefinition)
 	if !ok {
 		return nil, fmt.Errorf("definition %T is not a BuildDefinition", def)
 	}
@@ -498,7 +515,7 @@ func (b *builder) contextForHash(parent *buildContext, hash hash.Hash, opts Buil
 	return b.contextForDefinition(parent, buildDef, opts), nil
 }
 
-func (b *builder) receiptFromHash(hash hash.Hash) (*BuildReceipt, error) {
+func (b *builder) receiptFromHash(hash hash.Hash) (*common.BuildReceipt, error) {
 	hashDir, err := b.buildDir.GetChild(hash.String())
 	if err != nil {
 		return nil, err
@@ -517,7 +534,7 @@ func (b *builder) receiptFromHash(hash hash.Hash) (*BuildReceipt, error) {
 var validSha256 = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 type garbageCollectorState struct {
-	receipt    BuildReceipt
+	receipt    common.BuildReceipt
 	references int
 }
 
@@ -605,10 +622,10 @@ func (b *builder) GarbageCollect(olderThan time.Time) ([]hash.Hash, error) {
 }
 
 var (
-	_ Builder = &builder{}
+	_ common.Builder = &builder{}
 )
 
-func New(buildDir filesystem.MutableDirectory, maxJobs int, logger Logger) Builder {
+func New(buildDir filesystem.MutableDirectory, maxJobs int, logger Logger) common.Builder {
 	b := &builder{
 		buildDir:    buildDir,
 		logger:      logger,

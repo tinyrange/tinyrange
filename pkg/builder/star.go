@@ -17,9 +17,9 @@ func init() {
 	hash.RegisterType(&StarBuildDefinition{})
 }
 
-func SerializableValueToStarlark(ctx common.BuildContext, val hash.SerializableValue) (starlark.Value, error) {
+func SerializableValueToStarlark(ctx common.BuildContext1, val hash.SerializableValue) (starlark.Value, error) {
 	switch val := val.(type) {
-	case common.BuildDefinition:
+	case common.BuildDefinition1:
 		result, err := ctx.BuildChild(val)
 		if err != nil {
 			return starlark.None, err
@@ -48,7 +48,7 @@ func SerializableValueToStarlark(ctx common.BuildContext, val hash.SerializableV
 			return starlark.False, nil
 		}
 	case filesystem.ChildSource:
-		if def, ok := val.Source.(common.BuildDefinition); ok {
+		if def, ok := val.Source.(common.BuildDefinition1); ok {
 			result, err := ctx.BuildChild(def)
 			if err != nil {
 				return starlark.None, err
@@ -85,7 +85,7 @@ func SerializableValueToStarlark(ctx common.BuildContext, val hash.SerializableV
 
 func StarlarkValueToSerializable(val starlark.Value) (hash.SerializableValue, error) {
 	switch val := val.(type) {
-	case common.BuildDefinition:
+	case common.BuildDefinition1:
 		return val, nil
 	case *filesystem.StarFile:
 		return filesystem.SourceFromFile(val.File)
@@ -155,11 +155,11 @@ func (def *StarBuildDefinition) AttrNames() []string {
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *StarBuildDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+func (def *StarBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	var ret []common.DependencyNode
 
 	for _, arg := range def.params.Arguments {
-		if argDef, ok := arg.(common.BuildDefinition); ok {
+		if argDef, ok := arg.(common.BuildDefinition1); ok {
 			ret = append(ret, argDef)
 		}
 	}
@@ -175,7 +175,7 @@ func (def *StarBuildDefinition) Create(params hash.SerializableValue) hash.Defin
 }
 
 // AsFragments implements common.Directive.
-func (def *StarBuildDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+func (def *StarBuildDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(def)
 	if err != nil {
 		return nil, err
@@ -197,18 +197,18 @@ func (def *StarBuildDefinition) AsFragments(ctx common.BuildContext, special com
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *StarBuildDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+func (def *StarBuildDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return filesystem.NewStarFile(result, def.Tag()), nil
 }
 
 // NeedsBuild implements BuildDefinition.
-func (def *StarBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+func (def *StarBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
 
 	for _, arg := range def.params.Arguments {
-		if argDef, ok := arg.(common.BuildDefinition); ok {
+		if argDef, ok := arg.(common.BuildDefinition1); ok {
 			needsBuild, err := ctx.NeedsBuild(argDef)
 			if err != nil {
 				return true, err
@@ -237,7 +237,7 @@ func (def *StarBuildDefinition) Tag() string {
 	return strings.Join(parts, "_")
 }
 
-func (def *StarBuildDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+func (def *StarBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	var args starlark.Tuple
 	for _, arg := range def.params.Arguments {
 		val, err := SerializableValueToStarlark(ctx, arg)
@@ -253,7 +253,7 @@ func (def *StarBuildDefinition) Build(ctx common.BuildContext) (common.BuildResu
 		return nil, err
 	}
 
-	if result, ok := res.(common.BuildDefinition); ok {
+	if result, ok := res.(common.BuildDefinition1); ok {
 		child, err := ctx.BuildChild(result)
 		if err != nil {
 			return nil, err
@@ -290,7 +290,7 @@ func (*StarBuildDefinition) Freeze()              {}
 var (
 	_ starlark.Value                   = &StarBuildDefinition{}
 	_ starlark.HasAttrs                = &StarBuildDefinition{}
-	_ common.BuildDefinition           = &StarBuildDefinition{}
+	_ common.BuildDefinition1          = &StarBuildDefinition{}
 	_ common.RedistributableDefinition = &StarBuildDefinition{}
 	_ common.Directive                 = &StarBuildDefinition{}
 )

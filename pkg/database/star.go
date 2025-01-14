@@ -225,7 +225,7 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				def           common.BuildDefinition
+				def           common.BuildDefinition1
 				alwaysRebuild bool
 			)
 

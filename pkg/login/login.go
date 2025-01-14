@@ -25,7 +25,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func detectArchiveExtractor(base common.BuildDefinition, filename string) (common.BuildDefinition, error) {
+func detectArchiveExtractor(base common.BuildDefinition1, filename string) (common.BuildDefinition1, error) {
 	if builder.ReadArchiveSupportsExtracting(filename) {
 		return builder.NewReadArchiveBuildDefinition(base, filename), nil
 	} else if strings.HasSuffix(filename, ".archive") {
@@ -322,7 +322,7 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 	for _, filename := range config.Archives {
 		filename = config.replaceVariables(filename)
 
-		var def common.BuildDefinition
+		var def common.BuildDefinition1
 
 		filename, target, ok := strings.Cut(filename, ",")
 
@@ -797,8 +797,8 @@ func (config *Config) Run(db common.PackageDatabase) error {
 			interaction = "webssh," + config.WebSSH
 		}
 
-		var kernel common.BuildDefinition
-		var initramfs common.BuildDefinition
+		var kernel common.BuildDefinition1
+		var initramfs common.BuildDefinition1
 
 		directives, err = common.FlattenDirectives(directives, common.SpecialDirectiveHandlers{
 			Kernel: func(dir common.DirectiveKernel) error {

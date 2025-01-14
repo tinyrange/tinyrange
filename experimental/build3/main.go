@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/build2"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
@@ -18,7 +19,7 @@ type basicBuildDefinitionParams struct {
 	Name       string
 	WaitTime   int // in milliseconds
 	ExpireTime int // in milliseconds
-	Children   []build2.BuildDefinition
+	Children   []common.BuildDefinition
 }
 
 func (p basicBuildDefinitionParams) SerializableType() string { return "basic" }
@@ -52,7 +53,7 @@ func (d *basicBuildDefinition) SerializableType() string {
 }
 
 // NeedsBuild implements BuildDefinition.
-func (d *basicBuildDefinition) NeedsBuild(ctx build2.BuildContext) (bool, error) {
+func (d *basicBuildDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
 	lastBuild := ctx.LastBuild()
 
 	if lastBuild.IsZero() {
@@ -67,12 +68,12 @@ func (d *basicBuildDefinition) NeedsBuild(ctx build2.BuildContext) (bool, error)
 }
 
 // Dependencies implements BuildDefinition.
-func (d *basicBuildDefinition) Dependencies() ([]build2.BuildDefinition, error) {
+func (d *basicBuildDefinition) Dependencies() ([]common.BuildDefinition, error) {
 	return d.params.Children, nil
 }
 
 // Build implements BuildDefinition.
-func (d *basicBuildDefinition) Build(ctx build2.BuildContext) error {
+func (d *basicBuildDefinition) Build(ctx common.BuildContext) error {
 	waitTime := time.Duration(d.params.WaitTime) * time.Millisecond
 	ctx.Describe("waiting for %s", waitTime)
 
@@ -113,10 +114,10 @@ func (d *basicBuildDefinition) Build(ctx build2.BuildContext) error {
 }
 
 var (
-	_ build2.BuildDefinition = &basicBuildDefinition{}
+	_ common.BuildDefinition = &basicBuildDefinition{}
 )
 
-func newBasicBuildDefinition(name string, waitTime int, expireTime int, children ...build2.BuildDefinition) *basicBuildDefinition {
+func newBasicBuildDefinition(name string, waitTime int, expireTime int, children ...common.BuildDefinition) *basicBuildDefinition {
 	return &basicBuildDefinition{
 		params: basicBuildDefinitionParams{
 			Name:       name,
@@ -166,7 +167,7 @@ func appMain() error {
 		return nil
 	}
 
-	var rootDef build2.BuildDefinition
+	var rootDef common.BuildDefinition
 
 	if *load != "" {
 		f, err := os.Open(*load)
@@ -238,7 +239,7 @@ func appMain() error {
 	}()
 	defer logger.Close()
 
-	art, err := builder.Build(rootDef, build2.BuildOptions{})
+	art, err := builder.Build(rootDef, common.BuildOptions{})
 	if err != nil {
 		return err
 	}

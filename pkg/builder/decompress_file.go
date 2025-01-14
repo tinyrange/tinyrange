@@ -25,7 +25,7 @@ type DecompressFileBuildDefinition struct {
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *DecompressFileBuildDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+func (def *DecompressFileBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	if def.params.Base != nil {
 		return []common.DependencyNode{def.params.Base}, nil
 	} else {
@@ -43,12 +43,12 @@ func (def *DecompressFileBuildDefinition) Create(params hash.SerializableValue) 
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *DecompressFileBuildDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+func (def *DecompressFileBuildDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return filesystem.NewStarFile(result, def.Tag()), nil
 }
 
 // NeedsBuild implements BuildDefinition.
-func (def *DecompressFileBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+func (def *DecompressFileBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	build, err := ctx.NeedsBuild(def.params.Base)
 	if err != nil {
 		return true, err
@@ -70,7 +70,7 @@ func (def *DecompressFileBuildDefinition) WriteResult(w io.Writer) error {
 }
 
 // Build implements BuildDefinition.
-func (def *DecompressFileBuildDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+func (def *DecompressFileBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	f, err := ctx.BuildChild(def.params.Base)
 	if err != nil {
 		return nil, err
@@ -117,12 +117,12 @@ func (*DecompressFileBuildDefinition) Truth() starlark.Bool { return starlark.Tr
 func (*DecompressFileBuildDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value         = &DecompressFileBuildDefinition{}
-	_ common.BuildDefinition = &DecompressFileBuildDefinition{}
-	_ common.BuildResult     = &DecompressFileBuildDefinition{}
+	_ starlark.Value          = &DecompressFileBuildDefinition{}
+	_ common.BuildDefinition1 = &DecompressFileBuildDefinition{}
+	_ common.BuildResult      = &DecompressFileBuildDefinition{}
 )
 
-func NewDecompressFileBuildDefinition(base common.BuildDefinition, kind string) *DecompressFileBuildDefinition {
+func NewDecompressFileBuildDefinition(base common.BuildDefinition1, kind string) *DecompressFileBuildDefinition {
 	return &DecompressFileBuildDefinition{
 		params: DecompressFileParameters{Base: base, Kind: kind},
 	}

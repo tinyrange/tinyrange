@@ -23,13 +23,13 @@ type BuildVmParameters struct {
 	RootArchitecture string             // The CPU Architecture of the root filesystem. This is a hint to enable vmm-specific optimizations.
 
 	// TODO(joshua): Allow customizing the hypervisor, and startup script.
-	Kernel      common.BuildDefinition // A build definition that creates the kernel.
-	InitRamFs   common.BuildDefinition // A build definition that creates the initial ram filesystem.
-	CpuCores    int                    // The number of CPU cores to allocate to the virtual machine.
-	MemoryMB    int                    // The amount of RAM in the virtual machine in megabytes.
-	StorageSize int                    // The amount of storage the root device will have in megabytes.
-	Interaction string                 // How will the virtual machine be interacted with (ssh, serial)
-	Debug       bool                   // Redirect hypervisor input to the host. The VM will exit after it completes initialization.
+	Kernel      common.BuildDefinition1 // A build definition that creates the kernel.
+	InitRamFs   common.BuildDefinition1 // A build definition that creates the initial ram filesystem.
+	CpuCores    int                     // The number of CPU cores to allocate to the virtual machine.
+	MemoryMB    int                     // The amount of RAM in the virtual machine in megabytes.
+	StorageSize int                     // The amount of storage the root device will have in megabytes.
+	Interaction string                  // How will the virtual machine be interacted with (ssh, serial)
+	Debug       bool                    // Redirect hypervisor input to the host. The VM will exit after it completes initialization.
 }
 
 // Build Emulator uses a internal shell emulator to run simple shell scripts with support from
@@ -45,8 +45,8 @@ type BuildEmulatorParameters struct {
 
 // Decompress a build result.
 type DecompressFileParameters struct {
-	Base common.BuildDefinition // The build result to decompress.
-	Kind string                 // The compression format to use (.xz)
+	Base common.BuildDefinition1 // The build result to decompress.
+	Kind string                  // The compression format to use (.xz)
 }
 
 // Download a file from the internet.
@@ -76,7 +76,7 @@ type FetchOciImageParameters struct {
 // Read a OCI image from a file.
 // The output is a serialized copy of FetchOciImageDefinition (for compatibility reasons).
 type ReadOciImageParameters struct {
-	Base common.BuildDefinition
+	Base common.BuildDefinition1
 }
 
 // Copy a file to the build output directory.
@@ -91,7 +91,7 @@ type ConstantHashParameters struct {
 
 // Extract a single file from a archive.
 type ExtractFileParameters struct {
-	Base common.BuildDefinition
+	Base common.BuildDefinition1
 	Name string
 }
 
@@ -107,7 +107,7 @@ type PlanParameters struct {
 // Read a archive in a compressed format.
 // The output is a file in the native archive format (it still has to be read with ReadArchiveFromFile).
 type ReadArchiveParameters struct {
-	Base common.BuildDefinition // The definition used as a base.
+	Base common.BuildDefinition1 // The definition used as a base.
 	// The compression kind of the input file (supports .gz, .zst, and .xz compression
 	// and .tar, .cpio, and .ar archive formats)
 	Kind string

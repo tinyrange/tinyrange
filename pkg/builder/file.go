@@ -42,7 +42,7 @@ type FileDefinition struct {
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *FileDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+func (def *FileDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	return []common.DependencyNode{}, nil
 }
 
@@ -56,7 +56,7 @@ func (def *FileDefinition) Create(params hash.SerializableValue) hash.Definition
 }
 
 // AsFragments implements common.Directive.
-func (def *FileDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+func (def *FileDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(def)
 	if err != nil {
 		return nil, err
@@ -87,12 +87,12 @@ func (def *FileDefinition) AsFragments(ctx common.BuildContext, special common.S
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *FileDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+func (def *FileDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return filesystem.NewStarFile(result, def.Tag()), nil
 }
 
 // Build implements common.BuildDefinition.
-func (def *FileDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+func (def *FileDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	fh, err := def.params.File.Open()
 	if err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func (def *FileDefinition) Build(ctx common.BuildContext) (common.BuildResult, e
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *FileDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+func (def *FileDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	info, err := def.params.File.Stat()
 	if err != nil {
 		return true, err
@@ -130,9 +130,9 @@ func (*FileDefinition) Truth() starlark.Bool { return starlark.True }
 func (*FileDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value         = &FileDefinition{}
-	_ common.BuildDefinition = &FileDefinition{}
-	_ common.Directive       = &FileDefinition{}
+	_ starlark.Value          = &FileDefinition{}
+	_ common.BuildDefinition1 = &FileDefinition{}
+	_ common.Directive        = &FileDefinition{}
 )
 
 type BuilderFunc func() (io.ReadCloser, error)
@@ -143,7 +143,7 @@ type ConstantHashDefinition struct {
 }
 
 // Dependencies implements common.BuildDefinition.
-func (c *ConstantHashDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+func (c *ConstantHashDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	return []common.DependencyNode{}, nil
 }
 
@@ -155,7 +155,7 @@ func (c *ConstantHashDefinition) Create(params hash.SerializableValue) hash.Defi
 }
 
 // Build implements common.BuildDefinition.
-func (c *ConstantHashDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+func (c *ConstantHashDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	if c.builder == nil {
 		return nil, fmt.Errorf("no builder for ConstantHashDefinition(%s)", c.params.Hash)
 	}
@@ -169,7 +169,7 @@ func (c *ConstantHashDefinition) Build(ctx common.BuildContext) (common.BuildRes
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (c *ConstantHashDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+func (c *ConstantHashDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	return false, nil
 }
 
@@ -177,16 +177,16 @@ func (c *ConstantHashDefinition) NeedsBuild(ctx common.BuildContext, cacheTime t
 func (c *ConstantHashDefinition) Tag() string { return c.params.Hash }
 
 // ToStarlark implements common.BuildDefinition.
-func (c *ConstantHashDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+func (c *ConstantHashDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return filesystem.NewStarFile(result, c.params.Hash), nil
 }
 
 var (
-	_ common.BuildDefinition = &ConstantHashDefinition{}
+	_ common.BuildDefinition1 = &ConstantHashDefinition{}
 )
 
-func definitionFromSource(source hash.SerializableValue) (common.BuildDefinition, error) {
-	if def, ok := source.(common.BuildDefinition); ok {
+func definitionFromSource(source hash.SerializableValue) (common.BuildDefinition1, error) {
+	if def, ok := source.(common.BuildDefinition1); ok {
 		return def, nil
 	} else if child, ok := source.(filesystem.ChildSource); ok {
 		base, err := definitionFromSource(child.Source)
@@ -200,7 +200,7 @@ func definitionFromSource(source hash.SerializableValue) (common.BuildDefinition
 	}
 }
 
-func NewDefinitionFromFile(f filesystem.File) (common.BuildDefinition, error) {
+func NewDefinitionFromFile(f filesystem.File) (common.BuildDefinition1, error) {
 	if source, err := filesystem.SourceFromFile(f); err == nil {
 		return definitionFromSource(source)
 	} else {

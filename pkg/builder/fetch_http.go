@@ -33,7 +33,7 @@ func (def *FetchHttpBuildDefinition) Redistributable() bool {
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *FetchHttpBuildDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+func (def *FetchHttpBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	return []common.DependencyNode{}, nil
 }
 
@@ -45,12 +45,12 @@ func (def *FetchHttpBuildDefinition) Create(params hash.SerializableValue) hash.
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (f *FetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+func (f *FetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return filesystem.NewStarFile(result, f.Tag()), nil
 }
 
 // NeedsBuild implements BuildDefinition.
-func (f *FetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+func (f *FetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	if f.params.ExpireTime != 0 {
 		return time.Now().After(cacheTime.Add(time.Duration(f.params.ExpireTime))), nil
 	}
@@ -77,7 +77,7 @@ func (f *FetchHttpBuildDefinition) WriteResult(w io.Writer) error {
 }
 
 // Build implements BuildDefinition.
-func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+func (f *FetchHttpBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	urls, err := ctx.Database().UrlsFor(f.params.Url)
 	if err != nil {
 		return nil, err
@@ -153,7 +153,7 @@ func (*FetchHttpBuildDefinition) Freeze()              {}
 
 var (
 	_ starlark.Value                   = &FetchHttpBuildDefinition{}
-	_ common.BuildDefinition           = &FetchHttpBuildDefinition{}
+	_ common.BuildDefinition1          = &FetchHttpBuildDefinition{}
 	_ common.RedistributableDefinition = &FetchHttpBuildDefinition{}
 	_ common.BuildResult               = &FetchHttpBuildDefinition{}
 )

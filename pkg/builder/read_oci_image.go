@@ -25,12 +25,12 @@ type ReadOciImageDefinition struct {
 }
 
 // Dependencies implements common.BuildDefinition.
-func (r *ReadOciImageDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+func (r *ReadOciImageDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	return []common.DependencyNode{r.params.Base}, nil
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (r *ReadOciImageDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+func (r *ReadOciImageDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	return ctx.NeedsBuild(r.params.Base)
 }
 
@@ -49,7 +49,7 @@ func (r *ReadOciImageDefinition) Tag() string {
 }
 
 // AsFragments implements common.Directive.
-func (r *ReadOciImageDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+func (r *ReadOciImageDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	res, err := ctx.BuildChild(r)
 	if err != nil {
 		return nil, err
@@ -82,14 +82,14 @@ func (r *ReadOciImageDefinition) AsFragments(ctx common.BuildContext, special co
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (r *ReadOciImageDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+func (r *ReadOciImageDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	var def FetchOciImageDefinition
 
 	return def.ToStarlark(ctx, result)
 }
 
 // Build implements common.BuildDefinition.
-func (r *ReadOciImageDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+func (r *ReadOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	child, err := ctx.BuildChild(r.params.Base)
 	if err != nil {
 		return nil, err
@@ -158,10 +158,10 @@ func (r *ReadOciImageDefinition) Build(ctx common.BuildContext) (common.BuildRes
 }
 
 var (
-	_ common.BuildDefinition = &ReadOciImageDefinition{}
+	_ common.BuildDefinition1 = &ReadOciImageDefinition{}
 )
 
-func NewReadOCIImageDefinition(base common.BuildDefinition) *ReadOciImageDefinition {
+func NewReadOCIImageDefinition(base common.BuildDefinition1) *ReadOciImageDefinition {
 	return &ReadOciImageDefinition{
 		params: ReadOciImageParameters{
 			Base: base,

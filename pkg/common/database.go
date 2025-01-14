@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os/exec"
@@ -24,28 +25,42 @@ type DependencyNode interface {
 
 	// Dependencies returns the dependencies of the node.
 	// This doesn't have to return all dependencies just those that can be staticky determined.
-	Dependencies(ctx BuildContext) ([]DependencyNode, error)
+	Dependencies(ctx BuildContext1) ([]DependencyNode, error)
 }
 
-// BuildDefinition is a definition that can be built and cached.
-type BuildDefinition interface {
+// BuildDefinition1 is a definition that can be built and cached.
+type BuildDefinition1 interface {
 	hash.Definition
 	DependencyNode
 	MacroResult
 	// Tag returns a human readable name for the definition.
 	Tag() string
 	// NeedsBuild returns whether the definition needs to be rebuilt.
-	NeedsBuild(ctx BuildContext, cacheTime time.Time) (bool, error)
+	NeedsBuild(ctx BuildContext1, cacheTime time.Time) (bool, error)
 	// Build builds the definition and returns the result.
-	Build(ctx BuildContext) (BuildResult, error)
+	Build(ctx BuildContext1) (BuildResult, error)
 	// ToStarlark converts the definition to a starlark value.
-	ToStarlark(ctx BuildContext, result filesystem.File) (starlark.Value, error)
+	ToStarlark(ctx BuildContext1, result filesystem.File) (starlark.Value, error)
+}
+
+// ALPHA: From Build2
+// BuildDefinition is a definition that can be built and cached.
+type BuildDefinition interface {
+	hash.Definition
+	fmt.Stringer
+
+	// NeedsBuild returns whether the definition needs to be rebuilt.
+	NeedsBuild(ctx BuildContext) (bool, error)
+	// Dependencies returns the dependencies of the definition.
+	Dependencies() ([]BuildDefinition, error)
+	// Build builds the definition and returns the result.
+	Build(ctx BuildContext) error
 }
 
 // RedistributableDefinition is a extension of BuildDefinition that can be redistributed.
 // Redistributable definitions can be downloaded from public servers.
 type RedistributableDefinition interface {
-	BuildDefinition
+	BuildDefinition1
 	Redistributable() bool
 }
 
@@ -60,7 +75,47 @@ type PlanOptions struct {
 	Debug bool
 }
 
+// ALPHA: From Build2
+type BuildReceipt struct {
+	Requirements []hash.Hash       `json:"requirements"`
+	StartTime    time.Time         `json:"start_time"`
+	Duration     time.Duration     `json:"duration"`
+	Files        map[string]string `json:"files"` // map of filename to sha256 hash
+}
+
+// ALPHA: From Build2
+// BuildArtifact is the result of a build.
+type BuildArtifact interface {
+	// Hash returns the hash of the definition.
+	Hash() hash.Hash
+	// Receipt returns the receipt of the build.
+	Receipt() BuildReceipt
+	// Default returns the default file written with WriteDefault.
+	Default() (filesystem.File, error)
+	// OpenFile opens a file in the artifact.
+	OpenFile(name string) (filesystem.FileHandle, error)
+}
+
+// ALPHA: From Build2
+// BuildContext is the context of a build.
 type BuildContext interface {
+	// BuildChild builds a child definition.
+	BuildChild(def BuildDefinition) (BuildArtifact, error)
+	// CreateFile creates a file in the build context.
+	CreateFile(name string) (io.WriteCloser, error)
+	// WriteDefault writes the default file for the build.
+	WriteDefault(result BuildResult) error
+	// Hash returns the hash of the build context.
+	Hash() hash.Hash
+	// LastBuild returns the time of the last build.
+	LastBuild() time.Time
+	// Describe logs a message about the build.
+	Describe(format string, args ...interface{})
+	// Logf logs a message about the build.
+	Logf(format string, args ...interface{})
+}
+
+type BuildContext1 interface {
 	starlark.Value
 
 	// CreateOutput creates the main output file early.
@@ -73,9 +128,9 @@ type BuildContext interface {
 	// Database returns the package database.
 	Database() PackageDatabase
 	// BuildChild builds a given child definition.
-	BuildChild(def BuildDefinition) (filesystem.File, error)
+	BuildChild(def BuildDefinition1) (filesystem.File, error)
 	// NeedsBuild returns whether the given definition needs to be rebuilt.
-	NeedsBuild(def BuildDefinition) (bool, error)
+	NeedsBuild(def BuildDefinition1) (bool, error)
 	// Call calls a starlark function declared in a file.
 	Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error)
 	// DigestFromFile returns a file digest from a file.
@@ -96,7 +151,7 @@ type InstallationPlan interface {
 	starlark.Value
 
 	// Add a new package to the plan.
-	Add(ctx BuildContext, builder ContainerBuilder, query PackageQuery, isDefault bool) error
+	Add(ctx BuildContext1, builder ContainerBuilder, query PackageQuery, isDefault bool) error
 	// Get the list of directives in the plan.
 	Directives() []Directive
 	// Set the list of directives in the plan.
@@ -112,7 +167,7 @@ type PackageCollection interface {
 	// Search for packages that match the given query.
 	Query(query PackageQuery) ([]*Package, error)
 	// Get the package with the given name.
-	InstallerFor(ctx BuildContext, pkg *Package, tags TagList) (*Installer, error)
+	InstallerFor(ctx BuildContext1, pkg *Package, tags TagList) (*Installer, error)
 }
 
 // ContainerBuilder takes a package collection and creates an installation plan from a list of queries.
@@ -127,7 +182,7 @@ type ContainerBuilder interface {
 	Packages() PackageCollection
 
 	// Plan creates an installation plan from a list of queries.
-	Plan(ctx BuildContext, packages []PackageQuery, tags TagList, opts PlanOptions) (InstallationPlan, error)
+	Plan(ctx BuildContext1, packages []PackageQuery, tags TagList, opts PlanOptions) (InstallationPlan, error)
 	// Search for packages that match the given query.
 	Search(pkg PackageQuery) ([]*Package, error)
 }
@@ -196,11 +251,20 @@ type RequestManager interface {
 	HttpClient() (*http.Client, error)
 }
 
-type Builder interface {
+type Builder1 interface {
 	// Build a definition from a build context.
-	Build(def BuildDefinition, opts BuildOptions) (filesystem.File, error)
+	Build(def BuildDefinition1, opts BuildOptions) (filesystem.File, error)
 	// SetRebuildUserDefinitions sets whether user definitions should be rebuilt.
 	SetRebuildUserDefinitions(rebuild bool)
+}
+
+// ALPHA: From Build2
+// Builder is the root object used to build definitions.
+type Builder interface {
+	// Build builds a definition.
+	Build(def BuildDefinition, opts BuildOptions) (BuildArtifact, error)
+	// GarbageCollect removes old build artifacts.
+	GarbageCollect(olderThan time.Time) ([]hash.Hash, error)
 }
 
 // PackageDatabase is the core interface.
@@ -210,7 +274,7 @@ type PackageDatabase interface {
 	MacroManager
 	DistributionServerManager
 	RequestManager
-	Builder() Builder
+	Builder() Builder1
 
 	// Run a top-level script.
 	RunScript(

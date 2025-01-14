@@ -40,7 +40,7 @@ func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, erro
 }
 
 type buildContext struct {
-	def      common.BuildDefinition
+	def      common.BuildDefinition1
 	database *packageDatabase
 	parent   *buildContext
 	status   *buildStatus
@@ -156,7 +156,7 @@ func (b *buildContext) Database() common.PackageDatabase {
 	return b.database
 }
 
-func (b *buildContext) childContext(def common.BuildDefinition, status *buildStatus, filename string) *buildContext {
+func (b *buildContext) childContext(def common.BuildDefinition1, status *buildStatus, filename string) *buildContext {
 	ctx := &buildContext{
 		parent:   b,
 		filename: filename,
@@ -195,7 +195,7 @@ func (b *buildContext) HasCreatedOutput() bool {
 	return b.output != nil
 }
 
-func (b *buildContext) BuildChild(def common.BuildDefinition) (filesystem.File, error) {
+func (b *buildContext) BuildChild(def common.BuildDefinition1) (filesystem.File, error) {
 	if b.status != nil {
 		b.status.Children = append(b.status.Children, def)
 	}
@@ -203,7 +203,7 @@ func (b *buildContext) BuildChild(def common.BuildDefinition) (filesystem.File, 
 	return b.database.build(b, def, common.BuildOptions{})
 }
 
-func (b *buildContext) NeedsBuild(def common.BuildDefinition) (bool, error) {
+func (b *buildContext) NeedsBuild(def common.BuildDefinition1) (bool, error) {
 	if b.inMemory {
 		return true, nil
 	}
@@ -293,9 +293,9 @@ func (b *buildContext) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			var buildDef common.BuildDefinition
+			var buildDef common.BuildDefinition1
 
-			if def, ok := val.(common.BuildDefinition); ok {
+			if def, ok := val.(common.BuildDefinition1); ok {
 				buildDef = def
 			} else {
 				return starlark.None, fmt.Errorf("could not convert %s to BuildDefinition", val.Type())
@@ -342,7 +342,7 @@ func (*buildContext) Truth() starlark.Bool  { return starlark.True }
 func (*buildContext) Freeze()               {}
 
 var (
-	_ starlark.Value      = &buildContext{}
-	_ starlark.HasAttrs   = &buildContext{}
-	_ common.BuildContext = &buildContext{}
+	_ starlark.Value       = &buildContext{}
+	_ starlark.HasAttrs    = &buildContext{}
+	_ common.BuildContext1 = &buildContext{}
 )

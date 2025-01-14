@@ -25,7 +25,7 @@ type BuildEmulatorDefinition struct {
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *BuildEmulatorDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+func (def *BuildEmulatorDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	var ret []common.DependencyNode
 
 	for _, directive := range def.params.Directives {
@@ -43,12 +43,12 @@ func (def *BuildEmulatorDefinition) Create(params hash.SerializableValue) hash.D
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *BuildEmulatorDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+func (def *BuildEmulatorDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return filesystem.NewStarFile(result, def.Tag()), nil
 }
 
 // Build implements common.BuildDefinition.
-func (def *BuildEmulatorDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+func (def *BuildEmulatorDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	var commands []string
 
 	// Launch child builds for each directive.
@@ -123,7 +123,7 @@ func (def *BuildEmulatorDefinition) Build(ctx common.BuildContext) (common.Build
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *BuildEmulatorDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+func (def *BuildEmulatorDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
@@ -156,8 +156,8 @@ func (*BuildEmulatorDefinition) Truth() starlark.Bool { return starlark.True }
 func (*BuildEmulatorDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value         = &BuildEmulatorDefinition{}
-	_ common.BuildDefinition = &BuildEmulatorDefinition{}
+	_ starlark.Value          = &BuildEmulatorDefinition{}
+	_ common.BuildDefinition1 = &BuildEmulatorDefinition{}
 )
 
 func NewBuildEmulatorDefinition(

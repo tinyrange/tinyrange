@@ -19,7 +19,7 @@ type ExtractFileDefinition struct {
 }
 
 // Dependencies implements common.BuildDefinition.
-func (def *ExtractFileDefinition) Dependencies(ctx common.BuildContext) ([]common.DependencyNode, error) {
+func (def *ExtractFileDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
 	if def.params.Base != nil {
 		return []common.DependencyNode{def.params.Base}, nil
 	} else {
@@ -28,7 +28,7 @@ func (def *ExtractFileDefinition) Dependencies(ctx common.BuildContext) ([]commo
 }
 
 // Build implements common.BuildDefinition.
-func (def *ExtractFileDefinition) Build(ctx common.BuildContext) (common.BuildResult, error) {
+func (def *ExtractFileDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
 	base, err := ctx.BuildChild(def.params.Base)
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func (def *ExtractFileDefinition) Build(ctx common.BuildContext) (common.BuildRe
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *ExtractFileDefinition) NeedsBuild(ctx common.BuildContext, cacheTime time.Time) (bool, error) {
+func (def *ExtractFileDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	return ctx.NeedsBuild(def.params.Base)
 }
 
@@ -69,7 +69,7 @@ func (def *ExtractFileDefinition) Tag() string {
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *ExtractFileDefinition) ToStarlark(ctx common.BuildContext, result filesystem.File) (starlark.Value, error) {
+func (def *ExtractFileDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
 	return nil, fmt.Errorf("ExtractFileDefinition can not be converted into a Starlark value")
 }
 
@@ -83,9 +83,9 @@ func (def *ExtractFileDefinition) Create(params hash.SerializableValue) hash.Def
 }
 
 var (
-	_ common.BuildDefinition = &ExtractFileDefinition{}
+	_ common.BuildDefinition1 = &ExtractFileDefinition{}
 )
 
-func NewExtractFileDefinition(base common.BuildDefinition, name string) *ExtractFileDefinition {
+func NewExtractFileDefinition(base common.BuildDefinition1, name string) *ExtractFileDefinition {
 	return &ExtractFileDefinition{params: ExtractFileParameters{Base: base, Name: name}}
 }
