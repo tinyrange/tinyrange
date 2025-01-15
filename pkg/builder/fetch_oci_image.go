@@ -252,7 +252,12 @@ func (def *fetchOciImageDefinition) AsFragments(ctx common.BuildContext1, specia
 	var ret []config.Fragment
 
 	for _, archive := range def.LayerArchives {
-		filename, err := ctx.FilenameFromDigest(archive)
+		file, err := ctx.FileFromDigest(archive)
+		if err != nil {
+			return nil, err
+		}
+
+		filename, err := ctx.HostFilenameFromFile(file)
 		if err != nil {
 			return nil, err
 		}

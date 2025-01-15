@@ -66,12 +66,7 @@ func (def *fileDefinition) AsFragments(ctx common.BuildContext1, special common.
 		return nil, err
 	}
 
-	digest, err := ctx.DigestFromFile(res)
-	if err != nil {
-		return nil, err
-	}
-
-	filename, err := ctx.FilenameFromDigest(digest)
+	filename, err := ctx.HostFilenameFromFile(res)
 	if err != nil {
 		return nil, err
 	}

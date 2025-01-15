@@ -122,6 +122,12 @@ type BuildContext interface {
 	CreateDefault() (io.WriteCloser, error)
 	// WriteDefault writes the default file for the build.
 	WriteDefault(result BuildResult) error
+	// DigestFromFile returns a file digest from a file.
+	DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error)
+	// FileFromDigest returns a file from a file digest.
+	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
+	// HostFilenameFromFile returns a filename from a file.
+	HostFilenameFromFile(file filesystem.File) (string, error)
 
 	// CreateFile creates a file in the build context.
 	CreateFile(name string) (io.WriteCloser, error)
@@ -150,13 +156,12 @@ type BuildContext1 interface {
 	CreateDefault() (io.WriteCloser, error)
 	// WriteDefault writes the default file for the build.
 	WriteDefault(result BuildResult) error
-
 	// DigestFromFile returns a file digest from a file.
 	DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error)
 	// FileFromDigest returns a file from a file digest.
 	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
-	// FilenameFromDigest returns a filename from a file digest.
-	FilenameFromDigest(digest *filesystem.FileDigest) (string, error)
+	// HostFilenameFromFile returns a filename from a file.
+	HostFilenameFromFile(file filesystem.File) (string, error)
 
 	// NeedsBuild returns whether the given definition needs to be rebuilt.
 	NeedsBuild(def BuildDefinition1) (bool, error)

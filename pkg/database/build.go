@@ -148,9 +148,9 @@ func (b *buildContext) DigestFromFile(file filesystem.File) (*filesystem.FileDig
 	return &filesystem.FileDigest{Hash: filename}, nil
 }
 
-// FilenameFromDigest implements common.BuildContext.
-func (b *buildContext) FilenameFromDigest(digest *filesystem.FileDigest) (string, error) {
-	return digest.Hash, nil
+// HostFilenameFromFile implements common.BuildContext1.
+func (b *buildContext) HostFilenameFromFile(file filesystem.File) (string, error) {
+	return filesystem.GetHostFilename(file)
 }
 
 // FileFromDigest implements common.BuildContext.

@@ -104,12 +104,7 @@ func (d DirectiveAddFile) AsFragments(ctx BuildContext1, special SpecialDirectiv
 			return nil, err
 		}
 
-		digest, err := ctx.DigestFromFile(res)
-		if err != nil {
-			return nil, err
-		}
-
-		filename, err := ctx.FilenameFromDigest(digest)
+		filename, err := ctx.HostFilenameFromFile(res)
 		if err != nil {
 			return nil, err
 		}
@@ -183,12 +178,7 @@ func (d DirectiveArchive) AsFragments(ctx BuildContext1, special SpecialDirectiv
 		return nil, err
 	}
 
-	digest, err := ctx.DigestFromFile(res)
-	if err != nil {
-		return nil, err
-	}
-
-	filename, err := ctx.FilenameFromDigest(digest)
+	filename, err := ctx.HostFilenameFromFile(res)
 	if err != nil {
 		return nil, err
 	}
@@ -418,12 +408,7 @@ func (d DirectiveKernel) AsFragments(ctx BuildContext1, special SpecialDirective
 		return nil, err
 	}
 
-	kernelDigest, err := ctx.DigestFromFile(kernelRes)
-	if err != nil {
-		return nil, err
-	}
-
-	kernelFilename, err := ctx.FilenameFromDigest(kernelDigest)
+	kernelFilename, err := ctx.HostFilenameFromFile(kernelRes)
 	if err != nil {
 		return nil, err
 	}
@@ -438,12 +423,7 @@ func (d DirectiveKernel) AsFragments(ctx BuildContext1, special SpecialDirective
 		return nil, err
 	}
 
-	initramfsDigest, err := ctx.DigestFromFile(initramfsRes)
-	if err != nil {
-		return nil, err
-	}
-
-	initramfsFilename, err := ctx.FilenameFromDigest(initramfsDigest)
+	initramfsFilename, err := ctx.HostFilenameFromFile(initramfsRes)
 	if err != nil {
 		return nil, err
 	}

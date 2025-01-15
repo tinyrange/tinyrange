@@ -120,6 +120,30 @@ type buildContext struct {
 	files        map[string]*contextFile
 }
 
+// DigestFromFile implements common.BuildContext.
+func (c *buildContext) DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error) {
+	filename, err := filesystem.GetHostFilename(file)
+	if err != nil {
+		return nil, err
+	}
+
+	return &filesystem.FileDigest{Hash: filename}, nil
+}
+
+// FileFromDigest implements common.BuildContext.
+func (c *buildContext) FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error) {
+	if digest.Hash != "" {
+		return filesystem.NewLocalFile(digest.Hash, nil), nil
+	}
+
+	return nil, fmt.Errorf("could not convert digest to hash")
+}
+
+// HostFilenameFromFile implements common.BuildContext.
+func (c *buildContext) HostFilenameFromFile(file filesystem.File) (string, error) {
+	return filesystem.GetHostFilename(file)
+}
+
 // CreateDefault implements common.BuildContext.
 func (c *buildContext) CreateDefault() (io.WriteCloser, error) {
 	return c.CreateFile(defaultSuffix)
