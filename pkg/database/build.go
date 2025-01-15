@@ -14,8 +14,18 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/record"
 	"go.starlark.net/starlark"
+)
+
+type ErrTemplateBuilt string
+
+// Error implements error.
+func (e ErrTemplateBuilt) Error() string { return "template built" }
+
+var (
+	_ error = ErrTemplateBuilt("")
 )
 
 func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
@@ -42,6 +52,7 @@ func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, erro
 
 type buildContext struct {
 	def      common.BuildDefinition1
+	hash     hash.Hash
 	builder  *builder1
 	parent   *buildContext
 	status   *buildStatus
@@ -50,6 +61,11 @@ type buildContext struct {
 	filename  string
 	output    io.WriteCloser
 	lastBuild time.Time
+}
+
+// DefinitionHash implements common.BuildContext1.
+func (b *buildContext) DefinitionHash() hash.Hash {
+	return b.hash
 }
 
 // ShouldRebuildUserDefinitions implements common.BuildContext.
@@ -63,7 +79,7 @@ func (b *buildContext) BuildDir() string {
 }
 
 func (b *buildContext) RunVMM(name string, vmCfg config.TinyRangeConfig) (*exec.Cmd, error) {
-	configFilename, out, err := b.CreateFile(".json")
+	configFilename, out, err := b.createFile(".json")
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +93,10 @@ func (b *buildContext) RunVMM(name string, vmCfg config.TinyRangeConfig) (*exec.
 
 	if err := out.Close(); err != nil {
 		return nil, err
+	}
+
+	if name == "" {
+		return nil, ErrTemplateBuilt(configFilename)
 	}
 
 	var exe string
@@ -98,8 +118,8 @@ func (b *buildContext) LastBuild() time.Time {
 	return b.lastBuild
 }
 
-// CreateFile implements common.BuildContext.
-func (b *buildContext) CreateFile(name string) (string, io.WriteCloser, error) {
+// createFile implements common.BuildContext.
+func (b *buildContext) createFile(name string) (string, io.WriteCloser, error) {
 	out, err := os.Create(b.filename + name)
 	if err != nil {
 		return "", nil, err
@@ -152,7 +172,7 @@ func (b *buildContext) childContext(def common.BuildDefinition1, status *buildSt
 	return ctx
 }
 
-func (b *buildContext) CreateOutput() (io.WriteCloser, error) {
+func (b *buildContext) CreateDefault() (io.WriteCloser, error) {
 	if b.output != nil {
 		return nil, fmt.Errorf("output already created")
 	}
@@ -218,7 +238,7 @@ func (b *buildContext) Attr(name string) (starlark.Value, error) {
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
-			f, err := b.CreateOutput()
+			f, err := b.CreateDefault()
 			if err != nil {
 				return nil, err
 			}
@@ -290,23 +310,6 @@ func (b *buildContext) Attr(name string) (starlark.Value, error) {
 // AttrNames implements starlark.HasAttrs.
 func (b *buildContext) AttrNames() []string {
 	return []string{"recordwriter", "add_package", "build"}
-}
-
-func (ctx *buildContext) Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error) {
-	target, err := ctx.builder.database.getBuilder(filename, builder)
-	if err != nil {
-		return starlark.None, fmt.Errorf("failed to GetBuilder in BuildContext.Call: %s", err)
-	}
-
-	result, err := starlark.Call(ctx.builder.database.newThread(filename), target, append(starlark.Tuple{ctx}, args...), []starlark.Tuple{})
-	if err != nil {
-		if sErr, ok := err.(*starlark.EvalError); ok {
-			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
-		}
-		return starlark.None, err
-	}
-
-	return result, nil
 }
 
 func (*buildContext) String() string        { return "BuildContext" }

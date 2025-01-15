@@ -46,7 +46,7 @@ func (f *fetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext1, artifact
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, artifact.Hash().String()), nil
+	return filesystem.NewStarFile(result, artifact.DefinitionHash().String()), nil
 }
 
 // NeedsBuild implements BuildDefinition.

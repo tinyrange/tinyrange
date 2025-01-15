@@ -9,14 +9,17 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"os/exec"
 	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"go.starlark.net/starlark"
 )
 
 const (
@@ -115,6 +118,26 @@ type buildContext struct {
 	logger       Logger
 	token        *token
 	files        map[string]*contextFile
+}
+
+// CreateDefault implements common.BuildContext.
+func (c *buildContext) CreateDefault() (io.WriteCloser, error) {
+	return c.CreateFile(defaultSuffix)
+}
+
+// RunVMM implements common.BuildContext.
+func (c *buildContext) RunVMM(vmm string, config config.TinyRangeConfig) (*exec.Cmd, error) {
+	return nil, fmt.Errorf("RunVMM not implemented")
+}
+
+// Database implements common.BuildContext.
+func (c *buildContext) Database() common.PackageDatabase {
+	return nil
+}
+
+// ShouldRebuildUserDefinitions implements common.BuildContext.
+func (c *buildContext) ShouldRebuildUserDefinitions() bool {
+	return false
 }
 
 // Precondition: The definition has to be rebuilt.
@@ -400,7 +423,7 @@ func (c *buildContext) CreateFile(name string) (io.WriteCloser, error) {
 }
 
 // Hash implements BuildContext.
-func (a *buildContext) Hash() hash.Hash {
+func (a *buildContext) DefinitionHash() hash.Hash {
 	return a.hash
 }
 
@@ -419,6 +442,12 @@ func (c *buildContext) WriteDefault(result common.BuildResult) error {
 	return nil
 }
 
+func (c *buildContext) Freeze()               { panic("unimplemented") }
+func (c *buildContext) Hash() (uint32, error) { panic("unimplemented") }
+func (c *buildContext) String() string        { panic("unimplemented") }
+func (c *buildContext) Truth() starlark.Bool  { panic("unimplemented") }
+func (c *buildContext) Type() string          { panic("unimplemented") }
+
 var (
 	_ common.BuildContext = &buildContext{}
 )
@@ -429,6 +458,11 @@ type builder struct {
 	contextCache sync.Map
 	logger       Logger
 	tokenLocker  *tokenLocker
+}
+
+// SetRebuildUserDefinitions implements common.Builder.
+func (b *builder) SetRebuildUserDefinitions(rebuild bool) {
+
 }
 
 func (b *builder) contextForDefinition(parent *buildContext, def common.BuildDefinition, opts common.BuildOptions) *buildContext {

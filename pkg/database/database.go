@@ -97,7 +97,7 @@ func (t *tempArtifact) Default() (filesystem.File, error) {
 }
 
 // Hash implements common.BuildArtifact.
-func (t *tempArtifact) Hash() hash.Hash {
+func (t *tempArtifact) DefinitionHash() hash.Hash {
 	return t.hash
 }
 
@@ -144,10 +144,6 @@ func (db *builder1) HashDefinition(def common.BuildDefinition1) (hash.Hash, erro
 
 func (db *builder1) newBuildContext(def common.BuildDefinition1) *buildContext {
 	return &buildContext{def: def, builder: db}
-}
-
-func (db *builder1) NewBuildContext(def common.BuildDefinition1) common.BuildContext1 {
-	return db.newBuildContext(def)
 }
 
 func (db *builder1) updateBuildStatus(def common.BuildDefinition1, status *buildStatus) {
@@ -262,6 +258,8 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 	if !ok {
 		return nil, fmt.Errorf("expected buildContext, got %T", c)
 	}
+
+	ctx.hash = hash
 
 	// Get a child context for the build.
 	child := ctx.childContext(def, status, tmpFilename)
@@ -442,7 +440,7 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 }
 
 func (db *builder1) Build(def common.BuildDefinition1, opts common.BuildOptions) (common.BuildArtifact, error) {
-	return db.build(db.NewBuildContext(def), def, opts)
+	return db.build(db.newBuildContext(def), def, opts)
 }
 
 func (db *builder1) missDefinitionCache(hash hash.Hash) (io.ReadCloser, error) {
@@ -885,6 +883,23 @@ func (db *packageDatabase) GetContainerBuilders() map[string]common.ContainerBui
 	}
 
 	return ret
+}
+
+func (db *packageDatabase) Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error) {
+	target, err := db.getBuilder(filename, builder)
+	if err != nil {
+		return starlark.None, fmt.Errorf("failed to GetBuilder in BuildContext.Call: %s", err)
+	}
+
+	result, err := starlark.Call(db.newThread(filename), target, args, []starlark.Tuple{})
+	if err != nil {
+		if sErr, ok := err.(*starlark.EvalError); ok {
+			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+		}
+		return starlark.None, err
+	}
+
+	return result, nil
 }
 
 func (db *packageDatabase) Builder() common.Builder1 {

@@ -23,15 +23,6 @@ func init() {
 	hash.RegisterType(&buildVmDefinition{})
 }
 
-type ErrTemplateBuilt string
-
-// Error implements error.
-func (e ErrTemplateBuilt) Error() string { return "template built" }
-
-var (
-	_ error = ErrTemplateBuilt("")
-)
-
 type buildVmDefinition struct {
 	params BuildVmParameters
 
@@ -62,7 +53,7 @@ func (def *buildVmDefinition) ToStarlark(ctx common.BuildContext1, artifact comm
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, artifact.Hash().String()), nil
+	return filesystem.NewStarFile(result, artifact.DefinitionHash().String()), nil
 }
 
 // WriteTo implements common.BuildResult.
@@ -266,23 +257,12 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext1) (common.BuildResul
 			return nil, err
 		}
 
-		configFilename, out, err := ctx.CreateFile(".json")
+		_, err = ctx.RunVMM("", vmCfg)
 		if err != nil {
 			return nil, err
+		} else {
+			return nil, fmt.Errorf("expected error")
 		}
-
-		enc := json.NewEncoder(out)
-
-		if err := enc.Encode(&vmCfg); err != nil {
-			out.Close()
-			return nil, err
-		}
-
-		if err := out.Close(); err != nil {
-			return nil, err
-		}
-
-		return nil, ErrTemplateBuilt(configFilename)
 	}
 
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
@@ -303,7 +283,7 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext1) (common.BuildResul
 		Handler: def.mux,
 	}
 
-	out, err := ctx.CreateOutput()
+	out, err := ctx.CreateDefault()
 	if err != nil {
 		return nil, err
 	}

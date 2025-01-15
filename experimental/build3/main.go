@@ -91,7 +91,7 @@ func (d *basicBuildDefinition) Build(ctx common.BuildContext) error {
 	}
 	defer out.Close()
 
-	if _, err := fmt.Fprintf(out, "- %s\n", ctx.Hash()); err != nil {
+	if _, err := fmt.Fprintf(out, "- %s\n", ctx.DefinitionHash()); err != nil {
 		return err
 	}
 

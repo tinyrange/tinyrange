@@ -194,7 +194,7 @@ func (def *starBuildDefinition) ToStarlark(ctx common.BuildContext1, artifact co
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, artifact.Hash().String()), nil
+	return filesystem.NewStarFile(result, artifact.DefinitionHash().String()), nil
 }
 
 // NeedsBuild implements BuildDefinition.
@@ -244,7 +244,7 @@ func (def *starBuildDefinition) Build(ctx common.BuildContext1) (common.BuildRes
 		args = append(args, val)
 	}
 
-	res, err := ctx.Call(def.params.ScriptFilename, def.params.BuilderName, args...)
+	res, err := ctx.Database().Call(def.params.ScriptFilename, def.params.BuilderName, append([]starlark.Value{ctx}, args...)...)
 	if err != nil {
 		return nil, err
 	}

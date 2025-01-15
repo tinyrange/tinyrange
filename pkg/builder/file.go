@@ -92,7 +92,7 @@ func (def *fileDefinition) ToStarlark(ctx common.BuildContext1, artifact common.
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, artifact.Hash().String()), nil
+	return filesystem.NewStarFile(result, artifact.DefinitionHash().String()), nil
 }
 
 // Build implements common.BuildDefinition.

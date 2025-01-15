@@ -105,7 +105,7 @@ func (builder *containerBuilder) Attr(name string) (starlark.Value, error) {
 				}
 			}
 
-			ctx := builder.db.builder.NewBuildContext(nil)
+			ctx := builder.db.builder.newBuildContext(nil)
 
 			plan, err := builder.Plan(ctx, search, tagList, common.PlanOptions{})
 			if err != nil {

@@ -85,7 +85,7 @@ type BuildReceipt struct {
 // BuildArtifact is the result of a build.
 type BuildArtifact interface {
 	// Hash returns the hash of the definition.
-	Hash() hash.Hash
+	DefinitionHash() hash.Hash
 	// Receipt returns the receipt of the build.
 	Receipt() BuildReceipt
 	// Default returns the default file written with WriteDefault.
@@ -97,16 +97,27 @@ type BuildArtifact interface {
 // ALPHA: From Build2
 // BuildContext is the context of a build.
 type BuildContext interface {
+	starlark.Value
+
 	// BuildChild builds a child definition.
 	BuildChild(def BuildDefinition) (BuildArtifact, error)
+	// ShouldRebuildUserDefinitions returns whether user definitions should be rebuilt.
+	ShouldRebuildUserDefinitions() bool
+	// LastBuild returns the time of the last build.
+	LastBuild() time.Time
+	// Database returns the package database.
+	Database() PackageDatabase
+	// RunVMM runs a VMM with the given configuration.
+	RunVMM(vmm string, config config.TinyRangeConfig) (*exec.Cmd, error)
+	// Hash returns the hash of the build context.
+	DefinitionHash() hash.Hash
+	// CreateDefault creates the default file for the build.
+	CreateDefault() (io.WriteCloser, error)
+
 	// CreateFile creates a file in the build context.
 	CreateFile(name string) (io.WriteCloser, error)
 	// WriteDefault writes the default file for the build.
 	WriteDefault(result BuildResult) error
-	// Hash returns the hash of the build context.
-	Hash() hash.Hash
-	// LastBuild returns the time of the last build.
-	LastBuild() time.Time
 	// Describe logs a message about the build.
 	Describe(format string, args ...interface{})
 	// Logf logs a message about the build.
@@ -116,30 +127,30 @@ type BuildContext interface {
 type BuildContext1 interface {
 	starlark.Value
 
-	// CreateOutput creates the main output file early.
-	CreateOutput() (io.WriteCloser, error)
-	// CreateFile creates a new file in the build directory.
-	CreateFile(name string) (string, io.WriteCloser, error)
+	// BuildChild builds a given child definition.
+	BuildChild(def BuildDefinition1) (BuildArtifact, error)
+	// ShouldRebuildUserDefinitions returns whether user definitions should be rebuilt.
+	ShouldRebuildUserDefinitions() bool
 	// LastBuild returns the time of the last build.
 	LastBuild() time.Time
 	// Database returns the package database.
 	Database() PackageDatabase
-	// BuildChild builds a given child definition.
-	BuildChild(def BuildDefinition1) (BuildArtifact, error)
-	// NeedsBuild returns whether the given definition needs to be rebuilt.
-	NeedsBuild(def BuildDefinition1) (bool, error)
-	// Call calls a starlark function declared in a file.
-	Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error)
+	// RunVMM runs a VMM with the given configuration.
+	RunVMM(vmm string, config config.TinyRangeConfig) (*exec.Cmd, error)
+	// Hash returns the hash of the build context.
+	DefinitionHash() hash.Hash
+	// CreateDefault creates the main output file early.
+	CreateDefault() (io.WriteCloser, error)
+
 	// DigestFromFile returns a file digest from a file.
 	DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error)
 	// FileFromDigest returns a file from a file digest.
 	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
 	// FilenameFromDigest returns a filename from a file digest.
 	FilenameFromDigest(digest *filesystem.FileDigest) (string, error)
-	// RunVMM runs a VMM with the given configuration.
-	RunVMM(vmm string, config config.TinyRangeConfig) (*exec.Cmd, error)
-	// ShouldRebuildUserDefinitions returns whether user definitions should be rebuilt.
-	ShouldRebuildUserDefinitions() bool
+
+	// NeedsBuild returns whether the given definition needs to be rebuilt.
+	NeedsBuild(def BuildDefinition1) (bool, error)
 }
 
 // InstallationPlan represents a plan for installing packages.
@@ -256,6 +267,8 @@ type Builder1 interface {
 type Builder interface {
 	// Build builds a definition.
 	Build(def BuildDefinition, opts BuildOptions) (BuildArtifact, error)
+	// SetRebuildUserDefinitions sets whether user definitions should be rebuilt.
+	SetRebuildUserDefinitions(rebuild bool)
 	// GarbageCollect removes old build artifacts.
 	GarbageCollect(olderThan time.Time) ([]hash.Hash, error)
 }
@@ -268,6 +281,8 @@ type PackageDatabase interface {
 	RequestManager
 	Builder() Builder1
 
+	// Call calls a starlark function declared in a file.
+	Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error)
 	// Run a top-level script.
 	RunScript(
 		filename string,

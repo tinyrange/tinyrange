@@ -36,7 +36,7 @@ func (def *buildEmulatorDefinition) ToStarlark(ctx common.BuildContext1, artifac
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, artifact.Hash().String()), nil
+	return filesystem.NewStarFile(result, artifact.DefinitionHash().String()), nil
 }
 
 // Build implements common.BuildDefinition.
@@ -87,7 +87,7 @@ func (def *buildEmulatorDefinition) Build(ctx common.BuildContext1) (common.Buil
 	}
 
 	// Call the creation callback.
-	_, err := ctx.Call(def.params.ScriptFilename, def.params.CreateName, emu)
+	_, err := ctx.Database().Call(def.params.ScriptFilename, def.params.CreateName, ctx, emu)
 	if err != nil {
 		return nil, fmt.Errorf("failed to call emulator creation callback: %s", err)
 	}

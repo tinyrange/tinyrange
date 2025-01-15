@@ -472,7 +472,7 @@ func (r *readArchiveBuildDefinition) ToStarlark(ctx common.BuildContext1, artifa
 		return starlark.None, err
 	}
 
-	return filesystem.NewStarArchive(ark, r, artifact.Hash().String()), nil
+	return filesystem.NewStarArchive(ark, r, artifact.DefinitionHash().String()), nil
 }
 
 // NeedsBuild implements BuildDefinition.
