@@ -461,7 +461,12 @@ func (r *readArchiveBuildDefinition) AsFragments(ctx common.BuildContext1, speci
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (r *readArchiveBuildDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (r *readArchiveBuildDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+	result, err := artifact.Default()
+	if err != nil {
+		return nil, err
+	}
+
 	ark, err := filesystem.ReadArchiveFromFile(result)
 	if err != nil {
 		return starlark.None, err

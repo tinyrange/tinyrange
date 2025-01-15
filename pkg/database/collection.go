@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/record"
 	"go.starlark.net/starlark"
@@ -55,7 +54,7 @@ func (parser *packageCollection) SerializableType() string {
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (parser *packageCollection) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (parser *packageCollection) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
 	panic("unimplemented on packageCollection")
 }
 

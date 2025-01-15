@@ -23,6 +23,7 @@ type BuildResult interface {
 type BuildDefinition1 interface {
 	hash.Definition
 	MacroResult
+
 	// Tag returns a human readable name for the definition.
 	Tag() string
 	// NeedsBuild returns whether the definition needs to be rebuilt.
@@ -30,7 +31,7 @@ type BuildDefinition1 interface {
 	// Build builds the definition and returns the result.
 	Build(ctx BuildContext1) (BuildResult, error)
 	// ToStarlark converts the definition to a starlark value.
-	ToStarlark(ctx BuildContext1, result filesystem.File) (starlark.Value, error)
+	ToStarlark(ctx BuildContext1, artifact BuildArtifact) (starlark.Value, error)
 }
 
 type StarBuildDefinition1 interface {
@@ -42,6 +43,7 @@ type StarBuildDefinition1 interface {
 // BuildDefinition is a definition that can be built and cached.
 type BuildDefinition interface {
 	hash.Definition
+	MacroResult
 	fmt.Stringer
 
 	// NeedsBuild returns whether the definition needs to be rebuilt.

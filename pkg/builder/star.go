@@ -24,12 +24,7 @@ func SerializableValueToStarlark(ctx common.BuildContext1, val hash.Serializable
 			return starlark.None, err
 		}
 
-		result, err := artifact.Default()
-		if err != nil {
-			return starlark.None, err
-		}
-
-		return val.ToStarlark(ctx, result)
+		return val.ToStarlark(ctx, artifact)
 	case hash.SerializableString:
 		return starlark.String(val), nil
 	case hash.SerializableList:
@@ -58,12 +53,7 @@ func SerializableValueToStarlark(ctx common.BuildContext1, val hash.Serializable
 				return starlark.None, err
 			}
 
-			result, err := artifact.Default()
-			if err != nil {
-				return starlark.None, err
-			}
-
-			starVal, err := def.ToStarlark(ctx, result)
+			starVal, err := def.ToStarlark(ctx, artifact)
 			if err != nil {
 				return starlark.None, err
 			}
@@ -198,8 +188,13 @@ func (def *starBuildDefinition) AsFragments(ctx common.BuildContext1, special co
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *starBuildDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
-	return filesystem.NewStarFile(result, def.Tag()), nil
+func (def *starBuildDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+	result, err := artifact.Default()
+	if err != nil {
+		return nil, err
+	}
+
+	return filesystem.NewStarFile(result, artifact.Hash().String()), nil
 }
 
 // NeedsBuild implements BuildDefinition.

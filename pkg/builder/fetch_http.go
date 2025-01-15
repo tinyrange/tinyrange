@@ -40,8 +40,13 @@ func (def *fetchHttpBuildDefinition) Create(params hash.SerializableValue) hash.
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (f *fetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
-	return filesystem.NewStarFile(result, f.Tag()), nil
+func (f *fetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+	result, err := artifact.Default()
+	if err != nil {
+		return nil, err
+	}
+
+	return filesystem.NewStarFile(result, artifact.Hash().String()), nil
 }
 
 // NeedsBuild implements BuildDefinition.

@@ -75,8 +75,13 @@ func (def *planDefinition) AsFragments(ctx common.BuildContext1, special common.
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *planDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (def *planDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
 	var plan *planDefinition
+
+	result, err := artifact.Default()
+	if err != nil {
+		return nil, err
+	}
 
 	if err := ParseJsonFromFile(result, &plan); err != nil {
 		return nil, err

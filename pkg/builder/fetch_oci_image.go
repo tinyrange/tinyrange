@@ -139,7 +139,7 @@ func (def *registryRequestDefinition) Create(params hash.SerializableValue) hash
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (r *registryRequestDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (r *registryRequestDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
 	panic("unimplemented")
 }
 
@@ -260,7 +260,12 @@ func (def *fetchOciImageDefinition) AsFragments(ctx common.BuildContext1, specia
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *fetchOciImageDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (def *fetchOciImageDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+	result, err := artifact.Default()
+	if err != nil {
+		return nil, err
+	}
+
 	if err := ParseJsonFromFile(result, &def); err != nil {
 		return nil, err
 	}

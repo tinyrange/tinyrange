@@ -176,20 +176,7 @@ func (b *buildContext) BuildChild(def common.BuildDefinition1) (common.BuildArti
 		b.status.Children = append(b.status.Children, def)
 	}
 
-	defaultFile, err := b.builder.build(b, def, common.BuildOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	hash, err := b.builder.HashDefinition(def)
-	if err != nil {
-		return nil, err
-	}
-
-	return &tempArtifact{
-		defaultFile: defaultFile,
-		hash:        hash,
-	}, nil
+	return b.builder.build(b, def, common.BuildOptions{})
 }
 
 func (b *buildContext) NeedsBuild(def common.BuildDefinition1) (bool, error) {
@@ -293,12 +280,7 @@ func (b *buildContext) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			resultFile, err := result.Default()
-			if err != nil {
-				return starlark.None, err
-			}
-
-			return buildDef.ToStarlark(b, resultFile)
+			return buildDef.ToStarlark(b, result)
 		}), nil
 	} else {
 		return nil, nil

@@ -56,8 +56,13 @@ func (def *buildVmDefinition) Create(params hash.SerializableValue) hash.Definit
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *buildVmDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
-	return filesystem.NewStarFile(result, def.Tag()), nil
+func (def *buildVmDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+	result, err := artifact.Default()
+	if err != nil {
+		return nil, err
+	}
+
+	return filesystem.NewStarFile(result, artifact.Hash().String()), nil
 }
 
 // WriteTo implements common.BuildResult.

@@ -64,7 +64,7 @@ func (def *extractFileDefinition) Tag() string {
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *extractFileDefinition) ToStarlark(ctx common.BuildContext1, result filesystem.File) (starlark.Value, error) {
+func (def *extractFileDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
 	return nil, fmt.Errorf("ExtractFileDefinition can not be converted into a Starlark value")
 }
 

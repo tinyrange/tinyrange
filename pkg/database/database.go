@@ -123,7 +123,7 @@ type builder1 struct {
 
 	distributionServer string
 
-	buildCache map[hash.Hash]filesystem.File
+	buildCache map[hash.Hash]common.BuildArtifact
 
 	buildStatusMtx sync.Mutex
 	buildStatuses  map[common.BuildDefinition1]*buildStatus
@@ -235,7 +235,7 @@ func (db *builder1) getBuildStatus(def common.BuildDefinition1) (*buildStatus, e
 	return status, nil
 }
 
-func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, opts common.BuildOptions) (filesystem.File, error) {
+func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, opts common.BuildOptions) (common.BuildArtifact, error) {
 	tag := def.Tag()
 
 	hash, err := db.HashDefinition(def)
@@ -299,7 +299,10 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 
 				slog.Debug("cached", "Tag", def.Tag(), "filename", filename)
 
-				return filesystem.NewLocalFile(filename, def), nil
+				return &tempArtifact{
+					hash:        hash,
+					defaultFile: filesystem.NewLocalFile(filename, def),
+				}, nil
 			}
 
 			slog.Debug("rebuild requested", "Tag", def.Tag())
@@ -346,12 +349,15 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 				return nil, err
 			}
 
-			f := filesystem.NewLocalFile(filename, def)
+			art := &tempArtifact{
+				hash:        hash,
+				defaultFile: filesystem.NewLocalFile(filename, def),
+			}
 
-			db.buildCache[hash] = f
+			db.buildCache[hash] = art
 
 			// Return the file.
-			return f, nil
+			return art, nil
 		}
 	}
 
@@ -370,7 +376,10 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 		// Write the build status.
 		db.updateBuildStatus(def, status)
 
-		return filesystem.NewLocalFile(filename, def), nil
+		return &tempArtifact{
+			hash:        hash,
+			defaultFile: filesystem.NewLocalFile(filename, def),
+		}, nil
 	}
 
 	// If the build has already been written then don't write it again.
@@ -424,30 +433,19 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 		}
 	}
 
-	f := filesystem.NewLocalFile(filename, def)
+	art := &tempArtifact{
+		hash:        hash,
+		defaultFile: filesystem.NewLocalFile(filename, def),
+	}
 
-	db.buildCache[hash] = f
+	db.buildCache[hash] = art
 
 	// Return the file.
-	return f, nil
+	return art, nil
 }
 
 func (db *builder1) Build(def common.BuildDefinition1, opts common.BuildOptions) (common.BuildArtifact, error) {
-	res, err := db.build(db.NewBuildContext(def), def, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	hash, err := db.HashDefinition(def)
-	if err != nil {
-		return nil, err
-	}
-
-	return &tempArtifact{
-		hash:        hash,
-		defaultFile: res,
-	}, nil
-
+	return db.build(db.NewBuildContext(def), def, opts)
 }
 
 func (db *builder1) missDefinitionCache(hash hash.Hash) (io.ReadCloser, error) {
@@ -912,7 +910,7 @@ func New(buildDir string) (common.PackageDatabase, error) {
 	builder := &builder1{
 		database:      db,
 		buildStatuses: make(map[common.BuildDefinition1]*buildStatus),
-		buildCache:    make(map[hash.Hash]filesystem.File),
+		buildCache:    make(map[hash.Hash]common.BuildArtifact),
 		buildDir:      buildDir,
 	}
 
