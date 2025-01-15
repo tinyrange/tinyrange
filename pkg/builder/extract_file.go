@@ -2,7 +2,6 @@ package builder
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -55,7 +54,7 @@ func (def *extractFileDefinition) Build(ctx common.BuildContext1) (common.BuildR
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *extractFileDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *extractFileDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	return ctx.NeedsBuild(def.params.Base)
 }
 

@@ -26,7 +26,7 @@ type BuildDefinition1 interface {
 	// Tag returns a human readable name for the definition.
 	Tag() string
 	// NeedsBuild returns whether the definition needs to be rebuilt.
-	NeedsBuild(ctx BuildContext1, cacheTime time.Time) (bool, error)
+	NeedsBuild(ctx BuildContext1) (bool, error)
 	// Build builds the definition and returns the result.
 	Build(ctx BuildContext1) (BuildResult, error)
 	// ToStarlark converts the definition to a starlark value.
@@ -119,9 +119,8 @@ type BuildContext1 interface {
 	CreateOutput() (io.WriteCloser, error)
 	// CreateFile creates a new file in the build directory.
 	CreateFile(name string) (string, io.WriteCloser, error)
-	// HasCached returns whether the build context has a cached file for this build already.
-	// This can be used to skip building if the file is already cached.
-	HasCached() bool
+	// LastBuild returns the time of the last build.
+	LastBuild() time.Time
 	// Database returns the package database.
 	Database() PackageDatabase
 	// BuildChild builds a given child definition.

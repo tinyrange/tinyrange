@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -330,7 +329,7 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext1) (common.BuildResul
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *buildVmDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *buildVmDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}

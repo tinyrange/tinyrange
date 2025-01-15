@@ -5,7 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -102,13 +101,13 @@ func (def *fileDefinition) Build(ctx common.BuildContext1) (common.BuildResult, 
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *fileDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *fileDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	info, err := def.params.File.Stat()
 	if err != nil {
 		return true, err
 	}
 
-	return info.ModTime().After(cacheTime), nil
+	return info.ModTime().After(ctx.LastBuild()), nil
 }
 
 // Tag implements common.BuildDefinition.
@@ -162,7 +161,7 @@ func (c *constantHashDefinition) Build(ctx common.BuildContext1) (common.BuildRe
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (c *constantHashDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (c *constantHashDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	return false, nil
 }
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -39,7 +38,7 @@ func (def *decompressFileBuildDefinition) ToStarlark(ctx common.BuildContext1, r
 }
 
 // NeedsBuild implements BuildDefinition.
-func (def *decompressFileBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *decompressFileBuildDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	build, err := ctx.NeedsBuild(def.params.Base)
 	if err != nil {
 		return true, err

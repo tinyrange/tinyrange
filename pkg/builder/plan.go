@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -307,7 +306,7 @@ func (def *planDefinition) Build(ctx common.BuildContext1) (common.BuildResult, 
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *planDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *planDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}

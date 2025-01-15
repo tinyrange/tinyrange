@@ -40,7 +40,7 @@ func (parser *packageCollection) Create(params hash.SerializableValue) hash.Defi
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (parser *packageCollection) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (parser *packageCollection) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	panic("unimplemented on packageCollection")
 }
 

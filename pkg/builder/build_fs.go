@@ -297,7 +297,7 @@ func (def *buildFsDefinition) Build(ctx common.BuildContext1) (common.BuildResul
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *buildFsDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *buildFsDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}

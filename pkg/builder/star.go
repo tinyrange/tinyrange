@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -204,7 +203,7 @@ func (def *starBuildDefinition) ToStarlark(ctx common.BuildContext1, result file
 }
 
 // NeedsBuild implements BuildDefinition.
-func (def *starBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *starBuildDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}

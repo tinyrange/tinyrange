@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -48,8 +49,7 @@ type buildContext struct {
 
 	filename  string
 	output    io.WriteCloser
-	inMemory  bool
-	hasCached bool
+	lastBuild time.Time
 }
 
 // ShouldRebuildUserDefinitions implements common.BuildContext.
@@ -93,22 +93,13 @@ func (b *buildContext) RunVMM(name string, vmCfg config.TinyRangeConfig) (*exec.
 	return runVMM(exe, b.BuildDir(), configFilename)
 }
 
-// SetHasCached implements common.BuildContext.
-func (b *buildContext) SetHasCached() {
-	b.hasCached = true
-}
-
-// HasCached implements common.BuildContext.
-func (b *buildContext) HasCached() bool {
-	return b.hasCached
+// LsatBuild implements common.BuildContext.
+func (b *buildContext) LastBuild() time.Time {
+	return b.lastBuild
 }
 
 // CreateFile implements common.BuildContext.
 func (b *buildContext) CreateFile(name string) (string, io.WriteCloser, error) {
-	if b.IsInMemory() {
-		return "", nil, fmt.Errorf("creating files for in-memory items is not implemented")
-	}
-
 	out, err := os.Create(b.filename + name)
 	if err != nil {
 		return "", nil, err
@@ -141,16 +132,6 @@ func (b *buildContext) FileFromDigest(digest *filesystem.FileDigest) (filesystem
 	return nil, fmt.Errorf("could not convert digest to hash")
 }
 
-// IsInMemory implements common.BuildContext.
-func (b *buildContext) IsInMemory() bool {
-	return b.inMemory
-}
-
-// SetInMemory implements common.BuildContext.
-func (b *buildContext) SetInMemory() {
-	b.inMemory = true
-}
-
 // Database implements common.BuildContext.
 func (b *buildContext) Database() common.PackageDatabase {
 	return b.builder.database
@@ -164,7 +145,6 @@ func (b *buildContext) childContext(def common.BuildDefinition1, status *buildSt
 		status:   status,
 		def:      def,
 		builder:  b.builder,
-		inMemory: b.inMemory,
 	}
 
 	b.children = append(b.children, ctx)
@@ -173,10 +153,6 @@ func (b *buildContext) childContext(def common.BuildDefinition1, status *buildSt
 }
 
 func (b *buildContext) CreateOutput() (io.WriteCloser, error) {
-	if b.IsInMemory() {
-		return nil, fmt.Errorf("pre-creating output for in-memory items is not implemented")
-	}
-
 	if b.output != nil {
 		return nil, fmt.Errorf("output already created")
 	}
@@ -217,10 +193,6 @@ func (b *buildContext) BuildChild(def common.BuildDefinition1) (common.BuildArti
 }
 
 func (b *buildContext) NeedsBuild(def common.BuildDefinition1) (bool, error) {
-	if b.inMemory {
-		return true, nil
-	}
-
 	hash, err := b.builder.HashDefinition(def)
 	if err != nil {
 		return true, err
@@ -236,8 +208,10 @@ func (b *buildContext) NeedsBuild(def common.BuildDefinition1) (bool, error) {
 		// Get a child context for the build.
 		child := b.childContext(def, b.status, filename+".tmp")
 
+		child.lastBuild = info.ModTime()
+
 		// If the file has already been created then check if a rebuild is needed.
-		needsRebuild, err := def.NeedsBuild(child, info.ModTime())
+		needsRebuild, err := def.NeedsBuild(child)
 		if err != nil {
 			return false, err
 		}

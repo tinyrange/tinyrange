@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/builder/oci"
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -25,7 +24,7 @@ type readOciImageDefinition struct {
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (r *readOciImageDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (r *readOciImageDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	return ctx.NeedsBuild(r.params.Base)
 }
 

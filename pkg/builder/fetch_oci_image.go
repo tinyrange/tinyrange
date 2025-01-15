@@ -188,9 +188,9 @@ func (r *registryRequestDefinition) Build(ctx common.BuildContext1) (common.Buil
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (r *registryRequestDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (r *registryRequestDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	if r.params.ExpireTime > 0 {
-		return cacheTime.After(time.Now().Add(time.Duration(r.params.ExpireTime))), nil
+		return ctx.LastBuild().After(time.Now().Add(time.Duration(r.params.ExpireTime))), nil
 	} else {
 		return false, nil
 	}
@@ -503,7 +503,7 @@ func (def *fetchOciImageDefinition) Build(ctx common.BuildContext1) (common.Buil
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *fetchOciImageDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (def *fetchOciImageDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}

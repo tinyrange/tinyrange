@@ -274,10 +274,12 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 		if info, err := os.Stat(filename); err == nil {
 			var needsRebuild = false
 
+			child.lastBuild = info.ModTime()
+
 			// Only check for rebuilds if the child is not downloaded.
 			if exists, _ := common.Exists(downloadedTag); !exists {
 				// If the file has already been created then check if a rebuild is needed.
-				needsRebuild, err = def.NeedsBuild(child, info.ModTime())
+				needsRebuild, err = def.NeedsBuild(child)
 				if err != nil {
 					return nil, err
 				}
@@ -299,8 +301,6 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 
 				return filesystem.NewLocalFile(filename, def), nil
 			}
-
-			child.SetHasCached()
 
 			slog.Debug("rebuild requested", "Tag", def.Tag())
 		} else {

@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/blakesmith/ar"
 	"github.com/cavaliergopher/cpio"
@@ -472,7 +471,7 @@ func (r *readArchiveBuildDefinition) ToStarlark(ctx common.BuildContext1, result
 }
 
 // NeedsBuild implements BuildDefinition.
-func (r *readArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
+func (r *readArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	build, err := ctx.NeedsBuild(r.params.Base)
 	if err != nil {
 		return true, err
