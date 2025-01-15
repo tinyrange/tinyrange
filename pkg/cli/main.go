@@ -12,12 +12,11 @@ import (
 )
 
 var (
-	rootBuildDir     string
-	rootRebuild      bool
-	rootCpuProfile   string
-	rootVerbose      bool
-	rootDistribution string
-	rootMirrors      []string
+	rootBuildDir   string
+	rootRebuild    bool
+	rootCpuProfile string
+	rootVerbose    bool
+	rootMirrors    []string
 )
 
 var rootCmd = &cobra.Command{
@@ -43,12 +42,6 @@ func newDb() (common.PackageDatabase, error) {
 		return nil, err
 	}
 
-	if rootDistribution != "" {
-		if err := db.Builder().SetDistributionServer(rootDistribution); err != nil {
-			return nil, err
-		}
-	}
-
 	db.Builder().SetRebuildUserDefinitions(rootRebuild)
 
 	for _, mirror := range rootMirrors {
@@ -68,7 +61,6 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&rootRebuild, "rebuild", false, "should user package definitions be rebuilt even if we already have built them previously")
 	rootCmd.PersistentFlags().StringVar(&rootCpuProfile, "cpuprofile", "", "write cpu profile to file")
 	rootCmd.PersistentFlags().BoolVar(&rootVerbose, "verbose", false, "enable debugging output")
-	rootCmd.PersistentFlags().StringVar(&rootDistribution, "distribution", "", "The HTTP/HTTPS address of a distribution server to copy build results from")
 	rootCmd.PersistentFlags().StringArrayVar(&rootMirrors, "mirror", []string{}, "Specify mirrors to override the default mirror settings")
 }
 

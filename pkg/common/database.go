@@ -222,11 +222,6 @@ type Builder interface {
 	SetRebuildUserDefinitions(rebuild bool)
 	// GarbageCollect removes old build artifacts.
 	GarbageCollect(olderThan time.Time) ([]hash.Hash, error)
-
-	// SetDistributionServer sets the distribution server.
-	SetDistributionServer(server string) error
-	// RunDistributionServer runs the distribution server on the given address.
-	RunDistributionServer(addr string) error
 }
 
 // PackageDatabase is the core interface.
