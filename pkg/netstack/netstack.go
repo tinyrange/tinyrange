@@ -17,7 +17,6 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/wireguard"
 	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
@@ -32,6 +31,10 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 	"gvisor.dev/gvisor/pkg/waiter"
 )
+
+type Wireguard interface {
+	Dial(network, address string) (net.Conn, error)
+}
 
 const (
 	UDP_BUFFER_SIZE   = 8192
@@ -263,7 +266,7 @@ type NetStack struct {
 	interfaces []*NetworkInterface
 	nextNicId  int
 	packetDump *pcapgo.Writer
-	wg         *wireguard.Wireguard
+	wg         Wireguard
 	hostMac    net.HardwareAddr
 }
 
@@ -512,57 +515,6 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 			return
 		}
 	}()
-}
-
-func (ns *NetStack) SetupWireguard(config string, mtu int) error {
-	handler := wireguard.NewSimpleFlowHandler()
-
-	wg, err := wireguard.NewFromConfig("10.40.0.2", mtu, config, handler)
-	if err != nil {
-		return err
-	}
-
-	ns.wg = wg
-
-	// Use the connection so it establishes with the server.
-	go func() {
-		conn, _ := ns.wg.Dial("tcp", "10.40.0.1:8080")
-		if conn != nil {
-			conn.Close()
-		}
-	}()
-
-	listen, err := handler.ListenTCPAddr("10.42.0.2:0")
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		for {
-			conn, err := listen.Accept()
-			if err != nil {
-				slog.Error("failed to accept connection", "err", err)
-				return
-			}
-
-			go func() {
-				defer conn.Close()
-
-				backend, err := ns.DialInternalContext(context.Background(), "tcp", conn.LocalAddr().String())
-				if err != nil {
-					slog.Error("failed to dial backend", "err", err)
-					return
-				}
-				defer backend.Close()
-
-				if err := common.Proxy(backend, conn, 1400); err != nil {
-					slog.Error("proxy error", "err", err)
-				}
-			}()
-		}
-	}()
-
-	return nil
 }
 
 // func (ns *NetStack) handleUdpForward(r *udp.ForwarderRequest) {
