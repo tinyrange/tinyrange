@@ -377,6 +377,10 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 	// If the build has already been written then don't write it again.
 	if !child.HasCreatedOutput() {
 		return nil, fmt.Errorf("output not created")
+	} else {
+		// Close the output file.
+		// Ignore errors since it may have already been closed.
+		child.output.Close()
 	}
 
 	// Finally rename the temporary file to the final filename.
