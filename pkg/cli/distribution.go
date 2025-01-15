@@ -17,7 +17,7 @@ var distributionCmd = &cobra.Command{
 			return err
 		}
 
-		return db.RunDistributionServer(distributionAddr)
+		return db.Builder().RunDistributionServer(distributionAddr)
 	},
 }
 

@@ -30,8 +30,8 @@ func handler(f func(http.ResponseWriter, *http.Request) error) http.HandlerFunc 
 var validHash = regexp.MustCompile("[0-9a-f]{64}")
 
 type distributionServer struct {
-	db  *packageDatabase
-	mux *http.ServeMux
+	builder *builder1
+	mux     *http.ServeMux
 }
 
 func (svr *distributionServer) validateHash(h string) (hash.Hash, error) {
@@ -62,7 +62,7 @@ func (svr *distributionServer) handleGetResult(w http.ResponseWriter, r *http.Re
 	}
 
 	// Then check if the result is redistributable
-	redistributableFilename, err := svr.db.filenameFromHash(validated, ".redistributable")
+	redistributableFilename, err := svr.builder.filenameFromHash(validated, ".redistributable")
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (svr *distributionServer) handleGetResult(w http.ResponseWriter, r *http.Re
 	}
 
 	// Only then open the result file and serve it like normal.
-	filename, err := svr.db.filenameFromHash(validated, ".bin")
+	filename, err := svr.builder.filenameFromHash(validated, ".bin")
 	if err != nil {
 		return err
 	}
@@ -94,10 +94,10 @@ func (svr *distributionServer) handleGetResult(w http.ResponseWriter, r *http.Re
 	return nil
 }
 
-func (db *packageDatabase) RunDistributionServer(addr string) error {
+func (db *builder1) RunDistributionServer(addr string) error {
 	server := &distributionServer{
-		db:  db,
-		mux: http.NewServeMux(),
+		builder: db,
+		mux:     http.NewServeMux(),
 	}
 
 	server.mux.HandleFunc("/health", handler(server.handleHealthCheck))

@@ -44,7 +44,7 @@ func newDb() (common.PackageDatabase, error) {
 	}
 
 	if rootDistribution != "" {
-		if err := db.SetDistributionServer(rootDistribution); err != nil {
+		if err := db.Builder().SetDistributionServer(rootDistribution); err != nil {
 			return nil, err
 		}
 	}

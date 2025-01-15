@@ -241,15 +241,6 @@ type MacroManager interface {
 	GetMacroByShorthand(ctx MacroContext, shorthand string, allowLocal bool) (Macro, error)
 }
 
-// Distribution Servers are a remote build directory used to distribute build artifacts.
-// The manager is responsible for setting the distribution server and running the server.
-type DistributionServerManager interface {
-	// SetDistributionServer sets the distribution server.
-	SetDistributionServer(server string) error
-	// RunDistributionServer runs the distribution server on the given address.
-	RunDistributionServer(addr string) error
-}
-
 // RequestManager is responsible for creating http clients.
 type RequestManager interface {
 	// GetHttpClient returns an http client.
@@ -261,6 +252,11 @@ type Builder1 interface {
 	Build(def BuildDefinition1, opts BuildOptions) (filesystem.File, error)
 	// SetRebuildUserDefinitions sets whether user definitions should be rebuilt.
 	SetRebuildUserDefinitions(rebuild bool)
+
+	// SetDistributionServer sets the distribution server.
+	SetDistributionServer(server string) error
+	// RunDistributionServer runs the distribution server on the given address.
+	RunDistributionServer(addr string) error
 }
 
 // ALPHA: From Build2
@@ -277,7 +273,6 @@ type PackageDatabase interface {
 	MirrorManager
 	ContainerBuilderManager
 	MacroManager
-	DistributionServerManager
 	RequestManager
 	Builder() Builder1
 

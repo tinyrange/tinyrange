@@ -1,9 +1,6 @@
 package database
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -90,39 +87,386 @@ var (
 	_ common.MacroContext = &macroContext{}
 )
 
+type builder1 struct {
+	database *packageDatabase
+
+	rebuildUserDefinitions bool
+
+	distributionServer string
+
+	buildCache map[hash.Hash]filesystem.File
+
+	buildStatusMtx sync.Mutex
+	buildStatuses  map[common.BuildDefinition1]*buildStatus
+
+	defDb *hash.DefinitionDatabase
+
+	buildDir string
+}
+
+// SetRebuildUserDefinitions implements common.PackageDatabase.
+func (db *builder1) SetRebuildUserDefinitions(rebuild bool) {
+	db.rebuildUserDefinitions = rebuild
+}
+
+// HashDefinition implements common.PackageDatabase.
+func (db *builder1) HashDefinition(def common.BuildDefinition1) (hash.Hash, error) {
+	return db.defDb.HashDefinition(def)
+}
+
+func (db *builder1) newBuildContext(def common.BuildDefinition1) *buildContext {
+	return &buildContext{def: def, builder: db}
+}
+
+func (db *builder1) NewBuildContext(def common.BuildDefinition1) common.BuildContext1 {
+	return db.newBuildContext(def)
+}
+
+func (db *builder1) updateBuildStatus(def common.BuildDefinition1, status *buildStatus) {
+	db.buildStatusMtx.Lock()
+	defer db.buildStatusMtx.Unlock()
+
+	db.buildStatuses[def] = status
+}
+
+func (db *builder1) filenameFromHash(hash hash.Hash, suffix string) (string, error) {
+	return filepath.Join(db.buildDir, string(hash)+suffix), nil
+}
+
+func (db *builder1) downloadFromDistributionServer(hash hash.Hash, def common.BuildDefinition1) (bool, error) {
+	if redistributable, ok := def.(common.RedistributableDefinition); !ok || !redistributable.Redistributable() {
+		return false, nil // not redistributable
+	}
+
+	client, err := db.database.HttpClient()
+	if err != nil {
+		return false, err
+	}
+
+	url := fmt.Sprintf("%s/result/%s", db.distributionServer, hash)
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	} else if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("bad status %s", resp.Status)
+	}
+
+	filename, err := db.filenameFromHash(hash, ".bin")
+	if err != nil {
+		return false, err
+	}
+
+	tmpFilename := filename + ".tmp"
+
+	f, err := os.Create(tmpFilename)
+	if err != nil {
+		return false, err
+	}
+
+	pb := progressbar.DefaultBytes(resp.ContentLength, url)
+	defer pb.Close()
+
+	if _, err := io.Copy(io.MultiWriter(f, pb), resp.Body); err != nil {
+		f.Close()
+		os.Remove(tmpFilename)
+		return false, err
+	}
+
+	if err := f.Close(); err != nil {
+		return false, err
+	}
+
+	if err := os.Rename(tmpFilename, filename); err != nil {
+		return false, err
+	}
+
+	downloadedTag, err := db.filenameFromHash(hash, ".downloaded")
+	if err != nil {
+		return false, err
+	}
+
+	if err := os.WriteFile(downloadedTag, []byte(""), os.ModePerm); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (db *builder1) getBuildStatus(def common.BuildDefinition1) (*buildStatus, error) {
+	status, ok := db.buildStatuses[def]
+	if !ok {
+		return nil, fmt.Errorf("build status not found")
+	}
+	return status, nil
+}
+
+func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, opts common.BuildOptions) (filesystem.File, error) {
+	tag := def.Tag()
+
+	hash, err := db.HashDefinition(def)
+	if err != nil {
+		return nil, err
+	}
+
+	if f, ok := db.buildCache[hash]; ok {
+		return f, nil
+	}
+
+	status := &buildStatus{Tag: tag}
+
+	filename, err := db.filenameFromHash(hash, ".bin")
+	if err != nil {
+		return nil, err
+	}
+
+	downloadedTag, err := db.filenameFromHash(hash, ".downloaded")
+	if err != nil {
+		return nil, err
+	}
+
+	tmpFilename := filename + ".tmp"
+
+	ctx, ok := c.(*buildContext)
+	if !ok {
+		return nil, fmt.Errorf("expected buildContext, got %T", c)
+	}
+
+	// Get a child context for the build.
+	child := ctx.childContext(def, status, tmpFilename)
+
+	if !opts.AlwaysRebuild {
+		// Check if the file already exists. If it does then return it.
+		if info, err := os.Stat(filename); err == nil {
+			var needsRebuild = false
+
+			// Only check for rebuilds if the child is not downloaded.
+			if exists, _ := common.Exists(downloadedTag); !exists {
+				// If the file has already been created then check if a rebuild is needed.
+				needsRebuild, err = def.NeedsBuild(child, info.ModTime())
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				// Redistributed results are considered user definitions.
+				if db.rebuildUserDefinitions {
+					needsRebuild = true
+				}
+			}
+
+			// If no rebuild is necessary then skip it.
+			if !needsRebuild {
+				status.Status = buildStatusCached
+
+				// Write the build status.
+				db.updateBuildStatus(def, status)
+
+				slog.Debug("cached", "Tag", def.Tag(), "filename", filename)
+
+				return filesystem.NewLocalFile(filename, def), nil
+			}
+
+			child.SetHasCached()
+
+			slog.Debug("rebuild requested", "Tag", def.Tag())
+		} else {
+			slog.Debug("building", "Tag", def.Tag())
+		}
+	} else {
+		slog.Debug("building", "Tag", def.Tag())
+	}
+
+	defValue, err := db.defDb.MarshalDefinition(def)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal definition: %s", err)
+	}
+
+	defFilename, err := db.filenameFromHash(hash, ".def")
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.WriteFile(defFilename, defValue, os.ModePerm); err != nil {
+		return nil, fmt.Errorf("failed to write definition: %s", err)
+	}
+
+	if db.distributionServer != "" {
+		// If we have a distribution server then check it first.
+		ok, err := db.downloadFromDistributionServer(hash, def)
+		if err != nil {
+			return nil, err
+		}
+
+		if ok {
+			status.Status = buildStatusBuilt
+
+			db.updateBuildStatus(def, status)
+
+			// This definition is redistributable so write a manifest.
+			redistributableTag, err := db.filenameFromHash(hash, ".redistributable")
+			if err != nil {
+				return nil, err
+			}
+
+			if err := os.WriteFile(redistributableTag, []byte(""), os.ModePerm); err != nil {
+				return nil, err
+			}
+
+			f := filesystem.NewLocalFile(filename, def)
+
+			db.buildCache[hash] = f
+
+			// Return the file.
+			return f, nil
+		}
+	}
+
+	// If the downloaded tag exists then remove it.
+
+	// If not then trigger the build.
+	result, err := def.Build(child)
+	if err != nil {
+		return nil, err
+	}
+
+	// If the result is nil then the builder is telling us to use the cached version.
+	if result == nil {
+		status.Status = buildStatusCached
+
+		// Write the build status.
+		db.updateBuildStatus(def, status)
+
+		return filesystem.NewLocalFile(filename, def), nil
+	}
+
+	// If the build has already been written then don't write it again.
+	if !child.HasCreatedOutput() {
+		// Once the build is complete then write it to disk.
+		outFile, err := os.Create(tmpFilename)
+		if err != nil {
+			return nil, err
+		}
+
+		// Write the build result to disk. If any of these steps fail then remove the temporary file.
+		if err := result.WriteResult(outFile); err != nil {
+			outFile.Close()
+			os.Remove(tmpFilename)
+			return nil, err
+		}
+
+		if err := outFile.Close(); err != nil {
+			os.Remove(tmpFilename)
+			return nil, err
+		}
+	} else {
+		// Let the result close the file on it's own.
+		if err := result.WriteResult(nil); err != nil {
+			os.Remove(tmpFilename)
+			return nil, err
+		}
+	}
+
+	// Finally rename the temporary file to the final filename.
+	if err := os.Rename(tmpFilename, filename); err != nil {
+		os.Remove(tmpFilename)
+		return nil, err
+	}
+
+	status.Status = buildStatusBuilt
+
+	// Write the build status.
+	db.updateBuildStatus(def, status)
+
+	if redistributable, ok := def.(common.RedistributableDefinition); ok && redistributable.Redistributable() {
+		// This definition is redistributable so write a manifest.
+
+		redistributableTag, err := db.filenameFromHash(hash, ".redistributable")
+		if err != nil {
+			return nil, err
+		}
+
+		if err := os.WriteFile(redistributableTag, []byte(""), os.ModePerm); err != nil {
+			return nil, err
+		}
+	}
+
+	f := filesystem.NewLocalFile(filename, def)
+
+	db.buildCache[hash] = f
+
+	// Return the file.
+	return f, nil
+}
+
+func (db *builder1) Build(def common.BuildDefinition1, opts common.BuildOptions) (filesystem.File, error) {
+	return db.build(db.NewBuildContext(def), def, opts)
+}
+
+func (db *builder1) missDefinitionCache(hash hash.Hash) (io.ReadCloser, error) {
+	filename, err := db.filenameFromHash(hash, ".def")
+	if err != nil {
+		return nil, err
+	}
+
+	return os.Open(filename)
+}
+
+func (db *builder1) GetDefinitionByHash(hash hash.Hash) (common.BuildDefinition1, error) {
+	def, err := db.defDb.GetDefinitionByHash(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	return def.(common.BuildDefinition1), nil
+}
+
+func (db *builder1) SetDistributionServer(server string) error {
+	client, err := db.database.HttpClient()
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.Get(server + "/health")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if !slices.Equal(content, []byte("OK")) {
+		return fmt.Errorf("bad response from distribution server")
+	}
+
+	db.distributionServer = server
+
+	return nil
+}
+
+var (
+	_ common.Builder1 = &builder1{}
+)
+
 type packageDatabase struct {
 	// keys are name-arch
 	ContainerBuilders map[string]*containerBuilder
 
-	rebuildUserDefinitions bool
-
 	mirrors map[string][]string
-
-	memoryCache map[string][]byte
-	buildCache  map[hash.Hash]filesystem.File
-
-	buildStatusMtx sync.Mutex
-	buildStatuses  map[common.BuildDefinition1]*buildStatus
 
 	loadedFiles map[string]bool
 	defs        map[string]starlark.Value
 
 	builders map[string]starlark.Callable
 
-	defDb *hash.DefinitionDatabase
-
-	buildDir           string
-	distributionServer string
-}
-
-// HashDefinition implements common.PackageDatabase.
-func (db *packageDatabase) HashDefinition(def common.BuildDefinition1) (hash.Hash, error) {
-	return db.defDb.HashDefinition(def)
-}
-
-// SetRebuildUserDefinitions implements common.PackageDatabase.
-func (db *packageDatabase) SetRebuildUserDefinitions(rebuild bool) {
-	db.rebuildUserDefinitions = rebuild
+	builder *builder1
 }
 
 func (db *packageDatabase) getFileContents(name string, allowLocal bool) (string, error) {
@@ -323,7 +667,7 @@ func (db *packageDatabase) RunScript(filename string, files map[string]filesyste
 }
 
 func (db *packageDatabase) LoadAll(parallel bool) error {
-	ctx := db.newBuildContext(nil)
+	ctx := db.builder.newBuildContext(nil)
 
 	if parallel {
 		var wg sync.WaitGroup
@@ -365,299 +709,6 @@ func (db *packageDatabase) LoadAll(parallel bool) error {
 	}
 }
 
-func (db *packageDatabase) newBuildContext(def common.BuildDefinition1) *buildContext {
-	return &buildContext{def: def, database: db}
-}
-
-func (db *packageDatabase) NewBuildContext(def common.BuildDefinition1) common.BuildContext1 {
-	return db.newBuildContext(def)
-}
-
-func (db *packageDatabase) updateBuildStatus(def common.BuildDefinition1, status *buildStatus) {
-	db.buildStatusMtx.Lock()
-	defer db.buildStatusMtx.Unlock()
-
-	db.buildStatuses[def] = status
-}
-
-func (db *packageDatabase) filenameFromHash(hash hash.Hash, suffix string) (string, error) {
-	return filepath.Join(db.buildDir, string(hash)+suffix), nil
-}
-
-func (db *packageDatabase) downloadFromDistributionServer(hash hash.Hash, def common.BuildDefinition1) (bool, error) {
-	if redistributable, ok := def.(common.RedistributableDefinition); !ok || !redistributable.Redistributable() {
-		return false, nil // not redistributable
-	}
-
-	client, err := db.HttpClient()
-	if err != nil {
-		return false, err
-	}
-
-	url := fmt.Sprintf("%s/result/%s", db.distributionServer, hash)
-
-	resp, err := client.Get(url)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return false, nil
-	} else if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("bad status %s", resp.Status)
-	}
-
-	filename, err := db.filenameFromHash(hash, ".bin")
-	if err != nil {
-		return false, err
-	}
-
-	tmpFilename := filename + ".tmp"
-
-	f, err := os.Create(tmpFilename)
-	if err != nil {
-		return false, err
-	}
-
-	pb := progressbar.DefaultBytes(resp.ContentLength, url)
-	defer pb.Close()
-
-	if _, err := io.Copy(io.MultiWriter(f, pb), resp.Body); err != nil {
-		f.Close()
-		os.Remove(tmpFilename)
-		return false, err
-	}
-
-	if err := f.Close(); err != nil {
-		return false, err
-	}
-
-	if err := os.Rename(tmpFilename, filename); err != nil {
-		return false, err
-	}
-
-	downloadedTag, err := db.filenameFromHash(hash, ".downloaded")
-	if err != nil {
-		return false, err
-	}
-
-	if err := os.WriteFile(downloadedTag, []byte(""), os.ModePerm); err != nil {
-		return false, err
-	}
-
-	return true, nil
-}
-
-func (db *packageDatabase) build(c common.BuildContext1, def common.BuildDefinition1, opts common.BuildOptions) (filesystem.File, error) {
-	tag := def.Tag()
-
-	hash, err := db.HashDefinition(def)
-	if err != nil {
-		return nil, err
-	}
-
-	if f, ok := db.buildCache[hash]; ok {
-		return f, nil
-	}
-
-	status := &buildStatus{Tag: tag}
-
-	filename, err := db.filenameFromHash(hash, ".bin")
-	if err != nil {
-		return nil, err
-	}
-
-	downloadedTag, err := db.filenameFromHash(hash, ".downloaded")
-	if err != nil {
-		return nil, err
-	}
-
-	tmpFilename := filename + ".tmp"
-
-	ctx, ok := c.(*buildContext)
-	if !ok {
-		return nil, fmt.Errorf("expected buildContext, got %T", c)
-	}
-
-	// Get a child context for the build.
-	child := ctx.childContext(def, status, tmpFilename)
-
-	if !opts.AlwaysRebuild {
-		// Check if the file already exists. If it does then return it.
-		if info, err := os.Stat(filename); err == nil {
-			var needsRebuild = false
-
-			// Only check for rebuilds if the child is not downloaded.
-			if exists, _ := common.Exists(downloadedTag); !exists {
-				// If the file has already been created then check if a rebuild is needed.
-				needsRebuild, err = def.NeedsBuild(child, info.ModTime())
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				// Redistributed results are considered user definitions.
-				if db.rebuildUserDefinitions {
-					needsRebuild = true
-				}
-			}
-
-			// If no rebuild is necessary then skip it.
-			if !needsRebuild {
-				status.Status = buildStatusCached
-
-				// Write the build status.
-				db.updateBuildStatus(def, status)
-
-				slog.Debug("cached", "Tag", def.Tag(), "filename", filename)
-
-				return filesystem.NewLocalFile(filename, def), nil
-			}
-
-			child.SetHasCached()
-
-			slog.Debug("rebuild requested", "Tag", def.Tag())
-		} else {
-			slog.Debug("building", "Tag", def.Tag())
-		}
-	} else {
-		slog.Debug("building", "Tag", def.Tag())
-	}
-
-	defValue, err := db.defDb.MarshalDefinition(def)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal definition: %s", err)
-	}
-
-	defFilename, err := db.filenameFromHash(hash, ".def")
-	if err != nil {
-		return nil, err
-	}
-
-	if err := os.WriteFile(defFilename, defValue, os.ModePerm); err != nil {
-		return nil, fmt.Errorf("failed to write definition: %s", err)
-	}
-
-	if db.distributionServer != "" {
-		// If we have a distribution server then check it first.
-		ok, err := db.downloadFromDistributionServer(hash, def)
-		if err != nil {
-			return nil, err
-		}
-
-		if ok {
-			status.Status = buildStatusBuilt
-
-			db.updateBuildStatus(def, status)
-
-			// This definition is redistributable so write a manifest.
-			redistributableTag, err := db.filenameFromHash(hash, ".redistributable")
-			if err != nil {
-				return nil, err
-			}
-
-			if err := os.WriteFile(redistributableTag, []byte(""), os.ModePerm); err != nil {
-				return nil, err
-			}
-
-			f := filesystem.NewLocalFile(filename, def)
-
-			db.buildCache[hash] = f
-
-			// Return the file.
-			return f, nil
-		}
-	}
-
-	// If the downloaded tag exists then remove it.
-
-	// If not then trigger the build.
-	result, err := def.Build(child)
-	if err != nil {
-		return nil, err
-	}
-
-	// If the result is nil then the builder is telling us to use the cached version.
-	if result == nil {
-		status.Status = buildStatusCached
-
-		// Write the build status.
-		db.updateBuildStatus(def, status)
-
-		return filesystem.NewLocalFile(filename, def), nil
-	}
-
-	// If the build has already been written then don't write it again.
-	if !child.HasCreatedOutput() {
-		// Once the build is complete then write it to disk.
-		outFile, err := os.Create(tmpFilename)
-		if err != nil {
-			return nil, err
-		}
-
-		// Write the build result to disk. If any of these steps fail then remove the temporary file.
-		if err := result.WriteResult(outFile); err != nil {
-			outFile.Close()
-			os.Remove(tmpFilename)
-			return nil, err
-		}
-
-		if err := outFile.Close(); err != nil {
-			os.Remove(tmpFilename)
-			return nil, err
-		}
-	} else {
-		// Let the result close the file on it's own.
-		if err := result.WriteResult(nil); err != nil {
-			os.Remove(tmpFilename)
-			return nil, err
-		}
-	}
-
-	// Finally rename the temporary file to the final filename.
-	if err := os.Rename(tmpFilename, filename); err != nil {
-		os.Remove(tmpFilename)
-		return nil, err
-	}
-
-	status.Status = buildStatusBuilt
-
-	// Write the build status.
-	db.updateBuildStatus(def, status)
-
-	if redistributable, ok := def.(common.RedistributableDefinition); ok && redistributable.Redistributable() {
-		// This definition is redistributable so write a manifest.
-
-		redistributableTag, err := db.filenameFromHash(hash, ".redistributable")
-		if err != nil {
-			return nil, err
-		}
-
-		if err := os.WriteFile(redistributableTag, []byte(""), os.ModePerm); err != nil {
-			return nil, err
-		}
-	}
-
-	f := filesystem.NewLocalFile(filename, def)
-
-	db.buildCache[hash] = f
-
-	// Return the file.
-	return f, nil
-}
-
-func (db *packageDatabase) Build(def common.BuildDefinition1, opts common.BuildOptions) (filesystem.File, error) {
-	return db.build(db.NewBuildContext(def), def, opts)
-}
-
-func (db *packageDatabase) getBuildStatus(def common.BuildDefinition1) (*buildStatus, error) {
-	status, ok := db.buildStatuses[def]
-	if !ok {
-		return nil, fmt.Errorf("build status not found")
-	}
-	return status, nil
-}
-
 func (db *packageDatabase) NewName(name string, version string, tags []string) (common.PackageName, error) {
 	return common.PackageName{
 		Name:    name,
@@ -685,7 +736,7 @@ func (db *packageDatabase) GetContainerBuilder(name string, arch config.CPUArchi
 		return nil, fmt.Errorf("builder %s not found for arch %s", name, arch)
 	}
 
-	if err := builder.ensureLoaded(db.newBuildContext(nil)); err != nil {
+	if err := builder.ensureLoaded(db.builder.newBuildContext(nil)); err != nil {
 		return nil, err
 	}
 
@@ -748,31 +799,13 @@ func (db *packageDatabase) GetMacroByDeclaredName(ctx common.MacroContext, name 
 	}
 }
 
-func (db *packageDatabase) missDefinitionCache(hash hash.Hash) (io.ReadCloser, error) {
-	filename, err := db.filenameFromHash(hash, ".def")
-	if err != nil {
-		return nil, err
-	}
-
-	return os.Open(filename)
-}
-
-func (db *packageDatabase) GetDefinitionByHash(hash hash.Hash) (common.BuildDefinition1, error) {
-	def, err := db.defDb.GetDefinitionByHash(hash)
-	if err != nil {
-		return nil, err
-	}
-
-	return def.(common.BuildDefinition1), nil
-}
-
 func (db *packageDatabase) GetMacroByShorthand(ctx common.MacroContext, shorthand string, allowLocal bool) (common.Macro, error) {
 	if len(shorthand) == 64 && !strings.Contains(shorthand, ":") {
 		if !allowLocal {
 			return nil, fmt.Errorf("local definitions are not allowed in remote configs")
 		}
 
-		def, err := db.GetDefinitionByHash(hash.Hash(shorthand))
+		def, err := db.builder.GetDefinitionByHash(hash.Hash(shorthand))
 		if err != nil {
 			return nil, err
 		}
@@ -791,83 +824,6 @@ func (db *packageDatabase) NewMacroContext() common.MacroContext {
 	}
 }
 
-func (db *packageDatabase) GetAllHashes() ([]hash.Hash, error) {
-	var ret []hash.Hash
-
-	ents, err := os.ReadDir(db.buildDir)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, ent := range ents {
-		ext := filepath.Ext(ent.Name())
-		if ext == ".def" {
-			ret = append(ret, hash.Hash(strings.TrimSuffix(ent.Name(), ext)))
-		}
-	}
-
-	return ret, nil
-}
-
-func (db *packageDatabase) Inspect(def common.BuildDefinition1, out io.Writer) error {
-	defBytes, err := db.defDb.MarshalDefinition(def)
-	if err != nil {
-		return err
-	}
-
-	buf := new(bytes.Buffer)
-
-	if err := json.Indent(buf, defBytes, "", "  "); err != nil {
-		return err
-	}
-
-	fmt.Fprintf(out, "definition JSON:\n%s\n\n", buf.String())
-
-	hash, err := db.HashDefinition(def)
-	if err != nil {
-		return err
-	}
-
-	filename, err := db.filenameFromHash(hash, ".bin")
-	if err != nil {
-		return err
-	}
-
-	_, err = os.Stat(filename)
-	if errors.Is(err, os.ErrNotExist) {
-		fmt.Fprintf(out, "built definition does not exist at: %s\n", filename)
-		return nil
-	} else if err != nil {
-		return err
-	}
-
-	// assume it's an archive.
-	fmt.Fprintf(out, "archive entries:\n")
-
-	ark, err := filesystem.ReadArchiveFromFile(filesystem.NewLocalFile(filename, nil))
-	if err != nil {
-		return err
-	}
-
-	ents, err := ark.Entries()
-	if err != nil {
-		return err
-	}
-
-	for _, ent := range ents {
-		switch ent.Typeflag() {
-		case filesystem.TypeDirectory:
-			fmt.Fprintf(out, "D %04d:%04d % 10d %s %s\n", ent.Uid(), ent.Gid(), ent.Size(), ent.ModTime(), ent.Name())
-		case filesystem.TypeRegular:
-			fmt.Fprintf(out, "R %04d:%04d % 10d %s %s\n", ent.Uid(), ent.Gid(), ent.Size(), ent.ModTime(), ent.Name())
-		case filesystem.TypeSymlink:
-			fmt.Fprintf(out, "S %04d:%04d % 10d %s %s -> %s\n", ent.Uid(), ent.Gid(), ent.Size(), ent.Name(), ent.ModTime(), ent.Linkname())
-		}
-	}
-
-	return nil
-}
-
 func (db *packageDatabase) loadBuiltinBuilders() error {
 	for _, builder := range []string{
 		"//fetchers/alpine.star",
@@ -883,32 +839,6 @@ func (db *packageDatabase) loadBuiltinBuilders() error {
 	return nil
 }
 
-func (db *packageDatabase) SetDistributionServer(server string) error {
-	client, err := db.HttpClient()
-	if err != nil {
-		return err
-	}
-
-	resp, err := client.Get(server + "/health")
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	content, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	if !slices.Equal(content, []byte("OK")) {
-		return fmt.Errorf("bad response from distribution server")
-	}
-
-	db.distributionServer = server
-
-	return nil
-}
-
 func (db *packageDatabase) GetContainerBuilders() map[string]common.ContainerBuilder {
 	ret := make(map[string]common.ContainerBuilder, len(db.ContainerBuilders))
 
@@ -920,7 +850,7 @@ func (db *packageDatabase) GetContainerBuilders() map[string]common.ContainerBui
 }
 
 func (db *packageDatabase) Builder() common.Builder1 {
-	return db
+	return db.builder
 }
 
 var (
@@ -931,16 +861,20 @@ func New(buildDir string) (common.PackageDatabase, error) {
 	db := &packageDatabase{
 		ContainerBuilders: make(map[string]*containerBuilder),
 		mirrors:           make(map[string][]string),
-		memoryCache:       make(map[string][]byte),
-		buildCache:        make(map[hash.Hash]filesystem.File),
-		buildStatuses:     make(map[common.BuildDefinition1]*buildStatus),
-		buildDir:          buildDir,
 		defs:              make(map[string]starlark.Value),
 		loadedFiles:       make(map[string]bool),
 		builders:          make(map[string]starlark.Callable),
 	}
 
-	db.defDb = hash.NewDefinitionDatabase(db.missDefinitionCache)
+	builder := &builder1{
+		buildStatuses: make(map[common.BuildDefinition1]*buildStatus),
+		buildCache:    make(map[hash.Hash]filesystem.File),
+		buildDir:      buildDir,
+	}
+
+	builder.defDb = hash.NewDefinitionDatabase(builder.missDefinitionCache)
+
+	db.builder = builder
 
 	// Check with Exists first so it doesn't have issues if the build dir is behind a symlink.
 	if ok, _ := common.Exists(buildDir); !ok {

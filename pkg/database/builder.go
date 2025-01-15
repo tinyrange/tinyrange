@@ -105,7 +105,7 @@ func (builder *containerBuilder) Attr(name string) (starlark.Value, error) {
 				}
 			}
 
-			ctx := builder.db.NewBuildContext(nil)
+			ctx := builder.db.builder.NewBuildContext(nil)
 
 			plan, err := builder.Plan(ctx, search, tagList, common.PlanOptions{})
 			if err != nil {
@@ -158,7 +158,7 @@ func (builder *containerBuilder) load(ctx *buildContext) error {
 		return nil
 	}
 
-	builder.db = ctx.database
+	builder.db = ctx.builder.database
 
 	if err := builder.packages.load(ctx); err != nil {
 		return err
@@ -203,9 +203,9 @@ func (builder *containerBuilder) Plan(
 	}
 
 	// Call the plan callback.
-	thread := ctx.database.newThread(builder.filename)
+	thread := ctx.builder.database.newThread(builder.filename)
 
-	callable, err := ctx.database.getBuilder(builder.filename, builder.planCallbackName)
+	callable, err := ctx.builder.database.getBuilder(builder.filename, builder.planCallbackName)
 	if err != nil {
 		return nil, fmt.Errorf("could not get builder for ContainerBuilder.Plan: %s", err)
 	}

@@ -41,7 +41,7 @@ func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, erro
 
 type buildContext struct {
 	def      common.BuildDefinition1
-	database *packageDatabase
+	builder  *builder1
 	parent   *buildContext
 	status   *buildStatus
 	children []*buildContext
@@ -54,12 +54,12 @@ type buildContext struct {
 
 // ShouldRebuildUserDefinitions implements common.BuildContext.
 func (b *buildContext) ShouldRebuildUserDefinitions() bool {
-	return b.database.rebuildUserDefinitions
+	return b.builder.rebuildUserDefinitions
 }
 
 // BuildDir implements common.BuildContext.
 func (b *buildContext) BuildDir() string {
-	return b.database.buildDir
+	return b.builder.buildDir
 }
 
 func (b *buildContext) RunVMM(name string, vmCfg config.TinyRangeConfig) (*exec.Cmd, error) {
@@ -153,7 +153,7 @@ func (b *buildContext) SetInMemory() {
 
 // Database implements common.BuildContext.
 func (b *buildContext) Database() common.PackageDatabase {
-	return b.database
+	return b.builder.database
 }
 
 func (b *buildContext) childContext(def common.BuildDefinition1, status *buildStatus, filename string) *buildContext {
@@ -163,7 +163,7 @@ func (b *buildContext) childContext(def common.BuildDefinition1, status *buildSt
 		output:   nil,
 		status:   status,
 		def:      def,
-		database: b.database,
+		builder:  b.builder,
 		inMemory: b.inMemory,
 	}
 
@@ -200,7 +200,7 @@ func (b *buildContext) BuildChild(def common.BuildDefinition1) (filesystem.File,
 		b.status.Children = append(b.status.Children, def)
 	}
 
-	return b.database.build(b, def, common.BuildOptions{})
+	return b.builder.build(b, def, common.BuildOptions{})
 }
 
 func (b *buildContext) NeedsBuild(def common.BuildDefinition1) (bool, error) {
@@ -208,12 +208,12 @@ func (b *buildContext) NeedsBuild(def common.BuildDefinition1) (bool, error) {
 		return true, nil
 	}
 
-	hash, err := b.database.HashDefinition(def)
+	hash, err := b.builder.HashDefinition(def)
 	if err != nil {
 		return true, err
 	}
 
-	filename, err := b.database.filenameFromHash(hash, ".bin")
+	filename, err := b.builder.filenameFromHash(hash, ".bin")
 	if err != nil {
 		return true, err
 	}
@@ -319,12 +319,12 @@ func (b *buildContext) AttrNames() []string {
 }
 
 func (ctx *buildContext) Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error) {
-	target, err := ctx.database.getBuilder(filename, builder)
+	target, err := ctx.builder.database.getBuilder(filename, builder)
 	if err != nil {
 		return starlark.None, fmt.Errorf("failed to GetBuilder in BuildContext.Call: %s", err)
 	}
 
-	result, err := starlark.Call(ctx.database.newThread(filename), target, append(starlark.Tuple{ctx}, args...), []starlark.Tuple{})
+	result, err := starlark.Call(ctx.builder.database.newThread(filename), target, append(starlark.Tuple{ctx}, args...), []starlark.Tuple{})
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
 			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())

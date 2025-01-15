@@ -236,9 +236,9 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			ctx := db.NewBuildContext(def)
+			ctx := db.builder.NewBuildContext(def)
 
-			result, err := db.build(ctx, def, common.BuildOptions{
+			result, err := db.builder.build(ctx, def, common.BuildOptions{
 				AlwaysRebuild: alwaysRebuild,
 			})
 			if err != nil {
