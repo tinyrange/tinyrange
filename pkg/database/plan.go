@@ -184,7 +184,7 @@ func (plan *installationPlan) addName(name common.PackageName, pkg *common.Packa
 }
 
 func (plan *installationPlan) addInternal(
-	ctx common.BuildContext,
+	ctx common.MinimalBuildContext,
 	builder common.ContainerBuilder,
 	query common.PackageQuery,
 	options []installOption,
@@ -244,7 +244,7 @@ func (plan *installationPlan) addInternal(
 	return
 }
 
-func (plan *installationPlan) add(ctx common.BuildContext, builder common.ContainerBuilder, query common.PackageQuery, isDefault bool) (ret *installationTree) {
+func (plan *installationPlan) add(ctx common.MinimalBuildContext, builder common.ContainerBuilder, query common.PackageQuery, isDefault bool) (ret *installationTree) {
 	ret = &installationTree{Query: query}
 
 	// Query for any packages matching the query.
@@ -302,7 +302,7 @@ func (plan *installationPlan) add(ctx common.BuildContext, builder common.Contai
 	}
 }
 
-func (plan *installationPlan) Add(ctx common.BuildContext, builder common.ContainerBuilder, query common.PackageQuery, isDefault bool) error {
+func (plan *installationPlan) Add(ctx common.MinimalBuildContext, builder common.ContainerBuilder, query common.PackageQuery, isDefault bool) error {
 	tree := plan.add(ctx, builder, query, isDefault)
 	if tree.Error != nil && !plan.options.Debug {
 		return tree.Error

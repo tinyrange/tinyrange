@@ -59,7 +59,7 @@ func (parser *packageCollection) SerializableType() string {
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (parser *packageCollection) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (parser *packageCollection) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	panic("unimplemented on packageCollection")
 }
 
@@ -153,7 +153,7 @@ func (parser *packageCollection) Tag() string {
 	return strings.Join([]string{parser.Filename, parser.Parser, parser.Install}, "_")
 }
 
-func (parser *packageCollection) load(ctx *buildContext) error {
+func (parser *packageCollection) load(ctx common.MinimalBuildContext) error {
 	var records []starlark.Value
 
 	start := time.Now()
@@ -193,11 +193,6 @@ func (parser *packageCollection) load(ctx *buildContext) error {
 	slog.Debug("built all package sources", "took", time.Since(start))
 	start = time.Now()
 
-	parserCallback, err := ctx.builder.database.getBuilder(parser.Filename, parser.Parser)
-	if err != nil {
-		return fmt.Errorf("failed to GetBuilder in PackageCollection.Load: %s", err)
-	}
-
 	wg := sync.WaitGroup{}
 
 	// This doesn't scale partially well but 4 threads gives roughly a 2x speed improvement.
@@ -213,11 +208,7 @@ func (parser *packageCollection) load(ctx *buildContext) error {
 		go func(records []starlark.Value) {
 			defer wg.Done()
 
-			child := ctx.childContext(parser, nil, "")
-
-			thread := ctx.builder.database.newThread(parser.Filename)
-
-			_, err := starlark.Call(thread, parserCallback, starlark.Tuple{child, parser, starlark.NewList(records)}, []starlark.Tuple{})
+			_, err := ctx.Database().Call(parser.Filename, parser.Parser, parser, starlark.NewList(records))
 			if err != nil {
 				errors <- err
 			}
@@ -238,8 +229,6 @@ func (parser *packageCollection) load(ctx *buildContext) error {
 		return nil
 	}
 }
-
-//
 
 func (parser *packageCollection) Query(query common.PackageQuery) ([]*common.Package, error) {
 	var directs []*common.Package
@@ -285,18 +274,8 @@ func (parser *packageCollection) Query(query common.PackageQuery) ([]*common.Pac
 	return append(directs, aliases...), nil
 }
 
-func (parser *packageCollection) InstallerFor(c common.BuildContext, pkg *common.Package, tags common.TagList) (*common.Installer, error) {
-	ctx, ok := c.(*buildContext)
-	if !ok {
-		return nil, fmt.Errorf("could not convert %s to buildContext", c.Type())
-	}
-
-	getInstall, err := ctx.builder.database.getBuilder(parser.Filename, parser.Install)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get builder in InstallerFor: %s", err)
-	}
-
-	ret, err := starlark.Call(ctx.builder.database.newThread(parser.Filename), getInstall, starlark.Tuple{pkg, tags}, []starlark.Tuple{})
+func (parser *packageCollection) InstallerFor(c common.MinimalBuildContext, pkg *common.Package, tags common.TagList) (*common.Installer, error) {
+	ret, err := c.Database().Call(parser.Filename, parser.Install, pkg, tags)
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
 			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())

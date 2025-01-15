@@ -64,7 +64,7 @@ func (def *extractFileDefinition) NeedsBuild(ctx common.BuildContext) (bool, err
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *extractFileDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *extractFileDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	return nil, fmt.Errorf("ExtractFileDefinition can not be converted into a Starlark value")
 }
 

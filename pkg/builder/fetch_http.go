@@ -45,7 +45,7 @@ func (def *fetchHttpBuildDefinition) Create(params hash.SerializableValue) hash.
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (f *fetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (f *fetchHttpBuildDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err

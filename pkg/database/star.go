@@ -236,16 +236,14 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			ctx := db.builder.newBuildContext(def)
-
-			result, err := db.builder.build(ctx, def, common.BuildOptions{
+			result, err := db.builder.Build(def, common.BuildOptions{
 				AlwaysRebuild: alwaysRebuild,
 			})
 			if err != nil {
 				return starlark.None, err
 			}
 
-			return def.ToStarlark(ctx, result)
+			return def.ToStarlark(result)
 		}), nil
 	} else if name == "builder" {
 		return starlark.NewBuiltin("Database.builder", func(

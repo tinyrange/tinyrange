@@ -70,7 +70,7 @@ func (def *buildVmDefinition) Create(params hash.SerializableValue) hash.Definit
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *buildVmDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *buildVmDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err

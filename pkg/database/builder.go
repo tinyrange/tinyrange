@@ -21,7 +21,7 @@ type containerBuilder struct {
 	packages             *packageCollection
 	metadata             starlark.Value
 	splitDefaultPackages bool
-	db                   *packageDatabase
+	db                   common.PackageDatabase
 
 	loaded bool
 }
@@ -32,7 +32,7 @@ func (builder *containerBuilder) Packages() common.PackageCollection {
 }
 
 // EnsureLoaded ensures that the container builder is loaded.
-func (builder *containerBuilder) ensureLoaded(ctx *buildContext) error {
+func (builder *containerBuilder) ensureLoaded(ctx common.MinimalBuildContext) error {
 	if !builder.Loaded() {
 		start := time.Now()
 		if err := builder.load(ctx); err != nil {
@@ -105,7 +105,7 @@ func (builder *containerBuilder) Attr(name string) (starlark.Value, error) {
 				}
 			}
 
-			ctx := builder.db.builder.newBuildContext(nil)
+			ctx := builder.db.Builder().MinimalContext()
 
 			plan, err := builder.Plan(ctx, search, tagList, common.PlanOptions{})
 			if err != nil {
@@ -153,12 +153,12 @@ func (builder *containerBuilder) Loaded() bool {
 	return builder.loaded
 }
 
-func (builder *containerBuilder) load(ctx *buildContext) error {
+func (builder *containerBuilder) load(ctx common.MinimalBuildContext) error {
 	if builder.Loaded() {
 		return nil
 	}
 
-	builder.db = ctx.builder.database
+	builder.db = ctx.Database()
 
 	if err := builder.packages.load(ctx); err != nil {
 		return err
@@ -170,16 +170,11 @@ func (builder *containerBuilder) load(ctx *buildContext) error {
 }
 
 func (builder *containerBuilder) Plan(
-	c common.BuildContext,
+	ctx common.MinimalBuildContext,
 	packages []common.PackageQuery,
 	tags common.TagList,
 	opts common.PlanOptions,
 ) (common.InstallationPlan, error) {
-	ctx, ok := c.(*buildContext)
-	if !ok {
-		return nil, fmt.Errorf("could not convert BuildContext to *buildContext")
-	}
-
 	plan := newInstallationPlan(tags, opts)
 
 	if tags.Contains("defaults") {
@@ -203,19 +198,7 @@ func (builder *containerBuilder) Plan(
 	}
 
 	// Call the plan callback.
-	thread := ctx.builder.database.newThread(builder.filename)
-
-	callable, err := ctx.builder.database.getBuilder(builder.filename, builder.planCallbackName)
-	if err != nil {
-		return nil, fmt.Errorf("could not get builder for ContainerBuilder.Plan: %s", err)
-	}
-
-	ret, err := starlark.Call(
-		thread,
-		callable,
-		starlark.Tuple{builder, plan},
-		[]starlark.Tuple{},
-	)
+	ret, err := ctx.Database().Call(builder.filename, builder.planCallbackName, builder, plan)
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
 			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())

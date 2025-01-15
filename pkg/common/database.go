@@ -42,7 +42,7 @@ type BuildDefinition interface {
 	// Build builds the definition and returns the result.
 	Build(ctx BuildContext) error
 	// ToStarlark converts the definition to a starlark value.
-	ToStarlark(ctx BuildContext, artifact BuildArtifact) (starlark.Value, error)
+	ToStarlark(artifact BuildArtifact) (starlark.Value, error)
 }
 
 // RedistributableDefinition is a extension of BuildDefinition that can be redistributed.
@@ -70,8 +70,19 @@ type BuildReceipt struct {
 	Files        map[string]string `json:"files"` // map of filename to sha256 hash
 }
 
+type DigestHandler interface {
+	// DigestFromFile returns a file digest from a file.
+	DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error)
+	// FileFromDigest returns a file from a file digest.
+	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
+	// HostFilenameFromFile returns a filename from a file.
+	HostFilenameFromFile(file filesystem.File) (string, error)
+}
+
 // BuildArtifact is the result of a build.
 type BuildArtifact interface {
+	DigestHandler
+
 	// Hash returns the hash of the definition.
 	DefinitionHash() hash.Hash
 	// Receipt returns the receipt of the build.
@@ -82,18 +93,23 @@ type BuildArtifact interface {
 	OpenFile(name string) (filesystem.FileHandle, error)
 }
 
+type MinimalBuildContext interface {
+	// BuildChild builds a child definition.
+	BuildChild(def BuildDefinition) (BuildArtifact, error)
+	// Database returns the package database.
+	Database() PackageDatabase
+}
+
 // BuildContext is the context of a build.
 type BuildContext interface {
 	starlark.Value
+	MinimalBuildContext
+	DigestHandler
 
-	// BuildChild builds a child definition.
-	BuildChild(def BuildDefinition) (BuildArtifact, error)
 	// ShouldRebuildUserDefinitions returns whether user definitions should be rebuilt.
 	ShouldRebuildUserDefinitions() bool
 	// LastBuild returns the time of the last build.
 	LastBuild() time.Time
-	// Database returns the package database.
-	Database() PackageDatabase
 	// RunVMM runs a VMM with the given configuration.
 	RunVMM(vmm string, config config.TinyRangeConfig) (*exec.Cmd, error)
 	// Hash returns the hash of the build context.
@@ -102,12 +118,6 @@ type BuildContext interface {
 	CreateDefault() (io.WriteCloser, error)
 	// WriteDefault writes the default file for the build.
 	WriteDefault(result BuildResult) error
-	// DigestFromFile returns a file digest from a file.
-	DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error)
-	// FileFromDigest returns a file from a file digest.
-	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
-	// HostFilenameFromFile returns a filename from a file.
-	HostFilenameFromFile(file filesystem.File) (string, error)
 
 	// CreateFile creates a file in the build context.
 	CreateFile(name string) (io.WriteCloser, error)
@@ -123,7 +133,7 @@ type InstallationPlan interface {
 	starlark.Value
 
 	// Add a new package to the plan.
-	Add(ctx BuildContext, builder ContainerBuilder, query PackageQuery, isDefault bool) error
+	Add(ctx MinimalBuildContext, builder ContainerBuilder, query PackageQuery, isDefault bool) error
 	// Get the list of directives in the plan.
 	Directives() []Directive
 	// Set the list of directives in the plan.
@@ -139,7 +149,7 @@ type PackageCollection interface {
 	// Search for packages that match the given query.
 	Query(query PackageQuery) ([]*Package, error)
 	// Get the package with the given name.
-	InstallerFor(ctx BuildContext, pkg *Package, tags TagList) (*Installer, error)
+	InstallerFor(ctx MinimalBuildContext, pkg *Package, tags TagList) (*Installer, error)
 }
 
 // ContainerBuilder takes a package collection and creates an installation plan from a list of queries.
@@ -154,7 +164,7 @@ type ContainerBuilder interface {
 	Packages() PackageCollection
 
 	// Plan creates an installation plan from a list of queries.
-	Plan(ctx BuildContext, packages []PackageQuery, tags TagList, opts PlanOptions) (InstallationPlan, error)
+	Plan(ctx MinimalBuildContext, packages []PackageQuery, tags TagList, opts PlanOptions) (InstallationPlan, error)
 	// Search for packages that match the given query.
 	Search(pkg PackageQuery) ([]*Package, error)
 }
@@ -222,6 +232,10 @@ type Builder interface {
 	SetRebuildUserDefinitions(rebuild bool)
 	// GarbageCollect removes old build artifacts.
 	GarbageCollect(olderThan time.Time) ([]hash.Hash, error)
+	// MinimalContext returns a minimal build context that can only build children.
+	MinimalContext() MinimalBuildContext
+	// GetDefinitionByHash returns a definition by hash.
+	GetDefinitionByHash(hash hash.Hash) (BuildDefinition, error)
 }
 
 // PackageDatabase is the core interface.

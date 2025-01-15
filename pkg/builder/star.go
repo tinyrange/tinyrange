@@ -24,7 +24,7 @@ func SerializableValueToStarlark(ctx common.BuildContext, val hash.SerializableV
 			return starlark.None, err
 		}
 
-		return val.ToStarlark(ctx, artifact)
+		return val.ToStarlark(artifact)
 	case hash.SerializableString:
 		return starlark.String(val), nil
 	case hash.SerializableList:
@@ -53,7 +53,7 @@ func SerializableValueToStarlark(ctx common.BuildContext, val hash.SerializableV
 				return starlark.None, err
 			}
 
-			starVal, err := def.ToStarlark(ctx, artifact)
+			starVal, err := def.ToStarlark(artifact)
 			if err != nil {
 				return starlark.None, err
 			}
@@ -196,7 +196,7 @@ func (def *starBuildDefinition) AsFragments(ctx common.BuildContext, special com
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *starBuildDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *starBuildDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err

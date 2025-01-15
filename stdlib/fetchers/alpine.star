@@ -189,7 +189,7 @@ def get_alpine_installer(pkg, tags):
     else:
         return None
 
-def parse_alpine_packages(ctx, collection, packages):
+def parse_alpine_packages(collection, packages):
     for ent in packages:
         collection.add_package(
             name = name(

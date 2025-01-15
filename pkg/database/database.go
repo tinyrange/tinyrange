@@ -92,6 +92,30 @@ type tempArtifact struct {
 	defaultFile filesystem.File
 }
 
+// DigestFromFile implements common.BuildContext.
+func (c *tempArtifact) DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error) {
+	filename, err := filesystem.GetHostFilename(file)
+	if err != nil {
+		return nil, err
+	}
+
+	return &filesystem.FileDigest{Hash: filename}, nil
+}
+
+// FileFromDigest implements common.BuildContext.
+func (c *tempArtifact) FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error) {
+	if digest.Hash != "" {
+		return filesystem.NewLocalFile(digest.Hash, nil), nil
+	}
+
+	return nil, fmt.Errorf("could not convert digest to hash")
+}
+
+// HostFilenameFromFile implements common.BuildContext.
+func (c *tempArtifact) HostFilenameFromFile(file filesystem.File) (string, error) {
+	return filesystem.GetHostFilename(file)
+}
+
 // Default implements common.BuildArtifact.
 func (t *tempArtifact) Default() (filesystem.File, error) {
 	return t.defaultFile, nil
@@ -131,6 +155,11 @@ type builder1 struct {
 	defDb *hash.DefinitionDatabase
 
 	buildDir string
+}
+
+// MinimalContext implements common.Builder.
+func (db *builder1) MinimalContext() common.MinimalBuildContext {
+	return db.newBuildContext(nil)
 }
 
 // SetRebuildUserDefinitions implements common.PackageDatabase.
@@ -487,7 +516,7 @@ type packageDatabase struct {
 
 	builders map[string]starlark.Callable
 
-	builder *builder1
+	builder common.Builder
 }
 
 func (db *packageDatabase) getFileContents(name string, allowLocal bool) (string, error) {
@@ -688,7 +717,7 @@ func (db *packageDatabase) RunScript(filename string, files map[string]filesyste
 }
 
 func (db *packageDatabase) LoadAll(parallel bool) error {
-	ctx := db.builder.newBuildContext(nil)
+	ctx := db.builder.MinimalContext()
 
 	if parallel {
 		var wg sync.WaitGroup
@@ -757,7 +786,7 @@ func (db *packageDatabase) GetContainerBuilder(name string, arch config.CPUArchi
 		return nil, fmt.Errorf("builder %s not found for arch %s", name, arch)
 	}
 
-	if err := builder.ensureLoaded(db.builder.newBuildContext(nil)); err != nil {
+	if err := builder.ensureLoaded(db.Builder().MinimalContext()); err != nil {
 		return nil, err
 	}
 

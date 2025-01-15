@@ -204,7 +204,7 @@ def get_debian_installer(pkg, tags):
 
     return None
 
-def parse_debian_package(ctx, collection, packages):
+def parse_debian_package(collection, packages):
     for ent in packages:
         aliases = [
             parse_debian_alias(q)

@@ -86,7 +86,7 @@ func (def *fileDefinition) AsFragments(ctx common.BuildContext, special common.S
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *fileDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *fileDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err
@@ -179,7 +179,7 @@ func (c *constantHashDefinition) NeedsBuild(ctx common.BuildContext) (bool, erro
 func (c *constantHashDefinition) String() string { return c.params.Hash }
 
 // ToStarlark implements common.BuildDefinition.
-func (c *constantHashDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (c *constantHashDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err

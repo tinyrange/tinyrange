@@ -141,7 +141,7 @@ def get_rpm_installer(pkg, tags):
     else:
         return None
 
-def parse_rpm_package(ctx, collection, packages):
+def parse_rpm_package(collection, packages):
     for ent in packages:
         aliases = []
 

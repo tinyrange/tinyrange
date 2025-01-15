@@ -34,7 +34,7 @@ type basicBuildDefinition struct {
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (d *basicBuildDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (d *basicBuildDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	return starlark.None, fmt.Errorf("not implemented")
 }
 

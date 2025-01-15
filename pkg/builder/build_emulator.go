@@ -46,7 +46,7 @@ func (def *buildEmulatorDefinition) Create(params hash.SerializableValue) hash.D
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *buildEmulatorDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *buildEmulatorDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err

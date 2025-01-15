@@ -80,7 +80,7 @@ func (def *planDefinition) AsFragments(ctx common.BuildContext, special common.S
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *planDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *planDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	var plan *planDefinition
 
 	result, err := artifact.Default()

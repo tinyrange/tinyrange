@@ -144,7 +144,7 @@ func (def *registryRequestDefinition) Create(params hash.SerializableValue) hash
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (r *registryRequestDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (r *registryRequestDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	panic("unimplemented")
 }
 
@@ -275,7 +275,7 @@ func (def *fetchOciImageDefinition) AsFragments(ctx common.BuildContext, special
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *fetchOciImageDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *fetchOciImageDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err
@@ -288,7 +288,7 @@ func (def *fetchOciImageDefinition) ToStarlark(ctx common.BuildContext, artifact
 	fs := filesystem.NewMemoryDirectory()
 
 	for _, layer := range def.LayerArchives {
-		layerFile, err := ctx.FileFromDigest(layer)
+		layerFile, err := artifact.FileFromDigest(layer)
 		if err != nil {
 			return nil, err
 		}

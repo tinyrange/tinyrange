@@ -91,10 +91,10 @@ func (r *readOciImageDefinition) AsFragments(ctx common.BuildContext, special co
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (r *readOciImageDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (r *readOciImageDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	var def fetchOciImageDefinition
 
-	return def.ToStarlark(ctx, artifact)
+	return def.ToStarlark(artifact)
 }
 
 // Build implements common.BuildDefinition.

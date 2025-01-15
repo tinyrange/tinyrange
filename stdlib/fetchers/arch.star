@@ -116,7 +116,7 @@ def get_arch_installer(pkg, tags):
     else:
         return None
 
-def parse_arch_package(ctx, collection, packages):
+def parse_arch_package(collection, packages):
     for ent in packages:
         aliases = [
             parse_arch_alias(k)

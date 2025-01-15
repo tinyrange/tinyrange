@@ -37,7 +37,7 @@ func (def *decompressFileBuildDefinition) Create(params hash.SerializableValue) 
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *decompressFileBuildDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *decompressFileBuildDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err

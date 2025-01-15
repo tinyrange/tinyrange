@@ -287,7 +287,7 @@ func (def *buildFsDefinition) Create(params hash.SerializableValue) hash.Definit
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *buildFsDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *buildFsDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err
