@@ -27,6 +27,11 @@ type fetchHttpBuildDefinition struct {
 	resp *http.Response
 }
 
+// Dependencies implements common.BuildDefinition1.
+func (def *fetchHttpBuildDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+	return nil, nil
+}
+
 // Redistributable implements common.RedistributableDefinition.
 func (def *fetchHttpBuildDefinition) Redistributable() bool {
 	return true

@@ -263,6 +263,22 @@ type buildFsDefinition struct {
 	frags []config.Fragment
 }
 
+// Dependencies implements common.StarBuildDefinition1.
+func (def *buildFsDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+	var deps []common.BuildDefinition1
+
+	for _, dir := range def.params.Directives {
+		deps, err := dir.Dependencies()
+		if err != nil {
+			return nil, err
+		}
+
+		deps = append(deps, deps...)
+	}
+
+	return deps, nil
+}
+
 // implements common.BuildDefinition.
 func (def *buildFsDefinition) Params() hash.SerializableValue { return def.params }
 func (def *buildFsDefinition) SerializableType() string       { return "BuildFsDefinition" }

@@ -32,6 +32,11 @@ type planDefinition struct {
 	Fragments []config.Fragment
 }
 
+// Dependencies implements common.BuildDefinition1.
+func (def *planDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+	return nil, nil
+}
+
 // implements common.BuildDefinition.
 func (def *planDefinition) Params() hash.SerializableValue { return def.params }
 func (def *planDefinition) SerializableType() string       { return "PlanDefinition" }

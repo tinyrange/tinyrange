@@ -23,6 +23,11 @@ type readOciImageDefinition struct {
 	params ReadOciImageParameters
 }
 
+// Dependencies implements common.BuildDefinition1.
+func (r *readOciImageDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+	return []common.BuildDefinition1{r.params.Base}, nil
+}
+
 // NeedsBuild implements common.BuildDefinition.
 func (r *readOciImageDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
 	return ctx.NeedsBuild(r.params.Base)

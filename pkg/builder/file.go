@@ -40,6 +40,11 @@ type fileDefinition struct {
 	params FileParameters
 }
 
+// Dependencies implements common.BuildDefinition1.
+func (def *fileDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+	return nil, nil
+}
+
 // implements common.BuildDefinition.
 func (def *fileDefinition) Params() hash.SerializableValue { return def.params }
 func (def *fileDefinition) SerializableType() string {
@@ -142,6 +147,11 @@ var (
 type constantHashDefinition struct {
 	params  ConstantHashParameters
 	builder BuilderFunc
+}
+
+// Dependencies implements common.BuildDefinition1.
+func (c *constantHashDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+	return nil, nil
 }
 
 // implements common.BuildDefinition.

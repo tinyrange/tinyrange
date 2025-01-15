@@ -22,6 +22,11 @@ type decompressFileBuildDefinition struct {
 	r io.ReadCloser
 }
 
+// Dependencies implements common.BuildDefinition1.
+func (def *decompressFileBuildDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+	return []common.BuildDefinition1{def.params.Base}, nil
+}
+
 // implements common.BuildDefinition.
 func (def *decompressFileBuildDefinition) Params() hash.SerializableValue { return def.params }
 func (def *decompressFileBuildDefinition) SerializableType() string {

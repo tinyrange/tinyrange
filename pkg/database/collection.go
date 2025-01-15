@@ -28,6 +28,11 @@ type packageCollection struct {
 	pkgMtx sync.Mutex
 }
 
+// Dependencies implements common.BuildDefinition1.
+func (parser *packageCollection) Dependencies() ([]common.BuildDefinition1, error) {
+	panic("unimplemented on packageCollection")
+}
+
 // Build implements common.BuildDefinition.
 func (parser *packageCollection) Build(ctx common.BuildContext1) error {
 	panic("unimplemented on packageCollection")

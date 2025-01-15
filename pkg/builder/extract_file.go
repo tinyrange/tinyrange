@@ -17,6 +17,11 @@ type extractFileDefinition struct {
 	params ExtractFileParameters
 }
 
+// Dependencies implements common.BuildDefinition1.
+func (def *extractFileDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+	return []common.BuildDefinition1{def.params.Base}, nil
+}
+
 // Build implements common.BuildDefinition.
 func (def *extractFileDefinition) Build(ctx common.BuildContext1) error {
 	base, err := ctx.BuildChild(def.params.Base)

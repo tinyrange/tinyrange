@@ -35,6 +35,29 @@ type buildVmDefinition struct {
 	gotOutput bool
 }
 
+// Dependencies implements common.BuildDefinition1.
+func (def *buildVmDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+	var deps []common.BuildDefinition1
+
+	if def.params.Kernel != nil {
+		deps = append(deps, def.params.Kernel)
+	}
+	if def.params.InitRamFs != nil {
+		deps = append(deps, def.params.InitRamFs)
+	}
+
+	for _, dir := range def.params.Directives {
+		deps, err := dir.Dependencies()
+		if err != nil {
+			return nil, err
+		}
+
+		deps = append(deps, deps...)
+	}
+
+	return deps, nil
+}
+
 func (def *buildVmDefinition) SetBuildTemplateMode() {
 	def.buildTemplateOutput = true
 }

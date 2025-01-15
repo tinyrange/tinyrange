@@ -116,6 +116,19 @@ type starBuildDefinition struct {
 	redistributable bool
 }
 
+// Dependencies implements common.BuildDefinition1.
+func (def *starBuildDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+	var deps []common.BuildDefinition1
+
+	for _, arg := range def.params.Arguments {
+		if argDef, ok := arg.(common.BuildDefinition1); ok {
+			deps = append(deps, argDef)
+		}
+	}
+
+	return deps, nil
+}
+
 // Redistributable implements common.RedistributableDefinition.
 func (def *starBuildDefinition) Redistributable() bool {
 	return def.redistributable

@@ -32,6 +32,8 @@ type BuildDefinition1 interface {
 
 	// NeedsBuild returns whether the definition needs to be rebuilt.
 	NeedsBuild(ctx BuildContext1) (bool, error)
+	// Dependencies returns the dependencies of the definition.
+	Dependencies() ([]BuildDefinition1, error)
 	// Build builds the definition and returns the result.
 	Build(ctx BuildContext1) error
 	// ToStarlark converts the definition to a starlark value.
