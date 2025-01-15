@@ -472,7 +472,7 @@ func (r *readArchiveBuildDefinition) ToStarlark(ctx common.BuildContext1, artifa
 		return starlark.None, err
 	}
 
-	return filesystem.NewStarArchive(ark, r, r.Tag()), nil
+	return filesystem.NewStarArchive(ark, r, artifact.Hash().String()), nil
 }
 
 // NeedsBuild implements BuildDefinition.
@@ -561,12 +561,7 @@ func (r *readArchiveBuildDefinition) Build(ctx common.BuildContext1) (common.Bui
 	}
 }
 
-// Tag implements BuildDefinition.
-func (r *readArchiveBuildDefinition) Tag() string {
-	return strings.Join([]string{"ReadArchive", r.params.Base.Tag(), r.params.Kind}, "_")
-}
-
-func (def *readArchiveBuildDefinition) String() string { return def.Tag() }
+func (def *readArchiveBuildDefinition) String() string { return "ReadArchive" }
 func (*readArchiveBuildDefinition) Type() string       { return "ReadArchiveBuildDefinition" }
 func (*readArchiveBuildDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("ReadArchiveBuildDefinition is not hashable")

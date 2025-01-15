@@ -170,8 +170,8 @@ func (c *constantHashDefinition) NeedsBuild(ctx common.BuildContext1) (bool, err
 	return false, nil
 }
 
-// Tag implements common.BuildDefinition.
-func (c *constantHashDefinition) Tag() string { return c.params.Hash }
+// String implements common.BuildDefinition.
+func (c *constantHashDefinition) String() string { return c.params.Hash }
 
 // ToStarlark implements common.BuildDefinition.
 func (c *constantHashDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {

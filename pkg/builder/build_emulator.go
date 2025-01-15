@@ -3,7 +3,6 @@ package builder
 import (
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -125,22 +124,7 @@ func (def *buildEmulatorDefinition) NeedsBuild(ctx common.BuildContext1) (bool, 
 	return false, nil
 }
 
-// Tag implements common.BuildDefinition.
-func (def *buildEmulatorDefinition) Tag() string {
-	out := []string{"BuildEmulator"}
-
-	for _, dir := range def.params.Directives {
-		out = append(out, dir.Tag())
-	}
-
-	out = append(out, def.params.OutputFile)
-	out = append(out, def.params.ScriptFilename)
-	out = append(out, def.params.CreateName)
-
-	return strings.Join(out, "_")
-}
-
-func (def *buildEmulatorDefinition) String() string { return def.Tag() }
+func (def *buildEmulatorDefinition) String() string { return "BuildEmulator" }
 func (*buildEmulatorDefinition) Type() string       { return "BuildEmulatorDefinition" }
 func (*buildEmulatorDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("BuildEmulatorDefinition is not hashable")

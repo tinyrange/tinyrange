@@ -58,11 +58,6 @@ func (def *extractFileDefinition) NeedsBuild(ctx common.BuildContext1) (bool, er
 	return ctx.NeedsBuild(def.params.Base)
 }
 
-// Tag implements common.BuildDefinition.
-func (def *extractFileDefinition) Tag() string {
-	return fmt.Sprintf("ExtractFile_%s_%s", def.params.Base.Tag(), def.params.Name)
-}
-
 // ToStarlark implements common.BuildDefinition.
 func (def *extractFileDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
 	return nil, fmt.Errorf("ExtractFileDefinition can not be converted into a Starlark value")
@@ -75,6 +70,11 @@ func (def *extractFileDefinition) SerializableType() string {
 }
 func (def *extractFileDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &extractFileDefinition{params: params.(ExtractFileParameters)}
+}
+
+// String implements the fmt.Stringer interface.
+func (def *extractFileDefinition) String() string {
+	return fmt.Sprintf("ExtractFile{%s}", def.params.Name)
 }
 
 var (

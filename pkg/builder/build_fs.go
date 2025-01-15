@@ -311,20 +311,7 @@ func (def *buildFsDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error)
 	return false, nil
 }
 
-// Tag implements common.BuildDefinition.
-func (def *buildFsDefinition) Tag() string {
-	out := []string{"BuildFs"}
-
-	for _, dir := range def.params.Directives {
-		out = append(out, dir.Tag())
-	}
-
-	out = append(out, def.params.Kind)
-
-	return strings.Join(out, "_")
-}
-
-func (def *buildFsDefinition) String() string { return def.Tag() }
+func (def *buildFsDefinition) String() string { return "BuildFsDefinition" }
 func (*buildFsDefinition) Type() string       { return "BuildFsDefinition" }
 func (*buildFsDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("BuildFsDefinition is not hashable")

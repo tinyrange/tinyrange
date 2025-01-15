@@ -22,7 +22,6 @@ func init() {
 }
 
 type Directive interface {
-	Tag() string
 	AsFragments(ctx BuildContext1, special SpecialDirectiveHandlers) ([]config.Fragment, error)
 }
 
@@ -117,17 +116,6 @@ func (d DirectiveAddFile) AsFragments(ctx BuildContext1, special SpecialDirectiv
 	}
 }
 
-// Tag implements Directive.
-func (d DirectiveAddFile) Tag() string {
-	if d.Definition != nil {
-		return fmt.Sprintf("AddFile_%s_%s_%+v", d.Filename, d.Definition.Tag(), d.Executable)
-	} else {
-		sum := hash.GetSha256Hash(d.Contents)
-
-		return fmt.Sprintf("AddFile_%s_%s_%+v", d.Filename, sum, d.Executable)
-	}
-}
-
 type DirectiveLocalFile struct {
 	Filename     string
 	HostFilename string
@@ -187,11 +175,6 @@ func (d DirectiveArchive) AsFragments(ctx BuildContext1, special SpecialDirectiv
 			Target:       d.Target,
 		}},
 	}, nil
-}
-
-// Tag implements Directive.
-func (d DirectiveArchive) Tag() string {
-	return fmt.Sprintf("DirArchive_%s_%s", d.Definition.Tag(), d.Target)
 }
 
 type DirectiveExportPort struct {
@@ -276,17 +259,6 @@ func (d DirectiveList) AsFragments(ctx BuildContext1, special SpecialDirectiveHa
 
 // SerializableType implements Directive.
 func (d DirectiveList) SerializableType() string { return "DirectiveList" }
-
-// Tag implements Directive.
-func (d DirectiveList) Tag() string {
-	var ret []string
-
-	for _, dir := range d.Items {
-		ret = append(ret, dir.Tag())
-	}
-
-	return strings.Join(ret, "_")
-}
 
 type DirectiveAddPackage struct {
 	Name PackageQuery
@@ -426,11 +398,6 @@ func (d DirectiveKernel) AsFragments(ctx BuildContext1, special SpecialDirective
 // SerializableType implements Directive.
 func (d DirectiveKernel) SerializableType() string { return "DirectiveKernel" }
 
-// Tag implements Directive.
-func (d DirectiveKernel) Tag() string {
-	return fmt.Sprintf("DirectiveKernel_%s_%s", d.Kernel.Tag(), d.Initramfs.Tag())
-}
-
 type DirectiveAddInitScript struct {
 	GuestFilename string
 }
@@ -472,7 +439,7 @@ type StarDirective struct {
 	Directive Directive
 }
 
-func (d *StarDirective) String() string      { return d.Directive.Tag() }
+func (d *StarDirective) String() string      { return d.Type() }
 func (d *StarDirective) Type() string        { return fmt.Sprintf("%T", d.Directive) }
 func (*StarDirective) Hash() (uint32, error) { return 0, fmt.Errorf("Directive is not hashable") }
 func (*StarDirective) Truth() starlark.Bool  { return starlark.True }

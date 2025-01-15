@@ -196,8 +196,8 @@ func (r *registryRequestDefinition) NeedsBuild(ctx common.BuildContext1) (bool, 
 	}
 }
 
-// Tag implements common.BuildDefinition.
-func (r *registryRequestDefinition) Tag() string {
+// String implements common.BuildDefinition.
+func (r *registryRequestDefinition) String() string {
 	tag := []string{"ociRegistryRequest", r.ctx.registry, r.params.Url}
 	tag = append(tag, r.params.Accept...)
 	return strings.Join(tag, "_")

@@ -343,25 +343,7 @@ func (def *buildVmDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error)
 	return false, nil
 }
 
-// Tag implements common.BuildDefinition.
-func (def *buildVmDefinition) Tag() string {
-	out := []string{"BuildVm"}
-
-	for _, dir := range def.params.Directives {
-		out = append(out, dir.Tag())
-	}
-
-	out = append(out, def.params.OutputFile)
-	out = append(out, def.params.Interaction)
-
-	if def.params.InitRamFs != nil {
-		out = append(out, def.params.InitRamFs.Tag())
-	}
-
-	return strings.Join(out, "_")
-}
-
-func (def *buildVmDefinition) String() string { return def.Tag() }
+func (def *buildVmDefinition) String() string { return "BuildVm" }
 func (*buildVmDefinition) Type() string       { return "BuildVmDefinition" }
 func (*buildVmDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("BuildVmDefinition is not hashable")

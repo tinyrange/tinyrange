@@ -23,9 +23,8 @@ type BuildResult interface {
 type BuildDefinition1 interface {
 	hash.Definition
 	MacroResult
+	fmt.Stringer
 
-	// Tag returns a human readable name for the definition.
-	Tag() string
 	// NeedsBuild returns whether the definition needs to be rebuilt.
 	NeedsBuild(ctx BuildContext1) (bool, error)
 	// Build builds the definition and returns the result.

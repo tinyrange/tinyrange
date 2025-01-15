@@ -138,12 +138,7 @@ func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext1) (common.Build
 	return nil, fmt.Errorf("unable to find options to fetch %s", f.params.Url)
 }
 
-// Tag implements BuildDefinition.
-func (f *fetchHttpBuildDefinition) Tag() string {
-	return f.params.Url
-}
-
-func (def *fetchHttpBuildDefinition) String() string { return def.Tag() }
+func (def *fetchHttpBuildDefinition) String() string { return def.params.Url }
 func (*fetchHttpBuildDefinition) Type() string       { return "FetchHttpBuildDefinition" }
 func (*fetchHttpBuildDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("FetchHttpBuildDefinition is not hashable")

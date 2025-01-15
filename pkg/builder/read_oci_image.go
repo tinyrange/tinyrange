@@ -35,10 +35,10 @@ func (r *readOciImageDefinition) Create(params hash.SerializableValue) hash.Defi
 	return &readOciImageDefinition{params: params.(ReadOciImageParameters)}
 }
 
-// Tag implements common.BuildDefinition.
-func (r *readOciImageDefinition) Tag() string {
+// String implements common.BuildDefinition.
+func (r *readOciImageDefinition) String() string {
 	tag := []string{"ReadOciImage"}
-	tag = append(tag, r.params.Base.Tag())
+	tag = append(tag, r.params.Base.String())
 	return strings.Join(tag, "_")
 }
 

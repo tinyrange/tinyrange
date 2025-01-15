@@ -4,7 +4,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -103,12 +102,7 @@ func (def *decompressFileBuildDefinition) Build(ctx common.BuildContext1) (commo
 	return def, nil
 }
 
-// Tag implements BuildDefinition.
-func (def *decompressFileBuildDefinition) Tag() string {
-	return strings.Join([]string{"DecompressFile", def.params.Base.Tag(), def.params.Kind}, "_")
-}
-
-func (def *decompressFileBuildDefinition) String() string { return def.Tag() }
+func (def *decompressFileBuildDefinition) String() string { return "DecompressFile" }
 func (*decompressFileBuildDefinition) Type() string       { return "DecompressFileBuildDefinition" }
 func (*decompressFileBuildDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("DecompressFileBuildDefinition is not hashable")

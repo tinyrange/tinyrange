@@ -43,7 +43,6 @@ func (s buildStatusKind) String() string {
 
 type buildStatus struct {
 	Status   buildStatusKind
-	Tag      string
 	Children []common.BuildDefinition1
 }
 
@@ -236,8 +235,6 @@ func (db *builder1) getBuildStatus(def common.BuildDefinition1) (*buildStatus, e
 }
 
 func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, opts common.BuildOptions) (common.BuildArtifact, error) {
-	tag := def.Tag()
-
 	hash, err := db.HashDefinition(def)
 	if err != nil {
 		return nil, err
@@ -247,7 +244,7 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 		return f, nil
 	}
 
-	status := &buildStatus{Tag: tag}
+	status := &buildStatus{}
 
 	filename, err := db.filenameFromHash(hash, ".bin")
 	if err != nil {
@@ -297,7 +294,7 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 				// Write the build status.
 				db.updateBuildStatus(def, status)
 
-				slog.Debug("cached", "Tag", def.Tag(), "filename", filename)
+				slog.Debug("cached", "Hash", hash.String(), "filename", filename)
 
 				return &tempArtifact{
 					hash:        hash,
@@ -305,12 +302,12 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 				}, nil
 			}
 
-			slog.Debug("rebuild requested", "Tag", def.Tag())
+			slog.Debug("rebuild requested", "Hash", hash.String())
 		} else {
-			slog.Debug("building", "Tag", def.Tag())
+			slog.Debug("building", "Hash", hash.String())
 		}
 	} else {
-		slog.Debug("building", "Tag", def.Tag())
+		slog.Debug("building", "Hash", hash.String())
 	}
 
 	defValue, err := db.defDb.MarshalDefinition(def)
