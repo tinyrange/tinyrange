@@ -250,31 +250,31 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext1, hostAddres
 }
 
 // Build implements common.BuildDefinition.
-func (def *buildVmDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *buildVmDefinition) Build(ctx common.BuildContext1) error {
 	if def.buildTemplateOutput {
 		vmCfg, err := def.BuildTemplate(ctx, "")
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		_, err = ctx.RunVMM("", vmCfg)
 		if err != nil {
-			return nil, err
+			return err
 		} else {
-			return nil, fmt.Errorf("expected error")
+			return fmt.Errorf("expected error")
 		}
 	}
 
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	hostAddress := fmt.Sprintf("10.42.0.100:%d", listener.Addr().(*net.TCPAddr).Port)
 
 	vmCfg, err := def.BuildTemplate(ctx, hostAddress)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	def.mux = http.NewServeMux()
@@ -285,7 +285,7 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext1) (common.BuildResul
 
 	out, err := ctx.CreateDefault()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	def.out = out
 
@@ -305,12 +305,12 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext1) (common.BuildResul
 
 	cmd, err := ctx.RunVMM("qemu", vmCfg)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	def.cmd = cmd
 
-	return def, nil
+	return def.WriteResult(nil)
 }
 
 // NeedsBuild implements common.BuildDefinition.

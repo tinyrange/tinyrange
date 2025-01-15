@@ -29,7 +29,7 @@ type packageCollection struct {
 }
 
 // Build implements common.BuildDefinition.
-func (parser *packageCollection) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (parser *packageCollection) Build(ctx common.BuildContext1) error {
 	panic("unimplemented on packageCollection")
 }
 

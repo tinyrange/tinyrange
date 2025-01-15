@@ -489,34 +489,34 @@ func (r *readArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext1) (bool,
 }
 
 // Build implements BuildDefinition.
-func (r *readArchiveBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (r *readArchiveBuildDefinition) Build(ctx common.BuildContext1) error {
 	art, err := ctx.BuildChild(r.params.Base)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	res, err := art.Default()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	fh, err := res.Open()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if strings.HasSuffix(r.params.Kind, ".zip") {
 		info, err := res.Stat()
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		reader, err := zip.NewReader(fh, info.Size())
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		return &zipToArchiveBuildResult{r: reader}, nil
+		return ctx.WriteDefault(&zipToArchiveBuildResult{r: reader})
 	} else {
 		kind := r.params.Kind
 
@@ -525,21 +525,21 @@ func (r *readArchiveBuildDefinition) Build(ctx common.BuildContext1) (common.Bui
 		if strings.HasSuffix(kind, ".gz") {
 			reader, err = gzip.NewReader(fh)
 			if err != nil {
-				return nil, err
+				return err
 			}
 
 			kind = strings.TrimSuffix(kind, ".gz")
 		} else if strings.HasSuffix(kind, ".zst") {
 			reader, err = zstd.NewReader(fh)
 			if err != nil {
-				return nil, err
+				return err
 			}
 
 			kind = strings.TrimSuffix(kind, ".zst")
 		} else if strings.HasSuffix(kind, ".xz") {
 			reader, err = xz.NewReader(fh, xz.DefaultDictMax)
 			if err != nil {
-				return nil, err
+				return err
 			}
 
 			kind = strings.TrimSuffix(kind, ".xz")
@@ -548,15 +548,15 @@ func (r *readArchiveBuildDefinition) Build(ctx common.BuildContext1) (common.Bui
 		}
 
 		if strings.HasSuffix(kind, ".tar") {
-			return &tarToArchiveBuildResult{r: tar.NewReader(reader)}, nil
+			return ctx.WriteDefault(&tarToArchiveBuildResult{r: tar.NewReader(reader)})
 		} else if strings.HasSuffix(kind, ".tar$oci") {
-			return &tarToArchiveBuildResult{r: tar.NewReader(reader), oci: true}, nil
+			return ctx.WriteDefault(&tarToArchiveBuildResult{r: tar.NewReader(reader), oci: true})
 		} else if strings.HasSuffix(kind, ".cpio") {
-			return &cpioToArchiveBuildResult{r: cpio.NewReader(reader)}, nil
+			return ctx.WriteDefault(&cpioToArchiveBuildResult{r: cpio.NewReader(reader)})
 		} else if strings.HasSuffix(kind, ".ar") {
-			return &arToArchiveBuildResult{r: ar.NewReader(reader)}, nil
+			return ctx.WriteDefault(&arToArchiveBuildResult{r: ar.NewReader(reader)})
 		} else {
-			return nil, fmt.Errorf("ReadArchive with unknown kind: %s", r.params.Kind)
+			return fmt.Errorf("ReadArchive with unknown kind: %s", r.params.Kind)
 		}
 	}
 }

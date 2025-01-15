@@ -359,13 +359,8 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 	// If the downloaded tag exists then remove it.
 
 	// If not then trigger the build.
-	result, err := def.Build(child)
-	if err != nil {
-		return nil, err
-	}
-
-	// If the result is nil then the builder is telling us to use the cached version.
-	if result == nil {
+	err = def.Build(child)
+	if err == common.ErrUseExistingBuild {
 		status.Status = buildStatusCached
 
 		// Write the build status.
@@ -375,33 +370,13 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 			hash:        hash,
 			defaultFile: filesystem.NewLocalFile(filename, def),
 		}, nil
+	} else if err != nil {
+		return nil, err
 	}
 
 	// If the build has already been written then don't write it again.
 	if !child.HasCreatedOutput() {
-		// Once the build is complete then write it to disk.
-		outFile, err := os.Create(tmpFilename)
-		if err != nil {
-			return nil, err
-		}
-
-		// Write the build result to disk. If any of these steps fail then remove the temporary file.
-		if err := result.WriteResult(outFile); err != nil {
-			outFile.Close()
-			os.Remove(tmpFilename)
-			return nil, err
-		}
-
-		if err := outFile.Close(); err != nil {
-			os.Remove(tmpFilename)
-			return nil, err
-		}
-	} else {
-		// Let the result close the file on it's own.
-		if err := result.WriteResult(nil); err != nil {
-			os.Remove(tmpFilename)
-			return nil, err
-		}
+		return nil, fmt.Errorf("output not created")
 	}
 
 	// Finally rename the temporary file to the final filename.

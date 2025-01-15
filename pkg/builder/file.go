@@ -96,13 +96,13 @@ func (def *fileDefinition) ToStarlark(ctx common.BuildContext1, artifact common.
 }
 
 // Build implements common.BuildDefinition.
-func (def *fileDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *fileDefinition) Build(ctx common.BuildContext1) error {
 	fh, err := def.params.File.Open()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &copyFileResult{fh: fh}, nil
+	return ctx.WriteDefault(&copyFileResult{fh: fh})
 }
 
 // NeedsBuild implements common.BuildDefinition.
@@ -152,17 +152,17 @@ func (c *constantHashDefinition) Create(params hash.SerializableValue) hash.Defi
 }
 
 // Build implements common.BuildDefinition.
-func (c *constantHashDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (c *constantHashDefinition) Build(ctx common.BuildContext1) error {
 	if c.builder == nil {
-		return nil, fmt.Errorf("no builder for ConstantHashDefinition(%s)", c.params.Hash)
+		return fmt.Errorf("no builder for ConstantHashDefinition(%s)", c.params.Hash)
 	}
 
 	r, err := c.builder()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &copyFileResult{fh: r}, nil
+	return ctx.WriteDefault(&copyFileResult{fh: r})
 }
 
 // NeedsBuild implements common.BuildDefinition.

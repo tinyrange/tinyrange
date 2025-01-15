@@ -63,6 +63,16 @@ type buildContext struct {
 	lastBuild time.Time
 }
 
+// WriteDefault implements common.BuildContext1.
+func (b *buildContext) WriteDefault(result common.BuildResult) error {
+	defFile, err := b.CreateDefault()
+	if err != nil {
+		return fmt.Errorf("could not create default file for %T: %w", b.def, err)
+	}
+
+	return result.WriteResult(defFile)
+}
+
 // DefinitionHash implements common.BuildContext1.
 func (b *buildContext) DefinitionHash() hash.Hash {
 	return b.hash

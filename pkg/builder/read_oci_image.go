@@ -88,25 +88,25 @@ func (r *readOciImageDefinition) ToStarlark(ctx common.BuildContext1, artifact c
 }
 
 // Build implements common.BuildDefinition.
-func (r *readOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (r *readOciImageDefinition) Build(ctx common.BuildContext1) error {
 	child, err := ctx.BuildChild(r.params.Base)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	childFile, err := child.Default()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	ark, err := filesystem.ReadArchiveFromFile(childFile)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	ents, err := ark.Entries()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	filenames := make(map[string]filesystem.Entry)
@@ -118,11 +118,11 @@ func (r *readOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildRe
 	var manifest OciManifest
 
 	if err := ParseJsonFromFile(filenames["manifest.json"], &manifest); err != nil {
-		return nil, err
+		return err
 	}
 
 	if len(manifest) != 1 {
-		return nil, fmt.Errorf("no manifest found or multiple manifests found")
+		return fmt.Errorf("no manifest found or multiple manifests found")
 	}
 
 	mainManifest := manifest[0]
@@ -130,7 +130,7 @@ func (r *readOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildRe
 	var config oci.ImageConfig
 
 	if err := ParseJsonFromFile(filenames[mainManifest.Config], &config); err != nil {
-		return nil, err
+		return err
 	}
 
 	out := &fetchOciImageDefinition{}
@@ -138,24 +138,24 @@ func (r *readOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildRe
 	for _, layer := range mainManifest.Layers {
 		layerDef, err := newDefinitionFromFile(filenames[layer])
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		readArchiveDef := newReadArchiveBuildDefinition(layerDef, ".tar$oci.gz")
 
 		layerArtifact, err := ctx.BuildChild(readArchiveDef)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		layerFile, err := layerArtifact.Default()
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		layerFileDigest, err := ctx.DigestFromFile(layerFile)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		out.LayerArchives = append(out.LayerArchives, layerFileDigest)
@@ -163,7 +163,7 @@ func (r *readOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildRe
 
 	out.Config = config
 
-	return out, nil
+	return ctx.WriteDefault(out)
 }
 
 var (

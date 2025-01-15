@@ -64,42 +64,42 @@ func (def *decompressFileBuildDefinition) WriteResult(w io.Writer) error {
 }
 
 // Build implements BuildDefinition.
-func (def *decompressFileBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *decompressFileBuildDefinition) Build(ctx common.BuildContext1) error {
 	art, err := ctx.BuildChild(def.params.Base)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	f, err := art.Default()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	fh, err := f.Open()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	switch def.params.Kind {
 	case ".xz":
 		reader, err := xz.NewReader(fh, xz.DefaultDictMax)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		def.r = io.NopCloser(reader)
 	case ".gz":
 		reader, err := gzip.NewReader(fh)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		def.r = io.NopCloser(reader)
 	default:
-		return nil, fmt.Errorf("DecompressFile with unknown kind: %s", def.params.Kind)
+		return fmt.Errorf("DecompressFile with unknown kind: %s", def.params.Kind)
 	}
 
-	return def, nil
+	return ctx.WriteDefault(def)
 }
 
 func (def *decompressFileBuildDefinition) String() string { return "DecompressFile" }

@@ -281,23 +281,23 @@ func (def *buildFsDefinition) ToStarlark(ctx common.BuildContext1, artifact comm
 }
 
 // Build implements common.BuildDefinition.
-func (def *buildFsDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *buildFsDefinition) Build(ctx common.BuildContext1) error {
 	// Launch child builds for each directive.
 	for _, directive := range def.params.Directives {
 		frags, err := directive.AsFragments(ctx, common.SpecialDirectiveHandlers{})
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		def.frags = append(def.frags, frags...)
 	}
 
 	if def.params.Kind == "initramfs" {
-		return &initRamFsBuilderResult{frags: def.frags}, nil
+		return ctx.WriteDefault(&initRamFsBuilderResult{frags: def.frags})
 	} else if def.params.Kind == "tar" {
-		return &tarBuilderResult{frags: def.frags}, nil
+		return ctx.WriteDefault(&tarBuilderResult{frags: def.frags})
 	} else {
-		return nil, fmt.Errorf("kind not implemented: %s", def.params.Kind)
+		return fmt.Errorf("kind not implemented: %s", def.params.Kind)
 	}
 }
 

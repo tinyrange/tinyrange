@@ -144,10 +144,10 @@ func (r *registryRequestDefinition) ToStarlark(ctx common.BuildContext1, artifac
 }
 
 // Build implements common.BuildDefinition.
-func (r *registryRequestDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (r *registryRequestDefinition) Build(ctx common.BuildContext1) error {
 	req, err := r.ctx.makeRequest("GET", r.ctx.registry+r.params.Url)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, val := range r.params.Accept {
@@ -156,23 +156,23 @@ func (r *registryRequestDefinition) Build(ctx common.BuildContext1) (common.Buil
 
 	client, err := ctx.Database().HttpClient()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	ok, err := r.ctx.responseHandler(resp)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if !ok {
 		defer resp.Body.Close()
 		content, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		slog.Debug("registry request failed", "url", r.ctx.registry+r.params.Url, "content", string(content))
@@ -180,11 +180,11 @@ func (r *registryRequestDefinition) Build(ctx common.BuildContext1) (common.Buil
 		return r.Build(ctx)
 	}
 
-	return &copyResponseResult{
+	return ctx.WriteDefault(&copyResponseResult{
 		body:          resp.Body,
 		contentLength: resp.ContentLength,
 		url:           r.ctx.registry + r.params.Url,
-	}, nil
+	})
 }
 
 // NeedsBuild implements common.BuildDefinition.
@@ -324,7 +324,7 @@ func (def *fetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.
 	}
 }
 
-func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext1, regCtx *ociRegistryContext, index oci.ImageIndexV1) (common.BuildResult, error) {
+func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext1, regCtx *ociRegistryContext, index oci.ImageIndexV1) error {
 	// Request all the layers.
 	for _, layer := range index.FsLayers {
 		layerArtifact, err := ctx.BuildChild(
@@ -336,26 +336,25 @@ func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext1, r
 			}, ".tar.gz"),
 		)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		layerArchive, err := layerArtifact.Default()
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		// Only persist the file digests.
 		// These can be used to reopen the file without requiring the entire def to be rebuilt.
 		layerDigest, err := ctx.DigestFromFile(layerArchive)
 		if layerDigest == nil {
-			return nil, fmt.Errorf("%T does not support digests", layerArchive)
+			return fmt.Errorf("%T does not support digests", layerArchive)
 		}
 
 		def.LayerArchives = append(def.LayerArchives, layerDigest)
 	}
 
-	return def, nil
-
+	return ctx.WriteDefault(def)
 }
 
 func (def *fetchOciImageDefinition) buildFromManifest(
@@ -363,7 +362,7 @@ func (def *fetchOciImageDefinition) buildFromManifest(
 	regCtx *ociRegistryContext,
 	manifest oci.ImageManifest,
 	config oci.ImageConfig,
-) (common.BuildResult, error) {
+) error {
 	// Request all the layers.
 	for _, layer := range manifest.Layers {
 		layerArtifact, err := ctx.BuildChild(
@@ -375,19 +374,19 @@ func (def *fetchOciImageDefinition) buildFromManifest(
 			}, ".tar$oci.gz"),
 		)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		layerArchive, err := layerArtifact.Default()
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		// Only persist the file digests.
 		// These can be used to reopen the file without requiring the entire def to be rebuilt.
 		layerDigest, err := ctx.DigestFromFile(layerArchive)
 		if layerDigest == nil {
-			return nil, fmt.Errorf("%T does not support digests", layerArchive)
+			return fmt.Errorf("%T does not support digests", layerArchive)
 		}
 
 		def.LayerArchives = append(def.LayerArchives, layerDigest)
@@ -395,10 +394,10 @@ func (def *fetchOciImageDefinition) buildFromManifest(
 
 	def.Config = config
 
-	return def, nil
+	return ctx.WriteDefault(def)
 }
 
-func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext1, regCtx *ociRegistryContext, index oci.ImageIndexV2) (common.BuildResult, error) {
+func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext1, regCtx *ociRegistryContext, index oci.ImageIndexV2) error {
 	// Get the right manifest for the architecture.
 	var manifestId oci.ImageManifestIdentifier
 	for _, manifest := range index.Manifests {
@@ -418,17 +417,17 @@ func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext1, reg
 		// manifests are content addressed so don't expire.
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	manifestFile, err := manifestArtifact.Default()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	var manifest oci.ImageManifest
 	if err := ParseJsonFromFile(manifestFile, &manifest); err != nil {
-		return nil, err
+		return err
 	}
 
 	configArtifact, err := ctx.BuildChild(&registryRequestDefinition{
@@ -439,17 +438,17 @@ func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext1, reg
 		// configs are content addressed so don't expire.
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	configFile, err := configArtifact.Default()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	var config oci.ImageConfig
 	if err := ParseJsonFromFile(configFile, &config); err != nil {
-		return nil, err
+		return err
 	}
 
 	switch manifest.MediaType {
@@ -458,28 +457,28 @@ func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext1, reg
 	case "application/vnd.oci.image.manifest.v1+json":
 		return def.buildFromManifest(ctx, regCtx, manifest, config)
 	default:
-		return nil, fmt.Errorf("unknown manifest media type: %s", manifest.MediaType)
+		return fmt.Errorf("unknown manifest media type: %s", manifest.MediaType)
 	}
 }
 
 // Build implements common.BuildDefinition.
-func (def *fetchOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *fetchOciImageDefinition) Build(ctx common.BuildContext1) error {
 	regCtx := &ociRegistryContext{registry: def.params.Registry}
 
 	// Get the index for the image tag.
 	indexArtifact, err := ctx.BuildChild(def.indexDef(regCtx))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	indexFile, err := indexArtifact.Default()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	var index oci.ImageIndexV2
 	if err := ParseJsonFromFile(indexFile, &index); err != nil {
-		return nil, err
+		return err
 	}
 
 	switch index.MediaType {
@@ -489,21 +488,21 @@ func (def *fetchOciImageDefinition) Build(ctx common.BuildContext1) (common.Buil
 		return def.buildFromIndex(ctx, regCtx, index)
 	case "":
 		if index.SchemaVersion != 1 {
-			return nil, fmt.Errorf("index.SchemaVersion != 1 ")
+			return fmt.Errorf("index.SchemaVersion != 1 ")
 		}
 
 		var index1 oci.ImageIndexV1
 		if err := ParseJsonFromFile(indexFile, &index1); err != nil {
-			return nil, err
+			return err
 		}
 
 		if index1.Architecture != def.params.Architecture {
-			return nil, fmt.Errorf("index is of the wrong architecture: %s != %s", index1.Architecture, def.params.Architecture)
+			return fmt.Errorf("index is of the wrong architecture: %s != %s", index1.Architecture, def.params.Architecture)
 		}
 
 		return def.buildFromV1Index(ctx, regCtx, index1)
 	default:
-		return nil, fmt.Errorf("unknown index media type: %s", index.MediaType)
+		return fmt.Errorf("unknown index media type: %s", index.MediaType)
 	}
 }
 

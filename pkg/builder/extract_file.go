@@ -18,39 +18,39 @@ type extractFileDefinition struct {
 }
 
 // Build implements common.BuildDefinition.
-func (def *extractFileDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *extractFileDefinition) Build(ctx common.BuildContext1) error {
 	base, err := ctx.BuildChild(def.params.Base)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	baseFile, err := base.Default()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	ark, err := filesystem.ReadArchiveFromFile(baseFile)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	ents, err := ark.Entries()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, ent := range ents {
 		if ent.Name() == def.params.Name {
 			fh, err := ent.Open()
 			if err != nil {
-				return nil, err
+				return err
 			}
 
-			return &copyFileResult{fh: fh}, nil
+			return ctx.WriteDefault(&copyFileResult{fh: fh})
 		}
 	}
 
-	return nil, fmt.Errorf("file %s not found", def.params.Name)
+	return fmt.Errorf("file %s not found", def.params.Name)
 }
 
 // NeedsBuild implements common.BuildDefinition.

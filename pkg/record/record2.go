@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"math"
 
-	"github.com/tinyrange/tinyrange/pkg/common"
 	"go.starlark.net/starlark"
 )
 
@@ -274,11 +273,6 @@ func (w *RecordWriter2) Emit(val starlark.Value) error {
 	return nil
 }
 
-// WriteTo implements BuildResult.
-func (r *RecordWriter2) WriteResult(w io.Writer) error {
-	return r.writer.Close()
-}
-
 // Attr implements starlark.HasAttrs.
 func (r *RecordWriter2) Attr(name string) (starlark.Value, error) {
 	if name == "emit" {
@@ -314,6 +308,10 @@ func (r *RecordWriter2) AttrNames() []string {
 	return []string{"emit"}
 }
 
+func (r *RecordWriter2) Close() error {
+	return r.writer.Close()
+}
+
 func (*RecordWriter2) String() string { return "RecordWriter" }
 func (*RecordWriter2) Type() string   { return "RecordWriter" }
 func (*RecordWriter2) Hash() (uint32, error) {
@@ -323,9 +321,9 @@ func (*RecordWriter2) Truth() starlark.Bool { return starlark.True }
 func (*RecordWriter2) Freeze()              {}
 
 var (
-	_ starlark.Value     = &RecordWriter2{}
-	_ starlark.HasAttrs  = &RecordWriter2{}
-	_ common.BuildResult = &RecordWriter2{}
+	_ starlark.Value    = &RecordWriter2{}
+	_ starlark.HasAttrs = &RecordWriter2{}
+	_ io.Closer         = &RecordWriter2{}
 )
 
 func NewWriter2(w io.WriteCloser) *RecordWriter2 {

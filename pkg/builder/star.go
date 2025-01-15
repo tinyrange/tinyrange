@@ -9,6 +9,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/record"
 	"go.starlark.net/starlark"
 )
 
@@ -233,12 +234,12 @@ func (def *starBuildDefinition) Tag() string {
 	return strings.Join(parts, "_")
 }
 
-func (def *starBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *starBuildDefinition) Build(ctx common.BuildContext1) error {
 	var args starlark.Tuple
 	for _, arg := range def.params.Arguments {
 		val, err := SerializableValueToStarlark(ctx, arg)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		args = append(args, val)
@@ -246,37 +247,51 @@ func (def *starBuildDefinition) Build(ctx common.BuildContext1) (common.BuildRes
 
 	res, err := ctx.Database().Call(def.params.ScriptFilename, def.params.BuilderName, append([]starlark.Value{ctx}, args...)...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if result, ok := res.(common.BuildDefinition1); ok {
 		child, err := ctx.BuildChild(result)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		childFile, err := child.Default()
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		fh, err := childFile.Open()
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		return &copyFileResult{fh: fh}, nil
+		if err := ctx.WriteDefault(&copyFileResult{fh: fh}); err != nil {
+			return fmt.Errorf("could not writeDefault for nested definition: %s", err)
+		}
+
+		return nil
+	} else if result, ok := res.(*record.RecordWriter2); ok {
+		return result.Close()
 	} else if result, ok := res.(common.BuildResult); ok {
-		return result, nil
+		if err := ctx.WriteDefault(result); err != nil {
+			return fmt.Errorf("could not writeDefault for BuildResult %T: %s", res, err)
+		}
+
+		return nil
 	} else if f, ok := res.(filesystem.File); ok {
 		fh, err := f.Open()
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		return &copyFileResult{fh: fh}, nil
+		if err := ctx.WriteDefault(&copyFileResult{fh: fh}); err != nil {
+			return fmt.Errorf("could not writeDefault for filesystem.File: %s", err)
+		}
+
+		return nil
 	} else {
-		return nil, fmt.Errorf("could not convert %s to BuildResult", res.Type())
+		return fmt.Errorf("could not convert %s to BuildResult", res.Type())
 	}
 }
 

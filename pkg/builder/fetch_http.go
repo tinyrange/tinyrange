@@ -77,15 +77,15 @@ func (f *fetchHttpBuildDefinition) WriteResult(w io.Writer) error {
 }
 
 // Build implements BuildDefinition.
-func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext1) error {
 	urls, err := ctx.Database().UrlsFor(f.params.Url)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	client, err := ctx.Database().HttpClient()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	onlyNotFound := true
@@ -95,7 +95,7 @@ func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext1) (common.Build
 
 		req, err = http.NewRequest("GET", url, nil)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		if f.params.Headers != nil {
@@ -114,7 +114,7 @@ func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext1) (common.Build
 		if resp.StatusCode == http.StatusOK {
 			f.resp = resp
 
-			return f, nil
+			return ctx.WriteDefault(f)
 		} else if resp.StatusCode == http.StatusNotFound {
 			slog.Warn("failed to fetch", "url", url, "err", ErrNotFound)
 			continue
@@ -128,14 +128,14 @@ func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext1) (common.Build
 	}
 
 	if onlyNotFound {
-		return nil, ErrNotFound
+		return ErrNotFound
 	}
 
 	if !ctx.LastBuild().IsZero() {
-		return nil, nil
+		return common.ErrUseExistingBuild
 	}
 
-	return nil, fmt.Errorf("unable to find options to fetch %s", f.params.Url)
+	return fmt.Errorf("unable to find options to fetch %s", f.params.Url)
 }
 
 func (def *fetchHttpBuildDefinition) String() string { return def.params.Url }

@@ -269,10 +269,10 @@ func (def *planDefinition) WriteResult(w io.Writer) error {
 }
 
 // Build implements common.BuildDefinition.
-func (def *planDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *planDefinition) Build(ctx common.BuildContext1) error {
 	arch, err := config.ArchitectureFromString(def.params.Architecture)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if arch == config.ArchInvalid {
 		arch = config.HostArchitecture
@@ -280,7 +280,7 @@ func (def *planDefinition) Build(ctx common.BuildContext1) (common.BuildResult, 
 
 	builder, err := ctx.Database().GetContainerBuilder(def.params.Builder, arch)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	plan, err := builder.Plan(ctx, def.params.Search, def.params.TagList, common.PlanOptions{})
@@ -291,23 +291,23 @@ func (def *planDefinition) Build(ctx common.BuildContext1) (common.BuildResult, 
 
 		plan.WriteTree(os.Stderr)
 
-		return nil, err
+		return err
 	}
 
 	if err := plan.WriteTree(os.Stderr); err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, dir := range plan.Directives() {
 		frags, err := dir.AsFragments(ctx, common.SpecialDirectiveHandlers{})
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		def.Fragments = append(def.Fragments, frags...)
 	}
 
-	return def, nil
+	return ctx.WriteDefault(def)
 }
 
 // NeedsBuild implements common.BuildDefinition.

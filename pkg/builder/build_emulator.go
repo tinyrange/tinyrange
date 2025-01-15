@@ -40,14 +40,14 @@ func (def *buildEmulatorDefinition) ToStarlark(ctx common.BuildContext1, artifac
 }
 
 // Build implements common.BuildDefinition.
-func (def *buildEmulatorDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
+func (def *buildEmulatorDefinition) Build(ctx common.BuildContext1) error {
 	var commands []string
 
 	// Launch child builds for each directive.
 	for _, directive := range def.params.Directives {
 		frags, err := directive.AsFragments(ctx, common.SpecialDirectiveHandlers{})
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		for _, frag := range frags {
@@ -68,14 +68,14 @@ func (def *buildEmulatorDefinition) Build(ctx common.BuildContext1) (common.Buil
 				filesystem.NewLocalFile(frag.Archive.HostFilename, nil),
 			)
 			if err != nil {
-				return nil, err
+				return err
 			}
 
 			if err := filesystem.ExtractArchive(ark, dir); err != nil {
-				return nil, err
+				return err
 			}
 		} else {
-			return nil, fmt.Errorf("unimplemented fragment type: %+v", frag)
+			return fmt.Errorf("unimplemented fragment type: %+v", frag)
 		}
 	}
 
@@ -83,35 +83,35 @@ func (def *buildEmulatorDefinition) Build(ctx common.BuildContext1) (common.Buil
 	emu := emulator.New(def.params.ScriptFilename, dir)
 
 	if err := emu.AddBuiltinPrograms(); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Call the creation callback.
 	_, err := ctx.Database().Call(def.params.ScriptFilename, def.params.CreateName, ctx, emu)
 	if err != nil {
-		return nil, fmt.Errorf("failed to call emulator creation callback: %s", err)
+		return fmt.Errorf("failed to call emulator creation callback: %s", err)
 	}
 
 	// Run each command in the emulator.
 	for _, command := range commands {
 		slog.Debug("emulator", "run", command)
 		if err := emu.RunShell(command); err != nil {
-			return nil, fmt.Errorf("failed to run command in emulator [%+v]: %s", command, err)
+			return fmt.Errorf("failed to run command in emulator [%+v]: %s", command, err)
 		}
 	}
 
 	// Open the output file.
 	ent, err := filesystem.OpenPath(emu.Root(), def.params.OutputFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open output %s: %s", def.params.OutputFile, err)
+		return fmt.Errorf("failed to open output %s: %s", def.params.OutputFile, err)
 	}
 
 	fh, err := ent.Open()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &copyFileResult{fh: fh}, nil
+	return ctx.WriteDefault(&copyFileResult{fh: fh})
 }
 
 // NeedsBuild implements common.BuildDefinition.

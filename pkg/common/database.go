@@ -1,6 +1,7 @@
 package common
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,10 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
+)
+
+var (
+	ErrUseExistingBuild = errors.New("use existing build")
 )
 
 // BuildResult is implemented by definitions and called with a writer.
@@ -28,7 +33,7 @@ type BuildDefinition1 interface {
 	// NeedsBuild returns whether the definition needs to be rebuilt.
 	NeedsBuild(ctx BuildContext1) (bool, error)
 	// Build builds the definition and returns the result.
-	Build(ctx BuildContext1) (BuildResult, error)
+	Build(ctx BuildContext1) error
 	// ToStarlark converts the definition to a starlark value.
 	ToStarlark(ctx BuildContext1, artifact BuildArtifact) (starlark.Value, error)
 }
@@ -113,11 +118,11 @@ type BuildContext interface {
 	DefinitionHash() hash.Hash
 	// CreateDefault creates the default file for the build.
 	CreateDefault() (io.WriteCloser, error)
+	// WriteDefault writes the default file for the build.
+	WriteDefault(result BuildResult) error
 
 	// CreateFile creates a file in the build context.
 	CreateFile(name string) (io.WriteCloser, error)
-	// WriteDefault writes the default file for the build.
-	WriteDefault(result BuildResult) error
 	// Describe logs a message about the build.
 	Describe(format string, args ...interface{})
 	// Logf logs a message about the build.
@@ -141,6 +146,8 @@ type BuildContext1 interface {
 	DefinitionHash() hash.Hash
 	// CreateDefault creates the main output file early.
 	CreateDefault() (io.WriteCloser, error)
+	// WriteDefault writes the default file for the build.
+	WriteDefault(result BuildResult) error
 
 	// DigestFromFile returns a file digest from a file.
 	DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error)
