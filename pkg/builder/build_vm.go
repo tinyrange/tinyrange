@@ -35,9 +35,9 @@ type buildVmDefinition struct {
 	gotOutput bool
 }
 
-// Dependencies implements common.BuildDefinition1.
-func (def *buildVmDefinition) Dependencies() ([]common.BuildDefinition1, error) {
-	var deps []common.BuildDefinition1
+// Dependencies implements common.BuildDefinition.
+func (def *buildVmDefinition) Dependencies() ([]common.BuildDefinition, error) {
+	var deps []common.BuildDefinition
 
 	if def.params.Kernel != nil {
 		deps = append(deps, def.params.Kernel)
@@ -70,7 +70,7 @@ func (def *buildVmDefinition) Create(params hash.SerializableValue) hash.Definit
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *buildVmDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *buildVmDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err
@@ -96,7 +96,7 @@ func (def *buildVmDefinition) WriteResult(w io.Writer) error {
 	return nil
 }
 
-func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext1, hostAddress string) (config.TinyRangeConfig, error) {
+func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress string) (config.TinyRangeConfig, error) {
 	arch, err := config.ArchitectureFromString(def.params.Architecture)
 	if err != nil {
 		return config.TinyRangeConfig{}, err
@@ -263,7 +263,7 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext1, hostAddres
 }
 
 // Build implements common.BuildDefinition.
-func (def *buildVmDefinition) Build(ctx common.BuildContext1) error {
+func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 	if def.buildTemplateOutput {
 		vmCfg, err := def.BuildTemplate(ctx, "")
 		if err != nil {
@@ -327,7 +327,7 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext1) error {
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *buildVmDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
+func (def *buildVmDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
@@ -345,15 +345,15 @@ func (*buildVmDefinition) Truth() starlark.Bool { return starlark.True }
 func (*buildVmDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &buildVmDefinition{}
-	_ common.BuildDefinition1 = &buildVmDefinition{}
-	_ common.BuildResult      = &buildVmDefinition{}
+	_ starlark.Value         = &buildVmDefinition{}
+	_ common.BuildDefinition = &buildVmDefinition{}
+	_ common.BuildResult     = &buildVmDefinition{}
 )
 
 func newBuildVmDefinition(
 	dir []common.Directive,
-	kernel common.BuildDefinition1,
-	initramfs common.BuildDefinition1,
+	kernel common.BuildDefinition,
+	initramfs common.BuildDefinition,
 	output string,
 	cpuCores int,
 	memoryMb int,

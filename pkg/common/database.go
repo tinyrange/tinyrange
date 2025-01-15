@@ -24,28 +24,11 @@ type BuildResult interface {
 	WriteResult(out io.Writer) error
 }
 
-// BuildDefinition1 is a definition that can be built and cached.
-type BuildDefinition1 interface {
-	hash.Definition
-	MacroResult
-	fmt.Stringer
-
-	// NeedsBuild returns whether the definition needs to be rebuilt.
-	NeedsBuild(ctx BuildContext1) (bool, error)
-	// Dependencies returns the dependencies of the definition.
-	Dependencies() ([]BuildDefinition1, error)
-	// Build builds the definition and returns the result.
-	Build(ctx BuildContext1) error
-	// ToStarlark converts the definition to a starlark value.
-	ToStarlark(ctx BuildContext1, artifact BuildArtifact) (starlark.Value, error)
-}
-
-type StarBuildDefinition1 interface {
+type StarBuildDefinition interface {
 	starlark.Value
-	BuildDefinition1
+	BuildDefinition
 }
 
-// ALPHA: From Build2
 // BuildDefinition is a definition that can be built and cached.
 type BuildDefinition interface {
 	hash.Definition
@@ -65,7 +48,7 @@ type BuildDefinition interface {
 // RedistributableDefinition is a extension of BuildDefinition that can be redistributed.
 // Redistributable definitions can be downloaded from public servers.
 type RedistributableDefinition interface {
-	BuildDefinition1
+	BuildDefinition
 	Redistributable() bool
 }
 
@@ -80,7 +63,6 @@ type PlanOptions struct {
 	Debug bool
 }
 
-// ALPHA: From Build2
 type BuildReceipt struct {
 	Requirements []hash.Hash       `json:"requirements"`
 	StartTime    time.Time         `json:"start_time"`
@@ -88,7 +70,6 @@ type BuildReceipt struct {
 	Files        map[string]string `json:"files"` // map of filename to sha256 hash
 }
 
-// ALPHA: From Build2
 // BuildArtifact is the result of a build.
 type BuildArtifact interface {
 	// Hash returns the hash of the definition.
@@ -101,7 +82,6 @@ type BuildArtifact interface {
 	OpenFile(name string) (filesystem.FileHandle, error)
 }
 
-// ALPHA: From Build2
 // BuildContext is the context of a build.
 type BuildContext interface {
 	starlark.Value
@@ -137,43 +117,13 @@ type BuildContext interface {
 	Logf(format string, args ...interface{})
 }
 
-type BuildContext1 interface {
-	starlark.Value
-
-	// BuildChild builds a given child definition.
-	BuildChild(def BuildDefinition1) (BuildArtifact, error)
-	// ShouldRebuildUserDefinitions returns whether user definitions should be rebuilt.
-	ShouldRebuildUserDefinitions() bool
-	// LastBuild returns the time of the last build.
-	LastBuild() time.Time
-	// Database returns the package database.
-	Database() PackageDatabase
-	// RunVMM runs a VMM with the given configuration.
-	RunVMM(vmm string, config config.TinyRangeConfig) (*exec.Cmd, error)
-	// Hash returns the hash of the build context.
-	DefinitionHash() hash.Hash
-	// CreateDefault creates the main output file early.
-	CreateDefault() (io.WriteCloser, error)
-	// WriteDefault writes the default file for the build.
-	WriteDefault(result BuildResult) error
-	// DigestFromFile returns a file digest from a file.
-	DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error)
-	// FileFromDigest returns a file from a file digest.
-	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
-	// HostFilenameFromFile returns a filename from a file.
-	HostFilenameFromFile(file filesystem.File) (string, error)
-
-	// NeedsBuild returns whether the given definition needs to be rebuilt.
-	NeedsBuild(def BuildDefinition1) (bool, error)
-}
-
 // InstallationPlan represents a plan for installing packages.
 // A complete installation plan has a list of directives that are executed in order.
 type InstallationPlan interface {
 	starlark.Value
 
 	// Add a new package to the plan.
-	Add(ctx BuildContext1, builder ContainerBuilder, query PackageQuery, isDefault bool) error
+	Add(ctx BuildContext, builder ContainerBuilder, query PackageQuery, isDefault bool) error
 	// Get the list of directives in the plan.
 	Directives() []Directive
 	// Set the list of directives in the plan.
@@ -189,7 +139,7 @@ type PackageCollection interface {
 	// Search for packages that match the given query.
 	Query(query PackageQuery) ([]*Package, error)
 	// Get the package with the given name.
-	InstallerFor(ctx BuildContext1, pkg *Package, tags TagList) (*Installer, error)
+	InstallerFor(ctx BuildContext, pkg *Package, tags TagList) (*Installer, error)
 }
 
 // ContainerBuilder takes a package collection and creates an installation plan from a list of queries.
@@ -204,7 +154,7 @@ type ContainerBuilder interface {
 	Packages() PackageCollection
 
 	// Plan creates an installation plan from a list of queries.
-	Plan(ctx BuildContext1, packages []PackageQuery, tags TagList, opts PlanOptions) (InstallationPlan, error)
+	Plan(ctx BuildContext, packages []PackageQuery, tags TagList, opts PlanOptions) (InstallationPlan, error)
 	// Search for packages that match the given query.
 	Search(pkg PackageQuery) ([]*Package, error)
 }
@@ -264,19 +214,6 @@ type RequestManager interface {
 	HttpClient() (*http.Client, error)
 }
 
-type Builder1 interface {
-	// Build a definition from a build context.
-	Build(def BuildDefinition1, opts BuildOptions) (BuildArtifact, error)
-	// SetRebuildUserDefinitions sets whether user definitions should be rebuilt.
-	SetRebuildUserDefinitions(rebuild bool)
-
-	// SetDistributionServer sets the distribution server.
-	SetDistributionServer(server string) error
-	// RunDistributionServer runs the distribution server on the given address.
-	RunDistributionServer(addr string) error
-}
-
-// ALPHA: From Build2
 // Builder is the root object used to build definitions.
 type Builder interface {
 	// Build builds a definition.
@@ -285,6 +222,11 @@ type Builder interface {
 	SetRebuildUserDefinitions(rebuild bool)
 	// GarbageCollect removes old build artifacts.
 	GarbageCollect(olderThan time.Time) ([]hash.Hash, error)
+
+	// SetDistributionServer sets the distribution server.
+	SetDistributionServer(server string) error
+	// RunDistributionServer runs the distribution server on the given address.
+	RunDistributionServer(addr string) error
 }
 
 // PackageDatabase is the core interface.
@@ -293,7 +235,7 @@ type PackageDatabase interface {
 	ContainerBuilderManager
 	MacroManager
 	RequestManager
-	Builder() Builder1
+	Builder() Builder
 
 	// Call calls a starlark function declared in a file.
 	Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error)

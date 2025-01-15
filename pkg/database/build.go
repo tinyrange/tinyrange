@@ -51,7 +51,7 @@ func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, erro
 }
 
 type buildContext struct {
-	def      common.BuildDefinition1
+	def      common.BuildDefinition
 	hash     hash.Hash
 	builder  *builder1
 	parent   *buildContext
@@ -63,7 +63,22 @@ type buildContext struct {
 	lastBuild time.Time
 }
 
-// WriteDefault implements common.BuildContext1.
+// CreateFile implements common.BuildContext.
+func (b *buildContext) CreateFile(name string) (io.WriteCloser, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+// Describe implements common.BuildContext.
+func (b *buildContext) Describe(format string, args ...interface{}) {
+	slog.Info("describe", "hash", b.hash, "message", fmt.Sprintf(format, args...))
+}
+
+// Logf implements common.BuildContext.
+func (b *buildContext) Logf(format string, args ...interface{}) {
+	slog.Info("log", "hash", b.hash, "message", fmt.Sprintf(format, args...))
+}
+
+// WriteDefault implements common.BuildContext.
 func (b *buildContext) WriteDefault(result common.BuildResult) error {
 	defFile, err := b.CreateDefault()
 	if err != nil {
@@ -73,7 +88,7 @@ func (b *buildContext) WriteDefault(result common.BuildResult) error {
 	return result.WriteResult(defFile)
 }
 
-// DefinitionHash implements common.BuildContext1.
+// DefinitionHash implements common.BuildContext.
 func (b *buildContext) DefinitionHash() hash.Hash {
 	return b.hash
 }
@@ -148,7 +163,7 @@ func (b *buildContext) DigestFromFile(file filesystem.File) (*filesystem.FileDig
 	return &filesystem.FileDigest{Hash: filename}, nil
 }
 
-// HostFilenameFromFile implements common.BuildContext1.
+// HostFilenameFromFile implements common.BuildContext.
 func (b *buildContext) HostFilenameFromFile(file filesystem.File) (string, error) {
 	return filesystem.GetHostFilename(file)
 }
@@ -167,7 +182,7 @@ func (b *buildContext) Database() common.PackageDatabase {
 	return b.builder.database
 }
 
-func (b *buildContext) childContext(def common.BuildDefinition1, status *buildStatus, filename string) *buildContext {
+func (b *buildContext) childContext(def common.BuildDefinition, status *buildStatus, filename string) *buildContext {
 	ctx := &buildContext{
 		parent:   b,
 		filename: filename,
@@ -201,42 +216,12 @@ func (b *buildContext) HasCreatedOutput() bool {
 	return b.output != nil
 }
 
-func (b *buildContext) BuildChild(def common.BuildDefinition1) (common.BuildArtifact, error) {
+func (b *buildContext) BuildChild(def common.BuildDefinition) (common.BuildArtifact, error) {
 	if b.status != nil {
 		b.status.Children = append(b.status.Children, def)
 	}
 
 	return b.builder.build(b, def, common.BuildOptions{})
-}
-
-func (b *buildContext) NeedsBuild(def common.BuildDefinition1) (bool, error) {
-	hash, err := b.builder.HashDefinition(def)
-	if err != nil {
-		return true, err
-	}
-
-	filename, err := b.builder.filenameFromHash(hash, ".bin")
-	if err != nil {
-		return true, err
-	}
-
-	// Check if the file already exists. If it does then return it.
-	if info, err := os.Stat(filename); err == nil {
-		// Get a child context for the build.
-		child := b.childContext(def, b.status, filename+".tmp")
-
-		child.lastBuild = info.ModTime()
-
-		// If the file has already been created then check if a rebuild is needed.
-		needsRebuild, err := def.NeedsBuild(child)
-		if err != nil {
-			return false, err
-		}
-
-		return needsRebuild, nil
-	}
-
-	return true, nil
 }
 
 // Attr implements starlark.HasAttrs.
@@ -297,9 +282,9 @@ func (b *buildContext) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			var buildDef common.BuildDefinition1
+			var buildDef common.BuildDefinition
 
-			if def, ok := val.(common.BuildDefinition1); ok {
+			if def, ok := val.(common.BuildDefinition); ok {
 				buildDef = def
 			} else {
 				return starlark.None, fmt.Errorf("could not convert %s to BuildDefinition", val.Type())
@@ -329,7 +314,7 @@ func (*buildContext) Truth() starlark.Bool  { return starlark.True }
 func (*buildContext) Freeze()               {}
 
 var (
-	_ starlark.Value       = &buildContext{}
-	_ starlark.HasAttrs    = &buildContext{}
-	_ common.BuildContext1 = &buildContext{}
+	_ starlark.Value      = &buildContext{}
+	_ starlark.HasAttrs   = &buildContext{}
+	_ common.BuildContext = &buildContext{}
 )

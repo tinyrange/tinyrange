@@ -17,13 +17,13 @@ type extractFileDefinition struct {
 	params ExtractFileParameters
 }
 
-// Dependencies implements common.BuildDefinition1.
-func (def *extractFileDefinition) Dependencies() ([]common.BuildDefinition1, error) {
-	return []common.BuildDefinition1{def.params.Base}, nil
+// Dependencies implements common.BuildDefinition.
+func (def *extractFileDefinition) Dependencies() ([]common.BuildDefinition, error) {
+	return []common.BuildDefinition{def.params.Base}, nil
 }
 
 // Build implements common.BuildDefinition.
-func (def *extractFileDefinition) Build(ctx common.BuildContext1) error {
+func (def *extractFileDefinition) Build(ctx common.BuildContext) error {
 	base, err := ctx.BuildChild(def.params.Base)
 	if err != nil {
 		return err
@@ -59,12 +59,12 @@ func (def *extractFileDefinition) Build(ctx common.BuildContext1) error {
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *extractFileDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
-	return ctx.NeedsBuild(def.params.Base)
+func (def *extractFileDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
+	return false, nil
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *extractFileDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *extractFileDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	return nil, fmt.Errorf("ExtractFileDefinition can not be converted into a Starlark value")
 }
 
@@ -83,9 +83,9 @@ func (def *extractFileDefinition) String() string {
 }
 
 var (
-	_ common.BuildDefinition1 = &extractFileDefinition{}
+	_ common.BuildDefinition = &extractFileDefinition{}
 )
 
-func newExtractFileDefinition(base common.BuildDefinition1, name string) common.BuildDefinition1 {
+func newExtractFileDefinition(base common.BuildDefinition, name string) common.BuildDefinition {
 	return &extractFileDefinition{params: ExtractFileParameters{Base: base, Name: name}}
 }

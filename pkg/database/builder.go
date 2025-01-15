@@ -170,7 +170,7 @@ func (builder *containerBuilder) load(ctx *buildContext) error {
 }
 
 func (builder *containerBuilder) Plan(
-	c common.BuildContext1,
+	c common.BuildContext,
 	packages []common.PackageQuery,
 	tags common.TagList,
 	opts common.PlanOptions,

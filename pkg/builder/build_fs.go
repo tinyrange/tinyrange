@@ -263,9 +263,9 @@ type buildFsDefinition struct {
 	frags []config.Fragment
 }
 
-// Dependencies implements common.StarBuildDefinition1.
-func (def *buildFsDefinition) Dependencies() ([]common.BuildDefinition1, error) {
-	var deps []common.BuildDefinition1
+// Dependencies implements common.StarBuildDefinition.
+func (def *buildFsDefinition) Dependencies() ([]common.BuildDefinition, error) {
+	var deps []common.BuildDefinition
 
 	for _, dir := range def.params.Directives {
 		deps, err := dir.Dependencies()
@@ -287,7 +287,7 @@ func (def *buildFsDefinition) Create(params hash.SerializableValue) hash.Definit
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *buildFsDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *buildFsDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err
@@ -297,7 +297,7 @@ func (def *buildFsDefinition) ToStarlark(ctx common.BuildContext1, artifact comm
 }
 
 // Build implements common.BuildDefinition.
-func (def *buildFsDefinition) Build(ctx common.BuildContext1) error {
+func (def *buildFsDefinition) Build(ctx common.BuildContext) error {
 	// Launch child builds for each directive.
 	for _, directive := range def.params.Directives {
 		frags, err := directive.AsFragments(ctx, common.SpecialDirectiveHandlers{})
@@ -318,7 +318,7 @@ func (def *buildFsDefinition) Build(ctx common.BuildContext1) error {
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *buildFsDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
+func (def *buildFsDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
@@ -336,10 +336,10 @@ func (*buildFsDefinition) Truth() starlark.Bool { return starlark.True }
 func (*buildFsDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &buildFsDefinition{}
-	_ common.BuildDefinition1 = &buildFsDefinition{}
+	_ starlark.Value         = &buildFsDefinition{}
+	_ common.BuildDefinition = &buildFsDefinition{}
 )
 
-func newBuildFsDefinition(dir []common.Directive, kind string) common.StarBuildDefinition1 {
+func newBuildFsDefinition(dir []common.Directive, kind string) common.StarBuildDefinition {
 	return &buildFsDefinition{params: BuildFsParameters{Directives: dir, Kind: kind}}
 }

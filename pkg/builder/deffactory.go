@@ -11,18 +11,18 @@ import (
 )
 
 type BuildVmDefinition interface {
-	common.StarBuildDefinition1
+	common.StarBuildDefinition
 
 	SetBuildTemplateMode()
 }
 
 type FetchOciImageDefinition interface {
-	common.StarBuildDefinition1
+	common.StarBuildDefinition
 	common.Directive
 }
 
 type ReadOCIImageDefinition interface {
-	common.BuildDefinition1
+	common.BuildDefinition
 	common.Directive
 }
 
@@ -34,15 +34,15 @@ type DefinitionFactory interface {
 		output string,
 		scriptFilename string,
 		createCallbackName string,
-	) common.StarBuildDefinition1
+	) common.StarBuildDefinition
 	NewBuildFsDefinition(
 		dir []common.Directive,
 		kind string,
-	) common.StarBuildDefinition1
+	) common.StarBuildDefinition
 	NewBuildVmDefinition(
 		dir []common.Directive,
-		kernel common.BuildDefinition1,
-		initramfs common.BuildDefinition1,
+		kernel common.BuildDefinition,
+		initramfs common.BuildDefinition,
 		output string,
 		cpuCores int,
 		memoryMb int,
@@ -53,28 +53,28 @@ type DefinitionFactory interface {
 		debug bool,
 	) BuildVmDefinition
 	NewDecompressFileBuildDefinition(
-		base common.BuildDefinition1,
+		base common.BuildDefinition,
 		kind string,
-	) common.StarBuildDefinition1
+	) common.StarBuildDefinition
 	NewExtractFileDefinition(
-		base common.BuildDefinition1,
+		base common.BuildDefinition,
 		name string,
-	) common.BuildDefinition1
+	) common.BuildDefinition
 	NewFetchHttpBuildDefinition(
 		url string,
 		expireTime time.Duration,
 		headers map[string]string,
-	) common.StarBuildDefinition1
+	) common.StarBuildDefinition
 	NewFetchOCIImageDefinition(
 		registry, image, tag, architecture string,
 	) FetchOciImageDefinition
 	NewDefinitionFromFile(
 		f filesystem.File,
-	) (common.BuildDefinition1, error)
+	) (common.BuildDefinition, error)
 	NewConstantHashDefinition(
 		hash string,
 		builder BuilderFunc,
-	) common.BuildDefinition1
+	) common.BuildDefinition
 	NewPlanDefinition(
 		builder string,
 		arch config.CPUArchitecture,
@@ -82,17 +82,17 @@ type DefinitionFactory interface {
 		tagList common.TagList,
 	) (PlanDefinition, error)
 	NewReadArchiveBuildDefinition(
-		base common.BuildDefinition1,
+		base common.BuildDefinition,
 		kind string,
-	) common.StarBuildDefinition1
+	) common.StarBuildDefinition
 	NewReadOCIImageDefinition(
-		base common.BuildDefinition1,
+		base common.BuildDefinition,
 	) ReadOCIImageDefinition
 	NewStarBuildDefinition(
 		filename string,
 		builder string,
 		args []hash.SerializableValue,
-	) (common.StarBuildDefinition1, error)
+	) (common.StarBuildDefinition, error)
 }
 
 type definitionFactory struct {
@@ -103,21 +103,21 @@ func (*definitionFactory) NewBuildEmulatorDefinition(
 	output string,
 	scriptFilename string,
 	createCallbackName string,
-) common.StarBuildDefinition1 {
+) common.StarBuildDefinition {
 	return newBuildEmulatorDefinition(dir, output, scriptFilename, createCallbackName)
 }
 
 func (*definitionFactory) NewBuildFsDefinition(
 	dir []common.Directive,
 	kind string,
-) common.StarBuildDefinition1 {
+) common.StarBuildDefinition {
 	return newBuildFsDefinition(dir, kind)
 }
 
 func (*definitionFactory) NewBuildVmDefinition(
 	dir []common.Directive,
-	kernel common.BuildDefinition1,
-	initramfs common.BuildDefinition1,
+	kernel common.BuildDefinition,
+	initramfs common.BuildDefinition,
 	output string,
 	cpuCores int,
 	memoryMb int,
@@ -131,16 +131,16 @@ func (*definitionFactory) NewBuildVmDefinition(
 }
 
 func (*definitionFactory) NewDecompressFileBuildDefinition(
-	base common.BuildDefinition1,
+	base common.BuildDefinition,
 	kind string,
-) common.StarBuildDefinition1 {
+) common.StarBuildDefinition {
 	return newDecompressFileBuildDefinition(base, kind)
 }
 
 func (*definitionFactory) NewExtractFileDefinition(
-	base common.BuildDefinition1,
+	base common.BuildDefinition,
 	name string,
-) common.BuildDefinition1 {
+) common.BuildDefinition {
 	return newExtractFileDefinition(base, name)
 }
 
@@ -148,7 +148,7 @@ func (*definitionFactory) NewFetchHttpBuildDefinition(
 	url string,
 	expireTime time.Duration,
 	headers map[string]string,
-) common.StarBuildDefinition1 {
+) common.StarBuildDefinition {
 	return newFetchHttpBuildDefinition(url, expireTime, headers)
 }
 
@@ -160,14 +160,14 @@ func (*definitionFactory) NewFetchOCIImageDefinition(
 
 func (*definitionFactory) NewDefinitionFromFile(
 	f filesystem.File,
-) (common.BuildDefinition1, error) {
+) (common.BuildDefinition, error) {
 	return newDefinitionFromFile(f)
 }
 
 func (*definitionFactory) NewConstantHashDefinition(
 	hash string,
 	builder BuilderFunc,
-) common.BuildDefinition1 {
+) common.BuildDefinition {
 	return newConstantHashDefinition(hash, builder)
 }
 
@@ -181,14 +181,14 @@ func (*definitionFactory) NewPlanDefinition(
 }
 
 func (*definitionFactory) NewReadArchiveBuildDefinition(
-	base common.BuildDefinition1,
+	base common.BuildDefinition,
 	kind string,
-) common.StarBuildDefinition1 {
+) common.StarBuildDefinition {
 	return newReadArchiveBuildDefinition(base, kind)
 }
 
 func (*definitionFactory) NewReadOCIImageDefinition(
-	base common.BuildDefinition1,
+	base common.BuildDefinition,
 ) ReadOCIImageDefinition {
 	return newReadOCIImageDefinition(base)
 }
@@ -197,7 +197,7 @@ func (*definitionFactory) NewStarBuildDefinition(
 	filename string,
 	builder string,
 	args []hash.SerializableValue,
-) (common.StarBuildDefinition1, error) {
+) (common.StarBuildDefinition, error) {
 	return newStarBuildDefinition(filename, builder, args)
 }
 

@@ -22,9 +22,9 @@ type buildEmulatorDefinition struct {
 	frags []config.Fragment
 }
 
-// Dependencies implements common.BuildDefinition1.
-func (def *buildEmulatorDefinition) Dependencies() ([]common.BuildDefinition1, error) {
-	var deps []common.BuildDefinition1
+// Dependencies implements common.BuildDefinition.
+func (def *buildEmulatorDefinition) Dependencies() ([]common.BuildDefinition, error) {
+	var deps []common.BuildDefinition
 
 	for _, dir := range def.params.Directives {
 		deps, err := dir.Dependencies()
@@ -46,7 +46,7 @@ func (def *buildEmulatorDefinition) Create(params hash.SerializableValue) hash.D
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *buildEmulatorDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *buildEmulatorDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err
@@ -56,7 +56,7 @@ func (def *buildEmulatorDefinition) ToStarlark(ctx common.BuildContext1, artifac
 }
 
 // Build implements common.BuildDefinition.
-func (def *buildEmulatorDefinition) Build(ctx common.BuildContext1) error {
+func (def *buildEmulatorDefinition) Build(ctx common.BuildContext) error {
 	var commands []string
 
 	// Launch child builds for each directive.
@@ -131,7 +131,7 @@ func (def *buildEmulatorDefinition) Build(ctx common.BuildContext1) error {
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *buildEmulatorDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
+func (def *buildEmulatorDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
@@ -149,8 +149,8 @@ func (*buildEmulatorDefinition) Truth() starlark.Bool { return starlark.True }
 func (*buildEmulatorDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &buildEmulatorDefinition{}
-	_ common.BuildDefinition1 = &buildEmulatorDefinition{}
+	_ starlark.Value         = &buildEmulatorDefinition{}
+	_ common.BuildDefinition = &buildEmulatorDefinition{}
 )
 
 func newBuildEmulatorDefinition(
@@ -158,7 +158,7 @@ func newBuildEmulatorDefinition(
 	output string,
 	scriptFilename string,
 	createCallbackName string,
-) common.StarBuildDefinition1 {
+) common.StarBuildDefinition {
 	return &buildEmulatorDefinition{
 		params: BuildEmulatorParameters{
 			Directives:     dir,

@@ -165,10 +165,10 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				var defs []common.BuildDefinition1
+				var defs []common.BuildDefinition
 
 				for _, arg := range args[2:] {
-					def, ok := arg.(common.BuildDefinition1)
+					def, ok := arg.(common.BuildDefinition)
 					if !ok {
 						return starlark.None, fmt.Errorf("could not convert %s to BuildDefinition", arg.Type())
 					}
@@ -302,7 +302,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				if def, ok := val.(common.BuildDefinition1); ok {
+				if def, ok := val.(common.BuildDefinition); ok {
 					return builder.Factory.NewReadArchiveBuildDefinition(def, kind), nil
 				} else if file, ok := val.(filesystem.File); ok {
 					fileDef, err := builder.Factory.NewDefinitionFromFile(file)
@@ -322,7 +322,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
 				var (
-					def  common.BuildDefinition1
+					def  common.BuildDefinition
 					kind string
 				)
 
@@ -398,20 +398,20 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				var initramfsDef common.BuildDefinition1
+				var initramfsDef common.BuildDefinition
 
 				if initramfs != nil {
-					if f, ok := initramfs.(common.BuildDefinition1); ok {
+					if f, ok := initramfs.(common.BuildDefinition); ok {
 						initramfsDef = f
 					} else {
 						return starlark.None, fmt.Errorf("could not convert %s to BuildDefinition", initramfs.Type())
 					}
 				}
 
-				var kernelDef common.BuildDefinition1
+				var kernelDef common.BuildDefinition
 
 				if kernel != nil {
-					if f, ok := kernel.(common.BuildDefinition1); ok {
+					if f, ok := kernel.(common.BuildDefinition); ok {
 						kernelDef = f
 					} else {
 						return starlark.None, fmt.Errorf("could not convert %s to BuildDefinition", initramfs.Type())
@@ -599,7 +599,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				if def, ok := ark.(common.BuildDefinition1); ok {
+				if def, ok := ark.(common.BuildDefinition); ok {
 					return &common.StarDirective{Directive: common.DirectiveArchive{
 						Definition: def,
 						Target:     target,
@@ -645,7 +645,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 						Contents:   contents,
 						Executable: executable,
 					}}, nil
-				} else if def, ok := val.(common.BuildDefinition1); ok {
+				} else if def, ok := val.(common.BuildDefinition); ok {
 					return &common.StarDirective{Directive: common.DirectiveAddFile{
 						Filename:   filename,
 						Definition: def,
@@ -833,8 +833,8 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 				args starlark.Tuple,
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
-				var kernel common.BuildDefinition1
-				var initramfs common.BuildDefinition1
+				var kernel common.BuildDefinition
+				var initramfs common.BuildDefinition
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"kernel", &kernel,

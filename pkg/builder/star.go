@@ -2,7 +2,6 @@ package builder
 
 import (
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -17,9 +16,9 @@ func init() {
 	hash.RegisterType(&starBuildDefinition{})
 }
 
-func SerializableValueToStarlark(ctx common.BuildContext1, val hash.SerializableValue) (starlark.Value, error) {
+func SerializableValueToStarlark(ctx common.BuildContext, val hash.SerializableValue) (starlark.Value, error) {
 	switch val := val.(type) {
-	case common.BuildDefinition1:
+	case common.BuildDefinition:
 		artifact, err := ctx.BuildChild(val)
 		if err != nil {
 			return starlark.None, err
@@ -48,7 +47,7 @@ func SerializableValueToStarlark(ctx common.BuildContext1, val hash.Serializable
 			return starlark.False, nil
 		}
 	case filesystem.ChildSource:
-		if def, ok := val.Source.(common.BuildDefinition1); ok {
+		if def, ok := val.Source.(common.BuildDefinition); ok {
 			artifact, err := ctx.BuildChild(def)
 			if err != nil {
 				return starlark.None, err
@@ -85,7 +84,7 @@ func SerializableValueToStarlark(ctx common.BuildContext1, val hash.Serializable
 
 func StarlarkValueToSerializable(val starlark.Value) (hash.SerializableValue, error) {
 	switch val := val.(type) {
-	case common.BuildDefinition1:
+	case common.BuildDefinition:
 		return val, nil
 	case *filesystem.StarFile:
 		return filesystem.SourceFromFile(val.File)
@@ -116,12 +115,12 @@ type starBuildDefinition struct {
 	redistributable bool
 }
 
-// Dependencies implements common.BuildDefinition1.
-func (def *starBuildDefinition) Dependencies() ([]common.BuildDefinition1, error) {
-	var deps []common.BuildDefinition1
+// Dependencies implements common.BuildDefinition.
+func (def *starBuildDefinition) Dependencies() ([]common.BuildDefinition, error) {
+	var deps []common.BuildDefinition
 
 	for _, arg := range def.params.Arguments {
-		if argDef, ok := arg.(common.BuildDefinition1); ok {
+		if argDef, ok := arg.(common.BuildDefinition); ok {
 			deps = append(deps, argDef)
 		}
 	}
@@ -175,7 +174,7 @@ func (def *starBuildDefinition) Create(params hash.SerializableValue) hash.Defin
 }
 
 // AsFragments implements common.Directive.
-func (def *starBuildDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+func (def *starBuildDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	art, err := ctx.BuildChild(def)
 	if err != nil {
 		return nil, err
@@ -197,7 +196,7 @@ func (def *starBuildDefinition) AsFragments(ctx common.BuildContext1, special co
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *starBuildDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *starBuildDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err
@@ -207,23 +206,9 @@ func (def *starBuildDefinition) ToStarlark(ctx common.BuildContext1, artifact co
 }
 
 // NeedsBuild implements BuildDefinition.
-func (def *starBuildDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
+func (def *starBuildDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
-	}
-
-	for _, arg := range def.params.Arguments {
-		if argDef, ok := arg.(common.BuildDefinition1); ok {
-			needsBuild, err := ctx.NeedsBuild(argDef)
-			if err != nil {
-				return true, err
-			}
-
-			if needsBuild {
-				slog.Debug("forcing rebuild", "def", argDef)
-				return true, nil
-			}
-		}
 	}
 
 	return false, nil
@@ -242,7 +227,7 @@ func (def *starBuildDefinition) Tag() string {
 	return strings.Join(parts, "_")
 }
 
-func (def *starBuildDefinition) Build(ctx common.BuildContext1) error {
+func (def *starBuildDefinition) Build(ctx common.BuildContext) error {
 	var args starlark.Tuple
 	for _, arg := range def.params.Arguments {
 		val, err := SerializableValueToStarlark(ctx, arg)
@@ -258,7 +243,7 @@ func (def *starBuildDefinition) Build(ctx common.BuildContext1) error {
 		return err
 	}
 
-	if result, ok := res.(common.BuildDefinition1); ok {
+	if result, ok := res.(common.BuildDefinition); ok {
 		child, err := ctx.BuildChild(result)
 		if err != nil {
 			return err
@@ -314,12 +299,12 @@ func (*starBuildDefinition) Freeze()              {}
 var (
 	_ starlark.Value                   = &starBuildDefinition{}
 	_ starlark.HasAttrs                = &starBuildDefinition{}
-	_ common.BuildDefinition1          = &starBuildDefinition{}
+	_ common.BuildDefinition           = &starBuildDefinition{}
 	_ common.RedistributableDefinition = &starBuildDefinition{}
 	_ common.Directive                 = &starBuildDefinition{}
 )
 
-func newStarBuildDefinition(filename string, builder string, args []hash.SerializableValue) (common.StarBuildDefinition1, error) {
+func newStarBuildDefinition(filename string, builder string, args []hash.SerializableValue) (common.StarBuildDefinition, error) {
 	if filename == "" || builder == "" {
 		return nil, fmt.Errorf("no filename or builder passed to NewStarBuildDefinition")
 	}

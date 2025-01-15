@@ -22,9 +22,9 @@ type decompressFileBuildDefinition struct {
 	r io.ReadCloser
 }
 
-// Dependencies implements common.BuildDefinition1.
-func (def *decompressFileBuildDefinition) Dependencies() ([]common.BuildDefinition1, error) {
-	return []common.BuildDefinition1{def.params.Base}, nil
+// Dependencies implements common.BuildDefinition.
+func (def *decompressFileBuildDefinition) Dependencies() ([]common.BuildDefinition, error) {
+	return []common.BuildDefinition{def.params.Base}, nil
 }
 
 // implements common.BuildDefinition.
@@ -37,7 +37,7 @@ func (def *decompressFileBuildDefinition) Create(params hash.SerializableValue) 
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *decompressFileBuildDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *decompressFileBuildDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err
@@ -47,16 +47,8 @@ func (def *decompressFileBuildDefinition) ToStarlark(ctx common.BuildContext1, a
 }
 
 // NeedsBuild implements BuildDefinition.
-func (def *decompressFileBuildDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
-	build, err := ctx.NeedsBuild(def.params.Base)
-	if err != nil {
-		return true, err
-	}
-	if build {
-		return true, nil
-	} else {
-		return false, nil // compressed files don't need to be re-extracted unless the underlying file changes.
-	}
+func (def *decompressFileBuildDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
+	return false, nil
 }
 
 // WriteTo implements BuildResult.
@@ -69,7 +61,7 @@ func (def *decompressFileBuildDefinition) WriteResult(w io.Writer) error {
 }
 
 // Build implements BuildDefinition.
-func (def *decompressFileBuildDefinition) Build(ctx common.BuildContext1) error {
+func (def *decompressFileBuildDefinition) Build(ctx common.BuildContext) error {
 	art, err := ctx.BuildChild(def.params.Base)
 	if err != nil {
 		return err
@@ -116,12 +108,12 @@ func (*decompressFileBuildDefinition) Truth() starlark.Bool { return starlark.Tr
 func (*decompressFileBuildDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &decompressFileBuildDefinition{}
-	_ common.BuildDefinition1 = &decompressFileBuildDefinition{}
-	_ common.BuildResult      = &decompressFileBuildDefinition{}
+	_ starlark.Value         = &decompressFileBuildDefinition{}
+	_ common.BuildDefinition = &decompressFileBuildDefinition{}
+	_ common.BuildResult     = &decompressFileBuildDefinition{}
 )
 
-func newDecompressFileBuildDefinition(base common.BuildDefinition1, kind string) common.StarBuildDefinition1 {
+func newDecompressFileBuildDefinition(base common.BuildDefinition, kind string) common.StarBuildDefinition {
 	return &decompressFileBuildDefinition{
 		params: DecompressFileParameters{Base: base, Kind: kind},
 	}

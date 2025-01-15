@@ -20,7 +20,7 @@ type packageCollection struct {
 	Filename string
 	Parser   string
 	Install  string
-	Sources  []common.BuildDefinition1
+	Sources  []common.BuildDefinition
 
 	RawPackages map[string]*common.Package
 	Packages    map[string][]*common.Package
@@ -28,13 +28,13 @@ type packageCollection struct {
 	pkgMtx sync.Mutex
 }
 
-// Dependencies implements common.BuildDefinition1.
-func (parser *packageCollection) Dependencies() ([]common.BuildDefinition1, error) {
+// Dependencies implements common.BuildDefinition.
+func (parser *packageCollection) Dependencies() ([]common.BuildDefinition, error) {
 	panic("unimplemented on packageCollection")
 }
 
 // Build implements common.BuildDefinition.
-func (parser *packageCollection) Build(ctx common.BuildContext1) error {
+func (parser *packageCollection) Build(ctx common.BuildContext) error {
 	panic("unimplemented on packageCollection")
 }
 
@@ -44,7 +44,7 @@ func (parser *packageCollection) Create(params hash.SerializableValue) hash.Defi
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (parser *packageCollection) NeedsBuild(ctx common.BuildContext1) (bool, error) {
+func (parser *packageCollection) NeedsBuild(ctx common.BuildContext) (bool, error) {
 	panic("unimplemented on packageCollection")
 }
 
@@ -59,7 +59,7 @@ func (parser *packageCollection) SerializableType() string {
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (parser *packageCollection) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (parser *packageCollection) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	panic("unimplemented on packageCollection")
 }
 
@@ -285,7 +285,7 @@ func (parser *packageCollection) Query(query common.PackageQuery) ([]*common.Pac
 	return append(directs, aliases...), nil
 }
 
-func (parser *packageCollection) InstallerFor(c common.BuildContext1, pkg *common.Package, tags common.TagList) (*common.Installer, error) {
+func (parser *packageCollection) InstallerFor(c common.BuildContext, pkg *common.Package, tags common.TagList) (*common.Installer, error) {
 	ctx, ok := c.(*buildContext)
 	if !ok {
 		return nil, fmt.Errorf("could not convert %s to buildContext", c.Type())
@@ -322,16 +322,16 @@ func (*packageCollection) Truth() starlark.Bool { return starlark.True }
 func (*packageCollection) Freeze()              {}
 
 var (
-	_ starlark.Value          = &packageCollection{}
-	_ starlark.HasAttrs       = &packageCollection{}
-	_ common.BuildDefinition1 = &packageCollection{}
+	_ starlark.Value         = &packageCollection{}
+	_ starlark.HasAttrs      = &packageCollection{}
+	_ common.BuildDefinition = &packageCollection{}
 )
 
 func newPackageCollection(
 	filename string,
 	parser string,
 	install string,
-	sources []common.BuildDefinition1,
+	sources []common.BuildDefinition,
 ) (common.PackageCollection, error) {
 	return &packageCollection{
 		Filename:    filename,

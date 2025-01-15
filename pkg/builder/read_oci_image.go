@@ -23,14 +23,14 @@ type readOciImageDefinition struct {
 	params ReadOciImageParameters
 }
 
-// Dependencies implements common.BuildDefinition1.
-func (r *readOciImageDefinition) Dependencies() ([]common.BuildDefinition1, error) {
-	return []common.BuildDefinition1{r.params.Base}, nil
+// Dependencies implements common.BuildDefinition.
+func (r *readOciImageDefinition) Dependencies() ([]common.BuildDefinition, error) {
+	return []common.BuildDefinition{r.params.Base}, nil
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (r *readOciImageDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
-	return ctx.NeedsBuild(r.params.Base)
+func (r *readOciImageDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
+	return false, nil
 }
 
 // Params implements common.BuildDefinition.
@@ -48,7 +48,7 @@ func (r *readOciImageDefinition) String() string {
 }
 
 // AsFragments implements common.Directive.
-func (r *readOciImageDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+func (r *readOciImageDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	art, err := ctx.BuildChild(r)
 	if err != nil {
 		return nil, err
@@ -91,14 +91,14 @@ func (r *readOciImageDefinition) AsFragments(ctx common.BuildContext1, special c
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (r *readOciImageDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (r *readOciImageDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	var def fetchOciImageDefinition
 
 	return def.ToStarlark(ctx, artifact)
 }
 
 // Build implements common.BuildDefinition.
-func (r *readOciImageDefinition) Build(ctx common.BuildContext1) error {
+func (r *readOciImageDefinition) Build(ctx common.BuildContext) error {
 	child, err := ctx.BuildChild(r.params.Base)
 	if err != nil {
 		return err
@@ -177,10 +177,10 @@ func (r *readOciImageDefinition) Build(ctx common.BuildContext1) error {
 }
 
 var (
-	_ common.BuildDefinition1 = &readOciImageDefinition{}
+	_ common.BuildDefinition = &readOciImageDefinition{}
 )
 
-func newReadOCIImageDefinition(base common.BuildDefinition1) ReadOCIImageDefinition {
+func newReadOCIImageDefinition(base common.BuildDefinition) ReadOCIImageDefinition {
 	return &readOciImageDefinition{
 		params: ReadOciImageParameters{
 			Base: base,

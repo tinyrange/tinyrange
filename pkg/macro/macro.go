@@ -9,12 +9,12 @@ import (
 )
 
 type DefinitionMacro struct {
-	common.BuildDefinition1
+	common.BuildDefinition
 }
 
 // Call implements Macro.
 func (d DefinitionMacro) Call(ctx common.MacroContext) (common.MacroResult, error) {
-	return d.BuildDefinition1, nil
+	return d.BuildDefinition, nil
 }
 
 type DirectiveMacro struct {

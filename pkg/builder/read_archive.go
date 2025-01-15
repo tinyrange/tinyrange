@@ -426,9 +426,9 @@ type readArchiveBuildDefinition struct {
 	params ReadArchiveParameters
 }
 
-// Dependencies implements common.BuildDefinition1.
-func (def *readArchiveBuildDefinition) Dependencies() ([]common.BuildDefinition1, error) {
-	return []common.BuildDefinition1{def.params.Base}, nil
+// Dependencies implements common.BuildDefinition.
+func (def *readArchiveBuildDefinition) Dependencies() ([]common.BuildDefinition, error) {
+	return []common.BuildDefinition{def.params.Base}, nil
 }
 
 // implements common.BuildDefinition.
@@ -439,7 +439,7 @@ func (def *readArchiveBuildDefinition) Create(params hash.SerializableValue) has
 }
 
 // AsFragments implements common.Directive.
-func (r *readArchiveBuildDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+func (r *readArchiveBuildDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	art, err := ctx.BuildChild(r)
 	if err != nil {
 		return nil, err
@@ -461,7 +461,7 @@ func (r *readArchiveBuildDefinition) AsFragments(ctx common.BuildContext1, speci
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (r *readArchiveBuildDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (r *readArchiveBuildDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err
@@ -476,20 +476,12 @@ func (r *readArchiveBuildDefinition) ToStarlark(ctx common.BuildContext1, artifa
 }
 
 // NeedsBuild implements BuildDefinition.
-func (r *readArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
-	build, err := ctx.NeedsBuild(r.params.Base)
-	if err != nil {
-		return true, err
-	}
-	if build {
-		return true, nil
-	} else {
-		return false, nil // archives don't need to be re-extracted unless the underlying file changes.
-	}
+func (r *readArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
+	return false, nil
 }
 
 // Build implements BuildDefinition.
-func (r *readArchiveBuildDefinition) Build(ctx common.BuildContext1) error {
+func (r *readArchiveBuildDefinition) Build(ctx common.BuildContext) error {
 	art, err := ctx.BuildChild(r.params.Base)
 	if err != nil {
 		return err
@@ -570,11 +562,11 @@ func (*readArchiveBuildDefinition) Truth() starlark.Bool { return starlark.True 
 func (*readArchiveBuildDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &readArchiveBuildDefinition{}
-	_ common.BuildDefinition1 = &readArchiveBuildDefinition{}
-	_ common.Directive        = &readArchiveBuildDefinition{}
+	_ starlark.Value         = &readArchiveBuildDefinition{}
+	_ common.BuildDefinition = &readArchiveBuildDefinition{}
+	_ common.Directive       = &readArchiveBuildDefinition{}
 )
 
-func newReadArchiveBuildDefinition(base common.BuildDefinition1, kind string) common.StarBuildDefinition1 {
+func newReadArchiveBuildDefinition(base common.BuildDefinition, kind string) common.StarBuildDefinition {
 	return &readArchiveBuildDefinition{params: ReadArchiveParameters{Base: base, Kind: kind}}
 }

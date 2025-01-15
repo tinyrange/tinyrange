@@ -27,8 +27,8 @@ type fetchHttpBuildDefinition struct {
 	resp *http.Response
 }
 
-// Dependencies implements common.BuildDefinition1.
-func (def *fetchHttpBuildDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+// Dependencies implements common.BuildDefinition.
+func (def *fetchHttpBuildDefinition) Dependencies() ([]common.BuildDefinition, error) {
 	return nil, nil
 }
 
@@ -45,7 +45,7 @@ func (def *fetchHttpBuildDefinition) Create(params hash.SerializableValue) hash.
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (f *fetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (f *fetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func (f *fetchHttpBuildDefinition) ToStarlark(ctx common.BuildContext1, artifact
 }
 
 // NeedsBuild implements BuildDefinition.
-func (f *fetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
+func (f *fetchHttpBuildDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
 	if f.params.ExpireTime != 0 {
 		return time.Now().After(ctx.LastBuild().Add(time.Duration(f.params.ExpireTime))), nil
 	}
@@ -82,7 +82,7 @@ func (f *fetchHttpBuildDefinition) WriteResult(w io.Writer) error {
 }
 
 // Build implements BuildDefinition.
-func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext1) error {
+func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext) error {
 	urls, err := ctx.Database().UrlsFor(f.params.Url)
 	if err != nil {
 		return err
@@ -153,11 +153,11 @@ func (*fetchHttpBuildDefinition) Freeze()              {}
 
 var (
 	_ starlark.Value                   = &fetchHttpBuildDefinition{}
-	_ common.BuildDefinition1          = &fetchHttpBuildDefinition{}
+	_ common.BuildDefinition           = &fetchHttpBuildDefinition{}
 	_ common.RedistributableDefinition = &fetchHttpBuildDefinition{}
 	_ common.BuildResult               = &fetchHttpBuildDefinition{}
 )
 
-func newFetchHttpBuildDefinition(url string, expireTime time.Duration, headers map[string]string) common.StarBuildDefinition1 {
+func newFetchHttpBuildDefinition(url string, expireTime time.Duration, headers map[string]string) common.StarBuildDefinition {
 	return &fetchHttpBuildDefinition{params: FetchHttpParameters{Url: url, ExpireTime: int64(expireTime), Headers: headers}}
 }

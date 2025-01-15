@@ -129,8 +129,8 @@ type registryRequestDefinition struct {
 	params RegistryRequestParameters
 }
 
-// Dependencies implements common.BuildDefinition1.
-func (def *registryRequestDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+// Dependencies implements common.BuildDefinition.
+func (def *registryRequestDefinition) Dependencies() ([]common.BuildDefinition, error) {
 	return nil, nil
 }
 
@@ -144,12 +144,12 @@ func (def *registryRequestDefinition) Create(params hash.SerializableValue) hash
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (r *registryRequestDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (r *registryRequestDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	panic("unimplemented")
 }
 
 // Build implements common.BuildDefinition.
-func (r *registryRequestDefinition) Build(ctx common.BuildContext1) error {
+func (r *registryRequestDefinition) Build(ctx common.BuildContext) error {
 	req, err := r.ctx.makeRequest("GET", r.ctx.registry+r.params.Url)
 	if err != nil {
 		return err
@@ -193,7 +193,7 @@ func (r *registryRequestDefinition) Build(ctx common.BuildContext1) error {
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (r *registryRequestDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
+func (r *registryRequestDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
 	if r.params.ExpireTime > 0 {
 		return ctx.LastBuild().After(time.Now().Add(time.Duration(r.params.ExpireTime))), nil
 	} else {
@@ -209,7 +209,7 @@ func (r *registryRequestDefinition) String() string {
 }
 
 var (
-	_ common.BuildDefinition1 = &registryRequestDefinition{}
+	_ common.BuildDefinition = &registryRequestDefinition{}
 )
 
 type fetchOciImageDefinition struct {
@@ -219,8 +219,8 @@ type fetchOciImageDefinition struct {
 	Config        oci.ImageConfig
 }
 
-// Dependencies implements common.BuildDefinition1.
-func (def *fetchOciImageDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+// Dependencies implements common.BuildDefinition.
+func (def *fetchOciImageDefinition) Dependencies() ([]common.BuildDefinition, error) {
 	return nil, nil
 }
 
@@ -234,7 +234,7 @@ func (def *fetchOciImageDefinition) Create(params hash.SerializableValue) hash.D
 }
 
 // AsFragments implements common.Directive.
-func (def *fetchOciImageDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+func (def *fetchOciImageDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	art, err := ctx.BuildChild(def)
 	if err != nil {
 		return nil, err
@@ -275,7 +275,7 @@ func (def *fetchOciImageDefinition) AsFragments(ctx common.BuildContext1, specia
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *fetchOciImageDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *fetchOciImageDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	result, err := artifact.Default()
 	if err != nil {
 		return nil, err
@@ -325,7 +325,7 @@ func (def *fetchOciImageDefinition) setDefaults() {
 	}
 }
 
-func (def *fetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.BuildDefinition1 {
+func (def *fetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.BuildDefinition {
 	return &registryRequestDefinition{
 		ctx: regCtx,
 		params: RegistryRequestParameters{
@@ -339,7 +339,7 @@ func (def *fetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.
 	}
 }
 
-func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext1, regCtx *ociRegistryContext, index oci.ImageIndexV1) error {
+func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext, regCtx *ociRegistryContext, index oci.ImageIndexV1) error {
 	// Request all the layers.
 	for _, layer := range index.FsLayers {
 		layerArtifact, err := ctx.BuildChild(
@@ -373,7 +373,7 @@ func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext1, r
 }
 
 func (def *fetchOciImageDefinition) buildFromManifest(
-	ctx common.BuildContext1,
+	ctx common.BuildContext,
 	regCtx *ociRegistryContext,
 	manifest oci.ImageManifest,
 	config oci.ImageConfig,
@@ -412,7 +412,7 @@ func (def *fetchOciImageDefinition) buildFromManifest(
 	return ctx.WriteDefault(def)
 }
 
-func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext1, regCtx *ociRegistryContext, index oci.ImageIndexV2) error {
+func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext, regCtx *ociRegistryContext, index oci.ImageIndexV2) error {
 	// Get the right manifest for the architecture.
 	var manifestId oci.ImageManifestIdentifier
 	for _, manifest := range index.Manifests {
@@ -477,7 +477,7 @@ func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext1, reg
 }
 
 // Build implements common.BuildDefinition.
-func (def *fetchOciImageDefinition) Build(ctx common.BuildContext1) error {
+func (def *fetchOciImageDefinition) Build(ctx common.BuildContext) error {
 	regCtx := &ociRegistryContext{registry: def.params.Registry}
 
 	// Get the index for the image tag.
@@ -522,12 +522,8 @@ func (def *fetchOciImageDefinition) Build(ctx common.BuildContext1) error {
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *fetchOciImageDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
-	if ctx.ShouldRebuildUserDefinitions() {
-		return true, nil
-	}
-
-	return ctx.NeedsBuild(def.indexDef(&ociRegistryContext{registry: def.params.Registry}))
+func (def *fetchOciImageDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
+	return ctx.ShouldRebuildUserDefinitions(), nil
 }
 
 // Tag implements common.BuildDefinition.
@@ -557,10 +553,10 @@ func (*fetchOciImageDefinition) Truth() starlark.Bool { return starlark.True }
 func (*fetchOciImageDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &fetchOciImageDefinition{}
-	_ common.BuildDefinition1 = &fetchOciImageDefinition{}
-	_ common.BuildResult      = &fetchOciImageDefinition{}
-	_ common.Directive        = &fetchOciImageDefinition{}
+	_ starlark.Value         = &fetchOciImageDefinition{}
+	_ common.BuildDefinition = &fetchOciImageDefinition{}
+	_ common.BuildResult     = &fetchOciImageDefinition{}
+	_ common.Directive       = &fetchOciImageDefinition{}
 )
 
 func newFetchOCIImageDefinition(registry, image, tag, architecture string) FetchOciImageDefinition {

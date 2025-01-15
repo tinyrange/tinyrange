@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -43,7 +44,7 @@ func (s buildStatusKind) String() string {
 
 type buildStatus struct {
 	Status   buildStatusKind
-	Children []common.BuildDefinition1
+	Children []common.BuildDefinition
 }
 
 type macroContext struct {
@@ -125,7 +126,7 @@ type builder1 struct {
 	buildCache map[hash.Hash]common.BuildArtifact
 
 	buildStatusMtx sync.Mutex
-	buildStatuses  map[common.BuildDefinition1]*buildStatus
+	buildStatuses  map[common.BuildDefinition]*buildStatus
 
 	defDb *hash.DefinitionDatabase
 
@@ -138,15 +139,15 @@ func (db *builder1) SetRebuildUserDefinitions(rebuild bool) {
 }
 
 // HashDefinition implements common.PackageDatabase.
-func (db *builder1) HashDefinition(def common.BuildDefinition1) (hash.Hash, error) {
+func (db *builder1) HashDefinition(def common.BuildDefinition) (hash.Hash, error) {
 	return db.defDb.HashDefinition(def)
 }
 
-func (db *builder1) newBuildContext(def common.BuildDefinition1) *buildContext {
+func (db *builder1) newBuildContext(def common.BuildDefinition) *buildContext {
 	return &buildContext{def: def, builder: db}
 }
 
-func (db *builder1) updateBuildStatus(def common.BuildDefinition1, status *buildStatus) {
+func (db *builder1) updateBuildStatus(def common.BuildDefinition, status *buildStatus) {
 	db.buildStatusMtx.Lock()
 	defer db.buildStatusMtx.Unlock()
 
@@ -157,7 +158,7 @@ func (db *builder1) filenameFromHash(hash hash.Hash, suffix string) (string, err
 	return filepath.Join(db.buildDir, string(hash)+suffix), nil
 }
 
-func (db *builder1) downloadFromDistributionServer(hash hash.Hash, def common.BuildDefinition1) (bool, error) {
+func (db *builder1) downloadFromDistributionServer(hash hash.Hash, def common.BuildDefinition) (bool, error) {
 	if redistributable, ok := def.(common.RedistributableDefinition); !ok || !redistributable.Redistributable() {
 		return false, nil // not redistributable
 	}
@@ -222,7 +223,7 @@ func (db *builder1) downloadFromDistributionServer(hash hash.Hash, def common.Bu
 	return true, nil
 }
 
-func (db *builder1) getBuildStatus(def common.BuildDefinition1) (*buildStatus, error) {
+func (db *builder1) getBuildStatus(def common.BuildDefinition) (*buildStatus, error) {
 	status, ok := db.buildStatuses[def]
 	if !ok {
 		return nil, fmt.Errorf("build status not found")
@@ -230,7 +231,7 @@ func (db *builder1) getBuildStatus(def common.BuildDefinition1) (*buildStatus, e
 	return status, nil
 }
 
-func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, opts common.BuildOptions) (common.BuildArtifact, error) {
+func (db *builder1) build(c common.BuildContext, def common.BuildDefinition, opts common.BuildOptions) (common.BuildArtifact, error) {
 	hash, err := db.HashDefinition(def)
 	if err != nil {
 		return nil, err
@@ -418,7 +419,7 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 	return art, nil
 }
 
-func (db *builder1) Build(def common.BuildDefinition1, opts common.BuildOptions) (common.BuildArtifact, error) {
+func (db *builder1) Build(def common.BuildDefinition, opts common.BuildOptions) (common.BuildArtifact, error) {
 	return db.build(db.newBuildContext(def), def, opts)
 }
 
@@ -431,13 +432,13 @@ func (db *builder1) missDefinitionCache(hash hash.Hash) (io.ReadCloser, error) {
 	return os.Open(filename)
 }
 
-func (db *builder1) GetDefinitionByHash(hash hash.Hash) (common.BuildDefinition1, error) {
+func (db *builder1) GetDefinitionByHash(hash hash.Hash) (common.BuildDefinition, error) {
 	def, err := db.defDb.GetDefinitionByHash(hash)
 	if err != nil {
 		return nil, err
 	}
 
-	return def.(common.BuildDefinition1), nil
+	return def.(common.BuildDefinition), nil
 }
 
 func (db *builder1) SetDistributionServer(server string) error {
@@ -466,8 +467,13 @@ func (db *builder1) SetDistributionServer(server string) error {
 	return nil
 }
 
+// GarbageCollect implements common.Builder.
+func (db *builder1) GarbageCollect(olderThan time.Time) ([]hash.Hash, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
 var (
-	_ common.Builder1 = &builder1{}
+	_ common.Builder = &builder1{}
 )
 
 type packageDatabase struct {
@@ -805,8 +811,8 @@ func (db *packageDatabase) GetMacroByDeclaredName(ctx common.MacroContext, name 
 
 	if macroFunc, ok := def.(*starlark.Function); ok {
 		return macro.ParseMacro(ctx, macroFunc, macroArgs)
-	} else if buildDef, ok := def.(common.BuildDefinition1); ok {
-		return macro.DefinitionMacro{BuildDefinition1: buildDef}, nil
+	} else if buildDef, ok := def.(common.BuildDefinition); ok {
+		return macro.DefinitionMacro{BuildDefinition: buildDef}, nil
 	} else if dir, ok := def.(*common.StarDirective); ok {
 		return macro.DirectiveMacro{Directive: dir.Directive}, nil
 	} else {
@@ -825,7 +831,7 @@ func (db *packageDatabase) GetMacroByShorthand(ctx common.MacroContext, shorthan
 			return nil, err
 		}
 
-		return macro.DefinitionMacro{BuildDefinition1: def}, nil
+		return macro.DefinitionMacro{BuildDefinition: def}, nil
 	}
 
 	return db.GetMacroByDeclaredName(ctx, shorthand, allowLocal)
@@ -881,7 +887,7 @@ func (db *packageDatabase) Call(filename string, builder string, args ...starlar
 	return result, nil
 }
 
-func (db *packageDatabase) Builder() common.Builder1 {
+func (db *packageDatabase) Builder() common.Builder {
 	return db.builder
 }
 
@@ -900,7 +906,7 @@ func New(buildDir string) (common.PackageDatabase, error) {
 
 	builder := &builder1{
 		database:      db,
-		buildStatuses: make(map[common.BuildDefinition1]*buildStatus),
+		buildStatuses: make(map[common.BuildDefinition]*buildStatus),
 		buildCache:    make(map[hash.Hash]common.BuildArtifact),
 		buildDir:      buildDir,
 	}

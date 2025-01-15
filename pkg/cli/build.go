@@ -43,7 +43,7 @@ var buildCmd = &cobra.Command{
 			return nil
 		}
 
-		if def, ok := ret.(common.BuildDefinition1); ok {
+		if def, ok := ret.(common.BuildDefinition); ok {
 			art, err := db.Builder().Build(def, common.BuildOptions{
 				AlwaysRebuild: true,
 			})

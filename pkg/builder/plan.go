@@ -19,7 +19,7 @@ func init() {
 }
 
 type PlanDefinition interface {
-	common.BuildDefinition1
+	common.BuildDefinition
 	common.InstallationPlanBuilder
 	common.Directive
 
@@ -32,8 +32,8 @@ type planDefinition struct {
 	Fragments []config.Fragment
 }
 
-// Dependencies implements common.BuildDefinition1.
-func (def *planDefinition) Dependencies() ([]common.BuildDefinition1, error) {
+// Dependencies implements common.BuildDefinition.
+func (def *planDefinition) Dependencies() ([]common.BuildDefinition, error) {
 	return nil, nil
 }
 
@@ -45,7 +45,7 @@ func (def *planDefinition) Create(params hash.SerializableValue) hash.Definition
 }
 
 // AsFragments implements common.Directive.
-func (def *planDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+func (def *planDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	art, err := ctx.BuildChild(def)
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func (def *planDefinition) AsFragments(ctx common.BuildContext1, special common.
 }
 
 // ToStarlark implements common.BuildDefinition.
-func (def *planDefinition) ToStarlark(ctx common.BuildContext1, artifact common.BuildArtifact) (starlark.Value, error) {
+func (def *planDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
 	var plan *planDefinition
 
 	result, err := artifact.Default()
@@ -274,7 +274,7 @@ func (def *planDefinition) WriteResult(w io.Writer) error {
 }
 
 // Build implements common.BuildDefinition.
-func (def *planDefinition) Build(ctx common.BuildContext1) error {
+func (def *planDefinition) Build(ctx common.BuildContext) error {
 	arch, err := config.ArchitectureFromString(def.params.Architecture)
 	if err != nil {
 		return err
@@ -316,7 +316,7 @@ func (def *planDefinition) Build(ctx common.BuildContext1) error {
 }
 
 // NeedsBuild implements common.BuildDefinition.
-func (def *planDefinition) NeedsBuild(ctx common.BuildContext1) (bool, error) {
+func (def *planDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
 	if ctx.ShouldRebuildUserDefinitions() {
 		return true, nil
 	}
@@ -354,11 +354,11 @@ func (*planDefinition) Truth() starlark.Bool { return starlark.True }
 func (*planDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value          = &planDefinition{}
-	_ starlark.HasAttrs       = &planDefinition{}
-	_ common.BuildDefinition1 = &planDefinition{}
-	_ common.BuildResult      = &planDefinition{}
-	_ common.Directive        = &planDefinition{}
+	_ starlark.Value         = &planDefinition{}
+	_ starlark.HasAttrs      = &planDefinition{}
+	_ common.BuildDefinition = &planDefinition{}
+	_ common.BuildResult     = &planDefinition{}
+	_ common.Directive       = &planDefinition{}
 )
 
 func newPlanDefinition(builder string, arch config.CPUArchitecture, search []common.PackageQuery, tagList common.TagList) (PlanDefinition, error) {
