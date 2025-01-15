@@ -249,7 +249,7 @@ type RequestManager interface {
 
 type Builder1 interface {
 	// Build a definition from a build context.
-	Build(def BuildDefinition1, opts BuildOptions) (filesystem.File, error)
+	Build(def BuildDefinition1, opts BuildOptions) (BuildArtifact, error)
 	// SetRebuildUserDefinitions sets whether user definitions should be rebuilt.
 	SetRebuildUserDefinitions(rebuild bool)
 

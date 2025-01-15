@@ -87,6 +87,35 @@ var (
 	_ common.MacroContext = &macroContext{}
 )
 
+type tempArtifact struct {
+	hash        hash.Hash
+	defaultFile filesystem.File
+}
+
+// Default implements common.BuildArtifact.
+func (t *tempArtifact) Default() (filesystem.File, error) {
+	return t.defaultFile, nil
+}
+
+// Hash implements common.BuildArtifact.
+func (t *tempArtifact) Hash() hash.Hash {
+	return t.hash
+}
+
+// OpenFile implements common.BuildArtifact.
+func (t *tempArtifact) OpenFile(name string) (filesystem.FileHandle, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
+// Receipt implements common.BuildArtifact.
+func (t *tempArtifact) Receipt() common.BuildReceipt {
+	return common.BuildReceipt{}
+}
+
+var (
+	_ common.BuildArtifact = &tempArtifact{}
+)
+
 type builder1 struct {
 	database *packageDatabase
 
@@ -403,8 +432,22 @@ func (db *builder1) build(c common.BuildContext1, def common.BuildDefinition1, o
 	return f, nil
 }
 
-func (db *builder1) Build(def common.BuildDefinition1, opts common.BuildOptions) (filesystem.File, error) {
-	return db.build(db.NewBuildContext(def), def, opts)
+func (db *builder1) Build(def common.BuildDefinition1, opts common.BuildOptions) (common.BuildArtifact, error) {
+	res, err := db.build(db.NewBuildContext(def), def, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	hash, err := db.HashDefinition(def)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tempArtifact{
+		hash:        hash,
+		defaultFile: res,
+	}, nil
+
 }
 
 func (db *builder1) missDefinitionCache(hash hash.Hash) (io.ReadCloser, error) {
@@ -867,6 +910,7 @@ func New(buildDir string) (common.PackageDatabase, error) {
 	}
 
 	builder := &builder1{
+		database:      db,
 		buildStatuses: make(map[common.BuildDefinition1]*buildStatus),
 		buildCache:    make(map[hash.Hash]filesystem.File),
 		buildDir:      buildDir,

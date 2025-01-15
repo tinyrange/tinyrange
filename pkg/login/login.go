@@ -659,10 +659,15 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 		def := builder.Factory.NewBuildFsDefinition(directives, "tar")
 
-		f, err := db.Builder().Build(def, common.BuildOptions{})
+		art, err := db.Builder().Build(def, common.BuildOptions{})
 		if err != nil {
 			slog.Error("fatal", "err", err)
 			os.Exit(1)
+		}
+
+		f, err := art.Default()
+		if err != nil {
+			return err
 		}
 
 		fh, err := f.Open()
@@ -696,10 +701,15 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 		def := builder.Factory.NewBuildFsDefinition(directives, "tar")
 
-		f, err := db.Builder().Build(def, common.BuildOptions{})
+		art, err := db.Builder().Build(def, common.BuildOptions{})
 		if err != nil {
 			slog.Error("fatal", "err", err)
 			os.Exit(1)
+		}
+
+		f, err := art.Default()
+		if err != nil {
+			return err
 		}
 
 		buildCtxOut, buildCtxIn := io.Pipe()
@@ -844,10 +854,15 @@ func (config *Config) Run(db common.PackageDatabase) error {
 				opts.AlwaysRebuild = true
 			}
 
-			f, err := db.Builder().Build(def, opts)
+			art, err := db.Builder().Build(def, opts)
 			if err != nil {
 				slog.Error("fatal", "err", err)
 				os.Exit(1)
+			}
+
+			f, err := art.Default()
+			if err != nil {
+				return err
 			}
 
 			fh, err := f.Open()

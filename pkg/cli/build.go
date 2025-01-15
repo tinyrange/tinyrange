@@ -44,12 +44,17 @@ var buildCmd = &cobra.Command{
 		}
 
 		if def, ok := ret.(common.BuildDefinition1); ok {
-			f, err := db.Builder().Build(def, common.BuildOptions{
+			art, err := db.Builder().Build(def, common.BuildOptions{
 				AlwaysRebuild: true,
 			})
 			if err != nil {
 				slog.Error("fatal", "err", err)
 				os.Exit(1)
+			}
+
+			f, err := art.Default()
+			if err != nil {
+				return err
 			}
 
 			if buildOutput != "" {
