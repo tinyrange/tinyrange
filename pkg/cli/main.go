@@ -6,9 +6,11 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tinyrange/tinyrange/pkg/build2"
 	"github.com/tinyrange/tinyrange/pkg/buildinfo"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 )
 
 var (
@@ -37,7 +39,28 @@ Complete documentation is available at https://github.com/tinyrange/tinyrange`, 
 }
 
 func newDb() (common.PackageDatabase, error) {
-	db, err := database.New(rootBuildDir)
+	builderFactory := database.NewBuilder(rootBuildDir)
+
+	if common.HasExperimentalFlag("build2") {
+		builderFactory = func(db common.PackageDatabase) (common.Builder, error) {
+			logger := build2.NewSimpleLogger()
+
+			buildDir := rootBuildDir
+
+			// Check with Exists first so it doesn't have issues if the build dir is behind a symlink.
+			if ok, _ := common.Exists(buildDir); !ok {
+				if err := common.Ensure(buildDir, os.ModePerm); err != nil {
+					return nil, err
+				}
+			}
+
+			buildDirMut := filesystem.NewLocalMutableDirectory(buildDir)
+
+			return build2.New(buildDirMut, db, 1, logger.Group("builder")), nil
+		}
+	}
+
+	db, err := database.New(builderFactory)
 	if err != nil {
 		return nil, err
 	}

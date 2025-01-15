@@ -14,6 +14,15 @@ import (
 	"go.starlark.net/starlark"
 )
 
+type ErrTemplateBuilt string
+
+// Error implements error.
+func (e ErrTemplateBuilt) Error() string { return "template built" }
+
+var (
+	_ error = ErrTemplateBuilt("")
+)
+
 var (
 	ErrUseExistingBuild = errors.New("use existing build")
 )

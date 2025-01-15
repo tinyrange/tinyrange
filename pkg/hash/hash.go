@@ -99,25 +99,43 @@ type DefinitionDatabase struct {
 	miss         CacheMissFunction
 }
 
-func (db *DefinitionDatabase) GetDefinitionByHash(hash Hash) (Definition, error) {
+func (db *DefinitionDatabase) getDefinitionByHash(hash Hash) Definition {
 	db.mtx.RLock()
 	defer db.mtx.RUnlock()
 
 	def, ok := db.cache[hash]
 	if !ok {
-		f, err := db.miss(hash)
-		if err != nil {
-			return nil, err
-		}
-		defer f.Close()
-
-		def, err = db.UnmarshalDefinition(f)
-		if err != nil {
-			return nil, err
-		}
-
-		db.cache[hash] = def
+		return nil
 	}
+	return def
+}
+
+func (db *DefinitionDatabase) writeToCache(hash Hash, def Definition) {
+	db.mtx.Lock()
+	defer db.mtx.Unlock()
+
+	db.cache[hash] = def
+	db.cacheInverse[def] = hash
+}
+
+func (db *DefinitionDatabase) GetDefinitionByHash(hash Hash) (Definition, error) {
+	if def := db.getDefinitionByHash(hash); def != nil {
+		return def, nil
+	}
+
+	f, err := db.miss(hash)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	def, err := db.UnmarshalDefinition(f)
+	if err != nil {
+		return nil, err
+	}
+
+	db.writeToCache(hash, def)
+
 	return def, nil
 }
 
@@ -141,11 +159,7 @@ func (db *DefinitionDatabase) HashDefinition(d Definition) (Hash, error) {
 
 	hash := GetSha256Hash(val)
 
-	db.mtx.Lock()
-	defer db.mtx.Unlock()
-
-	db.cache[hash] = d
-	db.cacheInverse[d] = hash
+	db.writeToCache(hash, d)
 
 	return hash, nil
 }
@@ -444,6 +458,32 @@ func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.
 				field.Set(ret)
 
 				return nil
+			case reflect.Map:
+				var values map[string]json.RawMessage
+
+				if err := json.Unmarshal(val, &values); err != nil {
+					return err
+				}
+
+				ret := reflect.MakeMap(fieldType)
+
+				for k, val := range values {
+					key := reflect.New(fieldType.Key()).Elem()
+					if err := decodeValue(key, []byte(k)); err != nil {
+						return err
+					}
+
+					value := reflect.New(fieldType.Elem()).Elem()
+					if err := decodeValue(value, val); err != nil {
+						return err
+					}
+
+					ret.SetMapIndex(key, value)
+				}
+
+				field.Set(ret)
+
+				return nil
 			case reflect.String:
 				var ret string
 
@@ -548,14 +588,6 @@ func (db *DefinitionDatabase) UnmarshalDefinition(input io.Reader) (Definition, 
 	return fac.Create(params), nil
 }
 
-func (db *DefinitionDatabase) getFromCache(hash Hash) (Definition, bool) {
-	db.mtx.RLock()
-	defer db.mtx.RUnlock()
-
-	def, ok := db.cache[hash]
-	return def, ok
-}
-
 func (db *DefinitionDatabase) unmarshalPointer(ptr definitionPointer) (Definition, error) {
 	if ptr.TypeName == "" {
 		// assume a null ptr.
@@ -567,28 +599,24 @@ func (db *DefinitionDatabase) unmarshalPointer(ptr definitionPointer) (Definitio
 		return nil, fmt.Errorf("attempt to unmarshalPointer with empty hash")
 	}
 
-	val, ok := db.getFromCache(ptr.Hash)
-	if !ok {
-		db.mtx.Lock()
-		defer db.mtx.Unlock()
-
-		f, err := db.miss(ptr.Hash)
-		if err != nil {
-			return nil, fmt.Errorf("could not find definitionCache entry for %s: %s", ptr.Hash, err)
-		}
-		defer f.Close()
-
-		def, err := db.UnmarshalDefinition(f)
-		if err != nil {
-			return nil, err
-		}
-
-		db.cache[ptr.Hash] = def
-
-		return def, nil
+	if val := db.getDefinitionByHash(ptr.Hash); val != nil {
+		return val, nil
 	}
 
-	return val, nil
+	f, err := db.miss(ptr.Hash)
+	if err != nil {
+		return nil, fmt.Errorf("could not find definitionCache entry for %s: %s", ptr.Hash, err)
+	}
+	defer f.Close()
+
+	def, err := db.UnmarshalDefinition(f)
+	if err != nil {
+		return nil, err
+	}
+
+	db.writeToCache(ptr.Hash, def)
+
+	return def, nil
 }
 
 func (db *DefinitionDatabase) unmarshalSerializableValue(typeName string, val json.RawMessage) (SerializableValue, error) {

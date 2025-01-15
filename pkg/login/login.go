@@ -22,7 +22,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	cfg "github.com/tinyrange/tinyrange/pkg/config"
-	"github.com/tinyrange/tinyrange/pkg/database"
 	"gopkg.in/yaml.v3"
 )
 
@@ -614,7 +613,7 @@ func (config *Config) MakeTemplate(db common.PackageDatabase) (string, error) {
 	def.SetBuildTemplateMode()
 
 	_, err = db.Builder().Build(def, common.BuildOptions{AlwaysRebuild: true})
-	if built, ok := err.(database.ErrTemplateBuilt); ok {
+	if built, ok := err.(common.ErrTemplateBuilt); ok {
 		return string(built), nil
 	} else if err != nil {
 		return "", err
@@ -839,7 +838,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 			def.SetBuildTemplateMode()
 
 			_, err := db.Builder().Build(def, common.BuildOptions{AlwaysRebuild: true})
-			if built, ok := err.(database.ErrTemplateBuilt); ok {
+			if built, ok := err.(common.ErrTemplateBuilt); ok {
 				fmt.Printf("%s\n", string(built))
 
 				return nil

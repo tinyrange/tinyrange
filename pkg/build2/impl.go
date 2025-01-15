@@ -9,7 +9,9 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sync"
 	"sync/atomic"
@@ -19,6 +21,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/star"
 	"go.starlark.net/starlark"
 )
 
@@ -74,6 +77,7 @@ type contextFile struct {
 	writer io.WriteCloser
 	multi  io.Writer
 	hash   cryptoHash.Hash
+	file   filesystem.MutableFile
 }
 
 // Write implements io.Writer.
@@ -102,6 +106,28 @@ const (
 	buildContextStateBuilt
 	buildContextStateUsedCache
 )
+
+func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
+	persistPath := filepath.Join(buildDir, "persist")
+
+	if err := common.Ensure(persistPath, os.ModePerm); err != nil {
+		return nil, err
+	}
+
+	cmd := exec.Command(exe, "-build-dir", buildDir, "-persist-path", persistPath, configFilename)
+
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	slog.Debug("executing VMM", "args", cmd.Args)
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	return cmd, nil
+}
 
 type buildContext struct {
 	builder      *builder
@@ -150,18 +176,60 @@ func (c *buildContext) CreateDefault() (io.WriteCloser, error) {
 }
 
 // RunVMM implements common.BuildContext.
-func (c *buildContext) RunVMM(vmm string, config config.TinyRangeConfig) (*exec.Cmd, error) {
-	return nil, fmt.Errorf("RunVMM not implemented")
+func (c *buildContext) RunVMM(name string, config config.TinyRangeConfig) (*exec.Cmd, error) {
+	out, err := c.CreateFile("config.json")
+	if err != nil {
+		return nil, err
+	}
+
+	configFilename, err := filesystem.GetHostFilename(out.(*contextFile).file)
+	if err != nil {
+		out.Close()
+		return nil, err
+	}
+
+	enc := json.NewEncoder(out)
+
+	if err := enc.Encode(&config); err != nil {
+		out.Close()
+		return nil, err
+	}
+
+	if err := out.Close(); err != nil {
+		return nil, err
+	}
+
+	if name == "" {
+		return nil, common.ErrTemplateBuilt(configFilename)
+	}
+
+	var exe string
+
+	if name == "qemu" {
+		exe, err = common.GetAdjacentExecutable("tinyrange_qemu", "tinyqemu/tinyrange_qemu")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, fmt.Errorf("unknown VMM: %s", name)
+	}
+
+	buildDirPath, err := filesystem.GetHostFilename(c.buildDir)
+	if err != nil {
+		return nil, err
+	}
+
+	return runVMM(exe, buildDirPath, configFilename)
 }
 
 // Database implements common.BuildContext.
 func (c *buildContext) Database() common.PackageDatabase {
-	return nil
+	return c.builder.database
 }
 
 // ShouldRebuildUserDefinitions implements common.BuildContext.
 func (c *buildContext) ShouldRebuildUserDefinitions() bool {
-	return false
+	return c.builder.rebuildUserDefinitions
 }
 
 // Precondition: The definition has to be rebuilt.
@@ -441,6 +509,7 @@ func (c *buildContext) CreateFile(name string) (io.WriteCloser, error) {
 		writer: mutHandle,
 		multi:  multi,
 		hash:   hash,
+		file:   mut,
 	}
 
 	return c.files[name], nil
@@ -466,27 +535,63 @@ func (c *buildContext) WriteDefault(result common.BuildResult) error {
 	return nil
 }
 
-func (c *buildContext) Freeze()               { panic("unimplemented") }
-func (c *buildContext) Hash() (uint32, error) { panic("unimplemented") }
-func (c *buildContext) String() string        { panic("unimplemented") }
-func (c *buildContext) Truth() starlark.Bool  { panic("unimplemented") }
-func (c *buildContext) Type() string          { panic("unimplemented") }
+func (c *buildContext) Freeze()               {}
+func (c *buildContext) Hash() (uint32, error) { return 0, fmt.Errorf("not hashable") }
+func (c *buildContext) String() string        { return c.hash.String() }
+func (c *buildContext) Truth() starlark.Bool  { return starlark.False }
+func (c *buildContext) Type() string          { return "buildContext" }
+
+func (c *buildContext) Attr(name string) (starlark.Value, error) {
+	return star.BuildContextAttr(c, name)
+}
+
+func (c *buildContext) AttrNames() []string {
+	return star.BuildContextAttrNames()
+}
 
 var (
 	_ common.BuildContext = &buildContext{}
+	_ starlark.HasAttrs   = &buildContext{}
 )
 
 type builder struct {
-	buildDir     filesystem.MutableDirectory
-	defDb        *hash.DefinitionDatabase
-	contextCache sync.Map
-	logger       Logger
-	tokenLocker  *tokenLocker
+	database               common.PackageDatabase
+	buildDir               filesystem.MutableDirectory
+	defDb                  *hash.DefinitionDatabase
+	contextCache           sync.Map
+	logger                 Logger
+	tokenLocker            *tokenLocker
+	rebuildUserDefinitions bool
+}
+
+// GetDefinitionByHash implements common.Builder.
+func (b *builder) GetDefinitionByHash(hash hash.Hash) (common.BuildDefinition, error) {
+	def, err := b.defDb.GetDefinitionByHash(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	buildDef, ok := def.(common.BuildDefinition)
+	if !ok {
+		return nil, fmt.Errorf("definition %T is not a BuildDefinition", def)
+	}
+
+	return buildDef, nil
+}
+
+// MinimalContext implements common.Builder.
+func (b *builder) MinimalContext() common.MinimalBuildContext {
+	return &buildContext{
+		builder:      b,
+		recept:       &common.BuildReceipt{},
+		logger:       b.logger.Child("minimal"),
+		requirements: make(map[hash.Hash]struct{}),
+	}
 }
 
 // SetRebuildUserDefinitions implements common.Builder.
 func (b *builder) SetRebuildUserDefinitions(rebuild bool) {
-
+	b.rebuildUserDefinitions = rebuild
 }
 
 func (b *builder) contextForDefinition(parent *buildContext, def common.BuildDefinition, opts common.BuildOptions) *buildContext {
@@ -556,7 +661,22 @@ func (b *builder) Build(def common.BuildDefinition, opts common.BuildOptions) (c
 }
 
 func (b *builder) loadDefinition(hash hash.Hash) (io.ReadCloser, error) {
-	return nil, fmt.Errorf("loadDefinition not implemented")
+	dirFile, err := b.buildDir.GetChild(hash.String())
+	if err != nil {
+		return nil, err
+	}
+
+	dir, ok := dirFile.File.(filesystem.MutableDirectory)
+	if !ok {
+		return nil, fmt.Errorf("file is not a directory: %T", dirFile)
+	}
+
+	f, err := dir.GetChild(definitionFileName)
+	if err != nil {
+		return nil, err
+	}
+
+	return f.File.Open()
 }
 
 func (b *builder) contextForHash(parent *buildContext, hash hash.Hash, opts common.BuildOptions) (*buildContext, error) {
@@ -683,9 +803,10 @@ var (
 	_ common.Builder = &builder{}
 )
 
-func New(buildDir filesystem.MutableDirectory, maxJobs int, logger Logger) common.Builder {
+func New(buildDir filesystem.MutableDirectory, db common.PackageDatabase, maxJobs int, logger Logger) common.Builder {
 	b := &builder{
 		buildDir:    buildDir,
+		database:    db,
 		logger:      logger,
 		tokenLocker: newTokenLocker(maxJobs),
 	}

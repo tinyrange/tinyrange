@@ -10,22 +10,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
-	"github.com/tinyrange/tinyrange/pkg/record"
+	"github.com/tinyrange/tinyrange/pkg/star"
 	"go.starlark.net/starlark"
-)
-
-type ErrTemplateBuilt string
-
-// Error implements error.
-func (e ErrTemplateBuilt) Error() string { return "template built" }
-
-var (
-	_ error = ErrTemplateBuilt("")
 )
 
 func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
@@ -121,7 +111,7 @@ func (b *buildContext) RunVMM(name string, vmCfg config.TinyRangeConfig) (*exec.
 	}
 
 	if name == "" {
-		return nil, ErrTemplateBuilt(configFilename)
+		return nil, common.ErrTemplateBuilt(configFilename)
 	}
 
 	var exe string
@@ -224,87 +214,12 @@ func (b *buildContext) BuildChild(def common.BuildDefinition) (common.BuildArtif
 	return b.builder.build(b, def, common.BuildOptions{})
 }
 
-// Attr implements starlark.HasAttrs.
-func (b *buildContext) Attr(name string) (starlark.Value, error) {
-	if name == "recordwriter" {
-		return starlark.NewBuiltin("BuildContext.recordwriter", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			f, err := b.CreateDefault()
-			if err != nil {
-				return nil, err
-			}
-
-			return record.NewWriter2(f), nil
-		}), nil
-	} else if name == "archive" {
-		return starlark.NewBuiltin("BuildContext.archive", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				dir  *filesystem.StarDirectory
-				kind string
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"dir", &dir,
-				"kind?", &kind,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			if kind == "" {
-				return builder.NewDirectoryToArchiveBuildResult(dir), nil
-			} else {
-				return starlark.None, fmt.Errorf("BuildContext.archive kind not implemented: %s", kind)
-			}
-		}), nil
-	} else if name == "build" {
-		return starlark.NewBuiltin("BuildContext.build", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				val starlark.Value
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"def", &val,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			var buildDef common.BuildDefinition
-
-			if def, ok := val.(common.BuildDefinition); ok {
-				buildDef = def
-			} else {
-				return starlark.None, fmt.Errorf("could not convert %s to BuildDefinition", val.Type())
-			}
-
-			result, err := b.BuildChild(buildDef)
-			if err != nil {
-				return starlark.None, err
-			}
-
-			return buildDef.ToStarlark(result)
-		}), nil
-	} else {
-		return nil, nil
-	}
+func (c *buildContext) Attr(name string) (starlark.Value, error) {
+	return star.BuildContextAttr(c, name)
 }
 
-// AttrNames implements starlark.HasAttrs.
-func (b *buildContext) AttrNames() []string {
-	return []string{"recordwriter", "add_package", "build"}
+func (c *buildContext) AttrNames() []string {
+	return star.BuildContextAttrNames()
 }
 
 func (*buildContext) String() string        { return "BuildContext" }

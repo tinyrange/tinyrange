@@ -924,7 +924,31 @@ var (
 	_ common.PackageDatabase = &packageDatabase{}
 )
 
-func New(buildDir string) (common.PackageDatabase, error) {
+type BuilderFactor func(common.PackageDatabase) (common.Builder, error)
+
+func NewBuilder(buildDir string) BuilderFactor {
+	return func(db common.PackageDatabase) (common.Builder, error) {
+		builder := &builder1{
+			database:      db.(*packageDatabase),
+			buildStatuses: make(map[common.BuildDefinition]*buildStatus),
+			buildCache:    make(map[hash.Hash]common.BuildArtifact),
+			buildDir:      buildDir,
+		}
+
+		builder.defDb = hash.NewDefinitionDatabase(builder.missDefinitionCache)
+
+		// Check with Exists first so it doesn't have issues if the build dir is behind a symlink.
+		if ok, _ := common.Exists(buildDir); !ok {
+			if err := common.Ensure(buildDir, os.ModePerm); err != nil {
+				return nil, err
+			}
+		}
+
+		return builder, nil
+	}
+}
+
+func New(builderFactory BuilderFactor) (common.PackageDatabase, error) {
 	db := &packageDatabase{
 		ContainerBuilders: make(map[string]*containerBuilder),
 		mirrors:           make(map[string][]string),
@@ -933,23 +957,12 @@ func New(buildDir string) (common.PackageDatabase, error) {
 		builders:          make(map[string]starlark.Callable),
 	}
 
-	builder := &builder1{
-		database:      db,
-		buildStatuses: make(map[common.BuildDefinition]*buildStatus),
-		buildCache:    make(map[hash.Hash]common.BuildArtifact),
-		buildDir:      buildDir,
+	builder, err := builderFactory(db)
+	if err != nil {
+		return nil, err
 	}
-
-	builder.defDb = hash.NewDefinitionDatabase(builder.missDefinitionCache)
 
 	db.builder = builder
-
-	// Check with Exists first so it doesn't have issues if the build dir is behind a symlink.
-	if ok, _ := common.Exists(buildDir); !ok {
-		if err := common.Ensure(buildDir, os.ModePerm); err != nil {
-			return nil, err
-		}
-	}
 
 	if err := db.loadBuiltinBuilders(); err != nil {
 		return nil, err
