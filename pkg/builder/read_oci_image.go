@@ -50,7 +50,12 @@ func (r *readOciImageDefinition) Tag() string {
 
 // AsFragments implements common.Directive.
 func (r *readOciImageDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
-	res, err := ctx.BuildChild(r)
+	art, err := ctx.BuildChild(r)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := art.Default()
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +100,12 @@ func (r *readOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildRe
 		return nil, err
 	}
 
-	ark, err := filesystem.ReadArchiveFromFile(child)
+	childFile, err := child.Default()
+	if err != nil {
+		return nil, err
+	}
+
+	ark, err := filesystem.ReadArchiveFromFile(childFile)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +149,12 @@ func (r *readOciImageDefinition) Build(ctx common.BuildContext1) (common.BuildRe
 
 		readArchiveDef := newReadArchiveBuildDefinition(layerDef, ".tar$oci.gz")
 
-		layerFile, err := ctx.BuildChild(readArchiveDef)
+		layerArtifact, err := ctx.BuildChild(readArchiveDef)
+		if err != nil {
+			return nil, err
+		}
+
+		layerFile, err := layerArtifact.Default()
 		if err != nil {
 			return nil, err
 		}

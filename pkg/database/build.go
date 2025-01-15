@@ -195,12 +195,25 @@ func (b *buildContext) HasCreatedOutput() bool {
 	return b.output != nil
 }
 
-func (b *buildContext) BuildChild(def common.BuildDefinition1) (filesystem.File, error) {
+func (b *buildContext) BuildChild(def common.BuildDefinition1) (common.BuildArtifact, error) {
 	if b.status != nil {
 		b.status.Children = append(b.status.Children, def)
 	}
 
-	return b.builder.build(b, def, common.BuildOptions{})
+	defaultFile, err := b.builder.build(b, def, common.BuildOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	hash, err := b.builder.HashDefinition(def)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tempArtifact{
+		defaultFile: defaultFile,
+		hash:        hash,
+	}, nil
 }
 
 func (b *buildContext) NeedsBuild(def common.BuildDefinition1) (bool, error) {
@@ -306,7 +319,12 @@ func (b *buildContext) Attr(name string) (starlark.Value, error) {
 				return starlark.None, err
 			}
 
-			return buildDef.ToStarlark(b, result)
+			resultFile, err := result.Default()
+			if err != nil {
+				return starlark.None, err
+			}
+
+			return buildDef.ToStarlark(b, resultFile)
 		}), nil
 	} else {
 		return nil, nil

@@ -237,7 +237,12 @@ func (def *fetchOciImageDefinition) Create(params hash.SerializableValue) hash.D
 
 // AsFragments implements common.Directive.
 func (def *fetchOciImageDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
-	res, err := ctx.BuildChild(def)
+	art, err := ctx.BuildChild(def)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := art.Default()
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +334,7 @@ func (def *fetchOciImageDefinition) indexDef(regCtx *ociRegistryContext) common.
 func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext1, regCtx *ociRegistryContext, index oci.ImageIndexV1) (common.BuildResult, error) {
 	// Request all the layers.
 	for _, layer := range index.FsLayers {
-		layerArchive, err := ctx.BuildChild(
+		layerArtifact, err := ctx.BuildChild(
 			newReadArchiveBuildDefinition(&registryRequestDefinition{
 				ctx: regCtx,
 				params: RegistryRequestParameters{
@@ -337,6 +342,11 @@ func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext1, r
 				},
 			}, ".tar.gz"),
 		)
+		if err != nil {
+			return nil, err
+		}
+
+		layerArchive, err := layerArtifact.Default()
 		if err != nil {
 			return nil, err
 		}
@@ -363,7 +373,7 @@ func (def *fetchOciImageDefinition) buildFromManifest(
 ) (common.BuildResult, error) {
 	// Request all the layers.
 	for _, layer := range manifest.Layers {
-		layerArchive, err := ctx.BuildChild(
+		layerArtifact, err := ctx.BuildChild(
 			newReadArchiveBuildDefinition(&registryRequestDefinition{
 				ctx: regCtx,
 				params: RegistryRequestParameters{
@@ -371,6 +381,11 @@ func (def *fetchOciImageDefinition) buildFromManifest(
 				},
 			}, ".tar$oci.gz"),
 		)
+		if err != nil {
+			return nil, err
+		}
+
+		layerArchive, err := layerArtifact.Default()
 		if err != nil {
 			return nil, err
 		}
@@ -399,7 +414,7 @@ func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext1, reg
 		}
 	}
 
-	manifestFile, err := ctx.BuildChild(&registryRequestDefinition{
+	manifestArtifact, err := ctx.BuildChild(&registryRequestDefinition{
 		ctx: regCtx,
 		params: RegistryRequestParameters{
 			Url: fmt.Sprintf("/%s/manifests/%s", def.params.Image, manifestId.Digest),
@@ -413,18 +428,28 @@ func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext1, reg
 		return nil, err
 	}
 
+	manifestFile, err := manifestArtifact.Default()
+	if err != nil {
+		return nil, err
+	}
+
 	var manifest oci.ImageManifest
 	if err := ParseJsonFromFile(manifestFile, &manifest); err != nil {
 		return nil, err
 	}
 
-	configFile, err := ctx.BuildChild(&registryRequestDefinition{
+	configArtifact, err := ctx.BuildChild(&registryRequestDefinition{
 		ctx: regCtx,
 		params: RegistryRequestParameters{
 			Url: fmt.Sprintf("/%s/blobs/%s", def.params.Image, manifest.Config.Digest),
 		},
 		// configs are content addressed so don't expire.
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	configFile, err := configArtifact.Default()
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +474,12 @@ func (def *fetchOciImageDefinition) Build(ctx common.BuildContext1) (common.Buil
 	regCtx := &ociRegistryContext{registry: def.params.Registry}
 
 	// Get the index for the image tag.
-	indexFile, err := ctx.BuildChild(def.indexDef(regCtx))
+	indexArtifact, err := ctx.BuildChild(def.indexDef(regCtx))
+	if err != nil {
+		return nil, err
+	}
+
+	indexFile, err := indexArtifact.Default()
 	if err != nil {
 		return nil, err
 	}

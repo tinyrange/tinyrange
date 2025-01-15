@@ -20,7 +20,12 @@ func init() {
 func SerializableValueToStarlark(ctx common.BuildContext1, val hash.SerializableValue) (starlark.Value, error) {
 	switch val := val.(type) {
 	case common.BuildDefinition1:
-		result, err := ctx.BuildChild(val)
+		artifact, err := ctx.BuildChild(val)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		result, err := artifact.Default()
 		if err != nil {
 			return starlark.None, err
 		}
@@ -49,7 +54,12 @@ func SerializableValueToStarlark(ctx common.BuildContext1, val hash.Serializable
 		}
 	case filesystem.ChildSource:
 		if def, ok := val.Source.(common.BuildDefinition1); ok {
-			result, err := ctx.BuildChild(def)
+			artifact, err := ctx.BuildChild(def)
+			if err != nil {
+				return starlark.None, err
+			}
+
+			result, err := artifact.Default()
 			if err != nil {
 				return starlark.None, err
 			}
@@ -176,7 +186,12 @@ func (def *starBuildDefinition) Create(params hash.SerializableValue) hash.Defin
 
 // AsFragments implements common.Directive.
 func (def *starBuildDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
-	res, err := ctx.BuildChild(def)
+	art, err := ctx.BuildChild(def)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := art.Default()
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +274,12 @@ func (def *starBuildDefinition) Build(ctx common.BuildContext1) (common.BuildRes
 			return nil, err
 		}
 
-		fh, err := child.Open()
+		childFile, err := child.Default()
+		if err != nil {
+			return nil, err
+		}
+
+		fh, err := childFile.Open()
 		if err != nil {
 			return nil, err
 		}

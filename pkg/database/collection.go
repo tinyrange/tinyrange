@@ -167,7 +167,12 @@ func (parser *packageCollection) load(ctx *buildContext) error {
 			return err
 		}
 
-		fh, err := built.Open()
+		builtFile, err := built.Default()
+		if err != nil {
+			return err
+		}
+
+		fh, err := builtFile.Open()
 		if err != nil {
 			return err
 		}

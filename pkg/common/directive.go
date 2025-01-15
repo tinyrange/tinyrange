@@ -95,7 +95,12 @@ func (d DirectiveAddFile) SerializableType() string { return "DirectiveAddFile" 
 // AsFragments implements Directive.
 func (d DirectiveAddFile) AsFragments(ctx BuildContext1, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	if d.Definition != nil {
-		res, err := ctx.BuildChild(d.Definition)
+		art, err := ctx.BuildChild(d.Definition)
+		if err != nil {
+			return nil, err
+		}
+
+		res, err := art.Default()
 		if err != nil {
 			return nil, err
 		}
@@ -182,7 +187,12 @@ func (d DirectiveArchive) SerializableType() string { return "DirectiveArchive" 
 
 // AsFragments implements Directive.
 func (d DirectiveArchive) AsFragments(ctx BuildContext1, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
-	res, err := ctx.BuildChild(d.Definition)
+	art, err := ctx.BuildChild(d.Definition)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := art.Default()
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +447,12 @@ type DirectiveKernel struct {
 
 // AsFragments implements Directive.
 func (d DirectiveKernel) AsFragments(ctx BuildContext1, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
-	kernelRes, err := ctx.BuildChild(d.Kernel)
+	kernelArt, err := ctx.BuildChild(d.Kernel)
+	if err != nil {
+		return nil, err
+	}
+
+	kernelRes, err := kernelArt.Default()
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +467,12 @@ func (d DirectiveKernel) AsFragments(ctx BuildContext1, special SpecialDirective
 		return nil, err
 	}
 
-	initramfsRes, err := ctx.BuildChild(d.Initramfs)
+	initramfsArt, err := ctx.BuildChild(d.Initramfs)
+	if err != nil {
+		return nil, err
+	}
+
+	initramfsRes, err := initramfsArt.Default()
 	if err != nil {
 		return nil, err
 	}

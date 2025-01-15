@@ -34,7 +34,12 @@ func (def *extractFileDefinition) Build(ctx common.BuildContext1) (common.BuildR
 		return nil, err
 	}
 
-	ark, err := filesystem.ReadArchiveFromFile(base)
+	baseFile, err := base.Default()
+	if err != nil {
+		return nil, err
+	}
+
+	ark, err := filesystem.ReadArchiveFromFile(baseFile)
 	if err != nil {
 		return nil, err
 	}

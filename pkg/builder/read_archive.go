@@ -445,7 +445,12 @@ func (def *readArchiveBuildDefinition) Create(params hash.SerializableValue) has
 
 // AsFragments implements common.Directive.
 func (r *readArchiveBuildDefinition) AsFragments(ctx common.BuildContext1, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
-	res, err := ctx.BuildChild(r)
+	art, err := ctx.BuildChild(r)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := art.Default()
 	if err != nil {
 		return nil, err
 	}
@@ -490,18 +495,23 @@ func (r *readArchiveBuildDefinition) NeedsBuild(ctx common.BuildContext1, cacheT
 
 // Build implements BuildDefinition.
 func (r *readArchiveBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
-	f, err := ctx.BuildChild(r.params.Base)
+	art, err := ctx.BuildChild(r.params.Base)
 	if err != nil {
 		return nil, err
 	}
 
-	fh, err := f.Open()
+	res, err := art.Default()
+	if err != nil {
+		return nil, err
+	}
+
+	fh, err := res.Open()
 	if err != nil {
 		return nil, err
 	}
 
 	if strings.HasSuffix(r.params.Kind, ".zip") {
-		info, err := f.Stat()
+		info, err := res.Stat()
 		if err != nil {
 			return nil, err
 		}

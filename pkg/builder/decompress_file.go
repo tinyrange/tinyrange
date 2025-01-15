@@ -71,7 +71,12 @@ func (def *decompressFileBuildDefinition) WriteResult(w io.Writer) error {
 
 // Build implements BuildDefinition.
 func (def *decompressFileBuildDefinition) Build(ctx common.BuildContext1) (common.BuildResult, error) {
-	f, err := ctx.BuildChild(def.params.Base)
+	art, err := ctx.BuildChild(def.params.Base)
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := art.Default()
 	if err != nil {
 		return nil, err
 	}

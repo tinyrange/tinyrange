@@ -133,7 +133,7 @@ type BuildContext1 interface {
 	// Database returns the package database.
 	Database() PackageDatabase
 	// BuildChild builds a given child definition.
-	BuildChild(def BuildDefinition1) (filesystem.File, error)
+	BuildChild(def BuildDefinition1) (BuildArtifact, error)
 	// NeedsBuild returns whether the given definition needs to be rebuilt.
 	NeedsBuild(def BuildDefinition1) (bool, error)
 	// Call calls a starlark function declared in a file.
