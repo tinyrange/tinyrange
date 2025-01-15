@@ -49,33 +49,6 @@ func (def *buildVmDefinition) SetBuildTemplateMode() {
 	def.buildTemplateOutput = true
 }
 
-// Dependencies implements common.BuildDefinition.
-func (def *buildVmDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
-	var ret []common.DependencyNode
-
-	arch, err := config.ArchitectureFromString(def.params.Architecture)
-	if err != nil {
-		return nil, err
-	}
-	if arch == config.ArchInvalid {
-		arch = config.HostArchitecture
-	}
-
-	if def.params.Kernel != nil {
-		ret = append(ret, def.params.Kernel)
-	}
-
-	if def.params.InitRamFs != nil {
-		ret = append(ret, def.params.InitRamFs)
-	}
-
-	for _, directive := range def.params.Directives {
-		ret = append(ret, directive)
-	}
-
-	return ret, nil
-}
-
 // implements common.BuildDefinition.
 func (def *buildVmDefinition) Params() hash.SerializableValue { return def.params }
 func (def *buildVmDefinition) SerializableType() string       { return "BuildVmDefinition" }

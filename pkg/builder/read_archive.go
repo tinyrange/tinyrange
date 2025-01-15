@@ -427,15 +427,6 @@ type readArchiveBuildDefinition struct {
 	params ReadArchiveParameters
 }
 
-// Dependencies implements common.BuildDefinition.
-func (def *readArchiveBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
-	if def.params.Base != nil {
-		return []common.DependencyNode{def.params.Base}, nil
-	} else {
-		return []common.DependencyNode{}, nil
-	}
-}
-
 // implements common.BuildDefinition.
 func (def *readArchiveBuildDefinition) Params() hash.SerializableValue { return def.params }
 func (def *readArchiveBuildDefinition) SerializableType() string       { return "ReadArchiveBuildDefinition" }

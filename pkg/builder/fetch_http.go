@@ -32,11 +32,6 @@ func (def *fetchHttpBuildDefinition) Redistributable() bool {
 	return true
 }
 
-// Dependencies implements common.BuildDefinition.
-func (def *fetchHttpBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
-	return []common.DependencyNode{}, nil
-}
-
 // implements common.BuildDefinition.
 func (def *fetchHttpBuildDefinition) Params() hash.SerializableValue { return def.params }
 func (def *fetchHttpBuildDefinition) SerializableType() string       { return "FetchHttpBuildDefinition" }

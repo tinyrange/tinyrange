@@ -22,18 +22,12 @@ func init() {
 }
 
 type Directive interface {
-	DependencyNode
 	Tag() string
 	AsFragments(ctx BuildContext1, special SpecialDirectiveHandlers) ([]config.Fragment, error)
 }
 
 type DirectiveRunCommand struct {
 	Command string
-}
-
-// Dependencies implements Directive.
-func (d DirectiveRunCommand) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return []DependencyNode{}, nil
 }
 
 // SerializableType implements Directive.
@@ -53,11 +47,6 @@ func (d DirectiveRunCommand) Tag() string {
 
 type DirectiveStartServiceCommand struct {
 	Command string
-}
-
-// Dependencies implements Directive.
-func (d DirectiveStartServiceCommand) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return []DependencyNode{}, nil
 }
 
 // SerializableType implements Directive.
@@ -82,11 +71,6 @@ type DirectiveAddFile struct {
 	Definition BuildDefinition1
 	Contents   []byte
 	Executable bool
-}
-
-// Dependencies implements Directive.
-func (d DirectiveAddFile) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return []DependencyNode{d.Definition}, nil
 }
 
 // SerializableType implements Directive.
@@ -159,11 +143,6 @@ func (d DirectiveLocalFile) AsFragments(ctx BuildContext1, special SpecialDirect
 	}, nil
 }
 
-// Dependencies implements Directive.
-func (d DirectiveLocalFile) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return []DependencyNode{}, nil
-}
-
 // SerializableType implements Directive.
 func (d DirectiveLocalFile) SerializableType() string { return "DirectiveLocalFile" }
 
@@ -175,11 +154,6 @@ func (d DirectiveLocalFile) Tag() string {
 type DirectiveArchive struct {
 	Definition BuildDefinition1
 	Target     string
-}
-
-// Dependencies implements Directive.
-func (d DirectiveArchive) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return []DependencyNode{d.Definition}, nil
 }
 
 // SerializableType implements Directive.
@@ -225,11 +199,6 @@ type DirectiveExportPort struct {
 	Port int
 }
 
-// Dependencies implements Directive.
-func (d DirectiveExportPort) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return []DependencyNode{}, nil
-}
-
 // SerializableType implements Directive.
 func (d DirectiveExportPort) SerializableType() string { return "DirectiveExportPort" }
 
@@ -247,11 +216,6 @@ func (d DirectiveExportPort) Tag() string {
 
 type DirectiveEnvironment struct {
 	Variables []string
-}
-
-// Dependencies implements Directive.
-func (d DirectiveEnvironment) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return []DependencyNode{}, nil
 }
 
 // SerializableType implements Directive.
@@ -273,11 +237,6 @@ type DirectiveBuiltin struct {
 	Name          string
 	Architecture  string
 	GuestFilename string
-}
-
-// Dependencies implements Directive.
-func (d DirectiveBuiltin) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return []DependencyNode{}, nil
 }
 
 // SerializableType implements Directive.
@@ -315,17 +274,6 @@ func (d DirectiveList) AsFragments(ctx BuildContext1, special SpecialDirectiveHa
 	return ret, nil
 }
 
-// Dependencies implements Directive.
-func (d DirectiveList) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	var ret []DependencyNode
-
-	for _, dir := range d.Items {
-		ret = append(ret, dir)
-	}
-
-	return ret, nil
-}
-
 // SerializableType implements Directive.
 func (d DirectiveList) SerializableType() string { return "DirectiveList" }
 
@@ -349,11 +297,6 @@ func (d DirectiveAddPackage) AsFragments(ctx BuildContext1, special SpecialDirec
 	return nil, fmt.Errorf("DirectiveAddPackage cannot be represented as a fragment")
 }
 
-// Dependencies implements Directive.
-func (d DirectiveAddPackage) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return nil, nil
-}
-
 // SerializableType implements Directive.
 func (d DirectiveAddPackage) SerializableType() string { return "DirectiveAddPackage" }
 
@@ -369,11 +312,6 @@ type DirectiveInteraction struct {
 // AsFragments implements Directive.
 func (d DirectiveInteraction) AsFragments(ctx BuildContext1, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	return nil, fmt.Errorf("DirectiveInteraction cannot be represented as a fragment")
-}
-
-// Dependencies implements Directive.
-func (d DirectiveInteraction) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return nil, nil
 }
 
 // SerializableType implements Directive.
@@ -402,11 +340,6 @@ func (d DirectiveDefaultInteractive) AsFragments(ctx BuildContext1, special Spec
 	}, nil
 }
 
-// Dependencies implements Directive.
-func (d DirectiveDefaultInteractive) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return nil, nil
-}
-
 // SerializableType implements Directive.
 func (d DirectiveDefaultInteractive) SerializableType() string { return "DirectiveDefaultInteractive" }
 
@@ -425,11 +358,6 @@ func (d DirectiveMountHostDirectory) AsFragments(ctx BuildContext1, special Spec
 	return []config.Fragment{
 		{MountHostDirectory: &config.MountHostDirectoryFragment{HostDirectory: d.HostDirectory, Writable: d.Writable}},
 	}, nil
-}
-
-// Dependencies implements Directive.
-func (d DirectiveMountHostDirectory) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return nil, nil
 }
 
 // SerializableType implements Directive.
@@ -495,11 +423,6 @@ func (d DirectiveKernel) AsFragments(ctx BuildContext1, special SpecialDirective
 	}, nil
 }
 
-// Dependencies implements Directive.
-func (d DirectiveKernel) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return []DependencyNode{d.Kernel, d.Initramfs}, nil
-}
-
 // SerializableType implements Directive.
 func (d DirectiveKernel) SerializableType() string { return "DirectiveKernel" }
 
@@ -517,11 +440,6 @@ func (d DirectiveAddInitScript) AsFragments(ctx BuildContext1, special SpecialDi
 	return []config.Fragment{
 		{AddInitScript: &config.AddInitScriptFragment{GuestFilename: d.GuestFilename}},
 	}, nil
-}
-
-// Dependencies implements Directive.
-func (d DirectiveAddInitScript) Dependencies(ctx BuildContext1) ([]DependencyNode, error) {
-	return nil, nil
 }
 
 // SerializableType implements Directive.

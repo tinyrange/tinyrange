@@ -24,15 +24,6 @@ type decompressFileBuildDefinition struct {
 	r io.ReadCloser
 }
 
-// Dependencies implements common.BuildDefinition.
-func (def *decompressFileBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
-	if def.params.Base != nil {
-		return []common.DependencyNode{def.params.Base}, nil
-	} else {
-		return []common.DependencyNode{}, nil
-	}
-}
-
 // implements common.BuildDefinition.
 func (def *decompressFileBuildDefinition) Params() hash.SerializableValue { return def.params }
 func (def *decompressFileBuildDefinition) SerializableType() string {

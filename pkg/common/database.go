@@ -19,19 +19,9 @@ type BuildResult interface {
 	WriteResult(out io.Writer) error
 }
 
-// DependencyNode is a single dependency in the build graph.
-type DependencyNode interface {
-	hash.SerializableValue
-
-	// Dependencies returns the dependencies of the node.
-	// This doesn't have to return all dependencies just those that can be staticky determined.
-	Dependencies(ctx BuildContext1) ([]DependencyNode, error)
-}
-
 // BuildDefinition1 is a definition that can be built and cached.
 type BuildDefinition1 interface {
 	hash.Definition
-	DependencyNode
 	MacroResult
 	// Tag returns a human readable name for the definition.
 	Tag() string
@@ -60,6 +50,8 @@ type BuildDefinition interface {
 	Dependencies() ([]BuildDefinition, error)
 	// Build builds the definition and returns the result.
 	Build(ctx BuildContext) error
+	// ToStarlark converts the definition to a starlark value.
+	ToStarlark(ctx BuildContext, artifact BuildArtifact) (starlark.Value, error)
 }
 
 // RedistributableDefinition is a extension of BuildDefinition that can be redistributed.

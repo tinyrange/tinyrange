@@ -164,19 +164,6 @@ func (def *starBuildDefinition) AttrNames() []string {
 	return []string{"set_redistributable"}
 }
 
-// Dependencies implements common.BuildDefinition.
-func (def *starBuildDefinition) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
-	var ret []common.DependencyNode
-
-	for _, arg := range def.params.Arguments {
-		if argDef, ok := arg.(common.BuildDefinition1); ok {
-			ret = append(ret, argDef)
-		}
-	}
-
-	return ret, nil
-}
-
 // implements common.BuildDefinition.
 func (def *starBuildDefinition) Params() hash.SerializableValue { return def.params }
 func (def *starBuildDefinition) SerializableType() string       { return "StarBuildDefinition" }

@@ -13,6 +13,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"go.starlark.net/starlark"
 )
 
 type basicBuildDefinitionParams struct {
@@ -30,6 +31,11 @@ var (
 
 type basicBuildDefinition struct {
 	params basicBuildDefinitionParams
+}
+
+// ToStarlark implements common.BuildDefinition.
+func (d *basicBuildDefinition) ToStarlark(ctx common.BuildContext, artifact common.BuildArtifact) (starlark.Value, error) {
+	return starlark.None, fmt.Errorf("not implemented")
 }
 
 // String implements BuildDefinition.

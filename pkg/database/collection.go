@@ -39,11 +39,6 @@ func (parser *packageCollection) Create(params hash.SerializableValue) hash.Defi
 	panic("unimplemented on packageCollection")
 }
 
-// Dependencies implements common.BuildDefinition.
-func (parser *packageCollection) Dependencies(ctx common.BuildContext1) ([]common.DependencyNode, error) {
-	panic("unimplemented on packageCollection")
-}
-
 // NeedsBuild implements common.BuildDefinition.
 func (parser *packageCollection) NeedsBuild(ctx common.BuildContext1, cacheTime time.Time) (bool, error) {
 	panic("unimplemented on packageCollection")
