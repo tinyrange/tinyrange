@@ -2,7 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -56,7 +58,14 @@ func newDb() (common.PackageDatabase, error) {
 
 			buildDirMut := filesystem.NewLocalMutableDirectory(buildDir)
 
-			return build2.New(buildDirMut, db, 1, logger.Group("builder")), nil
+			jobs := 1
+
+			if common.HasExperimentalFlag("build2.multithread") {
+				slog.Warn("enabling multithreaded build")
+				jobs = runtime.NumCPU()
+			}
+
+			return build2.New(buildDirMut, db, jobs, logger.Group("builder")), nil
 		}
 	}
 

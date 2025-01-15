@@ -119,9 +119,32 @@ type starBuildDefinition struct {
 func (def *starBuildDefinition) Dependencies() ([]common.BuildDefinition, error) {
 	var deps []common.BuildDefinition
 
-	for _, arg := range def.params.Arguments {
-		if argDef, ok := arg.(common.BuildDefinition); ok {
+	var addDepends func(val hash.SerializableValue) error
+
+	addDepends = func(val hash.SerializableValue) error {
+		if argDef, ok := val.(common.BuildDefinition); ok {
 			deps = append(deps, argDef)
+		} else if dir, ok := val.(common.Directive); ok {
+			depends, err := dir.Dependencies()
+			if err != nil {
+				return err
+			}
+
+			deps = append(deps, depends...)
+		} else if list, ok := val.(hash.SerializableList); ok {
+			for _, child := range list {
+				if err := addDepends(child); err != nil {
+					return err
+				}
+			}
+		}
+
+		return nil
+	}
+
+	for _, arg := range def.params.Arguments {
+		if err := addDepends(arg); err != nil {
+			return nil, err
 		}
 	}
 
