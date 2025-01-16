@@ -456,7 +456,7 @@ func buildRelease(buildOs string, buildArch string, cgo bool) error {
 	}
 
 	if buildOs == "darwin" && cgo {
-		if err := archive.CopyFile(getTarget(targetDir, buildOs, "tinyrange_vz"), "tinyvz/tinyrange_vz"+exeSuffix); err != nil {
+		if err := archive.CopyFile(getTarget(targetDir, buildOs, "tinyrange_vz"), "tinyrange_vz"+exeSuffix); err != nil {
 			return err
 		}
 	}
