@@ -42,32 +42,33 @@ Complete documentation is available at https://github.com/tinyrange/tinyrange`, 
 }
 
 func newDb() (common.PackageDatabase, error) {
-	builderFactory := build1.NewBuilder(rootBuildDir)
 
-	if common.HasExperimentalFlag("build2") {
-		builderFactory = func(db common.PackageDatabase) (common.Builder, error) {
-			logger := build2.NewSimpleLogger()
+	builderFactory := func(db common.PackageDatabase) (common.Builder, error) {
+		logger := build2.NewSimpleLogger()
 
-			buildDir := rootBuildDir
+		buildDir := rootBuildDir
 
-			// Check with Exists first so it doesn't have issues if the build dir is behind a symlink.
-			if ok, _ := common.Exists(buildDir); !ok {
-				if err := common.Ensure(buildDir, os.ModePerm); err != nil {
-					return nil, err
-				}
+		// Check with Exists first so it doesn't have issues if the build dir is behind a symlink.
+		if ok, _ := common.Exists(buildDir); !ok {
+			if err := common.Ensure(buildDir, os.ModePerm); err != nil {
+				return nil, err
 			}
-
-			buildDirMut := filesystem.NewLocalMutableDirectory(buildDir)
-
-			jobs := 1
-
-			if common.HasExperimentalFlag("build2.multithread") {
-				slog.Warn("enabling multithreaded build")
-				jobs = runtime.NumCPU()
-			}
-
-			return build2.New(buildDirMut, db, jobs, logger.Group("builder")), nil
 		}
+
+		buildDirMut := filesystem.NewLocalMutableDirectory(buildDir)
+
+		jobs := 1
+
+		if common.HasExperimentalFlag("build2.multithread") {
+			slog.Warn("enabling multithreaded build")
+			jobs = runtime.NumCPU()
+		}
+
+		return build2.New(buildDirMut, db, jobs, logger.Group("builder")), nil
+	}
+
+	if common.HasExperimentalFlag("build1") {
+		builderFactory = build1.NewBuilder(rootBuildDir)
 	}
 
 	db, err := database.New(builderFactory)
