@@ -22,6 +22,8 @@ func init() {
 }
 
 type Directive interface {
+	hash.SerializableValue
+
 	Dependencies() ([]BuildDefinition, error)
 	AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error)
 }

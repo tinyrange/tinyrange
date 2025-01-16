@@ -37,12 +37,10 @@ def parse_debian_index(base, contents):
 
     return ret
 
-def parse_debian_release(ctx, release_file, mirror, arch):
+def parse_debian_release(ctx, release_file, mirror, arch, base):
     contents = parse_debian_index("", release_file.read())
 
     contents = contents[0]
-
-    base = release_file.name.removesuffix("/Release")
 
     ret = ctx.recordwriter()
 
@@ -115,7 +113,7 @@ def parse_debian_alias(q):
     return name(name = n, version = v)
 
 def convert_debian_package(ctx, name, version, source):
-    ar = db.build(define.read_archive(
+    ar = ctx.build(define.read_archive(
         source,
         ".ar",
     ))
@@ -125,9 +123,9 @@ def convert_debian_package(ctx, name, version, source):
 
     for f in ar:
         if f.name.startswith("data."):
-            data_ar = db.build(define.read_archive(f, f.name))
+            data_ar = ctx.build(define.read_archive(f, f.name))
         elif f.name.startswith("control."):
-            control = filesystem(db.build(define.read_archive(f, f.name)))
+            control = filesystem(ctx.build(define.read_archive(f, f.name)))
 
     if data_ar == None or control == None:
         return error("could not find data and/or control")
@@ -221,12 +219,12 @@ def parse_debian_package(collection, packages):
             raw = ent,
         )
 
-def get_sources_list_line(ctx, release_file):
+def get_sources_list_line(ctx, release_file, base):
     contents = parse_debian_index("", release_file.read())
 
     contents = contents[0]
 
-    base = db.urls_for(release_file.name.removesuffix("/Release"))
+    base = db.urls_for(base)
 
     url, _, dist_name = base.rpartition("/")
 
@@ -247,12 +245,14 @@ def make_ubuntu_repos(only_latest = True, include_neurodebian = False, arch="amd
         if arch != "amd64":
             mirror = "mirror://ubuntu_ports"
 
+        base = "{}/dists/{}".format(mirror, version)
+
         release_file = define.fetch_http(
             url = "{}/dists/{}/Release".format(mirror,version),
             expire_time = duration("8h"),
         )
 
-        repos.append(define.build(parse_debian_release, release_file, mirror + "/", arch))
+        repos.append(define.build(parse_debian_release, release_file, mirror + "/", arch, base))
 
         ubuntu_repos[version] = (
             define.package_collection(
@@ -260,7 +260,7 @@ def make_ubuntu_repos(only_latest = True, include_neurodebian = False, arch="amd
                 get_debian_installer,
                 *repos
             ),
-            define.build(get_sources_list_line, release_file),
+            define.build(get_sources_list_line, release_file, base),
         )
 
         if include_neurodebian and version == "focal" and arch == "amd64":
@@ -268,7 +268,7 @@ def make_ubuntu_repos(only_latest = True, include_neurodebian = False, arch="amd
                 url = "mirror://neurodebian/dists/{}/Release".format(version),
                 expire_time = duration("8h"),
             )
-            repos.append(define.build(parse_debian_release, release_file, "mirror://neurodebian", arch))
+            repos.append(define.build(parse_debian_release, release_file, "mirror://neurodebian", arch, base))
 
             ubuntu_repos[version + "_neurodebian"] = (
                 define.package_collection(
@@ -276,7 +276,7 @@ def make_ubuntu_repos(only_latest = True, include_neurodebian = False, arch="amd
                     get_debian_installer,
                     *repos
                 ),
-                define.build(get_sources_list_line, release_file),
+                define.build(get_sources_list_line, release_file, "mirror://neurodebian/dists/{}".format(version)),
             )
 
     return ubuntu_repos
@@ -495,32 +495,32 @@ if __name__ == "__main__":
     ), "aarch64"):
         db.add_container_builder(arm_builder)
 
-    db.add_container_builder(define.container_builder(
-        name = "kali",
-        arch = "x86_64",
-        display_name = "Kali Linux",
-        plan_callback = build_debian_directives,
-        # Packages with a high priority need to be installed.
-        default_packages = [
-            query("usr-is-merged"),
-            query("*", tags = ["priority:required"]),
-            query("*", tags = ["priority:important"]),
-            query("*", tags = ["priority:standard"]),
-            query("kali-linux-core"),
-            query("build-essential"),
-        ],
-        split_default_packages = True,
-        # This builder is scoped to just the packages in this repo.
-        packages = define.package_collection(
-            parse_debian_package,
-            get_debian_installer,
-            define.build(
-                parse_debian_release,
-                define.fetch_http(
-                    url = "mirror://kali/dists/kali-rolling/Release",
-                    expire_time = duration("8h"),
-                ),
-                "mirror://kali/",
-            ),
-        ),
-    ))
+    # db.add_container_builder(define.container_builder(
+    #     name = "kali",
+    #     arch = "x86_64",
+    #     display_name = "Kali Linux",
+    #     plan_callback = build_debian_directives,
+    #     # Packages with a high priority need to be installed.
+    #     default_packages = [
+    #         query("usr-is-merged"),
+    #         query("*", tags = ["priority:required"]),
+    #         query("*", tags = ["priority:important"]),
+    #         query("*", tags = ["priority:standard"]),
+    #         query("kali-linux-core"),
+    #         query("build-essential"),
+    #     ],
+    #     split_default_packages = True,
+    #     # This builder is scoped to just the packages in this repo.
+    #     packages = define.package_collection(
+    #         parse_debian_package,
+    #         get_debian_installer,
+    #         define.build(
+    #             parse_debian_release,
+    #             define.fetch_http(
+    #                 url = "mirror://kali/dists/kali-rolling/Release",
+    #                 expire_time = duration("8h"),
+    #             ),
+    #             "mirror://kali/",
+    #         ),
+    #     ),
+    # ))

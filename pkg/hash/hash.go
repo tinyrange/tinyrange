@@ -435,6 +435,8 @@ func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.
 				field.Set(retLst)
 
 				return nil
+			case nil:
+				return nil
 			default:
 				return fmt.Errorf("decodeValue(SerializableValue) not implemented: %T %+v", ret, ret)
 			}

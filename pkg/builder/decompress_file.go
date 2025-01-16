@@ -99,8 +99,10 @@ func (def *decompressFileBuildDefinition) Build(ctx common.BuildContext) error {
 	return ctx.WriteDefault(def)
 }
 
-func (def *decompressFileBuildDefinition) String() string { return "DecompressFile" }
-func (*decompressFileBuildDefinition) Type() string       { return "DecompressFileBuildDefinition" }
+func (def *decompressFileBuildDefinition) String() string {
+	return fmt.Sprintf("DecompressFile_%s_%s", def.params.Base.String(), def.params.Kind)
+}
+func (*decompressFileBuildDefinition) Type() string { return "DecompressFileBuildDefinition" }
 func (*decompressFileBuildDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("DecompressFileBuildDefinition is not hashable")
 }

@@ -61,7 +61,7 @@ func (a *buildArtifact) Default() (filesystem.File, error) {
 		return nil, err
 	}
 
-	return f.File, nil
+	return filesystem.NewSourceWrapper(f.File, a.def), nil
 }
 
 // Receipt implements BuildArtifact.
@@ -254,9 +254,10 @@ func (c *buildContext) build() error {
 		return err
 	}
 
+	startTime := time.Now()
+
 	c.recept = &common.BuildReceipt{
-		StartTime: time.Now(),
-		Files:     make(map[string]string),
+		Files: make(map[string]string),
 	}
 
 	// Build the dependencies.
@@ -270,15 +271,32 @@ func (c *buildContext) build() error {
 	}
 
 	// Call the user builder function.
-	if err := c.def.Build(c); err != nil {
+	err = c.def.Build(c)
+	if errors.Is(err, common.ErrUseExistingBuild) {
+		// The user has requested to use the existing build.
+		// This is a special case where the user has determined that the build is not needed.
+		// We can skip the rest of the build process.
+
+		currentRecept, err := c.loadRecept()
+		if err != nil {
+			return err
+		}
+
+		c.logger.Describe(ColorGreen, "skipped build, using existing build")
+
+		currentRecept.StartTime = c.recept.StartTime
+
+		c.recept = currentRecept
+	} else if err != nil {
 		return err
-	}
+	} else {
+		c.recept.StartTime = startTime
+		c.recept.Duration = time.Since(c.recept.StartTime)
 
-	c.recept.Duration = time.Since(c.recept.StartTime)
-
-	// Set all the hashes in the recept.
-	for name, file := range c.files {
-		c.recept.Files[name] = fmt.Sprintf("%x", file.hash.Sum(nil))
+		// Set all the hashes in the recept.
+		for name, file := range c.files {
+			c.recept.Files[name] = fmt.Sprintf("%x", file.hash.Sum(nil))
+		}
 	}
 
 	// Save the recept to the build directory.
@@ -561,6 +579,7 @@ var (
 )
 
 type builder struct {
+	currentlyBuilding      atomic.Bool
 	database               common.PackageDatabase
 	buildDir               filesystem.MutableDirectory
 	defDb                  *hash.DefinitionDatabase
@@ -653,17 +672,28 @@ func (b *builder) cacheDefinitionHash(def common.BuildDefinition) error {
 
 // Build implements Builder.
 func (b *builder) Build(def common.BuildDefinition, opts common.BuildOptions) (common.BuildArtifact, error) {
-	if def == nil {
-		return nil, fmt.Errorf("definition is nil")
+	if b.currentlyBuilding.CompareAndSwap(false, true) {
+		if def == nil {
+			return nil, fmt.Errorf("definition is nil")
+		}
+
+		if err := b.cacheDefinitionHash(def); err != nil {
+			return nil, err
+		}
+
+		ctx := b.contextForDefinition(nil, def, opts)
+
+		art, err := ctx.getArtifact()
+		if err != nil {
+			return nil, err
+		}
+
+		b.currentlyBuilding.Store(false)
+
+		return art, nil
+	} else {
+		return nil, fmt.Errorf("a build is already in progress")
 	}
-
-	if err := b.cacheDefinitionHash(def); err != nil {
-		return nil, err
-	}
-
-	ctx := b.contextForDefinition(nil, def, opts)
-
-	return ctx.getArtifact()
 }
 
 func (b *builder) loadDefinition(hash hash.Hash) (io.ReadCloser, error) {

@@ -336,10 +336,12 @@ func NewLocalMutableDirectory(filename string) MutableDirectory {
 }
 
 func GetHostFilename(f File) (string, error) {
-	hostFile, ok := f.(HostFile)
-	if !ok {
+	switch f := f.(type) {
+	case HostFile:
+		return f.Filename()
+	case *sourceWrapper:
+		return GetHostFilename(f.File)
+	default:
 		return "", fmt.Errorf("file is not a host file")
 	}
-
-	return hostFile.Filename()
 }

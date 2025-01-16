@@ -306,9 +306,26 @@ var (
 	_ hash.SerializableValue = ChildSource{}
 )
 
+type sourceWrapper struct {
+	File
+	source hash.SerializableValue
+}
+
+func NewSourceWrapper(f File, source hash.SerializableValue) File {
+	return &sourceWrapper{File: f, source: source}
+}
+
 func SourceFromFile(f File) (hash.SerializableValue, error) {
 	switch f := f.(type) {
 	case *localFile:
+		if f.source == nil {
+			return nil, fmt.Errorf("localFile at %s has no source", f.filename)
+		}
+		return f.source, nil
+	case *localMutableFile:
+		if f.source == nil {
+			return nil, fmt.Errorf("localMutableFile at %s has no source", f.filename)
+		}
 		return f.source, nil
 	case *StarFile:
 		return SourceFromFile(f.File)
@@ -321,6 +338,8 @@ func SourceFromFile(f File) (hash.SerializableValue, error) {
 		} else {
 			return nil, fmt.Errorf("CacheEntry has no source")
 		}
+	case *sourceWrapper:
+		return f.source, nil
 	default:
 		return nil, fmt.Errorf("SourceFromFile not implemented: %T %+v", f, f)
 	}
