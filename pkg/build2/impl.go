@@ -214,7 +214,7 @@ func (c *buildContext) RunVMM(name string, config config.TinyRangeConfig) (*exec
 		return nil, fmt.Errorf("unknown VMM: %s", name)
 	}
 
-	buildDirPath, err := filesystem.GetHostFilename(c.buildDir)
+	buildDirPath, err := filesystem.GetHostFilename(c.builder.buildDir)
 	if err != nil {
 		return nil, err
 	}
@@ -338,9 +338,15 @@ func (c *buildContext) ensureUpToDate() error {
 	}
 
 	if c.buildDir == nil {
+		// take the first byte of the hash as the directory name
+		buildDirTop, err := c.builder.buildDir.Mkdir(c.hash.String()[:2])
+		if err != nil {
+			return fmt.Errorf("failed to create top build directory: %w", err)
+		}
+
 		// create a new build directory
 		// If it already exists, it will be reused.
-		c.buildDir, err = c.builder.buildDir.Mkdir(c.hash.String())
+		c.buildDir, err = buildDirTop.Mkdir(c.hash.String()[2:])
 		if err != nil {
 			return fmt.Errorf("failed to create build directory: %w", err)
 		}
@@ -661,12 +667,22 @@ func (b *builder) Build(def common.BuildDefinition, opts common.BuildOptions) (c
 }
 
 func (b *builder) loadDefinition(hash hash.Hash) (io.ReadCloser, error) {
-	dirFile, err := b.buildDir.GetChild(hash.String())
+	dirFileTop, err := b.buildDir.GetChild(hash.String()[:2])
 	if err != nil {
 		return nil, err
 	}
 
-	dir, ok := dirFile.File.(filesystem.MutableDirectory)
+	dir, ok := dirFileTop.File.(filesystem.MutableDirectory)
+	if !ok {
+		return nil, fmt.Errorf("file is not a directory: %T", dirFileTop)
+	}
+
+	dirFile, err := dir.GetChild(hash.String()[2:])
+	if err != nil {
+		return nil, err
+	}
+
+	dir, ok = dirFile.File.(filesystem.MutableDirectory)
 	if !ok {
 		return nil, fmt.Errorf("file is not a directory: %T", dirFile)
 	}
@@ -694,22 +710,35 @@ func (b *builder) contextForHash(parent *buildContext, hash hash.Hash, opts comm
 }
 
 func (b *builder) receiptFromHash(hash hash.Hash) (*common.BuildReceipt, error) {
-	hashDir, err := b.buildDir.GetChild(hash.String())
+	dirFileTop, err := b.buildDir.GetChild(hash.String()[:2])
 	if err != nil {
 		return nil, err
 	}
 
-	mutDir, ok := hashDir.File.(filesystem.MutableDirectory)
+	dir, ok := dirFileTop.File.(filesystem.MutableDirectory)
 	if !ok {
-		return nil, fmt.Errorf("directory is not mutable: %T", hashDir)
+		return nil, fmt.Errorf("file is not a directory: %T", dirFileTop)
 	}
 
-	fakeCtx := &buildContext{buildDir: mutDir}
+	dirFile, err := dir.GetChild(hash.String()[2:])
+	if err != nil {
+		return nil, err
+	}
+
+	dir, ok = dirFile.File.(filesystem.MutableDirectory)
+	if !ok {
+		return nil, fmt.Errorf("file is not a directory: %T", dirFile)
+	}
+
+	fakeCtx := &buildContext{buildDir: dir}
 
 	return fakeCtx.loadRecept()
 }
 
-var validSha256 = regexp.MustCompile(`^[0-9a-f]{64}$`)
+var (
+	validByte   = regexp.MustCompile(`^[0-9a-f]{2}$`)
+	validSha256 = regexp.MustCompile(`^[0-9a-f]{62}$`)
+)
 
 type garbageCollectorState struct {
 	receipt    common.BuildReceipt
@@ -727,19 +756,32 @@ func (b *builder) GarbageCollect(olderThan time.Time) ([]hash.Hash, error) {
 
 	// Populate the receipts map.
 	for _, ent := range ents {
-		if !validSha256.MatchString(ent.Name) {
+		if !validByte.MatchString(ent.Name) {
 			continue
 		}
 
-		receipt, err := b.receiptFromHash(hash.Hash(ent.Name))
+		childDir, ok := ent.File.(filesystem.Directory)
+		if !ok {
+			continue
+		}
+
+		childEnts, err := childDir.Readdir()
 		if err != nil {
-			slog.Warn("failed to load receipt", "err", err)
+			slog.Warn("failed to read directory", "err", err)
 			continue
 		}
 
-		receipts[hash.Hash(ent.Name)] = &garbageCollectorState{
-			receipt:    *receipt,
-			references: 0,
+		for _, childEnt := range childEnts {
+			receipt, err := b.receiptFromHash(hash.Hash(ent.Name + childEnt.Name))
+			if err != nil {
+				slog.Warn("failed to load receipt", "err", err)
+				continue
+			}
+
+			receipts[hash.Hash(ent.Name)] = &garbageCollectorState{
+				receipt:    *receipt,
+				references: 0,
+			}
 		}
 	}
 
