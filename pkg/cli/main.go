@@ -2,9 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -22,6 +20,7 @@ var (
 	rootCpuProfile string
 	rootVerbose    bool
 	rootMirrors    []string
+	rootBuildJobs  int
 )
 
 var rootCmd = &cobra.Command{
@@ -57,14 +56,7 @@ func newDb() (common.PackageDatabase, error) {
 
 		buildDirMut := filesystem.NewLocalMutableDirectory(buildDir)
 
-		jobs := 1
-
-		if common.HasExperimentalFlag("build2.multithread") {
-			slog.Warn("enabling multithreaded build")
-			jobs = runtime.NumCPU()
-		}
-
-		return build2.New(buildDirMut, db, jobs, logger.Group("builder")), nil
+		return build2.New(buildDirMut, db, rootBuildJobs, logger.Group("builder")), nil
 	}
 
 	if common.HasExperimentalFlag("build1") {
@@ -96,6 +88,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&rootCpuProfile, "cpuprofile", "", "write cpu profile to file")
 	rootCmd.PersistentFlags().BoolVar(&rootVerbose, "verbose", false, "enable debugging output")
 	rootCmd.PersistentFlags().StringArrayVar(&rootMirrors, "mirror", []string{}, "Specify mirrors to override the default mirror settings")
+	rootCmd.PersistentFlags().IntVar(&rootBuildJobs, "jobs", 1, "specify the number of jobs to run concurrently")
 }
 
 func Run() {

@@ -909,6 +909,8 @@ func (tr *driver) startDNSServer(ns *netstack.NetStack) error {
 }
 
 func (tr *driver) exportPort(ns *netstack.NetStack, port int) error {
+	slog.Info("exporting port", "address", fmt.Sprintf("localhost:%d", port))
+
 	portListen, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
 		return err
