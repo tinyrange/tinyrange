@@ -606,7 +606,7 @@ func (nbd *nbdAddress) GetNBDServer(unix bool) (net.Addr, string, error) {
 	} else if !unix && nbd.Addr.Network() == "tcp" {
 		return nbd.Addr, nbd.Export, nil
 	} else {
-		return nil, "", fmt.Errorf("invalid address")
+		return nil, "", fmt.Errorf("invalid address: %+v %s %s", unix, nbd.Addr.Network(), nbd.Addr.String())
 	}
 }
 

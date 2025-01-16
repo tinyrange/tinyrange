@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -207,6 +208,11 @@ func (c *buildContext) RunVMM(name string, config config.TinyRangeConfig) (*exec
 
 	if name == "qemu" {
 		exe, err = common.GetAdjacentExecutable("tinyrange_qemu", "tinyqemu/tinyrange_qemu")
+		if err != nil {
+			return nil, err
+		}
+	} else if name == "vz" && runtime.GOOS == "darwin" {
+		exe, err = common.GetAdjacentExecutable("tinyrange_vz")
 		if err != nil {
 			return nil, err
 		}
