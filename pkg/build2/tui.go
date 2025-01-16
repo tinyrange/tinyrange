@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tinyrange/tinyrange/pkg/common"
 )
 
 type eventDrivenGroup struct {
@@ -271,6 +272,10 @@ func (s *simpleLoggerGroup) Close() error {
 
 // Describe implements Logger.
 func (s *simpleLoggerGroup) Describe(color Color, format string, args ...interface{}) {
+	if !common.IsVerbose() {
+		return
+	}
+
 	currentTime := time.Now().Format("15:04:05.000")
 	logString := fmt.Sprintf(format, args...)
 
