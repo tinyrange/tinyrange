@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tinyrange/tinyrange/pkg/build1"
 	"github.com/tinyrange/tinyrange/pkg/build2"
 	"github.com/tinyrange/tinyrange/pkg/buildinfo"
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -41,7 +42,7 @@ Complete documentation is available at https://github.com/tinyrange/tinyrange`, 
 }
 
 func newDb() (common.PackageDatabase, error) {
-	builderFactory := database.NewBuilder(rootBuildDir)
+	builderFactory := build1.NewBuilder(rootBuildDir)
 
 	if common.HasExperimentalFlag("build2") {
 		builderFactory = func(db common.PackageDatabase) (common.Builder, error) {

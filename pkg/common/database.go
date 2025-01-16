@@ -27,6 +27,8 @@ var (
 	ErrUseExistingBuild = errors.New("use existing build")
 )
 
+type BuilderFactor func(PackageDatabase) (Builder, error)
+
 // BuildResult is implemented by definitions and called with a writer.
 type BuildResult interface {
 	// WriteResult writes the result of the build to the given writer.
