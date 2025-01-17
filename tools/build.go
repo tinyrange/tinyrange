@@ -414,7 +414,7 @@ func runTests(filename string) error {
 	return nil
 }
 
-func buildRelease(buildOs string, buildArch string) error {
+func buildRelease(buildOs string, buildArch string, cgo bool) error {
 	if err := os.MkdirAll("release", os.ModePerm); err != nil {
 		return err
 	}
@@ -453,6 +453,12 @@ func buildRelease(buildOs string, buildArch string) error {
 	// copy tinyrange_qemu to tinyqemu/tinyrange_qemu
 	if err := archive.CopyFile(getTarget(targetDir, buildOs, "tinyrange_qemu"), "tinyqemu/tinyrange_qemu"+exeSuffix); err != nil {
 		return err
+	}
+
+	if buildOs == "darwin" && cgo {
+		if err := archive.CopyFile(getTarget(targetDir, buildOs, "tinyrange_vz"), "tinyrange_vz"+exeSuffix); err != nil {
+			return err
+		}
 	}
 
 	// If this is windows and local/tinyqemu.zip exists, extract it to the archive.
@@ -585,7 +591,7 @@ func main() {
 	}
 
 	if *release {
-		if err := buildRelease(*buildOs, *buildArch); err != nil {
+		if err := buildRelease(*buildOs, *buildArch, *cgo); err != nil {
 			log.Fatal(err)
 		}
 	} else if *test != "" {

@@ -203,6 +203,9 @@ func (r *registryRequestDefinition) NeedsBuild(ctx common.BuildContext) (bool, e
 
 // String implements common.BuildDefinition.
 func (r *registryRequestDefinition) String() string {
+	if r.ctx == nil {
+		return "registryRequestDefinition"
+	}
 	tag := []string{"ociRegistryRequest", r.ctx.registry, r.params.Url}
 	tag = append(tag, r.params.Accept...)
 	return strings.Join(tag, "_")

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/linux/kernel"
 	"github.com/tinyrange/tinyrange/pkg/vmm"
@@ -131,7 +132,7 @@ func main() {
 			err      error
 		)
 
-		if dri.RootArchitecture() == config.ArchX8664 {
+		if dri.RootArchitecture() == config.ArchX8664 || common.HasExperimentalFlag("rosetta") {
 			slog.Debug("Enabling Rosetta 2")
 
 			rosetta2 = true
@@ -220,6 +221,41 @@ func main() {
 			nbdAddr, export, err := disk.GetNBDServer(false)
 			if err == nil {
 				url := fmt.Sprintf("nbd://%s/%s", nbdAddr.String(), export)
+
+				attach, err := vz.NewNetworkBlockDeviceStorageDeviceAttachment(
+					url,
+					1*time.Second,
+					false,
+					vz.DiskSynchronizationModeFull,
+				)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create storage device attachment: %s", err)
+				}
+
+				go func() {
+					for {
+						select {
+						case <-attach.Connected():
+							slog.Debug("connected to NBD server", "url", url)
+						case err := <-attach.DidEncounterError():
+							slog.Error("NBD server error", "url", url, "error", err)
+						}
+					}
+				}()
+
+				storageConfig, err := vz.NewVirtioBlockDeviceConfiguration(attach)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create storage configuration: %s", err)
+				}
+
+				storageDevices = append(storageDevices, storageConfig)
+
+				continue
+			}
+
+			nbdAddr, export, err = disk.GetNBDServer(true)
+			if err == nil {
+				url := fmt.Sprintf("nbd+unix:///%s?socket=%s", export, nbdAddr.String())
 
 				attach, err := vz.NewNetworkBlockDeviceStorageDeviceAttachment(
 					url,

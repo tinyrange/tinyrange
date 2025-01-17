@@ -316,12 +316,21 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 		def.server.Serve(listener)
 	}()
 
-	cmd, err := ctx.RunVMM("qemu", vmCfg)
-	if err != nil {
-		return err
-	}
+	if common.HasExperimentalFlag("vz") {
+		cmd, err := ctx.RunVMM("vz", vmCfg)
+		if err != nil {
+			return err
+		}
 
-	def.cmd = cmd
+		def.cmd = cmd
+	} else {
+		cmd, err := ctx.RunVMM("qemu", vmCfg)
+		if err != nil {
+			return err
+		}
+
+		def.cmd = cmd
+	}
 
 	return def.WriteResult(nil)
 }
