@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/csv"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/miekg/dns"
+	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -92,9 +94,6 @@ type vmBackend struct {
 func (vm *vmBackend) Close() error {
 	return nil
 }
-
-// PreferredBlockSize implements common.Backend.
-func (*vmBackend) PreferredBlockSize() int64 { return 4096 }
 
 // ReadAt implements common.Backend.
 func (vm *vmBackend) ReadAt(p []byte, off int64) (n int, err error) {
@@ -295,12 +294,41 @@ type Driver interface {
 	EnsureFile(contents []byte) (File, error)
 }
 
+var startTime = time.Now()
+
+type loggerRegion struct {
+	vm.MemoryRegion
+	filename string
+	write    func([]string) error
+}
+
+func (r *loggerRegion) ReadAt(p []byte, off int64) (n int, err error) {
+	n, err = r.MemoryRegion.ReadAt(p, off)
+	if err != nil {
+		return
+	}
+
+	r.write([]string{
+		fmt.Sprintf("%f", time.Since(startTime).Seconds()),
+		r.filename,
+		fmt.Sprintf("%d", n),
+		fmt.Sprintf("%d", off),
+	})
+
+	return
+}
+
 type driver struct {
-	configs     []config.TinyRangeConfig
-	buildDir    string
-	debug       bool
-	secureSSH   string
-	persistPath string
+	configs      []config.TinyRangeConfig
+	buildDir     string
+	debug        bool
+	secureSSH    string
+	persistPath  string
+	exportFsPath string
+	dumpFsPath   string
+	nbdBlockSize int
+
+	dumpWriter *csv.Writer
 
 	kernel           File
 	initRamFs        File
@@ -818,7 +846,19 @@ func (tr *driver) buildFilesystem(rootInfo config.Filesystem, root filesystem.Di
 
 			start = time.Now()
 
-			if err := fs.AddDirectory(root); err != nil {
+			var regionWrapper ext4.RegionWrapperFunc
+
+			if tr.dumpWriter != nil {
+				regionWrapper = func(filename string, region vm.MemoryRegion) vm.MemoryRegion {
+					return &loggerRegion{
+						MemoryRegion: region,
+						filename:     filename,
+						write:        tr.dumpWriter.Write,
+					}
+				}
+			}
+
+			if err := fs.AddDirectory(root, regionWrapper); err != nil {
 				return nil, nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
 			}
 
@@ -844,6 +884,15 @@ func (tr *driver) nbdLoop(listener net.Listener, backend *vmBackend) {
 		}
 
 		go func(conn net.Conn) {
+			minBlockSize := uint32(512)
+			preferredBlockSize := uint32(1024)
+			maximumBlockSize := uint32(32*1024*1024 - 1)
+			if tr.nbdBlockSize != 0 {
+				minBlockSize = min(512, uint32(tr.nbdBlockSize))
+				preferredBlockSize = min(4096, uint32(tr.nbdBlockSize))
+				maximumBlockSize = min(32*1024*1024-1, uint32(tr.nbdBlockSize))
+			}
+
 			// slog.Debug("got nbd connection", "remote", conn.RemoteAddr().String())
 			err = gonbd.Handle(conn, []gonbd.Export{{
 				Name:        "root",
@@ -851,9 +900,9 @@ func (tr *driver) nbdLoop(listener net.Listener, backend *vmBackend) {
 				Backend:     backend,
 			}}, &gonbd.Options{
 				ReadOnly:           false,
-				MinimumBlockSize:   512, // Fix for VZ on Darwin, it errors if the minimum is too large.
-				PreferredBlockSize: uint32(backend.PreferredBlockSize()),
-				MaximumBlockSize:   32*1024*1024 - 1,
+				MinimumBlockSize:   minBlockSize, // Fix for VZ on Darwin, it errors if the minimum is too large.
+				PreferredBlockSize: preferredBlockSize,
+				MaximumBlockSize:   maximumBlockSize,
 			})
 			if err != nil {
 				slog.Warn("nbd server failed to handle", "error", err)
@@ -1005,30 +1054,42 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		return fmt.Errorf("failed to configure secure ssh: %w", err)
 	}
 
+	if d.dumpFsPath != "" {
+		dumpFile, err := os.Create(d.dumpFsPath)
+		if err != nil {
+			return fmt.Errorf("failed to create dump file: %w", err)
+		}
+		defer dumpFile.Close()
+
+		d.dumpWriter = csv.NewWriter(dumpFile)
+		defer d.dumpWriter.Flush()
+
+		d.dumpWriter.Write([]string{"time", "filename", "size", "offset"})
+	}
+
 	vmem, ext4Fs, fsSize, err := d.buildFilesystem(rootInfo, root)
 	if err != nil {
 		return fmt.Errorf("failed to build filesystem: %w", err)
 	}
 
-	_ = fsSize
+	if d.exportFsPath != "" {
+		out, err := os.Create(d.exportFsPath)
+		if err != nil {
+			return fmt.Errorf("failed to create export filesystem: %w", err)
+		}
+		defer out.Close()
 
-	// if tr.exportFilesystem != "" {
-	// 	start := time.Now()
+		pb := progressbar.DefaultBytes(fsSize, "exporting filesystem")
+		defer pb.Close()
 
-	// 	out, err := os.Create(tr.exportFilesystem)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	defer out.Close()
+		if _, err := io.Copy(io.MultiWriter(pb, out), io.NewSectionReader(vmem, 0, fsSize)); err != nil {
+			return fmt.Errorf("failed to copy export filesystem: %w", err)
+		}
 
-	// 	if _, err := io.Copy(out, io.NewSectionReader(vmem, 0, fsSize)); err != nil {
-	// 		return err
-	// 	}
+		slog.Debug("exported filesystem", "took", time.Since(start))
 
-	// 	slog.Debug("exported filesystem", "took", time.Since(start))
-
-	// 	return nil
-	// }
+		return nil
+	}
 
 	// if tr.listenNbd != "" {
 	// 	listener, err := net.Listen("tcp", tr.listenNbd)
@@ -1317,12 +1378,15 @@ var (
 )
 
 var (
-	doPrepare   = flag.Bool("prepare", false, "prepare the driver and check if it is runnable")
-	buildDir    = flag.String("build-dir", common.GetDefaultBuildDir(), "the build directory")
-	debug       = flag.Bool("debug", false, "enable debug mode")
-	verbose     = flag.Bool("verbose", false, "enable verbose mode")
-	secureSSH   = flag.String("secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
-	persistPath = flag.String("persist-path", "", "Specify a path to save VM files to.")
+	doPrepare    = flag.Bool("prepare", false, "prepare the driver and check if it is runnable")
+	buildDir     = flag.String("build-dir", common.GetDefaultBuildDir(), "the build directory")
+	debug        = flag.Bool("debug", false, "enable debug mode")
+	verbose      = flag.Bool("verbose", false, "enable verbose mode")
+	secureSSH    = flag.String("secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
+	persistPath  = flag.String("persist-path", "", "Specify a path to save VM files to.")
+	exportFsPath = flag.String("exportfs", "", "Export the filesystem to a file.")
+	dumpFsPath   = flag.String("dumpfs", "", "Dump the filename and offset of any reads from the filesystem to a CSV file.")
+	nbdBlockSize = flag.Int("nbd-block-size", 0, "Override the preferred and maximum block size for the NBD server. This can have major performance implications.")
 )
 
 func entryMain(
@@ -1336,10 +1400,13 @@ func entryMain(
 	}
 
 	driver := &driver{
-		buildDir:    *buildDir,
-		debug:       *debug,
-		secureSSH:   *secureSSH,
-		persistPath: *persistPath,
+		buildDir:     *buildDir,
+		debug:        *debug,
+		secureSSH:    *secureSSH,
+		persistPath:  *persistPath,
+		exportFsPath: *exportFsPath,
+		dumpFsPath:   *dumpFsPath,
+		nbdBlockSize: *nbdBlockSize,
 	}
 
 	if *doPrepare {

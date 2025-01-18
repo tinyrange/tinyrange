@@ -1677,8 +1677,11 @@ func (fs *Ext4Filesystem) MakeDeterministic(fsUuid uuid.UUID, createTime time.Ti
 	return nil
 }
 
+type RegionWrapperFunc func(string, vm.MemoryRegion) vm.MemoryRegion
+
 type filesystemCreationContext struct {
 	deferredFilesystem []func() error
+	regionWrapper      RegionWrapperFunc
 }
 
 // Recurse into an filesystem.Directory and put all it's contents into a ext4 filesystem.
@@ -1762,7 +1765,11 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 				return fmt.Errorf("failed to open file for guest: %T %w", ent.File, err)
 			}
 
-			region := vm.NewReaderRegion(f, info.Size())
+			var region vm.MemoryRegion = vm.NewReaderRegion(f, info.Size())
+
+			if ctx.regionWrapper != nil {
+				region = ctx.regionWrapper(name, region)
+			}
 
 			node, err = fs.createFile(name, region)
 			if err != nil {
@@ -1791,8 +1798,10 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 	return nil
 }
 
-func (fs *Ext4Filesystem) AddDirectory(dir filesystem.Directory) error {
-	ctx := &filesystemCreationContext{}
+func (fs *Ext4Filesystem) AddDirectory(dir filesystem.Directory, wrapper RegionWrapperFunc) error {
+	ctx := &filesystemCreationContext{
+		regionWrapper: wrapper,
+	}
 
 	if err := fs.addDirectory(ctx, dir, "/"); err != nil {
 		return fmt.Errorf("failed to convert filesystem to ext4: %w", err)
