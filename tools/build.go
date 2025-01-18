@@ -517,6 +517,7 @@ var vmmList = []VMMInfo{
 			"darwin/amd64",
 			"freebsd/amd64",
 			"openbsd/amd64",
+			"netbsd/amd64",
 			"illumos/amd64",
 		},
 	},

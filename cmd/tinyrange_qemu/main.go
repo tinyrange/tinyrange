@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"runtime"
 	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -34,10 +35,11 @@ func findQemu(driver vmm.Driver, name string) (string, error) {
 }
 
 var (
-	qemuPath   = flag.String("qemu", "", "path to qemu executable")
-	kernelPath = flag.String("kernel", "", "path to linux kernel")
-	cdRomPath  = flag.String("cdrom", "", "path to cdrom image")
-	otherOs    = flag.Bool("other-os", false, "use other operating system (default is linux)")
+	qemuPath     = flag.String("qemu", "", "path to qemu executable")
+	kernelPath   = flag.String("kernel", "", "path to linux kernel")
+	cdRomPath    = flag.String("cdrom", "", "path to cdrom image")
+	otherOs      = flag.Bool("other-os", false, "use other operating system (default is linux)")
+	appendKernel = flag.String("append-kernel", "", "append kernel command line")
 )
 
 type OperatingSystem string
@@ -193,6 +195,11 @@ func main() {
 			// Trust the random number generator on the host CPU.
 			kernelCmdline = append(kernelCmdline, "random.trust_cpu=on")
 
+			if runtime.GOOS == "netbsd" || runtime.GOOS == "openbsd" {
+				// Disable the APIC since it's not supported by NetBSD and OpenBSD.
+				kernelCmdline = append(kernelCmdline, "noapic")
+			}
+
 			// Pass the verbose flag though to the virtual machine.
 			if driver.Verbose() {
 				kernelCmdline = append(kernelCmdline, "tinyrange.verbose=on")
@@ -231,6 +238,10 @@ func main() {
 				}
 
 				args = append(args, "-kernel", filename)
+			}
+
+			if *appendKernel != "" {
+				kernelCmdline = append(kernelCmdline, *appendKernel)
 			}
 
 			// Add the kernel command line.
