@@ -12,7 +12,7 @@ require (
 	github.com/cavaliergopher/cpio v1.0.1
 	github.com/cavaliergopher/rpm v1.2.0
 	github.com/creack/pty v1.1.24
-	github.com/docker/docker v27.4.1+incompatible
+	github.com/docker/docker v27.5.0+incompatible
 	github.com/fatih/color v1.18.0
 	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/gopacket v1.1.19
@@ -23,8 +23,6 @@ require (
 	github.com/jezek/xgbutil v0.0.0-20240804174445-e2e9464b6e01
 	github.com/jsimonetti/rtnetlink v1.4.2
 	github.com/klauspost/compress v1.17.11
-	github.com/lmittmann/tint v1.0.6
-	github.com/mattn/go-isatty v0.0.20
 	github.com/miekg/dns v1.1.62
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/ramr/go-reaper v0.2.3
@@ -63,6 +61,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mdlayher/netlink v1.7.2 // indirect
 	github.com/mdlayher/socket v0.4.1 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
