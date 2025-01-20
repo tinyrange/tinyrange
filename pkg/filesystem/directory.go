@@ -384,6 +384,11 @@ func (m *memoryDirectory) Overwrite(contents []byte) error {
 	return fs.ErrInvalid
 }
 
+// Truncate implements MutableDirectory.
+func (m *memoryDirectory) Truncate(size int64) error {
+	return fs.ErrInvalid
+}
+
 // Readdir implements MutableDirectory.
 func (m *memoryDirectory) Readdir() ([]DirectoryEntry, error) {
 	m.mtx.RLock()

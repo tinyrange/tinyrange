@@ -249,8 +249,12 @@ func (m *overlayFile) Chmod(mode fs.FileMode) error {
 
 // Chown implements MutableFile.
 func (m *overlayFile) Chown(uid int, gid int) error {
-	m.uid = uid
-	m.gid = gid
+	if uid > -1 {
+		m.uid = uid
+	}
+	if gid > -1 {
+		m.gid = gid
+	}
 
 	return nil
 }
@@ -265,6 +269,11 @@ func (m *overlayFile) Chtimes(mtime time.Time) error {
 // Overwrite implements MutableFile.
 func (o *overlayFile) Overwrite(contents []byte) error {
 	return fmt.Errorf("OverlayFiles do not support being overwritten")
+}
+
+// Truncate implements MutableFile.
+func (o *overlayFile) Truncate(size int64) error {
+	return fmt.Errorf("OverlayFiles do not support being truncated")
 }
 
 // Stat implements MutableFile.
@@ -462,8 +471,12 @@ func (m *memoryFile) Chown(uid int, gid int) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	m.uid = uid
-	m.gid = gid
+	if uid > -1 {
+		m.uid = uid
+	}
+	if gid > -1 {
+		m.gid = gid
+	}
 
 	return nil
 }
@@ -494,6 +507,24 @@ func (m *memoryFile) Overwrite(contents []byte) error {
 	defer m.mtx.Unlock()
 
 	m.contents = contents
+
+	return nil
+}
+
+// Truncate implements MutableFile.
+func (m *memoryFile) Truncate(size int64) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	if size < 0 {
+		return fmt.Errorf("negative size")
+	}
+
+	if size > int64(len(m.contents)) {
+		m.contents = append(m.contents, make([]byte, size-int64(len(m.contents)))...)
+	} else {
+		m.contents = m.contents[:size]
+	}
 
 	return nil
 }

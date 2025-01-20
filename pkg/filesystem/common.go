@@ -60,6 +60,7 @@ type MutableFile interface {
 	Chmod(mode fs.FileMode) error
 
 	// Chown changes the owner and group of the file.
+	// If uid or gid is -1, the corresponding value is not changed.
 	Chown(uid int, gid int) error
 
 	// Chtimes changes the modification time of the file.
@@ -67,6 +68,9 @@ type MutableFile interface {
 
 	// Overwrite overwrites the contents of the file.
 	Overwrite(contents []byte) error
+
+	// Truncate truncates the file to the specified size.
+	Truncate(size int64) error
 }
 
 // Entry is a single file in an archive.

@@ -32,6 +32,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/p9"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/sftp"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 	"github.com/tinyrange/tinyrange/pkg/hash"
@@ -1204,19 +1205,34 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		}
 	}
 
-	if len(mountedHostDirectories) > 0 {
-		slog.Info("host directories avalible via SFTP on sftp://host.internal")
-	}
+	if common.HasExperimentalFlag("9p") {
+		svr := p9.NewServer(top)
 
-	svr := sftp.NewInternalServer(top, ":22")
-
-	go func() {
-		if err := svr.Run(func(network, addr string) (net.Listener, error) {
-			return ns.ListenInternal("tcp", addr)
-		}); err != nil {
-			slog.Error("failed to run sftp server", "err", err)
+		listen, err := ns.ListenInternal("tcp", ":564")
+		if err != nil {
+			return fmt.Errorf("failed to listen internal (9p): %w", err)
 		}
-	}()
+
+		go func() {
+			if err := svr.Serve(listen); err != nil {
+				slog.Error("failed to run 9p server", "err", err)
+			}
+		}()
+	} else {
+		if len(mountedHostDirectories) > 0 {
+			slog.Info("host directories avalible via SFTP on sftp://host.internal")
+		}
+
+		svr := sftp.NewInternalServer(top, ":22")
+
+		go func() {
+			if err := svr.Run(func(network, addr string) (net.Listener, error) {
+				return ns.ListenInternal("tcp", addr)
+			}); err != nil {
+				slog.Error("failed to run sftp server", "err", err)
+			}
+		}()
+	}
 
 	slog.Debug("starting virtual machine", "took", time.Since(start))
 

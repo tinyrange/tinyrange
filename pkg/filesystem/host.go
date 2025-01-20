@@ -150,6 +150,11 @@ func (l *localMutableFile) Overwrite(contents []byte) error {
 	return os.WriteFile(l.filename, contents, 0644)
 }
 
+// Truncate implements MutableFile.
+func (l *localMutableFile) Truncate(size int64) error {
+	return os.Truncate(l.filename, size)
+}
+
 // Open implements File.
 // This shadows the Open method of LocalFile.
 func (l *localMutableFile) Open() (FileHandle, error) {

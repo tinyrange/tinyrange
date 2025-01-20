@@ -502,13 +502,20 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 
 	if (len(config.ReadOnlyMounts) > 0 || len(config.ReadWriteMounts) > 0) &&
 		strings.HasPrefix(config.Builder, "alpine@") && config.OciImage == "" {
-		directives = append(directives, common.DirectiveAddPackage{Name: common.PackageQuery{Name: "sshfs"}})
-		directives = append(directives, common.DirectiveRunCommand{Command: strings.Join([]string{
-			"mkdir /share",
-			"mkdir /root/.ssh",
-			"ssh-keyscan host.internal > /root/.ssh/known_hosts 2> /dev/null",
-			"echo 'password' | sshfs -o password_stdin host.internal:/ /share",
-		}, "\n")})
+		if common.HasExperimentalFlag("9p") {
+			directives = append(directives, common.DirectiveRunCommand{Command: strings.Join([]string{
+				"mkdir /share",
+				"mount -t 9p -o trans=tcp,version=9p2000.L 10.42.0.1 /share",
+			}, "\n")})
+		} else {
+			directives = append(directives, common.DirectiveAddPackage{Name: common.PackageQuery{Name: "sshfs"}})
+			directives = append(directives, common.DirectiveRunCommand{Command: strings.Join([]string{
+				"mkdir /share",
+				"mkdir /root/.ssh",
+				"ssh-keyscan host.internal > /root/.ssh/known_hosts 2> /dev/null",
+				"echo 'password' | sshfs -o password_stdin host.internal:/ /share",
+			}, "\n")})
+		}
 	}
 
 	if config.WriteRoot == "" && config.WriteDocker == "" {
