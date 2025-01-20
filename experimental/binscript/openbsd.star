@@ -199,7 +199,7 @@ def bsdffs_superblock(f):
         "nrpos": f.i32le(),  # number of rotational positions
         "postbloff": f.i32le(),  # (u_int16) rotation block list head
         "rotbloff": f.i32le(),  # (u_int8) blocks for each rotation
-        "magic": assert(f.i32le(), 0x19540119, non_fatal=True),  # magic number
+        "magic": assert(f.i32le(), 0x19540119),  # magic number
         "space": f.u8(),  # list of blocks for each rotation
     }
 

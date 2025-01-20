@@ -36,7 +36,7 @@ func appMain() error {
 		return err
 	}
 
-	for _, frag := range config.RootFsFragments {
+	for _, frag := range config.Filesystems["main"].Fragments {
 		if frag.Archive != nil {
 			arkFile := filesystem.NewLocalFile(frag.Archive.HostFilename, nil)
 
