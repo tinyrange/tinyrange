@@ -1,6 +1,7 @@
 package vmm
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -15,6 +16,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -1105,22 +1107,26 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 	// 	tr.nbdLoop(listener, backend)
 	// }
 
-	nbdAddress, listener, err := d.createNbdListener(true)
-	if err != nil {
-		return fmt.Errorf("failed to create nbd listener: %w", err)
-	}
-
 	backend := &vmBackend{vm: vmem}
 
-	go d.nbdLoop(listener, backend)
-
-	if ext4Fs != nil {
-		d.diskImages = append(d.diskImages, &ext4Filesystem{
-			nbdAddress: nbdAddress,
-			fs:         ext4Fs,
-		})
+	if common.HasExperimentalFlag("nbd_test") && common.HasExperimentalFlag("initramfs") {
+		// ignore
 	} else {
-		d.diskImages = append(d.diskImages, nbdAddress)
+		nbdAddress, listener, err := d.createNbdListener(true)
+		if err != nil {
+			return fmt.Errorf("failed to create nbd listener: %w", err)
+		}
+
+		go d.nbdLoop(listener, backend)
+
+		if ext4Fs != nil {
+			d.diskImages = append(d.diskImages, &ext4Filesystem{
+				nbdAddress: nbdAddress,
+				fs:         ext4Fs,
+			})
+		} else {
+			d.diskImages = append(d.diskImages, nbdAddress)
+		}
 	}
 
 	ns := netstack.New()
@@ -1309,6 +1315,64 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 				os.Exit(1)
 			}
 		}()
+
+		if common.HasExperimentalFlag("nbd_test") && common.HasExperimentalFlag("initramfs") {
+			// post the second stage startup.
+			secondStage := []byte(`
+def main():
+	path_ensure("/mnt")
+	dev = connect_nbd("10.42.0.1", 10809, "root")
+	mount("ext4", dev, "/mnt")
+	chroot("/mnt")
+	chdir("/")
+	exec("/init")
+			`)
+
+			client := http.Client{
+				Transport: &http.Transport{
+					DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+						return ns.DialInternalContext(ctx, network, addr)
+					},
+				},
+			}
+
+			for {
+				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+				defer cancel()
+
+				contents := bytes.NewReader(secondStage)
+				req, err := http.NewRequestWithContext(ctx, "POST", "http://10.42.0.2:13234/run", contents)
+				if err != nil {
+					return err
+				}
+
+				resp, err := client.Do(req)
+				if err != nil {
+					slog.Error("failed to post second stage", "err", err)
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					slog.Error("failed to read response", "err", err)
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+
+				slog.Debug("second stage response", "body", string(body))
+
+				if resp.StatusCode != http.StatusOK {
+					slog.Error("failed to post second stage", "status", resp.Status)
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+
+				break
+			}
+
+			slog.Info("posted second stage")
+		}
 
 		if d.Interaction() == config.InteractionVNC {
 			go runVncClient(ns, "10.42.0.2:5901")

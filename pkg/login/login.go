@@ -562,12 +562,7 @@ def main():
 	network_interface_up("lo")
 	network_interface_up("eth0")
 	network_interface_configure("eth0", ip = "10.42.0.2/16", router = "10.42.0.1")
-	path_ensure("/mnt")
-	dev = connect_nbd("10.42.0.1", 10809, "root")
-	mount("ext4", dev, "/mnt")
-	chroot("/mnt")
-	chdir("/")
-	exec("/init")
+	run_starlark_server(13234)
 `)},
 		}, "initramfs")
 

@@ -625,7 +625,7 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 
 	// run init scripts first
 	for _, script := range cfg.InitScripts {
-		if err := runStarlark(script); err != nil {
+		if err := runStarlarkFile(script); err != nil {
 			return err
 		}
 	}

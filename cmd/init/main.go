@@ -530,15 +530,8 @@ func loadStarlarkArgs() (starlark.Value, error) {
 	return args, nil
 }
 
-func runStarlark(filename string) error {
-	args, err := loadStarlarkArgs()
-	if err != nil {
-		return fmt.Errorf("failed to load starlark args: %v", err)
-	}
-
+func getStarlarkGlobals() (starlark.StringDict, error) {
 	globals := starlark.StringDict{}
-
-	globals["args"] = args
 
 	globals["exit"] = starlark.NewBuiltin("exit", func(
 		thread *starlark.Thread,
@@ -1102,7 +1095,24 @@ func runStarlark(filename string) error {
 			return starlark.None, err
 		}
 
-		return starlark.None, runStarlark(filename)
+		return starlark.None, runStarlarkFile(filename)
+	})
+
+	globals["run_starlark_server"] = starlark.NewBuiltin("run_starlark_server", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var port int
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"port", &port,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, runStarlarkServer(port)
 	})
 
 	globals["has_experimental_flag"] = starlark.NewBuiltin("has_experimental_flag", func(
@@ -1192,7 +1202,7 @@ func runStarlark(filename string) error {
 	var uname unix.Utsname
 
 	if err := unix.Uname(&uname); err != nil {
-		return err
+		return nil, err
 	}
 
 	unameDict := starlark.NewDict(8)
@@ -1218,9 +1228,54 @@ func runStarlark(filename string) error {
 
 	globals["uname"] = unameDict
 
+	return globals, nil
+}
+
+func runStarlarkServer(port int) error {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "OKAY")
+	})
+
+	// Run a fragment of starlark code
+	http.HandleFunc("POST /run", func(w http.ResponseWriter, r *http.Request) {
+		contents, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Fprintf(w, "OKAY")
+
+		// run this in the background since it may disconnect us by invoking a new init.
+		go func() {
+			slog.Info("running starlark script", "contents", string(contents))
+			if err := runStarlarkScript("script.star", string(contents)); err != nil {
+				slog.Error("failed to run starlark script", "err", err)
+			}
+		}()
+	})
+
+	slog.Info("starting starlark server", "port", port)
+
+	return http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+}
+
+func runStarlarkScript(filename string, contents string) error {
+	args, err := loadStarlarkArgs()
+	if err != nil {
+		return fmt.Errorf("failed to load starlark args: %v", err)
+	}
+
+	globals, err := getStarlarkGlobals()
+	if err != nil {
+		return fmt.Errorf("failed to get starlark globals: %v", err)
+	}
+
+	globals["args"] = args
+
 	thread := &starlark.Thread{Name: "init"}
 
-	decls, err := starlark.ExecFileOptions(&syntax.FileOptions{Set: true, While: true, TopLevelControl: true}, thread, filename, nil, globals)
+	decls, err := starlark.ExecFileOptions(&syntax.FileOptions{Set: true, While: true, TopLevelControl: true}, thread, filename, contents, globals)
 	if err != nil {
 		return err
 	}
@@ -1236,6 +1291,15 @@ func runStarlark(filename string) error {
 	}
 
 	return nil
+}
+
+func runStarlarkFile(filename string) error {
+	contents, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+
+	return runStarlarkScript(filename, string(contents))
 }
 
 func runSSHServer() error {
@@ -1296,18 +1360,18 @@ func runSSHServer() error {
 }
 
 var (
-	execShell         = flag.Bool("shell", false, "start the shell instead of running /init.sh")
-	runSshServer      = flag.String("ssh", "", "run a ssh server that executes the argument on connection")
-	runConfiguredSsh  = flag.Bool("ssh-configured", false, "run a ssh server with the machine config files")
-	downloadFile      = flag.String("download", "", "download a file from the specified server")
-	runScripts        = flag.String("run-scripts", "", "run a JSON file of scripts")
-	lockFile          = flag.String("lock-file", "", "don't run scripts if this file exists and create it if it doesn't exist")
-	runBasicScripts   = flag.String("run-basic-scripts", "", "run a JSON file containing an array of commands")
-	translateScripts  = flag.Bool("translate-scripts", false, "translate scripts into starlark before running them")
-	runConfig         = flag.String("run-config", "", "run a JSON file with a given builder config")
-	dumpFs            = flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
-	runStarlarkScript = flag.String("star", "", "run a starlark script")
-	modprobe          = flag.String("modprobe", "", "load a kernel module")
+	execShell             = flag.Bool("shell", false, "start the shell instead of running /init.sh")
+	runSshServer          = flag.String("ssh", "", "run a ssh server that executes the argument on connection")
+	runConfiguredSsh      = flag.Bool("ssh-configured", false, "run a ssh server with the machine config files")
+	downloadFile          = flag.String("download", "", "download a file from the specified server")
+	runScripts            = flag.String("run-scripts", "", "run a JSON file of scripts")
+	lockFile              = flag.String("lock-file", "", "don't run scripts if this file exists and create it if it doesn't exist")
+	runBasicScripts       = flag.String("run-basic-scripts", "", "run a JSON file containing an array of commands")
+	translateScripts      = flag.Bool("translate-scripts", false, "translate scripts into starlark before running them")
+	runConfig             = flag.String("run-config", "", "run a JSON file with a given builder config")
+	dumpFs                = flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
+	runStarlarkScriptFile = flag.String("star", "", "run a starlark script")
+	modprobe              = flag.String("modprobe", "", "load a kernel module")
 )
 
 func initMain() error {
@@ -1429,8 +1493,8 @@ func initMain() error {
 		return builderRunWithConfig(cfg)
 	}
 
-	if *runStarlarkScript != "" {
-		return runStarlark(*runStarlarkScript)
+	if *runStarlarkScriptFile != "" {
+		return runStarlarkFile(*runStarlarkScriptFile)
 	}
 
 	if *modprobe != "" {
@@ -1514,7 +1578,7 @@ func initMain() error {
 		return err
 	}
 
-	if err := runStarlark("/init.star"); err != nil {
+	if err := runStarlarkFile("/init.star"); err != nil {
 		return fmt.Errorf("failed to run /init.star: %v", err)
 	}
 
