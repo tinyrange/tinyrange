@@ -3,15 +3,17 @@
 version: 1
 arch: arm64
 builder: alpine@3.21
+environment:
+  - KERNEL_VERSION=6.12.10
 commands:
-  - mv /root/linux.proposed.config /root/linux-6.12.8/.config
-  - cd /root/linux-6.12.8; make -j6
-  - mv /root/linux-6.12.8/arch/arm64/boot/Image /root/vmlinux.proposed
+  - mv /root/linux-$KERNEL_VERSION.proposed.config /root/linux-$KERNEL_VERSION/.config
+  - cd /root/linux-$KERNEL_VERSION; make -j6
+  - mv /root/linux-$KERNEL_VERSION/arch/arm64/boot/Image /root/vmlinux-$KERNEL_VERSION.proposed
 files:
-  - linux.proposed.config
+  - linux-$KERNEL_VERSION.proposed.config
 archives:
-  - https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.8.tar.xz
-output: /root/vmlinux.proposed
+  - https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-$KERNEL_VERSION.tar.xz
+output: /root/vmlinux-$KERNEL_VERSION.proposed
 packages:
   - build-base
   - flex
