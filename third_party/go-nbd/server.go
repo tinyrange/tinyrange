@@ -35,6 +35,7 @@ type Options struct {
 	MinimumBlockSize   uint32
 	PreferredBlockSize uint32
 	MaximumBlockSize   uint32
+	SendFixedFlags     bool
 }
 
 func Handle(conn net.Conn, exports []Export, options *Options) error {
@@ -56,11 +57,16 @@ func Handle(conn net.Conn, exports []Export, options *Options) error {
 		options.MaximumBlockSize = maximumPacketSize
 	}
 
+	flags := protocol.NEGOTIATION_HANDSHAKE_FLAG_FIXED_NEWSTYLE
+	if options.SendFixedFlags {
+		flags |= protocol.NEGOTIATION_HANDSHAKE_FLAG_NO_ZEROES
+	}
+
 	// Negotiation
 	if err := binary.Write(conn, binary.BigEndian, protocol.NegotiationNewstyleHeader{
 		OldstyleMagic:  protocol.NEGOTIATION_MAGIC_OLDSTYLE,
 		OptionMagic:    protocol.NEGOTIATION_MAGIC_OPTION,
-		HandshakeFlags: protocol.NEGOTIATION_HANDSHAKE_FLAG_FIXED_NEWSTYLE,
+		HandshakeFlags: flags,
 	}); err != nil {
 		return err
 	}

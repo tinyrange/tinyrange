@@ -51,6 +51,12 @@ def main():
         for script in args["additional_scripts"]:
             run_starlark(script)
 
+    # If the nbd_test flag is set then mount a test filesystem at /mnt.
+    if has_experimental_flag("nbd_test"):
+        path_ensure("/mnt")
+        dev = connect_nbd("10.42.0.1", 10809, "nbd_test")
+        mount("ext4", dev, "/mnt")
+
     # Run the SSH server.
     if get_env("TINYRANGE_INTERACTION") == "serial" or nonet:
         if "ssh_command" in args:

@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -24,6 +25,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/Merovius/nbd"
 	"github.com/anmitsu/go-shlex"
 	"github.com/creack/pty"
 	"github.com/insomniacslk/dhcp/netboot"
@@ -1101,6 +1103,88 @@ func runStarlark(filename string) error {
 		}
 
 		return starlark.None, runStarlark(filename)
+	})
+
+	globals["has_experimental_flag"] = starlark.NewBuiltin("has_experimental_flag", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			flag string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"flag", &flag,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.Bool(common.HasExperimentalFlag(flag)), nil
+	})
+
+	globals["connect_nbd"] = starlark.NewBuiltin("connect_nbd", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			addr    string
+			port    int
+			name    string
+			timeout float64
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"addr", &addr,
+			"port", &port,
+			"name", &name,
+			"timeout?", &timeout,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if timeout == 0 {
+			timeout = 2
+		}
+
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Duration(timeout)*time.Second))
+		defer cancel()
+
+		conn, err := new(net.Dialer).DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", addr, port))
+		if err != nil {
+			return starlark.None, err
+		}
+
+		var sock *os.File
+		switch conn := conn.(type) {
+		case *net.TCPConn:
+			sock, err = conn.File()
+		default:
+			return starlark.None, fmt.Errorf("unsupported connection type")
+		}
+		if err != nil {
+			return starlark.None, err
+		}
+
+		cl, err := nbd.ClientHandshake(ctx, conn)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		exp, err := cl.Go(name)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		n, err := nbd.Configure(exp, sock)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.String(fmt.Sprintf("/dev/nbd%d", n)), nil
 	})
 
 	globals["json"] = starlarkjson.Module

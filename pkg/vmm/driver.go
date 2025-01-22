@@ -1167,6 +1167,50 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		}
 	}
 
+	if common.HasExperimentalFlag("nbd_test") {
+		vmem := vm.NewVirtualMemory(128*1024*1024, 4096)
+
+		fs, err := ext4.CreateExt4Filesystem(vmem, 0, 128*1024*1024)
+		if err != nil {
+			return fmt.Errorf("failed to create ext4 filesystem: %w", err)
+		}
+
+		if err := fs.CreateFile("/test.txt", vm.RawRegion([]byte("hello world"))); err != nil {
+			return fmt.Errorf("failed to create file: %w", err)
+		}
+
+		listen, err := ns.ListenInternal("tcp", ":10809")
+		if err != nil {
+			return fmt.Errorf("failed to listen internal (nbd): %w", err)
+		}
+
+		go func() {
+			for {
+				conn, err := listen.Accept()
+				if err != nil {
+					slog.Error("nbd server failed to accept", "error", err)
+					return
+				}
+				go func() {
+					err = gonbd.Handle(conn, []gonbd.Export{{
+						Name:        "nbd_test",
+						Description: "",
+						Backend:     &vmBackend{vm: vmem},
+					}}, &gonbd.Options{
+						SendFixedFlags:     true,
+						ReadOnly:           false,
+						MinimumBlockSize:   512,
+						PreferredBlockSize: 4096,
+						MaximumBlockSize:   32*1024*1024 - 1,
+					})
+					if err != nil {
+						slog.Warn("nbd server failed to handle", "error", err)
+					}
+				}()
+			}
+		}()
+	}
+
 	// Set the kernel.
 	if topConfig.KernelFilename != "" {
 		d.kernel = &localFile{
