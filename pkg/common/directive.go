@@ -400,34 +400,43 @@ type DirectiveKernel struct {
 
 // AsFragments implements Directive.
 func (d DirectiveKernel) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
-	kernelArt, err := ctx.BuildChild(d.Kernel)
-	if err != nil {
-		return nil, err
+	var (
+		kernelFilename    string
+		initramfsFilename string
+	)
+
+	if d.Kernel != nil {
+		kernelArt, err := ctx.BuildChild(d.Kernel)
+		if err != nil {
+			return nil, err
+		}
+
+		kernelRes, err := kernelArt.Default()
+		if err != nil {
+			return nil, err
+		}
+
+		kernelFilename, err = ctx.HostFilenameFromFile(kernelRes)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	kernelRes, err := kernelArt.Default()
-	if err != nil {
-		return nil, err
-	}
+	if d.Initramfs != nil {
+		initramfsArt, err := ctx.BuildChild(d.Initramfs)
+		if err != nil {
+			return nil, err
+		}
 
-	kernelFilename, err := ctx.HostFilenameFromFile(kernelRes)
-	if err != nil {
-		return nil, err
-	}
+		initramfsRes, err := initramfsArt.Default()
+		if err != nil {
+			return nil, err
+		}
 
-	initramfsArt, err := ctx.BuildChild(d.Initramfs)
-	if err != nil {
-		return nil, err
-	}
-
-	initramfsRes, err := initramfsArt.Default()
-	if err != nil {
-		return nil, err
-	}
-
-	initramfsFilename, err := ctx.HostFilenameFromFile(initramfsRes)
-	if err != nil {
-		return nil, err
+		initramfsFilename, err = ctx.HostFilenameFromFile(initramfsRes)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return []config.Fragment{

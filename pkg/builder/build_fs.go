@@ -70,7 +70,7 @@ func (i *initRamFsBuilderResult) WriteResult(w io.Writer) error {
 			filename := strings.TrimPrefix(c.GuestFilename, "/")
 
 			if err := writer.AddSimpleFile(filename, c.Contents, c.Executable); err != nil {
-				return fmt.Errorf("failed to add simple file: %s", c.GuestFilename)
+				return fmt.Errorf("failed to add simple file %s: %w", c.GuestFilename, err)
 			}
 		} else if frag.Builtin != nil {
 			c := frag.Builtin
@@ -82,7 +82,7 @@ func (i *initRamFsBuilderResult) WriteResult(w io.Writer) error {
 				}
 
 				if err := writer.AddSimpleFile(c.GuestFilename, buf, true); err != nil {
-					return fmt.Errorf("failed to add simple file: %s", c.GuestFilename)
+					return fmt.Errorf("failed to add simple file %s: %w", c.GuestFilename, err)
 				}
 			} else {
 				return fmt.Errorf("unhandled builtin: %s", c.Name)

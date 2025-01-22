@@ -551,6 +551,29 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 		directives = append(directives, common.DirectiveExportPort{Name: "forward", Port: portNum})
 	}
 
+	if common.HasExperimentalFlag("initramfs") && common.HasExperimentalFlag("nbd_test") {
+		// create a simple initramfs
+		initramfsDef := builder.Factory.NewBuildFsDefinition([]common.Directive{
+			common.DirectiveBuiltin{Name: "init", Architecture: string(arch), GuestFilename: "init"},
+			common.DirectiveAddFile{Filename: "init.star", Contents: []byte(`
+def main():
+	parse_commandline(file_read("/proc/cmdline"))
+	mount("devtmpfs", "devtmpfs", "/dev", ensure_path = True, ignore_error = True)
+	network_interface_up("lo")
+	network_interface_up("eth0")
+	network_interface_configure("eth0", ip = "10.42.0.2/16", router = "10.42.0.1")
+	path_ensure("/mnt")
+	dev = connect_nbd("10.42.0.1", 10809, "root")
+	mount("ext4", dev, "/mnt")
+	chroot("/mnt")
+	chdir("/")
+	exec("/init")
+`)},
+		}, "initramfs")
+
+		directives = append(directives, common.DirectiveKernel{Initramfs: initramfsDef})
+	}
+
 	interaction := "ssh"
 
 	directives, err = common.FlattenDirectives(directives, common.SpecialDirectiveHandlers{
@@ -825,8 +848,12 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 		directives, err = common.FlattenDirectives(directives, common.SpecialDirectiveHandlers{
 			Kernel: func(dir common.DirectiveKernel) error {
-				kernel = dir.Kernel
-				initramfs = dir.Initramfs
+				if dir.Kernel != nil {
+					kernel = dir.Kernel
+				}
+				if dir.Initramfs != nil {
+					initramfs = dir.Initramfs
+				}
 
 				return nil
 			},

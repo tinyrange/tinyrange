@@ -1192,11 +1192,18 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 					return
 				}
 				go func() {
-					err = gonbd.Handle(conn, []gonbd.Export{{
-						Name:        "nbd_test",
-						Description: "",
-						Backend:     &vmBackend{vm: vmem},
-					}}, &gonbd.Options{
+					err = gonbd.Handle(conn, []gonbd.Export{
+						{
+							Name:        "nbd_test",
+							Description: "",
+							Backend:     &vmBackend{vm: vmem},
+						},
+						{
+							Name:        "root",
+							Description: "",
+							Backend:     backend,
+						},
+					}, &gonbd.Options{
 						SendFixedFlags:     true,
 						ReadOnly:           false,
 						MinimumBlockSize:   512,
