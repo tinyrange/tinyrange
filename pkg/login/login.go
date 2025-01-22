@@ -536,11 +536,17 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 		directives = append(directives, common.DirectiveEnvironment{Variables: config.Environment})
 	}
 
+	forwardedPorts := make(map[int]struct{})
 	for _, port := range config.ForwardPorts {
 		portNum, err := strconv.Atoi(port)
 		if err != nil {
 			return nil, "", err
 		}
+
+		if _, ok := forwardedPorts[portNum]; ok {
+			continue
+		}
+		forwardedPorts[portNum] = struct{}{}
 
 		directives = append(directives, common.DirectiveExportPort{Name: "forward", Port: portNum})
 	}
