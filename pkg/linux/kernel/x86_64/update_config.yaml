@@ -4,7 +4,7 @@ version: 1
 arch: x86_64
 builder: alpine@3.21
 environment:
-  - KERNEL_VERSION=6.12.9
+  - KERNEL_VERSION=6.12.10
 commands:
   - mv /root/linux.config /root/linux-$KERNEL_VERSION/.config
   - cd /root/linux-$KERNEL_VERSION; make olddefconfig
