@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/linux/kernel"
 	"github.com/tinyrange/tinyrange/pkg/vmm"
 
@@ -132,7 +132,7 @@ func main() {
 			err      error
 		)
 
-		if dri.RootArchitecture() == config.ArchX8664 || common.HasExperimentalFlag("rosetta") {
+		if dri.RootArchitecture() == config.ArchX8664 || feature.HasFeature(feature.FeatureRosetta) {
 			slog.Debug("Enabling Rosetta 2")
 
 			rosetta2 = true
