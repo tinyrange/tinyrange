@@ -55,13 +55,14 @@ def main():
         dev = connect_nbd("10.42.0.1", 10809, "nbd_test")
         mount("ext4", dev, "/mnt")
 
-    # Run the SSH server.
-    if get_env("TINYRANGE_INTERACTION") == "serial" or nonet:
+    interaction = get_env("TINYRANGE_INTERACTION")
+    if interaction == "serial" or nonet:
         if "ssh_command" in args:
             exec(*args["ssh_command"])
         else:
             exec("/bin/login", "-pf", "root")
-    else:
+    elif interaction != "":
+        # Run the SSH server.
         password = ""
         host_key = ""
 
@@ -72,3 +73,6 @@ def main():
             host_key = args["ssh_host_key"]
         
         run_ssh_server(ssh_connect, host_key = host_key, password = password)
+    else:
+        print("detected unhosted environment, dropping to shell")
+        run_shell()
