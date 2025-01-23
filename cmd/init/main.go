@@ -889,6 +889,29 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 		return starlark.None, nil
 	})
 
+	globals["modprobe"] = starlark.NewBuiltin("modprobe", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			module string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"module", &module,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := common.Modprobe(module); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
 	globals["chroot"] = starlark.NewBuiltin("chroot", func(
 		thread *starlark.Thread,
 		fn *starlark.Builtin,
@@ -1113,6 +1136,15 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 		}
 
 		return starlark.None, runStarlarkServer(port)
+	})
+
+	globals["run_shell"] = starlark.NewBuiltin("run_shell", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		return starlark.None, shellMain()
 	})
 
 	globals["has_experimental_flag"] = starlark.NewBuiltin("has_experimental_flag", func(
@@ -1572,6 +1604,11 @@ func initMain() error {
 		// If you put this code into a function, then exit here.
 		os.Exit(0)
 		return nil
+	}
+
+	// Unset the REAPER environment variable to avoid passing it to child processes.
+	if err := os.Unsetenv("REAPER"); err != nil {
+		return err
 	}
 
 	if err := os.Setenv("TINYRANGE_START_TIME", fmt.Sprintf("%d", START_TIME.UnixMicro())); err != nil {

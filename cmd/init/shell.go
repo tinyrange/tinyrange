@@ -164,6 +164,19 @@ func (sh *shellInstance) processLine(line string) error {
 		}
 
 		return nil
+	case strings.HasPrefix(line, "star"):
+		rest := strings.TrimPrefix(line, "star ")
+
+		template := `
+def main():
+	print(` + rest + `)
+`
+
+		if err := runStarlarkScript("shell.star", template); err != nil {
+			return err
+		}
+
+		return nil
 	default:
 		cmd := exec.Command(tokens[0], tokens[1:]...)
 		cmd.Stdout = os.Stdout
