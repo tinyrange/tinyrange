@@ -1,0 +1,41 @@
+version: 1
+commands:
+  # Create a 128M disk image
+  - fallocate -l 128M /root/disk.img
+  # Use losetup to create a loop device for the disk image
+  - losetup -Pf /root/disk.img
+  # Create a partition table on the loop device
+  - parted -s /dev/loop0 mklabel msdos
+  # Create a partition on the loop device
+  - parted -s /dev/loop0 mkpart primary ext4 1MiB 100%
+  # Mark the partition as bootable
+  - parted -s /dev/loop0 set 1 boot on
+  # Format the partition as ext4
+  - mkfs.ext4 /dev/loop0p1
+  # Mount the partition
+  - mkdir /mnt
+  - mount /dev/loop0p1 /mnt
+  # Generate the initramfs
+  - mkinitfs -i /init -o /mnt/initramfs-linux 6.12.10-0-lts
+  # Copy the kernel to the partition
+  - cp /boot/vmlinuz-lts /mnt/vmlinuz-linux
+  # Install GRUB
+  - grub-install --target=i386-pc --boot-directory=/mnt /dev/loop0
+  # Create the GRUB configuration
+  - mkdir -p /mnt/boot/grub
+  - echo 'set root=(hd0,msdos1)' > /mnt/boot/grub/grub.cfg
+  - echo 'linux /vmlinuz-linux' >> /mnt/boot/grub/grub.cfg
+  - echo 'initrd /initramfs-linux' >> /mnt/boot/grub/grub.cfg
+  - echo 'boot' >> /mnt/boot/grub/grub.cfg
+  # Unmount the partition
+  - umount /mnt
+  # Detach the loop device
+  - losetup -d /dev/loop0
+packages:
+  - linux-lts
+  - mkinitfs
+  - grub-bios
+  - parted
+  - e2fsprogs
+  - alpine-keys
+output: /root/disk.img

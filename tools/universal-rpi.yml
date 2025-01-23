@@ -1,0 +1,38 @@
+version: 1
+architecture: aarch64
+commands:
+  # Create a 128M disk image
+  - fallocate -l 128M /root/disk.img
+  # Use losetup to create a loop device for the disk image
+  - losetup -Pf /root/disk.img
+  # Create a partition table on the loop device
+  - parted -s /dev/loop0 mklabel msdos
+  # Create a fat16 partition on the loop device
+  - parted -s /dev/loop0 mkpart primary fat16 1MiB 100%
+  # Mark the partition as bootable
+  - parted -s /dev/loop0 set 1 boot on
+  # Format the partition as fat16
+  - mkfs.vfat /dev/loop0p1
+  # Set the label of the partition to "BOOT"
+  - dosfslabel /dev/loop0p1 BOOT
+  # Mount the partition
+  - mkdir /mnt
+  - mount /dev/loop0p1 /mnt
+  # Copy the entire boot directory to the partition
+  - cp -r /boot/* /mnt
+  # Write a new initramfs to the partition
+  - mkinitfs -i /init -o /mnt/initramfs-rpi 6.12.8-0-rpi
+  # List the contents of the partition
+  - ls -la /mnt
+  # Unmount the partition
+  - umount /mnt
+  # Detach the loop device
+  - losetup -d /dev/loop0
+packages:
+  - linux-rpi
+  - raspberrypi-bootloader
+  - dosfstools
+  - mkinitfs
+  - parted
+  - alpine-keys
+output: /root/disk.img
