@@ -408,18 +408,6 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 			}
 
 			return nil
-		} else if builtin.Name == "init.star" {
-			file := filesystem.NewMemoryFile(filesystem.TypeRegular)
-
-			if err := file.Overwrite(initExec.INIT_SCRIPT); err != nil {
-				return err
-			}
-
-			if _, err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
-				return err
-			}
-
-			return nil
 		} else if builtin.Name == "tinyrange" {
 			exe, err := os.Executable()
 			if err != nil {

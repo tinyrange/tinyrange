@@ -203,7 +203,6 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 	// Hard code the init file and script.
 	rootFsFragments = append(rootFsFragments,
 		config.Fragment{Builtin: &config.BuiltinFragment{Name: "init", Architecture: arch, GuestFilename: "/init"}},
-		config.Fragment{Builtin: &config.BuiltinFragment{Name: "init.star", GuestFilename: "/init.star"}},
 		// Use init.json to set the builder entry point as the SSH command.
 		config.Fragment{FileContents: &config.FileContentsFragment{
 			Contents:      initJsonBytes,

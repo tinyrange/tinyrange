@@ -9,6 +9,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/subtle"
+	_ "embed"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -41,6 +42,9 @@ import (
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
+
+//go:embed init.star
+var INIT_SCRIPT []byte
 
 var START_TIME = time.Now()
 
@@ -1615,8 +1619,14 @@ func initMain() error {
 		return err
 	}
 
-	if err := runStarlarkFile("/init.star"); err != nil {
-		return fmt.Errorf("failed to run /init.star: %v", err)
+	if ok, _ := common.Exists("/init.star"); ok {
+		if err := runStarlarkFile("/init.star"); err != nil {
+			return fmt.Errorf("failed to run /init.star: %v", err)
+		}
+	} else {
+		if err := runStarlarkScript("/init.star", string(INIT_SCRIPT)); err != nil {
+			return fmt.Errorf("failed to run /init.star: %v", err)
+		}
 	}
 
 	return nil

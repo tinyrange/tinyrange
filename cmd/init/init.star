@@ -17,8 +17,6 @@ def main():
     else:
         nonet = True
 
-    # print(fetch_http("http://1.1.1.1"))
-
     # Set the hostname.
     set_hostname("tinyrange")
 

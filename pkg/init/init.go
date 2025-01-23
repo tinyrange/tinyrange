@@ -12,9 +12,6 @@ import (
 //go:embed init
 var INIT_EXECUTABLE []byte
 
-//go:embed init.star
-var INIT_SCRIPT []byte
-
 func GetInitExecutable(arch config.CPUArchitecture) ([]byte, error) {
 	if arch == config.ArchInvalid {
 		arch = config.HostArchitecture
