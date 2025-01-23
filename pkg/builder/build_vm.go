@@ -230,6 +230,8 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 				builderCfg.ServiceCommands = append(builderCfg.ServiceCommands, frag.StartServiceCommand.Command)
 			} else if frag.AddInitScript != nil {
 				builderCfg.InitScripts = append(builderCfg.InitScripts, frag.AddInitScript.GuestFilename)
+			} else if frag.RunStarlarkScript != nil {
+				builderCfg.StarlarkScripts = append(builderCfg.StarlarkScripts, frag.RunStarlarkScript.Script)
 			} else if frag.Environment != nil {
 				builderCfg.Environment = append(builderCfg.Environment, frag.Environment.Variables...)
 			} else {

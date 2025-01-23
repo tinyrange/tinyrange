@@ -104,6 +104,43 @@ func toOciArchitecture(arch cfg.CPUArchitecture) (string, error) {
 	}
 }
 
+func parseMount(mount string, writable bool, port int) (common.DirectiveMountHostDirectory, error) {
+	if strings.Contains(mount, ":") {
+		parts := strings.Split(mount, ":")
+		if len(parts) != 2 {
+			return common.DirectiveMountHostDirectory{}, fmt.Errorf("invalid mount %s", mount)
+		}
+
+		host, guest := parts[0], parts[1]
+
+		hostPath, err := filepath.Abs(host)
+		if err != nil {
+			return common.DirectiveMountHostDirectory{}, err
+		}
+
+		return common.DirectiveMountHostDirectory{
+			HostDirectory:  hostPath,
+			GuestDirectory: guest,
+			Port:           port,
+			Writable:       writable,
+		}, nil
+	} else {
+		mountPath, err := filepath.Abs(mount)
+		if err != nil {
+			return common.DirectiveMountHostDirectory{}, err
+		}
+
+		guest := path.Join("/share", filepath.Base(mountPath))
+
+		return common.DirectiveMountHostDirectory{
+			HostDirectory:  mountPath,
+			GuestDirectory: guest,
+			Port:           port,
+			Writable:       writable,
+		}, nil
+	}
+}
+
 var CURRENT_CONFIG_VERSION = 1
 
 type VMSpec struct {
@@ -478,43 +515,65 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 		}
 	}
 
+	var mountDirectives []common.DirectiveMountHostDirectory
+	var mountPort = 4000
+
 	for _, mount := range config.ReadOnlyMounts {
 		// Mounts are private so we don't need to check if they're remote.
 
-		p, err := filepath.Abs(mount)
+		parsed, err := parseMount(mount, false, mountPort)
 		if err != nil {
 			return nil, "", err
 		}
 
-		directives = append(directives, common.DirectiveMountHostDirectory{HostDirectory: p})
+		mountPort += 1
+
+		directives = append(directives, parsed)
+		mountDirectives = append(mountDirectives, parsed)
 	}
 
 	for _, mount := range config.ReadWriteMounts {
 		// Mounts are private so we don't need to check if they're remote.
 
-		p, err := filepath.Abs(mount)
+		parsed, err := parseMount(mount, true, mountPort)
 		if err != nil {
 			return nil, "", err
 		}
 
-		directives = append(directives, common.DirectiveMountHostDirectory{HostDirectory: p, Writable: true})
+		mountPort += 1
+
+		directives = append(directives, parsed)
+		mountDirectives = append(mountDirectives, parsed)
 	}
 
-	if (len(config.ReadOnlyMounts) > 0 || len(config.ReadWriteMounts) > 0) &&
-		strings.HasPrefix(config.Builder, "alpine@") && config.OciImage == "" {
+	if len(mountDirectives) > 0 {
 		if common.HasExperimentalFlag("9p") {
-			directives = append(directives, common.DirectiveRunCommand{Command: strings.Join([]string{
-				"mkdir /share",
-				"mount -t 9p -o trans=tcp,version=9p2000.L 10.42.0.1 /share",
-			}, "\n")})
+			scriptLines := []string{
+				"def main():",
+			}
+
+			for _, mount := range mountDirectives {
+				scriptLines = append(scriptLines, fmt.Sprintf(
+					"  mount('9p', '10.42.0.1', '%s', options='trans=tcp,version=9p2000.L,port=%d', ensure_path=True)",
+					mount.GuestDirectory, mount.Port,
+				))
+			}
+
+			directives = append(directives, common.DirectiveRunStarlarkScript{
+				Script: strings.Join(scriptLines, "\n"),
+			})
 		} else {
-			directives = append(directives, common.DirectiveAddPackage{Name: common.PackageQuery{Name: "sshfs"}})
-			directives = append(directives, common.DirectiveRunCommand{Command: strings.Join([]string{
-				"mkdir /share",
-				"mkdir /root/.ssh",
-				"ssh-keyscan host.internal > /root/.ssh/known_hosts 2> /dev/null",
-				"echo 'password' | sshfs -o password_stdin host.internal:/ /share",
-			}, "\n")})
+			if strings.HasPrefix(config.Builder, "alpine@") && config.OciImage == "" {
+				directives = append(directives, common.DirectiveAddPackage{Name: common.PackageQuery{Name: "sshfs"}})
+				directives = append(directives, common.DirectiveRunCommand{Command: strings.Join([]string{
+					"mkdir /share",
+					"mkdir /root/.ssh",
+					"ssh-keyscan host.internal > /root/.ssh/known_hosts 2> /dev/null",
+					"echo 'password' | sshfs -o password_stdin host.internal:/ /share",
+				}, "\n")})
+			} else {
+				slog.Warn("mounts cannot be automatically configured for this builder")
+			}
 		}
 	}
 

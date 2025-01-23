@@ -11,6 +11,8 @@ import (
 
 func init() {
 	hash.RegisterType(DirectiveRunCommand{})
+	hash.RegisterType(DirectiveRunStarlarkScript{})
+	hash.RegisterType(DirectiveStartServiceCommand{})
 	hash.RegisterType(DirectiveEnvironment{})
 	hash.RegisterType(DirectiveList{})
 	hash.RegisterType(DirectiveAddPackage{})
@@ -71,7 +73,29 @@ func (d DirectiveStartServiceCommand) AsFragments(ctx BuildContext, special Spec
 
 // Tag implements Directive.
 func (d DirectiveStartServiceCommand) Tag() string {
-	return fmt.Sprintf("StartServiceCommand_%s", strings.ReplaceAll(string(d.Command), " ", "_"))
+	return fmt.Sprintf("StartServiceCommand_%s", strings.ReplaceAll(d.Command, " ", "_"))
+}
+
+type DirectiveRunStarlarkScript struct {
+	Script string
+}
+
+// SerializableType implements Directive.
+func (d DirectiveRunStarlarkScript) SerializableType() string { return "DirectiveRunStarlarkScript" }
+
+// Dependencies implements Directive.
+func (d DirectiveRunStarlarkScript) Dependencies() ([]BuildDefinition, error) { return nil, nil }
+
+// AsFragments implements Directive.
+func (d DirectiveRunStarlarkScript) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
+	return []config.Fragment{
+		{RunStarlarkScript: &config.RunStarlarkScriptFragment{Script: d.Script}},
+	}, nil
+}
+
+// Tag implements Directive.
+func (d DirectiveRunStarlarkScript) Tag() string {
+	return fmt.Sprintf("RunStarlarkScript")
 }
 
 type DirectiveAddFile struct {
@@ -371,14 +395,16 @@ func (d DirectiveDefaultInteractive) Tag() string {
 }
 
 type DirectiveMountHostDirectory struct {
-	HostDirectory string
-	Writable      bool
+	HostDirectory  string
+	GuestDirectory string
+	Port           int // only used for 9p
+	Writable       bool
 }
 
 // AsFragments implements Directive.
 func (d DirectiveMountHostDirectory) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	return []config.Fragment{
-		{MountHostDirectory: &config.MountHostDirectoryFragment{HostDirectory: d.HostDirectory, Writable: d.Writable}},
+		{MountHostDirectory: &config.MountHostDirectoryFragment{HostDirectory: d.HostDirectory, Port: d.Port, Writable: d.Writable}},
 	}, nil
 }
 
@@ -479,6 +505,7 @@ func (d DirectiveAddInitScript) Tag() string {
 
 var (
 	_ Directive = DirectiveRunCommand{}
+	_ Directive = DirectiveRunStarlarkScript{}
 	_ Directive = DirectiveStartServiceCommand{}
 	_ Directive = DirectiveAddFile{}
 	_ Directive = DirectiveLocalFile{}
@@ -511,6 +538,7 @@ var (
 
 type SpecialDirectiveHandlers struct {
 	RunCommand          func(dir DirectiveRunCommand) error
+	RunStarlarkScript   func(dir DirectiveRunStarlarkScript) error
 	StartServiceCommand func(dir DirectiveStartServiceCommand) error
 	AddInitScript       func(dir DirectiveAddInitScript) error
 	AddPackage          func(dir DirectiveAddPackage) error

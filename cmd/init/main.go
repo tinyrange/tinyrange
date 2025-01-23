@@ -434,6 +434,7 @@ var (
 type mountOptions struct {
 	Readonly bool
 	Ensure   bool
+	Options  string
 }
 
 func mount(kind string, mountName string, mountPoint string, opts mountOptions) error {
@@ -446,7 +447,7 @@ func mount(kind string, mountName string, mountPoint string, opts mountOptions) 
 			return fmt.Errorf("failed to create mount point: %v", err)
 		}
 	}
-	err := unix.Mount(mountName, mountPoint, kind, flags, "")
+	err := unix.Mount(mountName, mountPoint, kind, flags, opts.Options)
 	if err != nil {
 		return fmt.Errorf("failed mounting %s(%s) on %s: %v", mountName, kind, mountPoint, err)
 	}
@@ -708,7 +709,7 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 		return starlark.None, nil
 	})
 
-	globals["mount"] = starlark.NewBuiltin("linux_mount", func(
+	globals["mount"] = starlark.NewBuiltin("mount", func(
 		thread *starlark.Thread,
 		fn *starlark.Builtin,
 		args starlark.Tuple,
@@ -720,6 +721,7 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 			mountPoint  string
 			ensurePath  bool
 			ignoreError bool
+			options     string
 		)
 
 		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
@@ -728,6 +730,7 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 			"mount_point", &mountPoint,
 			"ensure_path?", &ensurePath,
 			"ignore_error?", &ignoreError,
+			"options?", &options,
 		); err != nil {
 			return starlark.None, err
 		}
@@ -740,7 +743,9 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 			}
 		}
 
-		err := mount(fsKind, name, mountPoint, mountOptions{})
+		err := mount(fsKind, name, mountPoint, mountOptions{
+			Options: options,
+		})
 		if err != nil && !ignoreError {
 			return starlark.None, fmt.Errorf("failed to mount: %v", err)
 		}

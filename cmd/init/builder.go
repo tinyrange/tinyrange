@@ -630,6 +630,13 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 		}
 	}
 
+	// run starlark scripts
+	for _, script := range cfg.StarlarkScripts {
+		if err := runStarlarkScript("script.star", script); err != nil {
+			return err
+		}
+	}
+
 	var appendProfile strings.Builder
 
 	for _, env := range cfg.Environment {

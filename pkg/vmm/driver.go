@@ -710,6 +710,7 @@ func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []int, [
 			} else if mount := frag.MountHostDirectory; mount != nil {
 				mountedHostDirectories = append(mountedHostDirectories, mountInfo{
 					HostDirectory: config.Resolve(mount.HostDirectory),
+					Port:          mount.Port,
 					Writable:      mount.Writable,
 				})
 			} else {
@@ -991,6 +992,7 @@ func (d *driver) topConfig() *config.TinyRangeConfig {
 
 type mountInfo struct {
 	HostDirectory string
+	Port          int
 	Writable      bool
 }
 
@@ -1232,38 +1234,48 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		return fmt.Errorf("failed to create virtual machine monitor: %w", err)
 	}
 
-	top := filesystem.NewMemoryDirectory()
-
-	for _, dir := range mountedHostDirectories {
-		name := filepath.Base(dir.HostDirectory)
-
-		var hostDir filesystem.Directory
-
-		if dir.Writable {
-			hostDir = filesystem.NewLocalMutableDirectory(dir.HostDirectory)
-		} else {
-			hostDir = filesystem.NewLocalDirectory(dir.HostDirectory)
-		}
-
-		if _, err := filesystem.CreateChild(top, name, hostDir); err != nil {
-			return fmt.Errorf("failed to create child: %w", err)
-		}
-	}
-
 	if common.HasExperimentalFlag("9p") {
-		svr := p9.NewServer(top)
+		for _, dir := range mountedHostDirectories {
+			var hostDir filesystem.Directory
 
-		listen, err := ns.ListenInternal("tcp", ":564")
-		if err != nil {
-			return fmt.Errorf("failed to listen internal (9p): %w", err)
+			if dir.Writable {
+				hostDir = filesystem.NewLocalMutableDirectory(dir.HostDirectory)
+			} else {
+				hostDir = filesystem.NewLocalDirectory(dir.HostDirectory)
+			}
+
+			svr := p9.NewServer(hostDir)
+
+			listen, err := ns.ListenInternal("tcp", fmt.Sprintf(":%d", dir.Port))
+			if err != nil {
+				return fmt.Errorf("failed to listen internal (9p): %w", err)
+			}
+
+			go func() {
+				if err := svr.Serve(listen); err != nil {
+					slog.Error("failed to run 9p server", "err", err)
+				}
+			}()
+		}
+	} else {
+		top := filesystem.NewMemoryDirectory()
+
+		for _, dir := range mountedHostDirectories {
+			name := filepath.Base(dir.HostDirectory)
+
+			var hostDir filesystem.Directory
+
+			if dir.Writable {
+				hostDir = filesystem.NewLocalMutableDirectory(dir.HostDirectory)
+			} else {
+				hostDir = filesystem.NewLocalDirectory(dir.HostDirectory)
+			}
+
+			if _, err := filesystem.CreateChild(top, name, hostDir); err != nil {
+				return fmt.Errorf("failed to create child %s: %w", name, err)
+			}
 		}
 
-		go func() {
-			if err := svr.Serve(listen); err != nil {
-				slog.Error("failed to run 9p server", "err", err)
-			}
-		}()
-	} else {
 		if len(mountedHostDirectories) > 0 {
 			slog.Info("host directories avalible via SFTP on sftp://host.internal")
 		}

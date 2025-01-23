@@ -81,6 +81,10 @@ type EnvironmentFragment struct {
 	Variables []string `json:"variables" yaml:"variables"`
 }
 
+type RunStarlarkScriptFragment struct {
+	Script string `json:"script" yaml:"script"`
+}
+
 type BuiltinFragment struct {
 	Name          string          `json:"builtin" yaml:"builtin"`
 	Architecture  CPUArchitecture `json:"architecture" yaml:"architecture"`
@@ -98,6 +102,7 @@ type DefaultInteractiveFragment struct {
 
 type MountHostDirectoryFragment struct {
 	HostDirectory string `json:"host_directory" yaml:"host_directory"`
+	Port          int    `json:"name" yaml:"name"`
 	Writable      bool   `json:"writable" yaml:"writable"`
 }
 
@@ -112,6 +117,7 @@ type Fragment struct {
 	StartServiceCommand *StartServiceCommandFragment `json:"start_service,omitempty" yaml:"start_service"`
 	AddInitScript       *AddInitScriptFragment       `json:"add_init_script,omitempty" yaml:"add_init_script"`
 	Environment         *EnvironmentFragment         `json:"environment,omitempty" yaml:"environment"`
+	RunStarlarkScript   *RunStarlarkScriptFragment   `json:"run_starlark_script,omitempty" yaml:"run_starlark_script"`
 
 	// Supported Directly
 	DefaultInteractive *DefaultInteractiveFragment `json:"interactive,omitempty" yaml:"interactive"`

@@ -5,6 +5,7 @@ type BuilderConfig struct {
 	Commands           []string
 	ServiceCommands    []string
 	InitScripts        []string
+	StarlarkScripts    []string
 	Environment        []string
 	ExecInit           string
 	OutputFilename     string

@@ -613,13 +613,21 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			}
 		}
 		if body.Valid&P9_SETATTR_CTIME != 0 {
-			// Ignored
+			mut, ok := fid.(filesystem.MutableFile)
+			if !ok {
+				return nil, fmt.Errorf("file is not mutable")
+			}
+
+			// Setting -1 should have the side effect of setting the current time.
+			if err := mut.Chown(-1, -1); err != nil {
+				return nil, err
+			}
 		}
 		if body.Valid&P9_SETATTR_ATIME_SET != 0 {
-			// slog.Debug("p9: unimplemented P9_SETATTR_ATIME_SET")
+			// slog.Warn("p9: unimplemented P9_SETATTR_ATIME_SET")
 		}
 		if body.Valid&P9_SETATTR_MTIME_SET != 0 {
-			// slog.Debug("p9: unimplemented P9_SETATTR_MTIME_SET")
+			// slog.Warn("p9: unimplemented P9_SETATTR_MTIME_SET")
 		}
 
 		_ = fid
@@ -632,9 +640,11 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		slog.Debug("9p: message", "type", msg.Type, "body", body)
+		if P9_DEBUG {
+			slog.Debug("9p: message", "type", msg.Type, "body", body)
+		}
 
-		return nil, fmt.Errorf("9p: Txattrwalk not implemented")
+		return msg.EncodeBody(MsgRxattrwalk, msg.Tag, &Rxattrwalk{})
 	case MsgTxattrcreate:
 		var body Txattrcreate
 
@@ -642,9 +652,12 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		slog.Debug("9p: message", "type", msg.Type, "body", body)
+		if P9_DEBUG {
+			slog.Debug("9p: message", "type", msg.Type, "body", body)
+		}
 
-		return nil, fmt.Errorf("9p: Txattrcreate not implemented")
+		// ignored
+		return msg.EncodeBody(MsgRxattrcreate, msg.Tag, &Rxattrcreate{})
 	case MsgTreaddir:
 		var body Treaddir
 
@@ -716,11 +729,18 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		slog.Debug("9p: message", "type", msg.Type, "body", body)
+		if P9_DEBUG {
+			slog.Debug("9p: message", "type", msg.Type, "body", body)
+		}
 
-		return nil, fmt.Errorf("9p: Tfsync not implemented")
-	// case MsgTlock:
-	// 	return nil, fmt.Errorf("9p: Tlock not implemented")
+		fid, err := s.getFid(body.Fid)
+		if err != nil {
+			return nil, err
+		}
+
+		_ = fid
+
+		return ret.EncodeBody(MsgRfsync, msg.Tag, &Rfsync{})
 	case MsgTlink:
 		var body Tlink
 
@@ -728,7 +748,9 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		slog.Debug("9p: message", "type", msg.Type, "body", body)
+		if P9_DEBUG {
+			slog.Debug("9p: message", "type", msg.Type, "body", body)
+		}
 
 		return nil, fmt.Errorf("9p: Tlink not implemented")
 	case MsgTmkdir:
@@ -772,9 +794,51 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		slog.Debug("9p: message", "type", msg.Type, "body", body)
+		if P9_DEBUG {
+			slog.Debug("9p: message", "type", msg.Type, "body", body)
+		}
 
-		return nil, fmt.Errorf("9p: Trenameat not implemented")
+		// slog.Info("rename", "olddirfid", body.Olddirfid, "oldname", body.Oldname, "newdirfid", body.Newdirfid, "newname", body.Newname)
+
+		// Get the old directory.
+		oldFid, err := s.getFid(body.Olddirfid)
+		if err != nil {
+			return nil, err
+		}
+
+		oldMutDir, ok := oldFid.(filesystem.MutableDirectory)
+		if !ok {
+			return nil, fmt.Errorf("file is not a mutable directory")
+		}
+
+		// Get the old file.
+		oldFile, err := oldMutDir.GetChild(body.Oldname)
+		if err != nil {
+			return nil, err
+		}
+
+		// Get the new directory.
+		newFid, err := s.getFid(body.Newdirfid)
+		if err != nil {
+			return nil, err
+		}
+
+		newMutDir, ok := newFid.(filesystem.MutableDirectory)
+		if !ok {
+			return nil, fmt.Errorf("file is not a mutable directory")
+		}
+
+		// Create the new file.
+		if _, err := newMutDir.Create(body.Newname, oldFile.File); err != nil {
+			return nil, err
+		}
+
+		// Remove the old file.
+		if err := oldMutDir.Unlink(body.Oldname); err != nil {
+			return nil, err
+		}
+
+		return ret.EncodeBody(MsgRrenameat, msg.Tag, &Rrenameat{})
 	case MsgTunlinkat:
 		var body Tunlinkat
 
@@ -782,9 +846,26 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		slog.Debug("9p: message", "type", msg.Type, "body", body)
+		if P9_DEBUG {
+			slog.Debug("9p: message", "type", msg.Type, "body", body)
+		}
 
-		return nil, fmt.Errorf("9p: Tunlinkat not implemented")
+		fid, err := s.getFid(body.Dirfd)
+		if err != nil {
+			return nil, err
+		}
+
+		mutDir, ok := fid.(filesystem.MutableDirectory)
+		if !ok {
+			return nil, fmt.Errorf("file is not a mutable directory")
+		}
+
+		err = mutDir.Unlink(body.Name)
+		if err != nil {
+			return nil, err
+		}
+
+		return ret.EncodeBody(MsgRunlinkat, msg.Tag, &Runlinkat{})
 	default:
 		return nil, fmt.Errorf("9p: unknown message: %d", msg.Type)
 	}
