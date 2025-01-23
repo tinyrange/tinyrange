@@ -35,6 +35,7 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/feature"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -1172,7 +1173,7 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 			return starlark.None, err
 		}
 
-		return starlark.Bool(common.HasExperimentalFlag(flag)), nil
+		return starlark.Bool(feature.HasFeature(feature.Feature(flag))), nil
 	})
 
 	globals["connect_nbd"] = starlark.NewBuiltin("connect_nbd", func(
@@ -1490,7 +1491,7 @@ func initMain() error {
 			}
 		}
 
-		if common.HasExperimentalFlag("translate_shell") {
+		if feature.HasFeature(feature.FeatureTranslateShell) {
 			*translateScripts = true
 		}
 		return builderRunScripts(*runScripts, *translateScripts)

@@ -14,6 +14,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
@@ -317,7 +318,7 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 		def.server.Serve(listener)
 	}()
 
-	if common.HasExperimentalFlag("vz") {
+	if feature.HasFeature(feature.FeatureVz) {
 		cmd, err := ctx.RunVMM("vz", vmCfg)
 		if err != nil {
 			return err

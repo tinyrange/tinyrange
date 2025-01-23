@@ -9,10 +9,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
+	"github.com/tinyrange/tinyrange/pkg/feature"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
@@ -261,17 +261,9 @@ func SetExperimental(flags []string) error {
 		return err
 	}
 
+	feature.SetFeaturesFromExperimentalFlags(flags)
+
 	return nil
-}
-
-func HasExperimentalFlag(flag string) bool {
-	flags := GetExperimentalFlags()
-
-	return slices.Contains(flags, flag)
-}
-
-func GetExperimentalFlags() []string {
-	return strings.Split(os.Getenv("TINYRANGE_EXPERIMENTAL"), ",")
 }
 
 const REPO_PATH = ""

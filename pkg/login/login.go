@@ -13,7 +13,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -22,6 +21,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	cfg "github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/feature"
 	"gopkg.in/yaml.v3"
 )
 
@@ -302,7 +302,7 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 
 	tags = append(tags, "level3", "defaults")
 
-	if slices.Contains(common.GetExperimentalFlags(), "slowBoot") {
+	if feature.HasFeature(feature.FeatureSlowBoot) {
 		tags = append(tags, "slowBoot")
 	}
 
@@ -547,7 +547,7 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 	}
 
 	if len(mountDirectives) > 0 {
-		if common.HasExperimentalFlag("9p") {
+		if feature.HasFeature(feature.Feature9P) {
 			scriptLines := []string{
 				"def main():",
 			}
@@ -610,7 +610,7 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 		directives = append(directives, common.DirectiveExportPort{Name: "forward", Port: portNum})
 	}
 
-	if common.HasExperimentalFlag("initramfs") && common.HasExperimentalFlag("nbd_test") {
+	if feature.HasFeature(feature.FeatureInitramfs) && feature.HasFeature(feature.FeatureNbdTest) {
 		// create a simple initramfs
 		initramfsDef := builder.Factory.NewBuildFsDefinition([]common.Directive{
 			common.DirectiveBuiltin{Name: "init", Architecture: string(arch), GuestFilename: "init"},

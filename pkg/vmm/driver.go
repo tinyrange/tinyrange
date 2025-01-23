@@ -32,6 +32,7 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/p9"
@@ -1099,7 +1100,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 	backend := &vmBackend{vm: vmem}
 
-	if common.HasExperimentalFlag("nbd_test") && common.HasExperimentalFlag("initramfs") {
+	if feature.HasFeature(feature.FeatureInitramfs) && feature.HasFeature(feature.FeatureNbdTest) {
 		// ignore
 	} else {
 		nbdAddress, listener, err := d.createNbdListener(true)
@@ -1163,7 +1164,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		}
 	}
 
-	if common.HasExperimentalFlag("nbd_test") {
+	if feature.HasFeature(feature.FeatureNbdTest) {
 		vmem := vm.NewVirtualMemory(128*1024*1024, 4096)
 
 		fs, err := ext4.CreateExt4Filesystem(vmem, 0, 128*1024*1024)
@@ -1234,7 +1235,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		return fmt.Errorf("failed to create virtual machine monitor: %w", err)
 	}
 
-	if common.HasExperimentalFlag("9p") {
+	if feature.HasFeature(feature.Feature9P) {
 		for _, dir := range mountedHostDirectories {
 			var hostDir filesystem.Directory
 
@@ -1316,7 +1317,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 			}
 		}()
 
-		if common.HasExperimentalFlag("nbd_test") && common.HasExperimentalFlag("initramfs") {
+		if feature.HasFeature(feature.FeatureInitramfs) && feature.HasFeature(feature.FeatureNbdTest) {
 			// post the second stage startup.
 			secondStage := []byte(`
 def main():
@@ -1475,7 +1476,7 @@ func (d *driver) MemoryMB() int                             { return d.topConfig
 func (d *driver) DiskImages() []File                        { return d.diskImages }
 func (d *driver) InitRamFs() File                           { return d.initRamFs }
 func (d *driver) Verbose() bool                             { return common.IsVerbose() }
-func (d *driver) Experimental() []string                    { return common.GetExperimentalFlags() }
+func (d *driver) Experimental() []string                    { return feature.GetFeatureFlags() }
 func (d *driver) Interaction() config.InteractionKind       { return d.topConfig().Interaction }
 func (d *driver) NetworkInterface() NetworkInterface        { return d.networkInterface }
 func (d *driver) Kernel() File                              { return d.kernel }

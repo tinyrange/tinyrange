@@ -11,6 +11,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/buildinfo"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
+	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 )
 
@@ -41,7 +42,6 @@ Complete documentation is available at https://github.com/tinyrange/tinyrange`, 
 }
 
 func newDb() (common.PackageDatabase, error) {
-
 	builderFactory := func(db common.PackageDatabase) (common.Builder, error) {
 		logger := build2.NewSimpleLogger()
 
@@ -59,7 +59,7 @@ func newDb() (common.PackageDatabase, error) {
 		return build2.New(buildDirMut, db, rootBuildJobs, logger.Group("builder")), nil
 	}
 
-	if common.HasExperimentalFlag("build1") {
+	if feature.HasFeature(feature.FeatureBuild1) {
 		builderFactory = build1.NewBuilder(rootBuildDir)
 	}
 
