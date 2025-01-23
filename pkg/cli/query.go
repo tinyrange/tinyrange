@@ -9,6 +9,7 @@ import (
 )
 
 var queryBuilder string
+var queryArch string
 
 var queryCmd = &cobra.Command{
 	Use:   "query",
@@ -23,7 +24,7 @@ var queryCmd = &cobra.Command{
 			return err
 		}
 
-		b, err := db.GetContainerBuilder(queryBuilder, config.HostArchitecture)
+		b, err := db.GetContainerBuilder(queryBuilder, config.CPUArchitecture(queryArch))
 		if err != nil {
 			return err
 		}
@@ -59,7 +60,8 @@ var queryCmd = &cobra.Command{
 }
 
 func init() {
-	queryCmd.PersistentFlags().StringVarP(&queryBuilder, "builder", "b", "", "the container builder to query from")
+	queryCmd.PersistentFlags().StringVarP(&queryBuilder, "builder", "b", DEFAuLT_BUILDER, "the container builder to query from")
+	queryCmd.PersistentFlags().StringVarP(&queryArch, "arch", "a", string(config.HostArchitecture), "the architecture to query for")
 	queryCmd.MarkFlagRequired("builder")
 	rootCmd.AddCommand(queryCmd)
 }
