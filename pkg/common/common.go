@@ -112,6 +112,27 @@ func GetAdjacentExecutable(names ...string) (string, error) {
 	return "", fmt.Errorf("could not find any of the executables: %v", names)
 }
 
+func GetAdjacentFile(names ...string) (string, error) {
+	exeDir, err := getExeDirectory()
+	if err != nil {
+		return "", err
+	}
+
+	for _, name := range names {
+		localPath := filepath.Join(exeDir, name)
+
+		if ok, _ := Exists(localPath); ok {
+			return localPath, nil
+		}
+
+		if path, err := exec.LookPath(name); err == nil {
+			return path, nil
+		}
+	}
+
+	return "", fmt.Errorf("could not find any of the files: %v", names)
+}
+
 func IsPortable() bool {
 	exeDir, err := getExeDirectory()
 	if err != nil {

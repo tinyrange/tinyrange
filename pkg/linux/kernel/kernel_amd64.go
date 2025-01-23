@@ -2,7 +2,6 @@ package kernel
 
 import (
 	_ "embed"
-	"fmt"
 
 	"github.com/tinyrange/tinyrange/pkg/config"
 )
@@ -15,6 +14,6 @@ func GetOfficialKernel(arch config.CPUArchitecture) ([]byte, error) {
 	case config.ArchX8664:
 		return KERNEL_X86_64, nil
 	default:
-		return nil, fmt.Errorf("no official kernel for architecture: %s", arch)
+		return nil, ErrNoOfficialKernel
 	}
 }

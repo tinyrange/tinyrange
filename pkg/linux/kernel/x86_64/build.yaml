@@ -1,7 +1,7 @@
 #!/usr/bin/env tinyrange
 
 version: 1
-arch: x86_64
+architecture: x86_64
 builder: alpine@3.21
 environment:
   - KERNEL_VERSION=6.12.10
