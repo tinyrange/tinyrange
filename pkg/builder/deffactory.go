@@ -12,6 +12,7 @@ import (
 
 type BuildVmDefinition interface {
 	common.StarBuildDefinition
+	common.Directive
 
 	SetBuildTemplateMode()
 }
@@ -23,6 +24,11 @@ type FetchOciImageDefinition interface {
 
 type ReadOCIImageDefinition interface {
 	common.BuildDefinition
+	common.Directive
+}
+
+type BuildFSDefinition interface {
+	common.StarBuildDefinition
 	common.Directive
 }
 
@@ -38,7 +44,7 @@ type DefinitionFactory interface {
 	NewBuildFsDefinition(
 		dir []common.Directive,
 		kind string,
-	) common.StarBuildDefinition
+	) BuildFSDefinition
 	NewBuildVmDefinition(
 		dir []common.Directive,
 		kernel common.BuildDefinition,
@@ -110,7 +116,7 @@ func (*definitionFactory) NewBuildEmulatorDefinition(
 func (*definitionFactory) NewBuildFsDefinition(
 	dir []common.Directive,
 	kind string,
-) common.StarBuildDefinition {
+) BuildFSDefinition {
 	return newBuildFsDefinition(dir, kind)
 }
 

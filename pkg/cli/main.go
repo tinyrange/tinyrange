@@ -16,12 +16,13 @@ import (
 )
 
 var (
-	rootBuildDir   string
-	rootRebuild    bool
-	rootCpuProfile string
-	rootVerbose    bool
-	rootMirrors    []string
-	rootBuildJobs  int
+	rootBuildDir          string
+	rootRebuild           bool
+	rootCpuProfile        string
+	rootVerbose           bool
+	rootMirrors           []string
+	rootBuildJobs         int
+	rootExperimentalFlags []string
 )
 
 var rootCmd = &cobra.Command{
@@ -33,6 +34,12 @@ Complete documentation is available at https://github.com/tinyrange/tinyrange`, 
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if rootVerbose || os.Getenv("TINYRANGE_VERBOSE") == "on" {
 			if err := common.EnableVerbose(); err != nil {
+				return err
+			}
+		}
+
+		if len(rootExperimentalFlags) > 0 {
+			if err := common.SetExperimental(rootExperimentalFlags); err != nil {
 				return err
 			}
 		}
@@ -89,6 +96,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&rootVerbose, "verbose", false, "enable debugging output")
 	rootCmd.PersistentFlags().StringArrayVar(&rootMirrors, "mirror", []string{}, "Specify mirrors to override the default mirror settings")
 	rootCmd.PersistentFlags().IntVar(&rootBuildJobs, "jobs", 1, "specify the number of jobs to run concurrently")
+	rootCmd.PersistentFlags().StringArrayVar(&rootExperimentalFlags, "experimental", []string{}, "Add experimental flags.")
 }
 
 func Run() {

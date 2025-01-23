@@ -34,12 +34,6 @@ func runLogin(args []string) error {
 		defer pprof.StopCPUProfile()
 	}
 
-	if len(currentConfig.ExperimentalFlags) > 0 {
-		if err := common.SetExperimental(currentConfig.ExperimentalFlags); err != nil {
-			return err
-		}
-	}
-
 	currentConfig.Packages = args
 
 	if loginSaveConfig != "" {
@@ -188,7 +182,6 @@ func init() {
 	loginCmd.PersistentFlags().StringVar(&currentConfig.WriteRoot, "write-root", "", "Write the root filesystem as a .tar.gz archive.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.WriteDocker, "write-docker", "", "Write the root filesystem to a docker tag on the local docker daemon.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.Hash, "hash", false, "print the hash of the definition generated after the machine has exited.")
-	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ExperimentalFlags, "experimental", []string{}, "Add experimental flags.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.WebSSH, "web", "", "Start a web interface on the given port.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.WriteTemplate, "template", false, "If true then just generate the config and don't run the VM.")
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ReadOnlyMounts, "mount", []string{}, "Mount a host directory into the VM using SFTP.")

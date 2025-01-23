@@ -28,6 +28,55 @@ const (
 	DEFAULT_REGISTRY = "https://registry-1.docker.io/v2"
 )
 
+func ToOciArchitecture(arch config.CPUArchitecture) (string, error) {
+	switch arch {
+	case config.ArchX8664:
+		return "amd64", nil
+	case config.ArchARM64:
+		return "arm64", nil
+	case config.ArchInvalid:
+		return ToOciArchitecture(config.HostArchitecture)
+	default:
+		return "", fmt.Errorf("unsupported architecture: %s", arch)
+	}
+}
+
+func ParseOciImage(ociImage string) (registry string, image string, tag string, err error) {
+	var ok bool
+
+	image, tag, ok = strings.Cut(ociImage, ":")
+	if !ok {
+		tag = "latest"
+	}
+
+	if strings.Contains(image, ".") {
+		registry, image, ok = strings.Cut(image, "/")
+		if !ok {
+			return "", "", "", fmt.Errorf("invalid OCI image format %s", ociImage)
+		}
+	}
+
+	if registry == "" {
+		registry = DEFAULT_REGISTRY
+	}
+
+	if registry == "docker.io" {
+		registry = DEFAULT_REGISTRY
+	}
+
+	if !strings.HasPrefix(registry, "http://") && !strings.HasPrefix(registry, "https://") {
+		registry = "https://" + registry
+	}
+
+	if registry == DEFAULT_REGISTRY && !strings.Contains(image, "/") {
+		image = "library/" + image
+	}
+
+	slog.Debug("parsed OCI image", "registry", registry, "image", image, "tag", tag)
+
+	return
+}
+
 func ParseJsonFromFile(f filesystem.File, out any) error {
 	fh, err := f.Open()
 	if err != nil {

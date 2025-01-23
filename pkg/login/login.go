@@ -55,55 +55,6 @@ func sha256HashFromFile(filename string) (string, error) {
 	return sha256HashFromReader(f)
 }
 
-func parseOciImage(ociImage string) (registry string, image string, tag string, err error) {
-	var ok bool
-
-	image, tag, ok = strings.Cut(ociImage, ":")
-	if !ok {
-		tag = "latest"
-	}
-
-	if strings.Contains(image, ".") {
-		registry, image, ok = strings.Cut(image, "/")
-		if !ok {
-			return "", "", "", fmt.Errorf("invalid OCI image format %s", ociImage)
-		}
-	}
-
-	if registry == "" {
-		registry = builder.DEFAULT_REGISTRY
-	}
-
-	if registry == "docker.io" {
-		registry = builder.DEFAULT_REGISTRY
-	}
-
-	if !strings.HasPrefix(registry, "http://") && !strings.HasPrefix(registry, "https://") {
-		registry = "https://" + registry
-	}
-
-	if registry == builder.DEFAULT_REGISTRY && !strings.Contains(image, "/") {
-		image = "library/" + image
-	}
-
-	slog.Debug("parsed OCI image", "registry", registry, "image", image, "tag", tag)
-
-	return
-}
-
-func toOciArchitecture(arch cfg.CPUArchitecture) (string, error) {
-	switch arch {
-	case cfg.ArchX8664:
-		return "amd64", nil
-	case cfg.ArchARM64:
-		return "arm64", nil
-	case cfg.ArchInvalid:
-		return toOciArchitecture(cfg.HostArchitecture)
-	default:
-		return "", fmt.Errorf("unsupported architecture: %s", arch)
-	}
-}
-
 func parseMount(mount string, writable bool, port int) (common.DirectiveMountHostDirectory, error) {
 	if strings.Contains(mount, ":") {
 		parts := strings.Split(mount, ":")
@@ -169,18 +120,17 @@ type Config struct {
 	MinSpec          VMSpec   `json:"min_spec,omitempty" yaml:"min_spec,omitempty"`
 
 	// secure configs that have to be set on the command line.
-	CpuCores          int      `json:"-" yaml:"-"`
-	MemorySize        int      `json:"-" yaml:"-"`
-	StorageSize       int      `json:"-" yaml:"-"`
-	Debug             bool     `json:"-" yaml:"-"`
-	WriteRoot         string   `json:"-" yaml:"-"`
-	WriteDocker       string   `json:"-" yaml:"-"`
-	ExperimentalFlags []string `json:"-" yaml:"-"`
-	Hash              bool     `json:"-" yaml:"-"`
-	WebSSH            string   `json:"-" yaml:"-"`
-	WriteTemplate     bool     `json:"-" yaml:"-"`
-	ReadOnlyMounts    []string `json:"-" yaml:"-"`
-	ReadWriteMounts   []string `json:"-" yaml:"-"`
+	CpuCores        int      `json:"-" yaml:"-"`
+	MemorySize      int      `json:"-" yaml:"-"`
+	StorageSize     int      `json:"-" yaml:"-"`
+	Debug           bool     `json:"-" yaml:"-"`
+	WriteRoot       string   `json:"-" yaml:"-"`
+	WriteDocker     string   `json:"-" yaml:"-"`
+	Hash            bool     `json:"-" yaml:"-"`
+	WebSSH          string   `json:"-" yaml:"-"`
+	WriteTemplate   bool     `json:"-" yaml:"-"`
+	ReadOnlyMounts  []string `json:"-" yaml:"-"`
+	ReadWriteMounts []string `json:"-" yaml:"-"`
 
 	localConfig bool
 	basePath    string
@@ -461,12 +411,12 @@ func (config *Config) getDirectives(db common.PackageDatabase) ([]common.Directi
 
 			directives = append(directives, ociDef)
 		} else {
-			registry, image, tag, err := parseOciImage(config.OciImage)
+			registry, image, tag, err := builder.ParseOciImage(config.OciImage)
 			if err != nil {
 				return nil, "", err
 			}
 
-			ociArch, err := toOciArchitecture(arch)
+			ociArch, err := builder.ToOciArchitecture(arch)
 			if err != nil {
 				return nil, "", err
 			}

@@ -36,6 +36,32 @@ type buildVmDefinition struct {
 	gotOutput bool
 }
 
+// AsFragments implements common.Directive.
+func (def *buildVmDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+	if def.params.OutputFile == "/init/changed.archive" {
+		art, err := ctx.BuildChild(def)
+		if err != nil {
+			return nil, err
+		}
+
+		res, err := art.Default()
+		if err != nil {
+			return nil, err
+		}
+
+		filename, err := ctx.HostFilenameFromFile(res)
+		if err != nil {
+			return nil, err
+		}
+
+		return []config.Fragment{
+			{Archive: &config.ArchiveFragment{HostFilename: filename}},
+		}, nil
+	} else {
+		return nil, fmt.Errorf("unknown output file: %s", def.params.OutputFile)
+	}
+}
+
 // Dependencies implements common.BuildDefinition.
 func (def *buildVmDefinition) Dependencies() ([]common.BuildDefinition, error) {
 	var deps []common.BuildDefinition
@@ -359,6 +385,7 @@ var (
 	_ starlark.Value         = &buildVmDefinition{}
 	_ common.BuildDefinition = &buildVmDefinition{}
 	_ common.BuildResult     = &buildVmDefinition{}
+	_ common.Directive       = &buildVmDefinition{}
 )
 
 func newBuildVmDefinition(

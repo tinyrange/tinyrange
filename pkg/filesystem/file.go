@@ -349,6 +349,8 @@ func SourceFromFile(f File) (hash.SerializableValue, error) {
 		}
 	case *sourceWrapper:
 		return f.source, nil
+	case DirectoryEntry:
+		return SourceFromFile(f.File)
 	default:
 		return nil, fmt.Errorf("SourceFromFile not implemented: %T %+v", f, f)
 	}

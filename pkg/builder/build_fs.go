@@ -257,10 +257,81 @@ var (
 	_ common.BuildResult = &tarBuilderResult{}
 )
 
+type fragmentsToArchiveResult struct {
+	frags []config.Fragment
+}
+
+// WriteTo implements common.BuildResult.
+func (i *fragmentsToArchiveResult) WriteResult(w io.Writer) error {
+	ark := filesystem.NewArchiveWriter(w)
+
+	for _, frag := range i.frags {
+		if frag.Archive != nil {
+			f := filesystem.NewLocalFile(frag.Archive.HostFilename, nil)
+
+			ark2, err := filesystem.ReadArchiveFromFile(f)
+			if err != nil {
+				return err
+			}
+
+			ents, err := ark2.Entries()
+			if err != nil {
+				return err
+			}
+
+			for _, ent := range ents {
+				fh, err := ent.Open()
+				if err != nil {
+					return err
+				}
+				defer fh.Close()
+
+				if err := ark.WriteEntry(ent.(*filesystem.CacheEntry), fh); err != nil {
+					return err
+				}
+			}
+		} else {
+			return fmt.Errorf("unhandled fragment type: %+v", frag)
+		}
+	}
+
+	return nil
+}
+
+var (
+	_ common.BuildResult = &fragmentsToArchiveResult{}
+)
+
 type buildFsDefinition struct {
 	params BuildFsParameters
 
 	frags []config.Fragment
+}
+
+// AsFragments implements BuildFSDefinition.
+func (def *buildFsDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+	if def.params.Kind == "archive" {
+		art, err := ctx.BuildChild(def)
+		if err != nil {
+			return nil, err
+		}
+
+		res, err := art.Default()
+		if err != nil {
+			return nil, err
+		}
+
+		filename, err := ctx.HostFilenameFromFile(res)
+		if err != nil {
+			return nil, err
+		}
+
+		return []config.Fragment{
+			{Archive: &config.ArchiveFragment{HostFilename: filename}},
+		}, nil
+	} else {
+		return nil, fmt.Errorf("unimplemented kind: %s", def.params.Kind)
+	}
 }
 
 // Dependencies implements common.StarBuildDefinition.
@@ -312,6 +383,8 @@ func (def *buildFsDefinition) Build(ctx common.BuildContext) error {
 		return ctx.WriteDefault(&initRamFsBuilderResult{frags: def.frags})
 	} else if def.params.Kind == "tar" {
 		return ctx.WriteDefault(&tarBuilderResult{frags: def.frags})
+	} else if def.params.Kind == "archive" {
+		return ctx.WriteDefault(&fragmentsToArchiveResult{frags: def.frags})
 	} else {
 		return fmt.Errorf("kind not implemented: %s", def.params.Kind)
 	}
@@ -338,8 +411,9 @@ func (*buildFsDefinition) Freeze()              {}
 var (
 	_ starlark.Value         = &buildFsDefinition{}
 	_ common.BuildDefinition = &buildFsDefinition{}
+	_ common.Directive       = &buildFsDefinition{}
 )
 
-func newBuildFsDefinition(dir []common.Directive, kind string) common.StarBuildDefinition {
+func newBuildFsDefinition(dir []common.Directive, kind string) BuildFSDefinition {
 	return &buildFsDefinition{params: BuildFsParameters{Directives: dir, Kind: kind}}
 }
