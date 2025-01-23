@@ -24,7 +24,7 @@ func init() {
 	features[FeatureRosetta] = false
 	features[FeatureVz] = false
 	features[FeatureBuild1] = false
-	features[Feature9P] = false
+	features[Feature9P] = true
 	features[FeatureInitramfs] = false
 	features[FeatureNbdTest] = false
 	features[FeatureSlowBoot] = false
