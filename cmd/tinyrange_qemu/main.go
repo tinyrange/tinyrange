@@ -222,7 +222,7 @@ func main() {
 				// Add the kernel.
 				args = append(args, "-kernel", kernelFilename)
 			} else {
-				kernel, err := kernel.GetOfficialKernel(driver.GuestArchitecture())
+				kernel, err := kernel.LoadKernelForArchitecture(driver.GuestArchitecture())
 				if err != nil {
 					return nil, fmt.Errorf("failed to get official kernel: %w", err)
 				}
