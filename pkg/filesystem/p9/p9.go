@@ -17,7 +17,7 @@ import (
 
 const (
 	IOUNIT_SIZE = 0
-	P9_DEBUG    = true
+	P9_DEBUG    = false
 )
 
 type Server struct {
