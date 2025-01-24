@@ -108,6 +108,7 @@ type Config struct {
 	RootArchitecture string   `json:"root_architecture,omitempty" yaml:"root_architecture,omitempty"`
 	Commands         []string `json:"commands,omitempty" yaml:"commands,omitempty"`
 	ServiceCommands  []string `json:"service_commands,omitempty" yaml:"service_commands,omitempty"`
+	Layers           []string `json:"layers,omitempty" yaml:"layers,omitempty"`
 	Files            []string `json:"files,omitempty" yaml:"files,omitempty"`
 	Archives         []string `json:"archives,omitempty" yaml:"archives,omitempty"`
 	Output           string   `json:"output,omitempty" yaml:"output,omitempty"`
@@ -478,6 +479,63 @@ func (config *Config) addMacro(db common.PackageDatabase, macro string, macroCtx
 	}
 }
 
+func (config *Config) addLayer(directives []common.Directive,
+	vmArch config.CPUArchitecture,
+	arch config.CPUArchitecture,
+	layer string,
+) (common.Directive, error) {
+	vmDef, err := config.makeBuildVMDefinition(
+		append(directives, common.DirectiveRunCommand{Command: layer}),
+		vmArch, arch,
+		"/init/changed.archive",
+		"ssh",
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return vmDef, nil
+}
+
+func (config *Config) makeBuildVMDefinition(
+	directives []common.Directive,
+	vmArch config.CPUArchitecture,
+	arch config.CPUArchitecture,
+	outputName string,
+	interaction string,
+) (builder.BuildVmDefinition, error) {
+	var kernel common.BuildDefinition
+	var initramfs common.BuildDefinition
+
+	directives, err := common.FlattenDirectives(directives, common.SpecialDirectiveHandlers{
+		Kernel: func(dir common.DirectiveKernel) error {
+			if dir.Kernel != nil {
+				kernel = dir.Kernel
+			}
+			if dir.Initramfs != nil {
+				initramfs = dir.Initramfs
+			}
+
+			return nil
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	config.SetVmSpec()
+
+	return builder.Factory.NewBuildVmDefinition(
+		directives,
+		kernel, initramfs,
+		outputName,
+		config.CpuCores, config.MemorySize,
+		vmArch, arch,
+		config.StorageSize,
+		interaction, config.Debug,
+	), nil
+}
+
 func (config *Config) Run(db common.PackageDatabase) error {
 	if config.Version > CURRENT_CONFIG_VERSION {
 		return fmt.Errorf("attempt to run config version %d on TinyRange version %d", config.Version, CURRENT_CONFIG_VERSION)
@@ -654,20 +712,6 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		}
 	}
 
-	if config.WriteRoot == "" && config.WriteDocker == "" {
-		for _, cmd := range config.ServiceCommands {
-			directives = append(directives, common.DirectiveStartServiceCommand{Command: cmd})
-		}
-
-		if len(config.Commands) == 0 && config.Init == "" {
-			directives = append(directives, common.DirectiveRunCommand{Command: "interactive"})
-		} else {
-			for _, cmd := range config.Commands {
-				directives = append(directives, common.DirectiveRunCommand{Command: cmd})
-			}
-		}
-	}
-
 	if len(config.Environment) > 0 {
 		directives = append(directives, common.DirectiveEnvironment{Variables: config.Environment})
 	}
@@ -730,6 +774,29 @@ def main():
 		directives = append([]common.Directive{planDirective}, directives...)
 	}
 
+	for _, layer := range config.Layers {
+		def, err := config.addLayer(directives, vmArch, arch, layer)
+		if err != nil {
+			return err
+		}
+
+		directives = append(directives, def)
+	}
+
+	if config.WriteRoot == "" && config.WriteDocker == "" {
+		for _, cmd := range config.ServiceCommands {
+			directives = append(directives, common.DirectiveStartServiceCommand{Command: cmd})
+		}
+
+		if len(config.Commands) == 0 && config.Init == "" {
+			directives = append(directives, common.DirectiveRunCommand{Command: "interactive"})
+		} else {
+			for _, cmd := range config.Commands {
+				directives = append(directives, common.DirectiveRunCommand{Command: cmd})
+			}
+		}
+	}
+
 	if config.RootArchitecture != "" {
 		arch, err = cfg.ArchitectureFromString(config.RootArchitecture)
 		if err != nil {
@@ -753,38 +820,12 @@ def main():
 		interaction = "webssh," + config.WebSSH
 	}
 
-	var kernel common.BuildDefinition
-	var initramfs common.BuildDefinition
+	outputName := config.replaceVariables(config.Output)
 
-	directives, err = common.FlattenDirectives(directives, common.SpecialDirectiveHandlers{
-		Kernel: func(dir common.DirectiveKernel) error {
-			if dir.Kernel != nil {
-				kernel = dir.Kernel
-			}
-			if dir.Initramfs != nil {
-				initramfs = dir.Initramfs
-			}
-
-			return nil
-		},
-	})
+	def, err := config.makeBuildVMDefinition(directives, vmArch, arch, outputName, interaction)
 	if err != nil {
 		return err
 	}
-
-	config.SetVmSpec()
-
-	outputName := config.replaceVariables(config.Output)
-
-	def := builder.Factory.NewBuildVmDefinition(
-		directives,
-		kernel, initramfs,
-		outputName,
-		config.CpuCores, config.MemorySize,
-		vmArch, arch,
-		config.StorageSize,
-		interaction, config.Debug,
-	)
 
 	if config.WriteTemplate {
 		def.SetBuildTemplateMode()
