@@ -4,7 +4,7 @@ go 1.23.4
 
 require (
 	github.com/Code-Hex/vz/v3 v3.6.0
-	github.com/agnivade/levenshtein v1.2.0
+	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/basgys/goxml2json v1.1.0
 	github.com/bazelbuild/buildtools v0.0.0-20241212155839-a9c248f4b684
@@ -23,7 +23,8 @@ require (
 	github.com/jezek/xgbutil v0.0.0-20240804174445-e2e9464b6e01
 	github.com/jsimonetti/rtnetlink v1.4.2
 	github.com/klauspost/compress v1.17.11
-	github.com/miekg/dns v1.1.62
+	github.com/miekg/dns v1.1.63
+	github.com/moby/buildkit v0.19.0
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/ramr/go-reaper v0.2.3
 	github.com/schollz/progressbar/v3 v3.18.0
@@ -43,10 +44,10 @@ require (
 )
 
 require (
+	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/BurntSushi/freetype-go v0.0.0-20160129220410-b763ddbfe298 // indirect
 	github.com/BurntSushi/graphics-go v0.0.0-20160129215708-b43f31a4a966 // indirect
 	github.com/Code-Hex/go-infinity-channel v1.0.0 // indirect
-	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/containerd/typeurl/v2 v2.2.3 // indirect
@@ -68,10 +69,7 @@ require (
 	github.com/mdlayher/netlink v1.7.2 // indirect
 	github.com/mdlayher/socket v0.4.1 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
-	github.com/moby/buildkit v0.19.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
-	github.com/moby/term v0.5.0 // indirect
-	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.14 // indirect
@@ -82,9 +80,7 @@ require (
 	github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.56.0 // indirect
 	go.opentelemetry.io/otel v1.31.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.31.0 // indirect
 	go.opentelemetry.io/otel/metric v1.31.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.31.0 // indirect
 	go.opentelemetry.io/otel/trace v1.31.0 // indirect
 	golang.org/x/mod v0.22.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
