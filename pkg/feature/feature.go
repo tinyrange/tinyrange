@@ -14,6 +14,7 @@ const (
 	Feature9P             Feature = "9p"        // Use 9p for file sharing
 	FeatureInitramfs      Feature = "initramfs" // Boot the system with a test initramfs
 	FeatureNbdTest        Feature = "nbd_test"  // Export a test NBD device
+	FeatureBuildOci       Feature = "build_oci" // Enable the build-oci command
 	FeatureSlowBoot       Feature = "slow_boot"
 )
 
@@ -28,6 +29,7 @@ func init() {
 	features[FeatureInitramfs] = false
 	features[FeatureNbdTest] = false
 	features[FeatureSlowBoot] = false
+	features[FeatureBuildOci] = false
 }
 
 func SetFeaturesFromExperimentalFlags(flags []string) {

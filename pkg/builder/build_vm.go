@@ -74,12 +74,21 @@ func (def *buildVmDefinition) Dependencies() ([]common.BuildDefinition, error) {
 	}
 
 	for _, dir := range def.params.Directives {
+		if dir == def {
+			return nil, fmt.Errorf("circular buildVM dependency: %+v", def)
+		}
+
 		deps, err := dir.Dependencies()
 		if err != nil {
 			return nil, err
 		}
 
-		deps = append(deps, deps...)
+		for _, dep := range deps {
+			if dep == def {
+				return nil, fmt.Errorf("circular buildVM dependency: %+v", def)
+			}
+			deps = append(deps, dep)
+		}
 	}
 
 	return deps, nil
@@ -373,8 +382,17 @@ func (def *buildVmDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) 
 	return false, nil
 }
 
-func (def *buildVmDefinition) String() string { return "BuildVm" }
-func (*buildVmDefinition) Type() string       { return "BuildVmDefinition" }
+func (def *buildVmDefinition) String() string {
+	var parts []string
+
+	for _, dir := range def.params.Directives {
+		parts = append(parts, dir.SerializableType())
+	}
+
+	return fmt.Sprintf("BuildVmDefinition(%s)", strings.Join(parts, ", "))
+}
+
+func (*buildVmDefinition) Type() string { return "BuildVmDefinition" }
 func (*buildVmDefinition) Hash() (uint32, error) {
 	return 0, fmt.Errorf("BuildVmDefinition is not hashable")
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 )
 
@@ -29,9 +30,13 @@ func (c *buildOciContext) resolve(p string) string {
 }
 
 var buildOciCmd = &cobra.Command{
-	Use:   "build-oci",
+	Use:   "build-oci <tag> <dockerfile> <context>",
 	Short: "Build and tag an OCI image",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if !feature.HasFeature(feature.FeatureBuildOci) {
+			return fmt.Errorf("build-oci is not enabled")
+		}
+
 		if len(args) != 3 {
 			return fmt.Errorf("please specify <tag> <dockerfile> <context>")
 		}
@@ -159,7 +164,10 @@ var buildOciCmd = &cobra.Command{
 
 				fs := builder.Factory.NewBuildFsDefinition(dir, "archive")
 
-				currentContext.layers = append(currentContext.layers, fs)
+				layersCopy := make([]common.Directive, len(currentContext.layers))
+				copy(layersCopy, currentContext.layers)
+
+				currentContext.layers = append(layersCopy, fs)
 			case "run":
 				var args []string
 				for arg := child.Next; arg != nil; arg = arg.Next {
@@ -170,22 +178,25 @@ var buildOciCmd = &cobra.Command{
 				cmd := strings.Join(args, " ")
 
 				run := builder.Factory.NewBuildVmDefinition(
-					append(
+					append( // append the current layers
 						currentContext.layers,
 						common.DirectiveRunCommand{Command: cmd},
 					),
-					nil, nil,
-					"/init/changed.archive",
-					1,
-					1024,
-					config.HostArchitecture,
-					config.HostArchitecture,
-					1024,
-					"ssh",
-					false,
+					nil, nil, // kernel, initrd
+					"/init/changed.archive", // output file
+					1,                       // cpu count
+					1024,                    // memory
+					config.HostArchitecture, // architecture
+					config.HostArchitecture, // target architecture
+					1024,                    // storage
+					"ssh",                   // interaction
+					false,                   // debug
 				)
 
-				currentContext.layers = append(currentContext.layers, run)
+				layersCopy := make([]common.Directive, len(currentContext.layers))
+				copy(layersCopy, currentContext.layers)
+
+				currentContext.layers = append(layersCopy, run)
 			case "add":
 				var args []string
 				for arg := child.Next; arg != nil; arg = arg.Next {
@@ -215,6 +226,13 @@ var buildOciCmd = &cobra.Command{
 						Definition: def,
 					})
 				}
+
+				fs := builder.Factory.NewBuildFsDefinition(dir, "archive")
+
+				layersCopy := make([]common.Directive, len(currentContext.layers))
+				copy(layersCopy, currentContext.layers)
+
+				currentContext.layers = append(layersCopy, fs)
 			case "entrypoint":
 				var args []string
 				for arg := child.Next; arg != nil; arg = arg.Next {
@@ -222,22 +240,26 @@ var buildOciCmd = &cobra.Command{
 				}
 
 				currentContext.entrypoint = strings.Join(args, " ")
+
 			default:
 				return fmt.Errorf("unsupported command: %s", child.Value)
 			}
 		}
 
 		top := builder.Factory.NewBuildVmDefinition(
-			currentContext.layers,
-			nil, nil,
-			"",
-			1,
-			1024,
-			config.HostArchitecture,
-			config.HostArchitecture,
-			1024,
-			"ssh",
-			false,
+			append( // append the entrypoint command
+				currentContext.layers,
+				common.DirectiveRunCommand{Command: currentContext.entrypoint},
+			),
+			nil, nil, // kernel, initrd
+			"",                      // output file
+			1,                       // cpu count
+			1024,                    // memory
+			config.HostArchitecture, // architecture
+			config.HostArchitecture, // target architecture
+			1024,                    // storage
+			"ssh",                   // interaction
+			false,                   // debug
 		)
 
 		// Build the top-level definition
@@ -255,7 +277,5 @@ var buildOciCmd = &cobra.Command{
 
 func init() {
 	// Command is WIP and not yet ready for use.
-	if false {
-		rootCmd.AddCommand(buildOciCmd)
-	}
+	rootCmd.AddCommand(buildOciCmd)
 }

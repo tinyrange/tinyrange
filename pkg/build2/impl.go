@@ -657,14 +657,21 @@ func (b *builder) contextForDefinition(parent *buildContext, def common.BuildDef
 	return ctx
 }
 
-func (b *builder) cacheDefinitionHash(def common.BuildDefinition) error {
+func (b *builder) cacheDefinitionHash(def common.BuildDefinition, stack []common.BuildDefinition) error {
+	// Check for cycles.
+	for _, d := range stack[:len(stack)-1] {
+		if d == def {
+			return fmt.Errorf("cycle detected: %s %+v", def.String(), stack)
+		}
+	}
+
 	deps, err := def.Dependencies()
 	if err != nil {
 		return err
 	}
 
 	for _, dep := range deps {
-		if err := b.cacheDefinitionHash(dep); err != nil {
+		if err := b.cacheDefinitionHash(dep, append(stack, dep)); err != nil {
 			return err
 		}
 	}
@@ -683,7 +690,7 @@ func (b *builder) Build(def common.BuildDefinition, opts common.BuildOptions) (c
 			return nil, fmt.Errorf("definition is nil")
 		}
 
-		if err := b.cacheDefinitionHash(def); err != nil {
+		if err := b.cacheDefinitionHash(def, []common.BuildDefinition{def}); err != nil {
 			return nil, err
 		}
 
