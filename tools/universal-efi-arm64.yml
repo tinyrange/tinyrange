@@ -1,0 +1,44 @@
+version: 1
+architecture: aarch64
+commands:
+  # Create a 128M disk image
+  - fallocate -l 128M /root/disk.img
+  # Use losetup to create a loop device for the disk image
+  - losetup -Pf /root/disk.img
+  # Create a partition table with a single ESP partition
+  - parted -s /dev/loop0 mklabel gpt
+  - parted -s /dev/loop0 mkpart ESP fat16 1MiB 100%
+  - parted -s /dev/loop0 set 1 esp on
+  # Format the partition as FAT16
+  - mkfs.fat -F16 /dev/loop0p1
+  # Mount the partition
+  - mkdir /mnt
+  - mount /dev/loop0p1 /mnt
+  # Generate the initramfs
+  - mkinitfs -i /init -o /mnt/initramfs-linux 6.12.11-0-lts
+  # Copy the kernel to the partition
+  - cp /root/vmlinux-6.12.10.proposed /mnt/vmlinuz-linux
+  # Install GRUB
+  - grub-install --target=arm64-efi --efi-directory=/mnt --removable --modules="fat part_gpt"
+  # Create the GRUB configuration
+  - mkdir -p /mnt/boot/grub
+  - echo 'set root=(hd0,gpt1)' > /mnt/boot/grub/grub.cfg
+  - echo 'linux /vmlinuz-linux earlycon=efifb console=efifb boot_delay=200 reboot=k init=/init' >> /mnt/boot/grub/grub.cfg
+  - echo 'initrd /initramfs-linux' >> /mnt/boot/grub/grub.cfg
+  - echo 'boot' >> /mnt/boot/grub/grub.cfg
+  # Copy all grub modules from /boot to the ESP
+  - cp -r /boot/grub/arm64-efi /mnt/boot/grub
+  # Unmount the partition
+  - umount /mnt
+  # Detach the loop device
+  - losetup -d /dev/loop0
+files:
+  - vmlinux-6.12.10.proposed
+packages:
+  - linux-lts
+  - mkinitfs
+  - parted
+  - grub-efi
+  - dosfstools
+  - alpine-keys
+output: /root/disk.img
