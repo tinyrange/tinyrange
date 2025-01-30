@@ -72,6 +72,23 @@ func (i *initRamFsBuilderResult) WriteResult(w io.Writer) error {
 			if err := writer.AddSimpleFile(filename, c.Contents, c.Executable); err != nil {
 				return fmt.Errorf("failed to add simple file %s: %w", c.GuestFilename, err)
 			}
+		} else if frag.LocalFile != nil {
+			f := filesystem.NewLocalFile(frag.LocalFile.HostFilename, nil)
+
+			fh, err := f.Open()
+			if err != nil {
+				return err
+			}
+			defer fh.Close()
+
+			contents, err := io.ReadAll(fh)
+			if err != nil {
+				return err
+			}
+
+			if err := writer.AddSimpleFile(frag.LocalFile.GuestFilename, contents, true); err != nil {
+				return fmt.Errorf("failed to add simple file %s: %w", frag.LocalFile.GuestFilename, err)
+			}
 		} else if frag.Builtin != nil {
 			c := frag.Builtin
 

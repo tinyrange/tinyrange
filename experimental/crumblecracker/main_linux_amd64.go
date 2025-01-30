@@ -18,6 +18,7 @@ import (
 	"unsafe"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"golang.org/x/arch/x86/x86asm"
 )
 
 // From: https://github.com/bobuhiro11/gokvm
@@ -1255,6 +1256,7 @@ func cpuSetCPUID(kvm *KVMDevice, cpu *KVMCPU) error {
 
 var (
 	imagePath  = flag.String("image", "", "path to the image file")
+	initrdPath = flag.String("initrd", "", "path to the initrd file")
 	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 )
 
@@ -1349,8 +1351,28 @@ func appMain() error {
 
 	hdr.Hdr.VidMode = 0xffff // VGA
 	hdr.Hdr.TypeOfLoader = 0xff
-	hdr.Hdr.RamdiskImage = 0x0
-	hdr.Hdr.RamdiskSize = 0x0
+	if *initrdPath != "" {
+		initrd, err := os.Open(*initrdPath)
+		if err != nil {
+			return fmt.Errorf("failed to read initrd: %w", err)
+		}
+		defer initrd.Close()
+
+		initrdStat, err := initrd.Stat()
+		if err != nil {
+			return fmt.Errorf("failed to stat initrd: %w", err)
+		}
+
+		hdr.Hdr.RamdiskImage = 0x30000
+		hdr.Hdr.RamdiskSize = uint32(initrdStat.Size())
+
+		if _, err := io.Copy(io.NewOffsetWriter(mem, 0x30000), initrd); err != nil {
+			return fmt.Errorf("failed to write initrd: %w", err)
+		}
+	} else {
+		hdr.Hdr.RamdiskImage = 0x0
+		hdr.Hdr.RamdiskSize = 0x0
+	}
 	hdr.Hdr.LoadFlags = CanUseHeap | LoadedHigh | KeepSegments
 	hdr.Hdr.HeapEndPtr = 0xfe00
 	hdr.Hdr.ExtLoaderVer = 0x0
@@ -1359,7 +1381,7 @@ func appMain() error {
 	if err := binary.Write(io.NewOffsetWriter(mem, 0x10000), binary.LittleEndian, &hdr); err != nil {
 		return fmt.Errorf("failed to write boot param: %w", err)
 	}
-	if _, err := io.Copy(io.NewOffsetWriter(mem, 0x20000), bytes.NewBufferString("console=ttyS0")); err != nil {
+	if _, err := io.Copy(io.NewOffsetWriter(mem, 0x20000), bytes.NewBufferString("console=ttyS0 init=/init noapic")); err != nil {
 		return fmt.Errorf("failed to write command line: %w", err)
 	}
 	if _, err := io.Copy(io.NewOffsetWriter(mem, 0x100000), io.NewSectionReader(image, setupSize, imageStat.Size()-setupSize)); err != nil {
@@ -1370,7 +1392,12 @@ func appMain() error {
 
 	bufStdout := bufio.NewWriter(os.Stdout)
 
+	// if err := cpu.SetSingleStep(true); err != nil {
+	// 	return fmt.Errorf("failed to set single step: %w", err)
+	// }
+
 	for {
+		// slog.Info("run")
 		exit, err := cpu.RunOnce()
 		if err != nil {
 			return fmt.Errorf("failed to run CPU: %w", err)
@@ -1399,8 +1426,31 @@ func appMain() error {
 		case ExitShutdown:
 			slog.Info("shutdown")
 		case ExitIntr:
-			// slog.Info("interrupt")
+			slog.Info("interrupt")
 			continue
+		case ExitDebug:
+			// if err := cpu.DumpRegisters(os.Stderr); err != nil {
+			// 	return fmt.Errorf("failed to dump registers: %w", err)
+			// }
+
+			var insn [16]byte
+			regs, err := cpu.GetRegisters()
+			if err != nil {
+				return fmt.Errorf("failed to get registers: %w", err)
+			}
+
+			if _, err := io.ReadFull(io.NewSectionReader(mem, int64(regs.RIP), 16), insn[:]); err != nil {
+				return fmt.Errorf("failed to read instruction: %w", err)
+			}
+
+			inst, err := x86asm.Decode(insn[:], 64)
+			if err != nil {
+				return fmt.Errorf("failed to decode instruction: %w", err)
+			}
+
+			if _, err := fmt.Fprintf(os.Stderr, "instruction: %s\n", inst.String()); err != nil {
+				return fmt.Errorf("failed to write instruction: %w", err)
+			}
 		default:
 			return fmt.Errorf("unexpected exit: %s", exit)
 		}
