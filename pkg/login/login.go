@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -57,12 +58,20 @@ func sha256HashFromFile(filename string) (string, error) {
 
 func parseMount(mount string, writable bool, port int) (common.DirectiveMountHostDirectory, error) {
 	if strings.Contains(mount, ":") {
+		var (
+			host  string
+			guest string
+		)
+
 		parts := strings.Split(mount, ":")
-		if len(parts) != 2 {
+		if len(parts) == 2 {
+			host, guest = parts[0], parts[1]
+		} else if len(parts) == 3 && runtime.GOOS == "windows" {
+			// assume that the user wrote something like C:/host:/guest
+			host, guest = parts[0]+":"+parts[1], parts[2]
+		} else {
 			return common.DirectiveMountHostDirectory{}, fmt.Errorf("invalid mount %s", mount)
 		}
-
-		host, guest := parts[0], parts[1]
 
 		hostPath, err := filepath.Abs(host)
 		if err != nil {
