@@ -10,7 +10,7 @@ def main():
 
 def qemu_download(ctx, arch):
     pkg_def = define.plan(
-        builder = "alpine@3.20",
+        builder = "alpine@3.21",
         arch = arch,
         packages = [
             query("qemu-x86_64"),
@@ -34,14 +34,14 @@ test_vm = define.build_vm(
         define.build(qemu_download, "aarch64"),
         directive.run_command("/init -star /.pkg/qemu-x86_64.star"),
         define.plan(
-            builder = "alpine@3.20",
+            builder = "alpine@3.21",
             arch = "x86_64",
             packages = [],
             tags = ["level3", "defaults"],
         ),
         directive.run_command("interactive"),
     ],
-) 
+)
 
 def user(guest_arch):
     "#macro variable,guest_arch"
