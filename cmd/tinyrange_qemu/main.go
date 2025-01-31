@@ -19,6 +19,10 @@ var QBOOT []byte
 const CFG_USE_VIRTIO_CONSOLE = true
 
 func findQemu(driver vmm.Driver, name string) (string, error) {
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+
 	command, err := driver.FindExecutable(name)
 	if err == nil {
 		return command, nil
