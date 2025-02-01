@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -330,6 +331,7 @@ type driver struct {
 	exportFsPath string
 	dumpFsPath   string
 	nbdBlockSize int
+	wireguardUrl string
 
 	dumpWriter *csv.Writer
 
@@ -1213,26 +1215,26 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 	ns := netstack.New()
 
-	// if d.wireguardUrl != "" {
-	// 	resp, err := d.client.Get(d.wireguardUrl)
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed to get wireguard config: %w", err)
-	// 	}
-	// 	defer resp.Body.Close()
+	if d.wireguardUrl != "" {
+		resp, err := http.Get(d.wireguardUrl)
+		if err != nil {
+			return fmt.Errorf("failed to get wireguard config: %w", err)
+		}
+		defer resp.Body.Close()
 
-	// 	if resp.StatusCode != http.StatusOK {
-	// 		return fmt.Errorf("failed to get wireguard config from %s: %s", d.wireguardUrl, resp.Status)
-	// 	}
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("failed to get wireguard config from %s: %s", d.wireguardUrl, resp.Status)
+		}
 
-	// 	config, err := io.ReadAll(resp.Body)
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed to read wireguard config: %w", err)
-	// 	}
+		config, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read wireguard config: %w", err)
+		}
 
-	// 	if err := ns.SetupWireguard(string(config), 1420); err != nil {
-	// 		return fmt.Errorf("failed to setup wireguard: %w", err)
-	// 	}
-	// }
+		if err := ns.SetupWireguard(string(config), 1420); err != nil {
+			return fmt.Errorf("failed to setup wireguard: %w", err)
+		}
+	}
 
 	nic, err := ns.AttachNetworkInterface()
 	if err != nil {
@@ -1500,6 +1502,7 @@ var (
 	persistPath  = flag.String("persist-path", "", "Specify a path to save VM files to.")
 	exportFsPath = flag.String("exportfs", "", "Export the filesystem to a file.")
 	dumpFsPath   = flag.String("dumpfs", "", "Dump the filename and offset of any reads from the filesystem to a CSV file.")
+	wireguardUrl = flag.String("wireguard-url", "", "URL to fetch wireguard config from.")
 	nbdBlockSize = flag.Int("nbd-block-size", 0, "Override the preferred and maximum block size for the NBD server. This can have major performance implications.")
 )
 
@@ -1520,6 +1523,7 @@ func entryMain(
 		persistPath:  *persistPath,
 		exportFsPath: *exportFsPath,
 		dumpFsPath:   *dumpFsPath,
+		wireguardUrl: *wireguardUrl,
 		nbdBlockSize: *nbdBlockSize,
 	}
 
