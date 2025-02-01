@@ -724,5 +724,8 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 		}
 	}
 
+	// Sync the filesystem.
+	unix.Sync()
+
 	return nil
 }

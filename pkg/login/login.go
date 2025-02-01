@@ -101,21 +101,31 @@ func parseMount(mount string, writable bool, port int) (common.DirectiveMountHos
 	}
 }
 
-func parseVolume(volume string) (string, uint64, string, error) {
+func parseVolume(volume string) (common.DirectiveAddVolume, error) {
 	// name, size, guestPath split by ,
 	tokens := strings.Split(volume, ",")
-	if len(tokens) != 3 {
-		return "", 0, "", fmt.Errorf("invalid volume %s", volume)
-	}
+	if len(tokens) >= 3 {
+		name := tokens[0]
+		minSize, err := strconv.ParseUint(tokens[1], 0, 64)
+		if err != nil {
+			return common.DirectiveAddVolume{}, err
+		}
+		guestPath := tokens[2]
 
-	name := tokens[0]
-	minSize, err := strconv.ParseUint(tokens[1], 0, 64)
-	if err != nil {
-		return "", 0, "", err
-	}
-	guestPath := tokens[2]
+		dir := common.DirectiveAddVolume{
+			VolumeName:    name,
+			MinimumSizeMB: minSize,
+			GuestPath:     guestPath,
+		}
 
-	return name, minSize, guestPath, nil
+		if len(tokens) == 4 && tokens[3] == "persist" {
+			dir.Persist = true
+		}
+
+		return dir, nil
+	} else {
+		return common.DirectiveAddVolume{}, fmt.Errorf("invalid volume %s", volume)
+	}
 }
 
 var CURRENT_CONFIG_VERSION = 1
@@ -709,16 +719,12 @@ func (config *Config) Run(db common.PackageDatabase) error {
 	}
 
 	for _, volume := range config.Volumes {
-		name, size, guestPath, err := parseVolume(volume)
+		dir, err := parseVolume(volume)
 		if err != nil {
 			return err
 		}
 
-		directives = append(directives, common.DirectiveAddVolume{
-			VolumeName:    name,
-			GuestPath:     guestPath,
-			MinimumSizeMB: size,
-		})
+		directives = append(directives, dir)
 	}
 
 	if len(mountDirectives) > 0 {

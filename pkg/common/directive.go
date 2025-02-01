@@ -507,6 +507,7 @@ type DirectiveAddVolume struct {
 	VolumeName    string
 	GuestPath     string
 	MinimumSizeMB uint64
+	Persist       bool
 }
 
 // AsFragments implements Directive.
@@ -516,6 +517,7 @@ func (d DirectiveAddVolume) AsFragments(ctx BuildContext, special SpecialDirecti
 			VolumeName:    d.VolumeName,
 			GuestPath:     d.GuestPath,
 			MinimumSizeMB: d.MinimumSizeMB,
+			Persist:       d.Persist,
 		}},
 	}, nil
 }

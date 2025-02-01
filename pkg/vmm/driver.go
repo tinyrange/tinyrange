@@ -721,6 +721,7 @@ func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []int, [
 					VolumeName:    volume.VolumeName,
 					MinimumSizeMB: volume.MinimumSizeMB,
 					GuestPath:     volume.GuestPath,
+					Persist:       volume.Persist,
 				})
 			} else {
 				if err := tr.fragmentToFilesystem(config, frag, root); err != nil {
@@ -779,13 +780,17 @@ func (tr *driver) buildFilesystem(
 	persistPath string,
 	root filesystem.Directory,
 	skipDirectories map[filesystem.Directory]struct{},
-) (BlockDevice, *ext4.Ext4Filesystem, int64, error) {
+) (
+	bd BlockDevice,
+	ext4Fs *ext4.Ext4Filesystem,
+	fsSize int64,
+	err error,
+) {
 	totalSize, err := filesystem.GetTotalSize(root)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("could not compute total size")
 	}
 
-	var fsSize int64
 	if int64(float64(totalSize)*1.5) > int64(minSize)*1024*1024 {
 		targetSize := int64(float64(totalSize)*1.5) / 128 / 1024 / 1024
 
@@ -798,12 +803,51 @@ func (tr *driver) buildFilesystem(
 
 	start := time.Now()
 
+	vmem := vm.NewVirtualMemory(fsSize, 4096)
+	bd = vmem
+
+	slog.Debug("created virtual memory", "took", time.Since(start))
+
+	switch kind {
+	case config.FilesystemKindExt4:
+		start = time.Now()
+
+		fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("failed to create ext4 filesystem: %w", err)
+		}
+		ext4Fs = fs
+
+		slog.Debug("created ext4 filesystem", "took", time.Since(start))
+
+		start = time.Now()
+
+		var regionWrapper ext4.RegionWrapperFunc
+
+		if tr.dumpWriter != nil {
+			regionWrapper = func(filename string, region vm.MemoryRegion) vm.MemoryRegion {
+				return &loggerRegion{
+					MemoryRegion: region,
+					filename:     filename,
+					write:        tr.dumpWriter.Write,
+				}
+			}
+		}
+
+		if err := fs.AddDirectory(root, regionWrapper, skipDirectories); err != nil {
+			return nil, nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
+		}
+
+		slog.Debug("built filesystem", "took", time.Since(start))
+	case config.FilesystemKindRaw:
+		// noop
+	default:
+		return nil, nil, 0, fmt.Errorf("unknown filesystem kind: %s", kind)
+	}
+
 	if persistPath != "" {
 		if tr.persistPath == "" {
 			return nil, nil, 0, fmt.Errorf("persist path not set for persistent filesystem")
-		}
-		if kind != config.FilesystemKindRaw {
-			return nil, nil, 0, fmt.Errorf("only raw filesystems are supported for persistent filesystems")
 		}
 
 		persistDir := filepath.Dir(persistPath)
@@ -823,6 +867,10 @@ func (tr *driver) buildFilesystem(
 			if err := fh.Truncate(fsSize); err != nil {
 				return nil, nil, 0, fmt.Errorf("failed to truncate persistent filesystem: %w", err)
 			}
+
+			if _, err := io.Copy(io.NewOffsetWriter(fh, 0), io.NewSectionReader(vmem, 0, fsSize)); err != nil {
+				return nil, nil, 0, fmt.Errorf("failed to copy memory to persistent filesystem: %w", err)
+			}
 		} else if err == nil {
 			slog.Info("opened persistent filesystem", "size", fsSize, "path", persistPath)
 
@@ -840,47 +888,7 @@ func (tr *driver) buildFilesystem(
 
 		return &fileBlockDevice{File: fh, size: fsSize}, nil, fsSize, nil
 	} else {
-		vmem := vm.NewVirtualMemory(fsSize, 4096)
-
-		slog.Debug("created virtual memory", "took", time.Since(start))
-
-		switch kind {
-		case config.FilesystemKindExt4:
-			start = time.Now()
-
-			fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
-			if err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to create ext4 filesystem: %w", err)
-			}
-
-			slog.Debug("created ext4 filesystem", "took", time.Since(start))
-
-			start = time.Now()
-
-			var regionWrapper ext4.RegionWrapperFunc
-
-			if tr.dumpWriter != nil {
-				regionWrapper = func(filename string, region vm.MemoryRegion) vm.MemoryRegion {
-					return &loggerRegion{
-						MemoryRegion: region,
-						filename:     filename,
-						write:        tr.dumpWriter.Write,
-					}
-				}
-			}
-
-			if err := fs.AddDirectory(root, regionWrapper, skipDirectories); err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
-			}
-
-			slog.Debug("built filesystem", "took", time.Since(start))
-
-			return vmem, fs, fsSize, nil
-		case config.FilesystemKindRaw:
-			return vmem, nil, fsSize, nil
-		default:
-			return nil, nil, 0, fmt.Errorf("unknown filesystem kind: %s", kind)
-		}
+		return
 	}
 }
 
@@ -1029,6 +1037,7 @@ type volumeInfo struct {
 	VolumeName    string
 	MinimumSizeMB uint64
 	GuestPath     string
+	Persist       bool
 }
 
 func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) error {
@@ -1152,11 +1161,16 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 			return fmt.Errorf("failed to open path: %w", err)
 		}
 
+		persist := rootInfo.PersistPath
+		if volume.Persist {
+			persist = "persist.img"
+		}
+
 		vmem, ext4Fs, _, err := d.buildFilesystem(
 			rootKind,
 			int(volume.MinimumSizeMB),
 			volume.VolumeName,
-			rootInfo.PersistPath,
+			persist,
 			rootDir,
 			skipDirectories,
 		)

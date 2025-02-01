@@ -115,6 +115,7 @@ type AddVolumeFragment struct {
 	VolumeName    string `json:"volume_name" yaml:"volume_name"`
 	GuestPath     string `json:"guest_path" yaml:"guest_path"`
 	MinimumSizeMB uint64 `json:"minimum_size_mb" yaml:"minimum_size_mb"`
+	Persist       bool   `json:"persist" yaml:"persist"`
 }
 
 type Fragment struct {
