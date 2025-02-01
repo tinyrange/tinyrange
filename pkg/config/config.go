@@ -111,6 +111,12 @@ type KernelFragment struct {
 	InitramfsFilename string `json:"initramfs_filename" yaml:"initramfs_filename"`
 }
 
+type AddVolumeFragment struct {
+	VolumeName    string `json:"volume_name" yaml:"volume_name"`
+	GuestPath     string `json:"guest_path" yaml:"guest_path"`
+	MinimumSizeMB uint64 `json:"minimum_size_mb" yaml:"minimum_size_mb"`
+}
+
 type Fragment struct {
 	// Not supported by TinyRange directly.
 	RunCommand          *RunCommandFragment          `json:"run_command,omitempty" yaml:"run_command"`
@@ -128,6 +134,7 @@ type Fragment struct {
 	ExportPort         *ExportPortFragment         `json:"export_port,omitempty" yaml:"export_port"`
 	MountHostDirectory *MountHostDirectoryFragment `json:"mount_host_directory,omitempty" yaml:"mount_host_directory"`
 	Kernel             *KernelFragment             `json:"kernel,omitempty" yaml:"kernel"`
+	AddVolume          *AddVolumeFragment          `json:"add_volume,omitempty" yaml:"add_volume"`
 }
 
 type FilesystemKind string

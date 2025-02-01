@@ -101,6 +101,23 @@ func parseMount(mount string, writable bool, port int) (common.DirectiveMountHos
 	}
 }
 
+func parseVolume(volume string) (string, uint64, string, error) {
+	// name, size, guestPath split by ,
+	tokens := strings.Split(volume, ",")
+	if len(tokens) != 3 {
+		return "", 0, "", fmt.Errorf("invalid volume %s", volume)
+	}
+
+	name := tokens[0]
+	minSize, err := strconv.ParseUint(tokens[1], 0, 64)
+	if err != nil {
+		return "", 0, "", err
+	}
+	guestPath := tokens[2]
+
+	return name, minSize, guestPath, nil
+}
+
 var CURRENT_CONFIG_VERSION = 1
 
 type VMSpec struct {
@@ -127,6 +144,7 @@ type Config struct {
 	NoScripts        bool     `json:"no_scripts,omitempty" yaml:"no_scripts,omitempty"`
 	Init             string   `json:"init,omitempty" yaml:"init,omitempty"`
 	ForwardPorts     []string `json:"forward_ports,omitempty" yaml:"forward_ports,omitempty"`
+	Volumes          []string `json:"volumes,omitempty" yaml:"volumes,omitempty"`
 	MinSpec          VMSpec   `json:"min_spec,omitempty" yaml:"min_spec,omitempty"`
 
 	// secure configs that have to be set on the command line.
@@ -690,6 +708,19 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		mountDirectives = append(mountDirectives, parsed)
 	}
 
+	for _, volume := range config.Volumes {
+		name, size, guestPath, err := parseVolume(volume)
+		if err != nil {
+			return err
+		}
+
+		directives = append(directives, common.DirectiveAddVolume{
+			VolumeName:    name,
+			GuestPath:     guestPath,
+			MinimumSizeMB: size,
+		})
+	}
+
 	if len(mountDirectives) > 0 {
 		if feature.HasFeature(feature.Feature9P) {
 			scriptLines := []string{
@@ -738,24 +769,6 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		forwardedPorts[portNum] = struct{}{}
 
 		directives = append(directives, common.DirectiveExportPort{Name: "forward", Port: portNum})
-	}
-
-	if feature.HasFeature(feature.FeatureInitramfs) && feature.HasFeature(feature.FeatureNbdTest) {
-		// create a simple initramfs
-		initramfsDef := builder.Factory.NewBuildFsDefinition([]common.Directive{
-			common.DirectiveBuiltin{Name: "init", Architecture: string(arch), GuestFilename: "init"},
-			common.DirectiveAddFile{Filename: "init.star", Contents: []byte(`
-def main():
-	parse_commandline(file_read("/proc/cmdline"))
-	mount("devtmpfs", "devtmpfs", "/dev", ensure_path = True, ignore_error = True)
-	network_interface_up("lo")
-	network_interface_up("eth0")
-	network_interface_configure("eth0", ip = "10.42.0.2/16", router = "10.42.0.1")
-	run_starlark_server(13234)
-`)},
-		}, "initramfs")
-
-		directives = append(directives, common.DirectiveKernel{Initramfs: initramfsDef})
 	}
 
 	interaction := "ssh"

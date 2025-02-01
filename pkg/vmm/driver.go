@@ -1,7 +1,6 @@
 package vmm
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -16,7 +15,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -43,6 +41,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	_ "github.com/tinyrange/tinyrange/pkg/platform"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
+	"github.com/tinyrange/tinyrange/third_party/go-nbd/backend"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
@@ -656,7 +655,7 @@ var (
 	_ Filesystem = &ext4Filesystem{}
 )
 
-func (tr *driver) createNbdListener(tryUnix bool) (*nbdAddress, net.Listener, error) {
+func (tr *driver) createNbdListener(tryUnix bool) (net.Addr, net.Listener, error) {
 	if (runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows") && tr.persistPath != "" && tryUnix {
 		pid := os.Getpid()
 
@@ -680,20 +679,21 @@ func (tr *driver) createNbdListener(tryUnix bool) (*nbdAddress, net.Listener, er
 			}
 		})
 
-		return &nbdAddress{Addr: listener.Addr(), Export: "root"}, listener, nil
+		return listener.Addr(), listener, nil
 	} else {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to listen: %v", err)
 		}
 
-		return &nbdAddress{Addr: listener.Addr(), Export: "root"}, listener, nil
+		return listener.Addr(), listener, nil
 	}
 }
 
-func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []int, []mountInfo, error) {
+func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []int, []mountInfo, []volumeInfo, error) {
 	var exportedPorts []int
 	var mountedHostDirectories []mountInfo
+	var volumes []volumeInfo
 
 	root := filesystem.NewMemoryDirectory()
 
@@ -714,15 +714,21 @@ func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []int, [
 					Port:          mount.Port,
 					Writable:      mount.Writable,
 				})
+			} else if volume := frag.AddVolume; volume != nil {
+				volumes = append(volumes, volumeInfo{
+					VolumeName:    volume.VolumeName,
+					MinimumSizeMB: volume.MinimumSizeMB,
+					GuestPath:     volume.GuestPath,
+				})
 			} else {
 				if err := tr.fragmentToFilesystem(config, frag, root); err != nil {
-					return nil, nil, nil, fmt.Errorf("failed to extract fragment to filesystem: %w", err)
+					return nil, nil, nil, nil, fmt.Errorf("failed to extract fragment to filesystem: %w", err)
 				}
 			}
 		}
 	}
 
-	return root, exportedPorts, mountedHostDirectories, nil
+	return root, exportedPorts, mountedHostDirectories, volumes, nil
 }
 
 func (tr *driver) configureSecureSSH(root filesystem.Directory) (SecureSSHConfig, error) {
@@ -764,34 +770,44 @@ func (tr *driver) configureSecureSSH(root filesystem.Directory) (SecureSSHConfig
 	return secureSSH, nil
 }
 
-func (tr *driver) buildFilesystem(rootInfo config.Filesystem, root filesystem.Directory) (BlockDevice, *ext4.Ext4Filesystem, int64, error) {
+func (tr *driver) buildFilesystem(
+	kind config.FilesystemKind,
+	minSize int,
+	name string,
+	persistPath string,
+	root filesystem.Directory,
+	skipDirectories map[filesystem.Directory]struct{},
+) (BlockDevice, *ext4.Ext4Filesystem, int64, error) {
 	totalSize, err := filesystem.GetTotalSize(root)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("could not compute total size")
 	}
 
 	var fsSize int64
-	if int64(float64(totalSize)*1.5) > int64(rootInfo.StorageSize)*1024*1024 {
+	if int64(float64(totalSize)*1.5) > int64(minSize)*1024*1024 {
 		targetSize := int64(float64(totalSize)*1.5) / 128 / 1024 / 1024
 
 		slog.Debug("resize filesystem", "new", fmt.Sprintf("%dmb", targetSize*128))
 
 		fsSize = targetSize * 128 * 1024 * 1024
 	} else {
-		fsSize = int64(rootInfo.StorageSize) * 1024 * 1024
+		fsSize = int64(minSize) * 1024 * 1024
 	}
 
 	start := time.Now()
 
-	if rootInfo.PersistPath != "" {
+	if persistPath != "" {
 		if tr.persistPath == "" {
 			return nil, nil, 0, fmt.Errorf("persist path not set for persistent filesystem")
 		}
-		if rootInfo.Kind != config.FilesystemKindRaw {
+		if kind != config.FilesystemKindRaw {
 			return nil, nil, 0, fmt.Errorf("only raw filesystems are supported for persistent filesystems")
 		}
 
-		persistPath := filepath.Join(tr.persistPath, rootInfo.PersistPath)
+		persistDir := filepath.Dir(persistPath)
+		persistName := name + "_" + filepath.Base(persistPath)
+
+		persistPath := filepath.Join(tr.persistPath, filepath.Join(persistDir, persistName))
 
 		fh, err := os.OpenFile(persistPath, os.O_RDWR, 0644)
 		if errors.Is(err, os.ErrNotExist) {
@@ -826,7 +842,7 @@ func (tr *driver) buildFilesystem(rootInfo config.Filesystem, root filesystem.Di
 
 		slog.Debug("created virtual memory", "took", time.Since(start))
 
-		switch rootInfo.Kind {
+		switch kind {
 		case config.FilesystemKindExt4:
 			start = time.Now()
 
@@ -851,7 +867,7 @@ func (tr *driver) buildFilesystem(rootInfo config.Filesystem, root filesystem.Di
 				}
 			}
 
-			if err := fs.AddDirectory(root, regionWrapper); err != nil {
+			if err := fs.AddDirectory(root, regionWrapper, skipDirectories); err != nil {
 				return nil, nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
 			}
 
@@ -861,12 +877,17 @@ func (tr *driver) buildFilesystem(rootInfo config.Filesystem, root filesystem.Di
 		case config.FilesystemKindRaw:
 			return vmem, nil, fsSize, nil
 		default:
-			return nil, nil, 0, fmt.Errorf("unknown filesystem kind: %s", rootInfo.Kind)
+			return nil, nil, 0, fmt.Errorf("unknown filesystem kind: %s", kind)
 		}
 	}
 }
 
-func (tr *driver) nbdLoop(listener net.Listener, backend *vmBackend) {
+type nbdExport struct {
+	name    string
+	backend backend.Backend
+}
+
+func (tr *driver) nbdLoop(listener net.Listener, exports ...nbdExport) {
 	for {
 		conn, err := listener.Accept()
 		if errors.Is(err, net.ErrClosed) {
@@ -886,12 +907,17 @@ func (tr *driver) nbdLoop(listener net.Listener, backend *vmBackend) {
 				maximumBlockSize = min(32*1024*1024-1, uint32(tr.nbdBlockSize))
 			}
 
+			exportList := make([]gonbd.Export, 0, len(exports))
+			for _, export := range exports {
+				exportList = append(exportList, gonbd.Export{
+					Name:        export.name,
+					Description: "",
+					Backend:     export.backend,
+				})
+			}
+
 			// slog.Debug("got nbd connection", "remote", conn.RemoteAddr().String())
-			err = gonbd.Handle(conn, []gonbd.Export{{
-				Name:        "root",
-				Description: "",
-				Backend:     backend,
-			}}, &gonbd.Options{
+			err = gonbd.Handle(conn, exportList, &gonbd.Options{
 				ReadOnly:           false,
 				MinimumBlockSize:   minBlockSize, // Fix for VZ on Darwin, it errors if the minimum is too large.
 				PreferredBlockSize: preferredBlockSize,
@@ -997,6 +1023,12 @@ type mountInfo struct {
 	Writable      bool
 }
 
+type volumeInfo struct {
+	VolumeName    string
+	MinimumSizeMB uint64
+	GuestPath     string
+}
+
 func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) error {
 	mainStart := time.Now()
 
@@ -1031,12 +1063,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 	start := time.Now()
 
-	rootInfo, ok := topConfig.Filesystems["root"]
-	if !ok {
-		return fmt.Errorf("root filesystem not found")
-	}
-
-	root, exportedPorts, mountedHostDirectories, err := d.fragmentsToConfig("root")
+	root, exportedPorts, mountedHostDirectories, volumes, err := d.fragmentsToConfig("root")
 	if err != nil {
 		return fmt.Errorf("failed to convert fragments to config: %w", err)
 	}
@@ -1061,12 +1088,24 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		d.dumpWriter.Write([]string{"time", "filename", "size", "offset"})
 	}
 
-	vmem, ext4Fs, fsSize, err := d.buildFilesystem(rootInfo, root)
-	if err != nil {
-		return fmt.Errorf("failed to build filesystem: %w", err)
+	rootInfo, ok := topConfig.Filesystems["root"]
+	if !ok {
+		return fmt.Errorf("root filesystem not found")
 	}
 
 	if d.exportFsPath != "" {
+		vmem, _, fsSize, err := d.buildFilesystem(
+			rootInfo.Kind,
+			rootInfo.StorageSize,
+			"root",
+			"",
+			root,
+			make(map[filesystem.Directory]struct{}),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to build filesystem: %w", err)
+		}
+
 		out, err := os.Create(d.exportFsPath)
 		if err != nil {
 			return fmt.Errorf("failed to create export filesystem: %w", err)
@@ -1085,40 +1124,92 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		return nil
 	}
 
-	// if tr.listenNbd != "" {
-	// 	listener, err := net.Listen("tcp", tr.listenNbd)
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed to listen: %v", err)
-	// 	}
+	rootKind := rootInfo.Kind
 
-	// 	slog.Info("nbd listening on", "addr", listener.Addr().String())
+	addr, listener, err := d.createNbdListener(true)
+	if err != nil {
+		return fmt.Errorf("failed to create nbd listener: %w", err)
+	}
 
-	// 	backend := &vmBackend{vm: vmem}
+	var exports []nbdExport
+	skipDirectories := make(map[filesystem.Directory]struct{})
 
-	// 	tr.nbdLoop(listener, backend)
-	// }
+	var rootFilesystem Filesystem
 
-	backend := &vmBackend{vm: vmem}
+	for _, volume := range volumes {
+		if _, err := filesystem.Mkdir(root, volume.GuestPath); err != nil {
+			return fmt.Errorf("failed to open path: %w", err)
+		}
+	}
 
-	if feature.HasFeature(feature.FeatureInitramfs) && feature.HasFeature(feature.FeatureNbdTest) {
-		// ignore
-	} else {
-		nbdAddress, listener, err := d.createNbdListener(true)
+	for _, volume := range append([]volumeInfo{
+		{VolumeName: "root", GuestPath: "/", MinimumSizeMB: uint64(rootInfo.StorageSize)},
+	}, volumes...) {
+		rootDir, err := filesystem.Mkdir(root, volume.GuestPath)
 		if err != nil {
-			return fmt.Errorf("failed to create nbd listener: %w", err)
+			return fmt.Errorf("failed to open path: %w", err)
 		}
 
-		go d.nbdLoop(listener, backend)
+		vmem, ext4Fs, _, err := d.buildFilesystem(
+			rootKind,
+			int(volume.MinimumSizeMB),
+			volume.VolumeName,
+			rootInfo.PersistPath,
+			rootDir,
+			skipDirectories,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to build filesystem: %w", err)
+		}
+
+		nbdAddress := &nbdAddress{Addr: addr, Export: volume.VolumeName}
+
+		exports = append(exports, nbdExport{
+			name:    volume.VolumeName,
+			backend: &vmBackend{vm: vmem},
+		})
 
 		if ext4Fs != nil {
-			d.diskImages = append(d.diskImages, &ext4Filesystem{
+			disk := &ext4Filesystem{
 				nbdAddress: nbdAddress,
 				fs:         ext4Fs,
-			})
+			}
+
+			d.diskImages = append(d.diskImages, disk)
+
+			if volume.VolumeName == "root" {
+				rootFilesystem = disk
+			}
 		} else {
 			d.diskImages = append(d.diskImages, nbdAddress)
 		}
+
+		skipDirectories[rootDir] = struct{}{}
 	}
+
+	if rootFilesystem != nil && len(volumes) > 0 {
+		if true { // guest os Linux
+			if err := rootFilesystem.EnsurePath("/init.d"); err != nil {
+				return fmt.Errorf("failed to ensure path: %w", err)
+			}
+
+			mountNames := []string{"vdb", "vdc", "vdd", "vde", "vdf", "vdg"}
+
+			mountScript := "def main():\n"
+			for i, volume := range volumes {
+				mountScript += fmt.Sprintf(
+					"  mount(\"ext4\", \"/dev/%s\", \"%s\", ensure_path = True)\n",
+					mountNames[i], volume.GuestPath,
+				)
+			}
+
+			if err := rootFilesystem.WriteFile("/init.d/mount.star", []byte(mountScript)); err != nil {
+				return fmt.Errorf("failed to write file: %w", err)
+			}
+		}
+	}
+
+	go d.nbdLoop(listener, exports...)
 
 	ns := netstack.New()
 
@@ -1162,57 +1253,6 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		if err := d.exportPort(ns, port); err != nil {
 			return fmt.Errorf("failed to export port: %w", err)
 		}
-	}
-
-	if feature.HasFeature(feature.FeatureNbdTest) {
-		vmem := vm.NewVirtualMemory(128*1024*1024, 4096)
-
-		fs, err := ext4.CreateExt4Filesystem(vmem, 0, 128*1024*1024)
-		if err != nil {
-			return fmt.Errorf("failed to create ext4 filesystem: %w", err)
-		}
-
-		if err := fs.CreateFile("/test.txt", vm.RawRegion([]byte("hello world"))); err != nil {
-			return fmt.Errorf("failed to create file: %w", err)
-		}
-
-		listen, err := ns.ListenInternal("tcp", ":10809")
-		if err != nil {
-			return fmt.Errorf("failed to listen internal (nbd): %w", err)
-		}
-
-		go func() {
-			for {
-				conn, err := listen.Accept()
-				if err != nil {
-					slog.Error("nbd server failed to accept", "error", err)
-					return
-				}
-				go func() {
-					err = gonbd.Handle(conn, []gonbd.Export{
-						{
-							Name:        "nbd_test",
-							Description: "",
-							Backend:     &vmBackend{vm: vmem},
-						},
-						{
-							Name:        "root",
-							Description: "",
-							Backend:     backend,
-						},
-					}, &gonbd.Options{
-						SendFixedFlags:     true,
-						ReadOnly:           false,
-						MinimumBlockSize:   512,
-						PreferredBlockSize: 4096,
-						MaximumBlockSize:   32*1024*1024 - 1,
-					})
-					if err != nil {
-						slog.Warn("nbd server failed to handle", "error", err)
-					}
-				}()
-			}
-		}()
 	}
 
 	// Set the kernel.
@@ -1316,64 +1356,6 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 				os.Exit(1)
 			}
 		}()
-
-		if feature.HasFeature(feature.FeatureInitramfs) && feature.HasFeature(feature.FeatureNbdTest) {
-			// post the second stage startup.
-			secondStage := []byte(`
-def main():
-	path_ensure("/mnt")
-	dev = connect_nbd("10.42.0.1", 10809, "root")
-	mount("ext4", dev, "/mnt")
-	chroot("/mnt")
-	chdir("/")
-	exec("/init")
-			`)
-
-			client := http.Client{
-				Transport: &http.Transport{
-					DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-						return ns.DialInternalContext(ctx, network, addr)
-					},
-				},
-			}
-
-			for {
-				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-				defer cancel()
-
-				contents := bytes.NewReader(secondStage)
-				req, err := http.NewRequestWithContext(ctx, "POST", "http://10.42.0.2:13234/run", contents)
-				if err != nil {
-					return err
-				}
-
-				resp, err := client.Do(req)
-				if err != nil {
-					slog.Error("failed to post second stage", "err", err)
-					time.Sleep(100 * time.Millisecond)
-					continue
-				}
-
-				body, err := io.ReadAll(resp.Body)
-				if err != nil {
-					slog.Error("failed to read response", "err", err)
-					time.Sleep(100 * time.Millisecond)
-					continue
-				}
-
-				slog.Debug("second stage response", "body", string(body))
-
-				if resp.StatusCode != http.StatusOK {
-					slog.Error("failed to post second stage", "status", resp.Status)
-					time.Sleep(100 * time.Millisecond)
-					continue
-				}
-
-				break
-			}
-
-			slog.Info("posted second stage")
-		}
 
 		if d.Interaction() == config.InteractionVNC {
 			go runVncClient(ns, "10.42.0.2:5901")

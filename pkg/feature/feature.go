@@ -12,8 +12,6 @@ const (
 	FeatureVz             Feature = "vz"        // (darwin only) Use VZ instead of QEMU
 	FeatureBuild1         Feature = "build1"    // Use build1 for building instead of build2
 	Feature9P             Feature = "9p"        // Use 9p for file sharing
-	FeatureInitramfs      Feature = "initramfs" // Boot the system with a test initramfs
-	FeatureNbdTest        Feature = "nbd_test"  // Export a test NBD device
 	FeatureBuildOci       Feature = "build_oci" // Enable the build-oci command
 	FeatureSlowBoot       Feature = "slow_boot"
 )
@@ -26,8 +24,6 @@ func init() {
 	features[FeatureVz] = false
 	features[FeatureBuild1] = false
 	features[Feature9P] = true
-	features[FeatureInitramfs] = false
-	features[FeatureNbdTest] = false
 	features[FeatureSlowBoot] = false
 	features[FeatureBuildOci] = false
 }

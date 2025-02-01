@@ -1682,6 +1682,7 @@ type RegionWrapperFunc func(string, vm.MemoryRegion) vm.MemoryRegion
 type filesystemCreationContext struct {
 	deferredFilesystem []func() error
 	regionWrapper      RegionWrapperFunc
+	skipDirectories    map[filesystem.Directory]struct{}
 }
 
 // Recurse into an filesystem.Directory and put all it's contents into a ext4 filesystem.
@@ -1715,8 +1716,10 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 				return fmt.Errorf("directory does not implement Directory: %T", ent.File)
 			}
 
-			if err := fs.addDirectory(ctx, child, name); err != nil {
-				return err
+			if _, ok := ctx.skipDirectories[child]; !ok {
+				if err := fs.addDirectory(ctx, child, name); err != nil {
+					return err
+				}
 			}
 		case filesystem.TypeLink:
 			target, err := filesystem.GetLinkName(ent.File)
@@ -1798,9 +1801,14 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 	return nil
 }
 
-func (fs *Ext4Filesystem) AddDirectory(dir filesystem.Directory, wrapper RegionWrapperFunc) error {
+func (fs *Ext4Filesystem) AddDirectory(
+	dir filesystem.Directory,
+	wrapper RegionWrapperFunc,
+	skipDirectories map[filesystem.Directory]struct{},
+) error {
 	ctx := &filesystemCreationContext{
-		regionWrapper: wrapper,
+		regionWrapper:   wrapper,
+		skipDirectories: skipDirectories,
 	}
 
 	if err := fs.addDirectory(ctx, dir, "/"); err != nil {

@@ -503,6 +503,34 @@ func (d DirectiveAddInitScript) Tag() string {
 	return fmt.Sprintf("DirectiveAddInitScript_%s", d.GuestFilename)
 }
 
+type DirectiveAddVolume struct {
+	VolumeName    string
+	GuestPath     string
+	MinimumSizeMB uint64
+}
+
+// AsFragments implements Directive.
+func (d DirectiveAddVolume) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
+	return []config.Fragment{
+		{AddVolume: &config.AddVolumeFragment{
+			VolumeName:    d.VolumeName,
+			GuestPath:     d.GuestPath,
+			MinimumSizeMB: d.MinimumSizeMB,
+		}},
+	}, nil
+}
+
+// Dependencies implements Directive.
+func (d DirectiveAddVolume) Dependencies() ([]BuildDefinition, error) { return nil, nil }
+
+// SerializableType implements Directive.
+func (d DirectiveAddVolume) SerializableType() string { return "DirectiveAddVolume" }
+
+// Tag implements Directive.
+func (d DirectiveAddVolume) Tag() string {
+	return fmt.Sprintf("DirectiveAddVolume_%s", d.VolumeName)
+}
+
 var (
 	_ Directive = DirectiveRunCommand{}
 	_ Directive = DirectiveRunStarlarkScript{}
@@ -520,6 +548,7 @@ var (
 	_ Directive = DirectiveMountHostDirectory{}
 	_ Directive = DirectiveKernel{}
 	_ Directive = DirectiveAddInitScript{}
+	_ Directive = DirectiveAddVolume{}
 )
 
 type StarDirective struct {
@@ -547,6 +576,7 @@ type SpecialDirectiveHandlers struct {
 	DefaultInteractive  func(dir DirectiveDefaultInteractive) error
 	MountHostDirectory  func(dir DirectiveMountHostDirectory) error
 	Kernel              func(dir DirectiveKernel) error
+	AddVolume           func(dir DirectiveAddVolume) error
 }
 
 func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers) ([]Directive, error) {
@@ -624,6 +654,14 @@ func FlattenDirectives(directives []Directive, handlers SpecialDirectiveHandlers
 			case DirectiveKernel:
 				if handlers.Kernel != nil {
 					if err := handlers.Kernel(dir); err != nil {
+						return err
+					}
+				} else {
+					ret = append(ret, dir)
+				}
+			case DirectiveAddVolume:
+				if handlers.AddVolume != nil {
+					if err := handlers.AddVolume(dir); err != nil {
 						return err
 					}
 				} else {

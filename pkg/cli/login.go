@@ -173,6 +173,7 @@ func init() {
 	loginCmd.PersistentFlags().StringVar(&currentConfig.Architecture, "arch", "", "Override the CPU architecture of the machine. This will use emulation with a performance hit.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.RootArchitecture, "root-arch", "", "Override the CPU architecture of the root filesystem. This is for special cases where root emulation is needed.")
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ForwardPorts, "forward", []string{}, "Forward a port from the guest to the host.")
+	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.Volumes, "volume", []string{}, "Mount a volume of a given size into the VM.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.OciImage, "oci", "", "Use an OCI image as the root filesystem.")
 
 	// private flags (need to set on command line)
