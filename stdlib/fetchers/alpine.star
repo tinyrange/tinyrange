@@ -246,7 +246,7 @@ def make_alpine_repos(arch, only_latest = True):
 
     return alpine_repos
 
-def build_alpine_install_layer(ctx, directives):
+def build_alpine_install_layer(ctx, directives, version):
     ret = filesystem()
 
     scripts = []
@@ -259,30 +259,32 @@ def build_alpine_install_layer(ctx, directives):
 
         for ent in fs[".pkg"]:
             if "pre-install.sh" in ent:
-                file = ent["pre-install.sh"]
+                f = ent["pre-install.sh"]
                 scripts.append({
                     "kind": "execute",
-                    "exec": file.name,
+                    "exec": f.name,
                 })
 
             if "trigger.json" in ent:
-                file = ent["trigger.json"]
-                triggers = json.decode(file.read())
+                f = ent["trigger.json"]
+                triggers = json.decode(f.read())
 
                 scripts.append({
                     "kind": "trigger_on",
                     "triggers": triggers,
-                    "exec": file.name.removesuffix(".json") + ".sh",
+                    "exec": f.name.removesuffix(".json") + ".sh",
                 })
 
             if "post-install.sh" in ent:
-                file = ent["post-install.sh"]
+                f = ent["post-install.sh"]
                 scripts.append({
                     "kind": "execute",
-                    "exec": file.name,
+                    "exec": f.name,
                 })
 
     ret[".pkg/scripts.json"] = json.encode(scripts)
+
+    ret["etc/alpine-release"] = file("{}\n".format(version))
 
     return ctx.archive(ret)
 
@@ -294,6 +296,7 @@ def build_alpine_directives(builder, plan):
             define.build(
                 build_alpine_install_layer,
                 plan.directives,
+                builder.metadata["version"],
             ),
         ] + plan.directives
 
@@ -337,7 +340,7 @@ def make_alpine_builders(arch, repos):
             # This builder is scoped to just the packages in this repo.
             packages = repos[version],
 
-            # Make the alpine version avalible to the plan_callback.
+            # Make the alpine version available to the plan_callback.
             metadata = {
                 "version": version,
             },
