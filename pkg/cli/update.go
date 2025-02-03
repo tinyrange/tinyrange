@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tinyrange/tinyrange/pkg/buildinfo"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 var (
@@ -47,8 +47,8 @@ func hasAutomaticRelease() bool {
 var expectedFilename = fmt.Sprintf("tinyrange-%s-%s.zip", runtime.GOOS, runtime.GOARCH)
 
 func installLocalUpdate(filename string, deleteUpdate bool) error {
-	if filepath.Base(filename) != expectedFilename {
-		return fmt.Errorf("invalid filename %s expecting %s", filepath.Base(filename), expectedFilename)
+	if path.Native.Base(filename) != expectedFilename {
+		return fmt.Errorf("invalid filename %s expecting %s", path.Native.Base(filename), expectedFilename)
 	}
 
 	f, err := os.Open(filename)
@@ -68,7 +68,7 @@ func installLocalUpdate(filename string, deleteUpdate bool) error {
 	}
 
 	// Extract the update to a new directory.
-	updateDir := filepath.Join(rootBuildDir, "update")
+	updateDir := path.Native.Join(rootBuildDir, "update")
 
 	if err := common.Ensure(updateDir, 0755); err != nil {
 		return fmt.Errorf("could not ensure update directory %s: %w", updateDir, err)
@@ -89,14 +89,14 @@ func installLocalUpdate(filename string, deleteUpdate bool) error {
 
 		newName := strings.TrimPrefix(file.Name, "tinyrange/")
 
-		targetPath := filepath.Join(updateDir, newName)
+		targetPath := path.Native.Join(updateDir, newName)
 
 		if newName != "tinyrange.portable" {
 			newFiles = append(newFiles, newName)
 		}
 
-		if err := common.Ensure(filepath.Dir(targetPath), 0755); err != nil {
-			return fmt.Errorf("could not ensure directory %s: %w", filepath.Dir(targetPath), err)
+		if err := common.Ensure(path.Native.Dir(targetPath), 0755); err != nil {
+			return fmt.Errorf("could not ensure directory %s: %w", path.Native.Dir(targetPath), err)
 		}
 
 		targetFile, err := os.Create(targetPath)
@@ -124,7 +124,7 @@ func installLocalUpdate(filename string, deleteUpdate bool) error {
 		return fmt.Errorf("could not get executable path: %w", err)
 	}
 
-	newExe := filepath.Join(updateDir, filepath.Base(executablePath))
+	newExe := path.Native.Join(updateDir, path.Native.Base(executablePath))
 
 	if ok, _ := common.Exists(newExe); !ok {
 		return fmt.Errorf("could not find new executable %s", newExe)
@@ -148,39 +148,39 @@ func installLocalUpdate(filename string, deleteUpdate bool) error {
 
 	// Overwrite the current version with the new version backing up to the revert directory.
 
-	revertDir := filepath.Join(rootBuildDir, "revert")
+	revertDir := path.Native.Join(rootBuildDir, "revert")
 
 	if err := common.Ensure(revertDir, 0755); err != nil {
 		return fmt.Errorf("could not ensure revert directory %s: %w", revertDir, err)
 	}
 
-	currentInstallDir := filepath.Dir(executablePath)
+	currentInstallDir := path.Native.Dir(executablePath)
 
 	var revertFiles []string
 
 	for _, file := range newFiles {
-		if ok, _ := common.Exists(filepath.Join(currentInstallDir, file)); ok {
-			revertTarget := filepath.Join(revertDir, file)
+		if ok, _ := common.Exists(path.Native.Join(currentInstallDir, file)); ok {
+			revertTarget := path.Native.Join(revertDir, file)
 
-			if err := common.Ensure(filepath.Dir(revertTarget), 0755); err != nil {
-				return fmt.Errorf("could not ensure directory %s: %w", filepath.Dir(revertTarget), err)
+			if err := common.Ensure(path.Native.Dir(revertTarget), 0755); err != nil {
+				return fmt.Errorf("could not ensure directory %s: %w", path.Native.Dir(revertTarget), err)
 			}
 
-			if err := os.Rename(filepath.Join(currentInstallDir, file), revertTarget); err != nil {
-				return fmt.Errorf("could not move %s to %s: %w", filepath.Join(currentInstallDir, file), revertTarget, err)
+			if err := os.Rename(path.Native.Join(currentInstallDir, file), revertTarget); err != nil {
+				return fmt.Errorf("could not move %s to %s: %w", path.Native.Join(currentInstallDir, file), revertTarget, err)
 			}
 
 			revertFiles = append(revertFiles, file)
 		}
 
-		target := filepath.Join(currentInstallDir, file)
+		target := path.Native.Join(currentInstallDir, file)
 
-		if err := common.Ensure(filepath.Dir(target), 0755); err != nil {
-			return fmt.Errorf("could not ensure directory %s: %w", filepath.Dir(target), err)
+		if err := common.Ensure(path.Native.Dir(target), 0755); err != nil {
+			return fmt.Errorf("could not ensure directory %s: %w", path.Native.Dir(target), err)
 		}
 
-		if err := os.Rename(filepath.Join(updateDir, file), target); err != nil {
-			return fmt.Errorf("could not move %s to %s: %w", filepath.Join(updateDir, file), target, err)
+		if err := os.Rename(path.Native.Join(updateDir, file), target); err != nil {
+			return fmt.Errorf("could not move %s to %s: %w", path.Native.Join(updateDir, file), target, err)
 		}
 	}
 
@@ -189,7 +189,7 @@ func installLocalUpdate(filename string, deleteUpdate bool) error {
 		return fmt.Errorf("could not marshal revert files: %w", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(revertDir, "revert.json"), revertFilesJson, 0644); err != nil {
+	if err := os.WriteFile(path.Native.Join(revertDir, "revert.json"), revertFilesJson, 0644); err != nil {
 		return fmt.Errorf("could not write revert file: %w", err)
 	}
 
@@ -206,15 +206,15 @@ func installLocalUpdate(filename string, deleteUpdate bool) error {
 }
 
 func revertUpdate(targetInstallDir string) error {
-	revertDir := filepath.Join(rootBuildDir, "revert")
+	revertDir := path.Native.Join(rootBuildDir, "revert")
 
-	if ok, _ := common.Exists(filepath.Join(revertDir, "revert.json")); !ok {
+	if ok, _ := common.Exists(path.Native.Join(revertDir, "revert.json")); !ok {
 		return fmt.Errorf("no previous version to revert to")
 	}
 
 	var revertFiles []string
 
-	revertFile, err := os.Open(filepath.Join(revertDir, "revert.json"))
+	revertFile, err := os.Open(path.Native.Join(revertDir, "revert.json"))
 	if err != nil {
 		return fmt.Errorf("could not open revert file: %w", err)
 	}
@@ -225,7 +225,7 @@ func revertUpdate(targetInstallDir string) error {
 	}
 
 	for _, file := range revertFiles {
-		revertFile := filepath.Join(revertDir, file)
+		revertFile := path.Native.Join(revertDir, file)
 
 		if ok, _ := common.Exists(revertFile); !ok {
 			return fmt.Errorf("missing file %s", file)
@@ -236,12 +236,12 @@ func revertUpdate(targetInstallDir string) error {
 			return fmt.Errorf("could not stat %s: %w", revertFile, err)
 		}
 
-		if err := common.CopyFile(revertFile, filepath.Join(targetInstallDir, file)); err != nil {
-			return fmt.Errorf("could not copy %s to %s: %w", revertFile, filepath.Join(targetInstallDir, file), err)
+		if err := common.CopyFile(revertFile, path.Native.Join(targetInstallDir, file)); err != nil {
+			return fmt.Errorf("could not copy %s to %s: %w", revertFile, path.Native.Join(targetInstallDir, file), err)
 		}
 
-		if err := os.Chmod(filepath.Join(targetInstallDir, file), info.Mode()); err != nil {
-			return fmt.Errorf("could not chmod %s: %w", filepath.Join(targetInstallDir, file), err)
+		if err := os.Chmod(path.Native.Join(targetInstallDir, file), info.Mode()); err != nil {
+			return fmt.Errorf("could not chmod %s: %w", path.Native.Join(targetInstallDir, file), err)
 		}
 	}
 
@@ -264,11 +264,11 @@ var updateCmd = &cobra.Command{
 				return fmt.Errorf("could not get current directory: %w", err)
 			}
 
-			if ok, _ := common.Exists(filepath.Join(currentDir, "tinyrange.portable")); !ok {
+			if ok, _ := common.Exists(path.Native.Join(currentDir, "tinyrange.portable")); !ok {
 				return fmt.Errorf("not a TinyRange installation")
 			}
 
-			rootBuildDir = filepath.Join(currentDir, "build")
+			rootBuildDir = path.Native.Join(currentDir, "build")
 		} else {
 			if !supportsUpdate() && updateDownload == "" {
 				return fmt.Errorf("cannot update installed versions of TinyRange")
@@ -297,7 +297,7 @@ var updateCmd = &cobra.Command{
 					return fmt.Errorf("could not get executable path: %w", err)
 				}
 
-				targetInstallDir = filepath.Dir(executablePath)
+				targetInstallDir = path.Native.Dir(executablePath)
 			}
 
 			return revertUpdate(targetInstallDir)
@@ -305,7 +305,7 @@ var updateCmd = &cobra.Command{
 
 		slog.Info("checking for updates")
 
-		outputFilename := filepath.Join(rootBuildDir, expectedFilename)
+		outputFilename := path.Native.Join(rootBuildDir, expectedFilename)
 
 		if ok, _ := common.Exists(outputFilename); ok && !updateForce && updateDownload == "" {
 			slog.Info("found already downloaded update", "filename", outputFilename)
@@ -415,7 +415,7 @@ var updateCmd = &cobra.Command{
 				}
 
 				if updateDownload != "" {
-					outputFilename = filepath.Join(updateDownload, expectedFilename)
+					outputFilename = path.Native.Join(updateDownload, expectedFilename)
 				}
 
 				out, err := os.Create(outputFilename + ".tmp")

@@ -8,10 +8,10 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"path"
 
 	"github.com/google/uuid"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -172,8 +172,8 @@ func (s *SSHFSServer) PktOpen(ctx sftpContext, pkt *pktOpen) (ResponsePacket, er
 		slog.Debug("sftp: open", "open", fmt.Sprintf("%+v", pkt))
 	}
 
-	dirname := path.Dir(pkt.Path)
-	basename := path.Base(pkt.Path)
+	dirname := path.Unix.Dir(pkt.Path)
+	basename := path.Unix.Base(pkt.Path)
 
 	dirF, err := s.lookup(dirname)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -567,8 +567,8 @@ func (s *SSHFSServer) PktMkdir(ctx sftpContext, pkt *pktMkdir) (ResponsePacket, 
 		slog.Debug("sftp: mkdir", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
-	dir := path.Dir(pkt.Path)
-	base := path.Base(pkt.Path)
+	dir := path.Unix.Dir(pkt.Path)
+	base := path.Unix.Base(pkt.Path)
 
 	file, err := s.lookup(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -687,8 +687,8 @@ func (s *SSHFSServer) PktRename(ctx sftpContext, pkt *pktRename) (ResponsePacket
 		return nil, err
 	}
 
-	oldDirName := path.Dir(pkt.OldPath)
-	oldBase := path.Base(pkt.OldPath)
+	oldDirName := path.Unix.Dir(pkt.OldPath)
+	oldBase := path.Unix.Base(pkt.OldPath)
 
 	oldDirHandle, err := s.lookup(oldDirName)
 	if err != nil {
@@ -700,8 +700,8 @@ func (s *SSHFSServer) PktRename(ctx sftpContext, pkt *pktRename) (ResponsePacket
 		return nil, err
 	}
 
-	dir := path.Dir(pkt.NewPath)
-	base := path.Base(pkt.NewPath)
+	dir := path.Unix.Dir(pkt.NewPath)
+	base := path.Unix.Base(pkt.NewPath)
 
 	target, err := s.lookup(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -752,8 +752,8 @@ func (s *SSHFSServer) PktSymlink(ctx sftpContext, pkt *pktSymlink) (ResponsePack
 		slog.Debug("sftp: symlink", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
-	dir := path.Dir(pkt.LinkPath)
-	base := path.Base(pkt.LinkPath)
+	dir := path.Unix.Dir(pkt.LinkPath)
+	base := path.Unix.Base(pkt.LinkPath)
 
 	target, err := s.lookup(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -827,8 +827,8 @@ func (s *SSHFSServer) PktRmdir(ctx sftpContext, pkt *pktRmdir) (ResponsePacket, 
 		slog.Debug("sftp: rmdir", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
-	dir := path.Dir(pkt.Path)
-	base := path.Base(pkt.Path)
+	dir := path.Unix.Dir(pkt.Path)
+	base := path.Unix.Base(pkt.Path)
 
 	file, err := s.lookup(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -870,8 +870,8 @@ func (s *SSHFSServer) PktRemove(ctx sftpContext, pkt *pktRemove) (ResponsePacket
 		slog.Debug("sftp: remove", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
-	dir := path.Dir(pkt.Filename)
-	base := path.Base(pkt.Filename)
+	dir := path.Unix.Dir(pkt.Filename)
+	base := path.Unix.Base(pkt.Filename)
 
 	file, err := s.lookup(dir)
 	if errors.Is(err, fs.ErrNotExist) {

@@ -9,13 +9,13 @@ import (
 	"log/slog"
 	"math"
 	"os"
-	"path"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	"golang.org/x/exp/constraints"
 )
 
@@ -116,7 +116,7 @@ func resolveRelative(wd string, target string) (string, error) {
 	} else if strings.HasPrefix(target, "/") {
 		return target, nil
 	} else {
-		return path.Join(path.Dir(wd), target), nil
+		return path.Unix.Join(path.Unix.Dir(wd), target), nil
 	}
 }
 
@@ -1310,7 +1310,7 @@ func (fs *Ext4Filesystem) resolveSymlink(node *InodeWrapper, name string) (*Inod
 	if node.Mode().Type() == goFs.ModeSymlink {
 		target := node.linkTarget
 
-		newTarget, err := resolveRelative(path.Dir(name), target)
+		newTarget, err := resolveRelative(path.Unix.Dir(name), target)
 		if err != nil {
 			return nil, err
 		}
@@ -1337,7 +1337,7 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool, resol
 		}
 	}
 
-	parentName := path.Dir(filename)
+	parentName := path.Unix.Dir(filename)
 
 	if parent, ok := fs.inodeCache[parentName]; ok {
 		// Unconditionally resolve symlinks here.
@@ -1347,9 +1347,9 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool, resol
 			return nil, err
 		}
 
-		child, err := parent.getChild(path.Base(filename))
+		child, err := parent.getChild(path.Unix.Base(filename))
 		if err == os.ErrNotExist && mkdir {
-			token := path.Base(filename)
+			token := path.Unix.Base(filename)
 
 			d, err := fs.allocateInode()
 			if err != nil {
@@ -1369,7 +1369,7 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool, resol
 				return nil, fmt.Errorf("failed to get child %s: %s", token, err)
 			}
 		} else if err != nil {
-			return nil, fmt.Errorf("failed to get child (cached) %s: %s", path.Base(filename), err)
+			return nil, fmt.Errorf("failed to get child (cached) %s: %s", path.Unix.Base(filename), err)
 		}
 
 		fs.inodeCache[filename] = child
@@ -1437,8 +1437,8 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool, resol
 }
 
 func (fs *Ext4Filesystem) mkdir(filename string, all bool) (*InodeWrapper, error) {
-	parentName := path.Dir(filename)
-	newDirName := path.Base(filename)
+	parentName := path.Unix.Dir(filename)
+	newDirName := path.Unix.Base(filename)
 
 	node, err := fs.getNode(parentName, false, all, false)
 	if err != nil {
@@ -1454,7 +1454,7 @@ func (fs *Ext4Filesystem) mkdir(filename string, all bool) (*InodeWrapper, error
 		return nil, err
 	}
 
-	if err := node.addDirectoryEntry(d, path.Base(newDirName)); err != nil {
+	if err := node.addDirectoryEntry(d, path.Unix.Base(newDirName)); err != nil {
 		return nil, err
 	}
 
@@ -1469,7 +1469,7 @@ func (fs *Ext4Filesystem) Mkdir(filename string, all bool) error {
 }
 
 func (fs *Ext4Filesystem) createFile(filename string, content vm.MemoryRegion) (*InodeWrapper, error) {
-	node, err := fs.getNode(path.Dir(filename), false, false, true)
+	node, err := fs.getNode(path.Unix.Dir(filename), false, false, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1487,7 +1487,7 @@ func (fs *Ext4Filesystem) createFile(filename string, content vm.MemoryRegion) (
 		return nil, fmt.Errorf("failed to add contents: %v", err)
 	}
 
-	if err := node.addDirectoryEntry(f, path.Base(filename)); err != nil {
+	if err := node.addDirectoryEntry(f, path.Unix.Base(filename)); err != nil {
 		return nil, fmt.Errorf("CreateFile(%s): failed to addDirectoryEntry: %v", filename, err)
 	}
 
@@ -1504,7 +1504,7 @@ func (fs *Ext4Filesystem) link(filename string, target string) (*InodeWrapper, e
 		return nil, fmt.Errorf("hard links must use absolute paths: %s", target)
 	}
 
-	node, err := fs.getNode(path.Dir(filename), false, false, true)
+	node, err := fs.getNode(path.Unix.Dir(filename), false, false, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1518,7 +1518,7 @@ func (fs *Ext4Filesystem) link(filename string, target string) (*InodeWrapper, e
 		return nil, err
 	}
 
-	if err := node.addDirectoryEntry(targetNode, path.Base(filename)); err != nil {
+	if err := node.addDirectoryEntry(targetNode, path.Unix.Base(filename)); err != nil {
 		return nil, err
 	}
 
@@ -1531,7 +1531,7 @@ func (fs *Ext4Filesystem) Link(filename string, target string) error {
 }
 
 func (fs *Ext4Filesystem) symlink(filename string, target string) (*InodeWrapper, error) {
-	node, err := fs.getNode(path.Dir(filename), false, false, true)
+	node, err := fs.getNode(path.Unix.Dir(filename), false, false, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1549,7 +1549,7 @@ func (fs *Ext4Filesystem) symlink(filename string, target string) (*InodeWrapper
 		return nil, err
 	}
 
-	if err := node.addDirectoryEntry(f, path.Base(filename)); err != nil {
+	if err := node.addDirectoryEntry(f, path.Unix.Base(filename)); err != nil {
 		return nil, err
 	}
 
@@ -1698,7 +1698,7 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 			return fmt.Errorf("failed to stat: %w", err)
 		}
 
-		name := path.Join(name, path.Base(ent.Name))
+		name := path.Unix.Join(name, path.Unix.Base(ent.Name))
 
 		skip := false
 

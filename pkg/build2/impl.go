@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"sync"
@@ -22,6 +21,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	"github.com/tinyrange/tinyrange/pkg/star"
 	"go.starlark.net/starlark"
 )
@@ -109,7 +109,7 @@ const (
 )
 
 func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
-	persistPath := filepath.Join(buildDir, "persist")
+	persistPath := path.Native.Join(buildDir, "persist")
 
 	if err := common.Ensure(persistPath, os.ModePerm); err != nil {
 		return nil, err

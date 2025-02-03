@@ -3,7 +3,6 @@ package cli
 import (
 	"log/slog"
 	"os"
-	"path/filepath"
 	"runtime/pprof"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/login"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	"gopkg.in/yaml.v3"
 )
 
@@ -105,7 +105,7 @@ func runLogin(args []string) error {
 				currentConfig.SetLocalConfig()
 			}
 
-			currentConfig.SetBasePath(filepath.Dir(loginLoadConfig))
+			currentConfig.SetBasePath(path.Native.Dir(loginLoadConfig))
 
 			if len(addedCommands) > 0 {
 				if len(currentConfig.Commands) > 0 {

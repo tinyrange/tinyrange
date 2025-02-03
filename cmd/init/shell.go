@@ -9,10 +9,10 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	"github.com/wader/readline"
 )
 
@@ -31,7 +31,7 @@ func (c *shellInstance) getLocalFile(common string) func(s string) []string {
 			initialPath = "."
 		}
 
-		dirName := filepath.Dir(initialPath)
+		dirName := path.Native.Dir(initialPath)
 
 		// TODO(joshua): complete host files
 		files, err := os.ReadDir(dirName)
@@ -42,9 +42,9 @@ func (c *shellInstance) getLocalFile(common string) func(s string) []string {
 		var ret []string
 		for _, file := range files {
 			if file.IsDir() {
-				ret = append(ret, filepath.Join(dirName, file.Name())+"/")
+				ret = append(ret, path.Native.Join(dirName, file.Name())+"/")
 			} else {
-				ret = append(ret, filepath.Join(dirName, file.Name()))
+				ret = append(ret, path.Native.Join(dirName, file.Name()))
 			}
 		}
 		return ret

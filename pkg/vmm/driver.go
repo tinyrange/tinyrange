@@ -19,8 +19,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -40,6 +38,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	_ "github.com/tinyrange/tinyrange/pkg/platform"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"github.com/tinyrange/tinyrange/third_party/go-nbd/backend"
@@ -467,7 +466,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 		}
 
 		for _, ent := range entries {
-			// TODO(joshua): Why is this not filepath.join?
+			// TODO(joshua): Why is this not path.Native.Join?
 			name := ark.Target + "/" + ent.Name()
 
 			if _, ok := tr.deletedFiles[name]; ok {
@@ -481,9 +480,9 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 					continue
 				}
 
-				dirname := path.Dir(name)
+				dirname := path.Unix.Dir(name)
 
-				if !filesystem.Exists(dir, dirname) && path.Clean(name) != dirname {
+				if !filesystem.Exists(dir, dirname) && path.Unix.Clean(name) != dirname {
 					// slog.Info("mkdir", "dirname", dirname)
 					if _, err := filesystem.Mkdir(dir, dirname); err != nil {
 						return err
@@ -661,7 +660,7 @@ func (tr *driver) createNbdListener(tryUnix bool) (net.Addr, net.Listener, error
 	if (runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows") && tr.persistPath != "" && tryUnix {
 		pid := os.Getpid()
 
-		filename := filepath.Join(tr.persistPath, fmt.Sprintf("%d.nbd.sock", pid))
+		filename := path.Native.Join(tr.persistPath, fmt.Sprintf("%d.nbd.sock", pid))
 
 		listener, err := net.Listen("unix", filename)
 		if err != nil {
@@ -850,10 +849,10 @@ func (tr *driver) buildFilesystem(
 			return nil, nil, 0, fmt.Errorf("persist path not set for persistent filesystem")
 		}
 
-		persistDir := filepath.Dir(persistPath)
-		persistName := name + "_" + filepath.Base(persistPath)
+		persistDir := path.Native.Dir(persistPath)
+		persistName := name + "_" + path.Native.Base(persistPath)
 
-		persistPath := filepath.Join(tr.persistPath, filepath.Join(persistDir, persistName))
+		persistPath := path.Native.Join(tr.persistPath, path.Native.Join(persistDir, persistName))
 
 		fh, err := os.OpenFile(persistPath, os.O_RDWR, 0644)
 		if errors.Is(err, os.ErrNotExist) {
@@ -1318,7 +1317,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		top := filesystem.NewMemoryDirectory()
 
 		for _, dir := range mountedHostDirectories {
-			name := filepath.Base(dir.HostDirectory)
+			name := path.Native.Base(dir.HostDirectory)
 
 			var hostDir filesystem.Directory
 
@@ -1408,24 +1407,24 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 	}
 }
 
-func (d *driver) addConfig(path string) error {
+func (d *driver) addConfig(p string) error {
 	var cfg config.TinyRangeConfig
 
-	f, err := os.Open(path)
+	f, err := os.Open(p)
 	if err != nil {
 		return fmt.Errorf("failed to open config file: %w", err)
 	}
 
-	if filepath.Ext(path) == ".json" {
+	if path.Native.Ext(p) == ".json" {
 		if err := json.NewDecoder(f).Decode(&cfg); err != nil {
 			return fmt.Errorf("failed to decode config file: %w", err)
 		}
-	} else if filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml" {
+	} else if path.Native.Ext(p) == ".yaml" || path.Native.Ext(p) == ".yml" {
 		if err := yaml.NewDecoder(f).Decode(&cfg); err != nil {
 			return fmt.Errorf("failed to decode config file: %w", err)
 		}
 	} else {
-		return fmt.Errorf("unknown file extension: %s", filepath.Ext(path))
+		return fmt.Errorf("unknown file extension: %s", path.Native.Ext(p))
 	}
 
 	d.configs = append(d.configs, cfg)
@@ -1445,9 +1444,9 @@ func (d *driver) FindExecutable(name string) (string, error) {
 	}
 
 	// Look in the same directory as the current executable.
-	dir := filepath.Dir(myPath)
-	if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
-		return filepath.Join(dir, name), nil
+	dir := path.Native.Dir(myPath)
+	if _, err := os.Stat(path.Native.Join(dir, name)); err == nil {
+		return path.Native.Join(dir, name), nil
 	}
 
 	// Look in the PATH.
@@ -1490,7 +1489,7 @@ func (d *driver) EnsureFile(contents []byte) (File, error) {
 
 	hash := hash.GetSha256Hash(contents)
 
-	path := filepath.Join(d.buildDir, string(hash)+".bin")
+	path := path.Native.Join(d.buildDir, string(hash)+".bin")
 
 	slog.Debug("ensure file", "path", path, "length", len(contents))
 

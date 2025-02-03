@@ -2,8 +2,9 @@ package config
 
 import (
 	"fmt"
-	"path/filepath"
 	"runtime"
+
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 // Used as the default password when one is not provided.
@@ -197,9 +198,9 @@ func (cfg TinyRangeConfig) Resolve(filename string) string {
 	}
 
 	// If the filename is already absolute then just use it.
-	if filepath.IsAbs(filename) {
+	if path.Native.IsAbs(filename) {
 		return filename
 	}
 
-	return filepath.Join(cfg.BaseDirectory, filename)
+	return path.Native.Join(cfg.BaseDirectory, filename)
 }

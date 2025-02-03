@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"os"
-	"path"
 	"strings"
 
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
@@ -13,6 +12,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 type buildOciContext struct {
@@ -26,7 +26,7 @@ func (c *buildOciContext) resolve(p string) string {
 		return p
 	}
 
-	return path.Join(c.workdir, p)
+	return path.Unix.Join(c.workdir, p)
 }
 
 var buildOciCmd = &cobra.Command{
@@ -153,7 +153,7 @@ var buildOciCmd = &cobra.Command{
 							return fmt.Errorf("failed to create definition from %s: %w", src, err)
 						}
 
-						filename := path.Join(currentContext.resolve(dst), file.Name)
+						filename := path.Unix.Join(currentContext.resolve(dst), file.Name)
 
 						dir = append(dir, common.DirectiveAddFile{
 							Filename:   filename,
@@ -219,7 +219,7 @@ var buildOciCmd = &cobra.Command{
 						return fmt.Errorf("failed to create definition from %s: %w", src, err)
 					}
 
-					filename := path.Join(currentContext.resolve(dst), file.Name)
+					filename := path.Unix.Join(currentContext.resolve(dst), file.Name)
 
 					dir = append(dir, common.DirectiveAddFile{
 						Filename:   filename,

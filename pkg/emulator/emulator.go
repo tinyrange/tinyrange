@@ -8,13 +8,13 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"path"
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
 	"github.com/tinyrange/tinyrange/pkg/emulator/programs/shell"
 	"github.com/tinyrange/tinyrange/pkg/emulator/shared"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	"go.starlark.net/starlark"
 )
 
@@ -131,7 +131,7 @@ func (proc *process) SetKey(k starlark.Value, v starlark.Value) error {
 func (proc *process) Chdir(name string) error {
 	// slog.Info("chdir", "name", name)
 
-	proc.cwd = path.Join(proc.cwd, name)
+	proc.cwd = path.Unix.Join(proc.cwd, name)
 
 	return nil
 }
@@ -238,7 +238,7 @@ func (p *process) Resolve(name string) string {
 	if strings.HasPrefix(name, "/") {
 		return name
 	} else {
-		return path.Join(p.cwd, name)
+		return path.Unix.Join(p.cwd, name)
 	}
 }
 
@@ -317,7 +317,7 @@ func (emu *Emulator) openPath(name string) (filesystem.File, error) {
 // LookPath implements shared.Kernel.
 func (emu *Emulator) LookPath(cwd string, env shared.Environment, name string) (string, error) {
 	if strings.HasPrefix(name, "./") {
-		name = path.Join(cwd, name)
+		name = path.Unix.Join(cwd, name)
 		if _, err := emu.openPath(name); err != nil {
 			return "", fmt.Errorf("could not open %s: %s", name, err)
 		}
@@ -332,8 +332,8 @@ func (emu *Emulator) LookPath(cwd string, env shared.Environment, name string) (
 	pathOptions := strings.Split(env.Get("PATH"), ":")
 
 	for _, opt := range pathOptions {
-		if _, err := emu.openPath(path.Join(opt, name)); err == nil {
-			return path.Join(opt, name), nil
+		if _, err := emu.openPath(path.Unix.Join(opt, name)); err == nil {
+			return path.Unix.Join(opt, name), nil
 		}
 	}
 

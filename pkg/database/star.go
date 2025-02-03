@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	"go.starlark.net/starlark"
 )
 
@@ -112,7 +112,7 @@ func (s *scriptArguments) Attr(name string) (starlark.Value, error) {
 				return starlark.None, fmt.Errorf("name for create_output can not contain path separators")
 			}
 
-			p := filepath.Join(s.outputFilename, name)
+			p := path.Native.Join(s.outputFilename, name)
 
 			f, err := os.Create(p)
 			if err != nil {

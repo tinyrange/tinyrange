@@ -3,7 +3,8 @@ package filesystem
 import (
 	"fmt"
 	"io"
-	"path"
+
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 type filesystemValidator struct {
@@ -63,7 +64,7 @@ func (v *filesystemValidator) printFile(f File, p string, prefix string) error {
 
 	_ = info
 
-	if _, err := fmt.Fprintf(v.out, "%s- %s % 8d %s\n", prefix, info.Mode(), info.Size(), path.Base(p)); err != nil {
+	if _, err := fmt.Fprintf(v.out, "%s- %s % 8d %s\n", prefix, info.Mode(), info.Size(), path.Unix.Base(p)); err != nil {
 		return err
 	}
 
@@ -77,15 +78,15 @@ func (v *filesystemValidator) validateAndDump(dir Directory, p string, prefix st
 	}
 
 	for _, ent := range ents {
-		if path.Base(ent.Name) != ent.Name {
-			return fmt.Errorf("file in %s has unclean name: %s != %s", p, path.Base(ent.Name), ent.Name)
+		if path.Unix.Base(ent.Name) != ent.Name {
+			return fmt.Errorf("file in %s has unclean name: %s != %s", p, path.Unix.Base(ent.Name), ent.Name)
 		}
 
 		if ent.Name == "" || ent.Name == "." {
 			return fmt.Errorf("file in %s has empty or invalid name: %s", p, ent.Name)
 		}
 
-		name := path.Join(p, ent.Name)
+		name := path.Unix.Join(p, ent.Name)
 
 		if err := v.validateFile(ent.File, name); err != nil {
 			return err

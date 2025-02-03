@@ -9,6 +9,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 var outDir = flag.String("outDir", "local/streamableTest", "The path to create the streamable index.")
@@ -30,7 +31,7 @@ func appMain() error {
 		return err
 	}
 
-	archivePath := filepath.Join(*outDir, "archives")
+	archivePath := path.Native.Join(*outDir, "archives")
 
 	if err := os.MkdirAll(archivePath, os.ModePerm); err != nil {
 		return err
@@ -42,7 +43,7 @@ func appMain() error {
 
 			defName := filepath.Base(frag.Archive.HostFilename)
 
-			arkName := filepath.Join(archivePath, defName)
+			arkName := path.Native.Join(archivePath, defName)
 
 			out, err := os.Create(arkName)
 			if err != nil {
@@ -56,7 +57,7 @@ func appMain() error {
 				return err
 			}
 
-			frag.Archive.HostFilename = filepath.Join("archives", defName)
+			frag.Archive.HostFilename = path.Native.Join("archives", defName)
 		}
 	}
 
@@ -65,7 +66,7 @@ func appMain() error {
 		return err
 	}
 
-	if err := os.WriteFile(filepath.Join(*outDir, *configFilename), outputConfig, os.ModePerm); err != nil {
+	if err := os.WriteFile(path.Native.Join(*outDir, *configFilename), outputConfig, os.ModePerm); err != nil {
 		return err
 	}
 

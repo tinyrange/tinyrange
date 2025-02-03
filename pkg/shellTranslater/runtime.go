@@ -9,13 +9,13 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/anmitsu/go-shlex"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
@@ -1296,7 +1296,7 @@ func (rt *ShellScriptToStarlarkRuntime) getGlobals() starlark.StringDict {
 					if ok, _ := common.Exists(target); !ok {
 						slog.Info("symlink", "src", src, "target", target)
 
-						alternativesName := filepath.Join("/etc/alternatives", name)
+						alternativesName := path.Native.Join("/etc/alternatives", name)
 
 						if err := os.Symlink(src, alternativesName); err != nil {
 							return err

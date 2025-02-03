@@ -10,12 +10,12 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 type arrayArchive []Entry
@@ -195,11 +195,11 @@ func (f *filesystemStreamableWriter) Writer() (StreamableTempFile, error) {
 func (f *filesystemStreamableWriter) complete(oldFilename string, hash []byte) (string, string, error) {
 	hashString := hex.EncodeToString(hash)
 
-	relPath := filepath.Join(hashString[:2], hashString+".bin")
+	relPath := path.Native.Join(hashString[:2], hashString+".bin")
 
-	filename := filepath.Join(f.outputPath, relPath)
+	filename := path.Native.Join(f.outputPath, relPath)
 
-	if err := os.MkdirAll(filepath.Dir(filename), os.ModePerm); err != nil {
+	if err := os.MkdirAll(path.Native.Dir(filename), os.ModePerm); err != nil {
 		return "", "", err
 	}
 

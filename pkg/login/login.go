@@ -11,8 +11,6 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
-	"path"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -24,6 +22,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	cfg "github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 func detectArchiveExtractor(base common.BuildDefinition, filename string) (common.BuildDefinition, error) {
@@ -73,7 +72,7 @@ func parseMount(mount string, writable bool, port int) (common.DirectiveMountHos
 			return common.DirectiveMountHostDirectory{}, fmt.Errorf("invalid mount %s", mount)
 		}
 
-		hostPath, err := filepath.Abs(host)
+		hostPath, err := path.Native.Abs(host)
 		if err != nil {
 			return common.DirectiveMountHostDirectory{}, err
 		}
@@ -85,12 +84,12 @@ func parseMount(mount string, writable bool, port int) (common.DirectiveMountHos
 			Writable:       writable,
 		}, nil
 	} else {
-		mountPath, err := filepath.Abs(mount)
+		mountPath, err := path.Native.Abs(mount)
 		if err != nil {
 			return common.DirectiveMountHostDirectory{}, err
 		}
 
-		guest := path.Join("/share", filepath.Base(mountPath))
+		guest := path.Unix.Join("/share", path.Native.Base(mountPath))
 
 		return common.DirectiveMountHostDirectory{
 			HostDirectory:  mountPath,
@@ -208,11 +207,11 @@ func (config *Config) SetVmSpec() {
 }
 
 func (config *Config) resolvePath(filename string) (string, error) {
-	if filepath.IsAbs(filename) {
+	if path.Native.IsAbs(filename) {
 		return filename, nil
 	}
 
-	return filepath.Join(config.basePath, filename), nil
+	return path.Native.Join(config.basePath, filename), nil
 }
 
 func (config *Config) writeRoot(db common.PackageDatabase, directives []common.Directive, arch config.CPUArchitecture) error {
@@ -241,7 +240,7 @@ func (config *Config) writeRoot(db common.PackageDatabase, directives []common.D
 	}
 	defer fh.Close()
 
-	out, err := os.Create(path.Base(config.WriteRoot))
+	out, err := os.Create(path.Unix.Base(config.WriteRoot))
 	if err != nil {
 		return err
 	}
@@ -376,11 +375,11 @@ func (config *Config) addFile(filename string) (common.Directive, error) {
 			return nil, err
 		}
 
-		base := path.Base(parsed.Path)
+		base := path.Native.Base(parsed.Path)
 
 		return common.DirectiveAddFile{
 			Definition: builder.Factory.NewFetchHttpBuildDefinition(filename, 0, nil),
-			Filename:   path.Join("/root", base),
+			Filename:   path.Native.Join("/root", base),
 		}, nil
 	} else {
 		if !config.localConfig {
@@ -394,7 +393,7 @@ func (config *Config) addFile(filename string) (common.Directive, error) {
 
 		return common.DirectiveLocalFile{
 			HostFilename: filePath,
-			Filename:     path.Join("/root", filepath.Base(filePath)),
+			Filename:     path.Unix.Join("/root", path.Native.Base(filePath)),
 		}, nil
 	}
 }
@@ -894,7 +893,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		}
 		defer fh.Close()
 
-		out, err := os.Create(path.Base(outputName))
+		out, err := os.Create(path.Unix.Base(outputName))
 		if err != nil {
 			return err
 		}

@@ -6,11 +6,11 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"path"
 	"strings"
 
 	xj "github.com/basgys/goxml2json"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
@@ -184,9 +184,9 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 	} else if name == "name" {
 		return starlark.String(f.Name), nil
 	} else if name == "base" {
-		return starlark.String(path.Base(f.Name)), nil
+		return starlark.String(path.Unix.Base(f.Name)), nil
 	} else if name == "dir" {
-		return starlark.String(path.Dir(f.Name)), nil
+		return starlark.String(path.Unix.Dir(f.Name)), nil
 	}
 
 	if mut, ok := f.File.(MutableFile); ok {
@@ -325,7 +325,7 @@ func (s *starDirectoryIterator) Next(p *starlark.Value) bool {
 
 	ent := s.ents[s.off]
 
-	childName := path.Join(s.name, ent.Name)
+	childName := path.Unix.Join(s.name, ent.Name)
 
 	if dir, ok := ent.File.(Directory); ok {
 		*p = NewStarDirectory(dir, childName)
@@ -372,7 +372,7 @@ func (f *StarDirectory) Get(k starlark.Value) (v starlark.Value, found bool, err
 		return nil, false, err
 	}
 
-	childName := path.Join(f.Name, ent.Name)
+	childName := path.Unix.Join(f.Name, ent.Name)
 
 	if dir, ok := ent.File.(Directory); ok {
 		return NewStarDirectory(dir, childName), true, nil
@@ -417,7 +417,7 @@ func (f *StarDirectory) Attr(name string) (starlark.Value, error) {
 	if name == "name" {
 		return starlark.String(f.Name), nil
 	} else if name == "base" {
-		return starlark.String(path.Base(f.Name)), nil
+		return starlark.String(path.Unix.Base(f.Name)), nil
 	} else {
 		return nil, nil
 	}

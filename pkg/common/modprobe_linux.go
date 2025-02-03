@@ -8,11 +8,11 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
 
+	"github.com/tinyrange/tinyrange/pkg/path"
 	"golang.org/x/sys/unix"
 )
 
@@ -92,9 +92,9 @@ func Modprobe(name string) error {
 		return fmt.Errorf("len(files) == 0")
 	}
 
-	kernelDir := filepath.Join("/lib/modules", files[0].Name())
+	kernelDir := path.Native.Join("/lib/modules", files[0].Name())
 
-	deps, err := parseDeps(filepath.Join(kernelDir, "modules.dep"))
+	deps, err := parseDeps(path.Native.Join(kernelDir, "modules.dep"))
 	if err != nil {
 		slog.Warn("could not parse dependencies", "error", err)
 		return nil
@@ -110,14 +110,14 @@ func Modprobe(name string) error {
 
 			// Load all the dependencies in order.
 			for _, dep := range modList {
-				err := LoadModule(filepath.Join(kernelDir, dep))
+				err := LoadModule(path.Native.Join(kernelDir, dep))
 				if err != nil {
 					return err
 				}
 			}
 
 			// Finally load the requested module.
-			err := LoadModule(filepath.Join(kernelDir, k))
+			err := LoadModule(path.Native.Join(kernelDir, k))
 			if err != nil {
 				return err
 			}

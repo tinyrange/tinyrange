@@ -6,10 +6,11 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 type MountInfo struct {
@@ -129,7 +130,7 @@ func (w *fsWalker) walk(filename string) error {
 		}
 
 		for _, child := range children {
-			err := w.walk(filepath.Join(filename, child.Name()))
+			err := w.walk(path.Native.Join(filename, child.Name()))
 			if err != nil {
 				return err
 			}

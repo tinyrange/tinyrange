@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -22,6 +21,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	shelltranslater "github.com/tinyrange/tinyrange/pkg/shellTranslater"
 	"go.starlark.net/starlark"
 	"golang.org/x/sys/unix"
@@ -314,7 +314,7 @@ func (builder *Builder) writeChangeTracker(outputFilename string) error {
 			}
 
 			for _, ent := range ents {
-				child, err := enumerate(filepath.Join(filename, ent.Name()))
+				child, err := enumerate(path.Native.Join(filename, ent.Name()))
 				if err != nil {
 					return nil, err
 				}
@@ -420,7 +420,7 @@ func (builder *Builder) uploadChangedArchive(hostAddress string, changeTrackerFi
 		for _, ent := range ents {
 			child := tracker.Children[ent.Name()]
 
-			if err := enumerate(child, filepath.Join(filename, ent.Name())); err != nil {
+			if err := enumerate(child, path.Native.Join(filename, ent.Name())); err != nil {
 				return err
 			}
 		}
@@ -510,7 +510,7 @@ func (builder *Builder) uploadChangedArchive(hostAddress string, changeTrackerFi
 				}
 
 				for _, ent := range ents {
-					child := filepath.Join(filename, ent.Name())
+					child := path.Native.Join(filename, ent.Name())
 
 					if err := writeFile(child); err != nil {
 						return err
@@ -655,7 +655,7 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 	}
 
 	if appendProfile.Len() > 0 {
-		profile := filepath.Join("/etc/profile.d", "builder.sh")
+		profile := path.Native.Join("/etc/profile.d", "builder.sh")
 		if err := os.WriteFile(profile, []byte(appendProfile.String()), 0644); err != nil {
 			return err
 		}

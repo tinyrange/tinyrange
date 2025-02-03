@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 func ExtractReaderTo(input io.Reader, kind string, fs *Ext4Filesystem, filter func(hdr *tar.Header) bool) error {
@@ -44,7 +44,7 @@ func ExtractReaderTo(input io.Reader, kind string, fs *Ext4Filesystem, filter fu
 				continue
 			}
 
-			name := path.Clean(hdr.Name)
+			name := path.Unix.Clean(hdr.Name)
 
 			if !fs.Exists(name) {
 				switch hdr.Typeflag {

@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"path"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 const trailerName = "TRAILER!!!"
@@ -408,7 +408,7 @@ func (fs *Filesystem) AddSimpleFile(filename string, contents []byte, executable
 }
 
 func (fs *Filesystem) AddFromEntry(prefix string, hdr filesystem.Entry) error {
-	cleanedName := strings.TrimPrefix(path.Clean(path.Join(prefix, hdr.Name())), "/")
+	cleanedName := strings.TrimPrefix(path.Unix.Clean(path.Unix.Join(prefix, hdr.Name())), "/")
 
 	var ent entry
 

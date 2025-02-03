@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path"
 	"strings"
 	"sync"
+
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 func getMutable(dir Directory) MutableDirectory {
@@ -42,9 +43,9 @@ func resolveDirectory(root Directory, file File, name string) (Directory, error)
 			return nil, err
 		}
 
-		currentDir := path.Dir(name)
+		currentDir := path.Unix.Dir(name)
 
-		newTarget := path.Join(currentDir, target)
+		newTarget := path.Unix.Join(currentDir, target)
 
 		ent, err := OpenPath(root, newTarget)
 		if err != nil {
@@ -60,7 +61,7 @@ func resolveDirectory(root Directory, file File, name string) (Directory, error)
 func OpenPath(dir Directory, p string) (DirectoryEntry, error) {
 	p = strings.TrimPrefix(p, "/")
 
-	tokens := strings.Split(path.Clean(p), "/")
+	tokens := strings.Split(path.Unix.Clean(p), "/")
 
 	var currentDir = dir
 
@@ -70,7 +71,7 @@ func OpenPath(dir Directory, p string) (DirectoryEntry, error) {
 			return DirectoryEntry{}, err
 		}
 
-		childDir, err := resolveDirectory(dir, child.File, path.Join(tokens[:i+1]...))
+		childDir, err := resolveDirectory(dir, child.File, path.Unix.Join(tokens[:i+1]...))
 		if err != nil {
 			return DirectoryEntry{}, err
 		}
@@ -93,7 +94,7 @@ func OpenPath(dir Directory, p string) (DirectoryEntry, error) {
 func Mkdir(dir Directory, p string) (MutableDirectory, error) {
 	p = strings.TrimPrefix(p, "/")
 
-	tokens := strings.Split(path.Clean(p), "/")
+	tokens := strings.Split(path.Unix.Clean(p), "/")
 
 	var currentDir = dir
 
@@ -114,7 +115,7 @@ func Mkdir(dir Directory, p string) (MutableDirectory, error) {
 			return nil, err
 		}
 
-		childDir, err := resolveDirectory(dir, child.File, path.Join(tokens[:i+1]...))
+		childDir, err := resolveDirectory(dir, child.File, path.Unix.Join(tokens[:i+1]...))
 		if err != nil {
 			return nil, err
 		}
@@ -139,7 +140,7 @@ func Mkdir(dir Directory, p string) (MutableDirectory, error) {
 func CreateChild(dir Directory, p string, f File) (File, error) {
 	p = strings.TrimPrefix(p, "/")
 
-	tokens := strings.Split(path.Clean(p), "/")
+	tokens := strings.Split(path.Unix.Clean(p), "/")
 
 	var currentDir = dir
 
@@ -160,7 +161,7 @@ func CreateChild(dir Directory, p string, f File) (File, error) {
 			return nil, err
 		}
 
-		childDir, err := resolveDirectory(dir, child.File, path.Join(tokens[:i+1]...))
+		childDir, err := resolveDirectory(dir, child.File, path.Unix.Join(tokens[:i+1]...))
 		if err != nil {
 			return nil, err
 		}
@@ -179,7 +180,7 @@ func CreateChild(dir Directory, p string, f File) (File, error) {
 func DeleteChild(dir Directory, p string) error {
 	p = strings.TrimPrefix(p, "/")
 
-	tokens := strings.Split(path.Clean(p), "/")
+	tokens := strings.Split(path.Unix.Clean(p), "/")
 
 	var currentDir = dir
 
@@ -189,7 +190,7 @@ func DeleteChild(dir Directory, p string) error {
 			return err
 		}
 
-		childDir, err := resolveDirectory(dir, child.File, path.Join(tokens[:i+1]...))
+		childDir, err := resolveDirectory(dir, child.File, path.Unix.Join(tokens[:i+1]...))
 		if err != nil {
 			return err
 		}
@@ -265,7 +266,7 @@ func (m *memoryDirectory) Unlink(name string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	if path.Base(name) != name {
+	if path.Unix.Base(name) != name {
 		return fmt.Errorf("MutableDirectory methods can not handle paths: %s", name)
 	}
 
@@ -292,7 +293,7 @@ func (m *memoryDirectory) create(name string, f File) (File, error) {
 		return nil, fmt.Errorf("invalid name specified for child: %s", name)
 	}
 
-	if path.Base(name) != name {
+	if path.Unix.Base(name) != name {
 		return nil, fmt.Errorf("MutableDirectory methods can not handle paths: %s", name)
 	}
 
@@ -315,7 +316,7 @@ func (m *memoryDirectory) GetChild(name string) (DirectoryEntry, error) {
 		return DirectoryEntry{File: m}, nil
 	}
 
-	if path.Base(name) != name {
+	if path.Unix.Base(name) != name {
 		return DirectoryEntry{}, fmt.Errorf("MutableDirectory methods can not handle paths: %s", name)
 	}
 
@@ -336,7 +337,7 @@ func (m *memoryDirectory) Mkdir(name string) (MutableDirectory, error) {
 		return nil, fmt.Errorf("invalid name specified for child: %s", name)
 	}
 
-	if path.Base(name) != name {
+	if path.Unix.Base(name) != name {
 		return nil, fmt.Errorf("MutableDirectory methods can not handle paths: %s", name)
 	}
 

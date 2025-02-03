@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"path"
 	"strings"
 
 	"github.com/blakesmith/ar"
@@ -17,6 +16,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	"github.com/xi2/xz"
 	"go.starlark.net/starlark"
 )
@@ -147,12 +147,12 @@ func (d *directoryToArchiveBuildResult) writeDirTo(ent filesystem.Directory, nam
 
 	for _, ent := range ents {
 		if dir, ok := ent.File.(filesystem.Directory); ok {
-			err := d.writeDirTo(dir, path.Join(name, ent.Name))
+			err := d.writeDirTo(dir, path.Unix.Join(name, ent.Name))
 			if err != nil {
 				return fmt.Errorf("failed to write directory %s: %s", ent.Name, err)
 			}
 		} else {
-			err := d.writeFileTo(ent.File, path.Join(name, ent.Name))
+			err := d.writeFileTo(ent.File, path.Unix.Join(name, ent.Name))
 			if err != nil {
 				return fmt.Errorf("failed to write file %s: %s", ent.Name, err)
 			}
@@ -251,12 +251,12 @@ func (r *tarToArchiveBuildResult) WriteResult(w io.Writer) error {
 		deleted := false
 
 		if r.oci {
-			if path.Base(hdr.Name) == ".wh..wh..opq" {
+			if path.Unix.Base(hdr.Name) == ".wh..wh..opq" {
 				deleted = true
-				hdr.Name = path.Dir(hdr.Name)
-			} else if strings.HasPrefix(path.Base(hdr.Name), ".wh.") {
+				hdr.Name = path.Unix.Dir(hdr.Name)
+			} else if strings.HasPrefix(path.Unix.Base(hdr.Name), ".wh.") {
 				deleted = true
-				hdr.Name = path.Join(path.Dir(hdr.Name), path.Base(hdr.Name)[4:])
+				hdr.Name = path.Unix.Join(path.Unix.Dir(hdr.Name), path.Unix.Base(hdr.Name)[4:])
 			}
 		}
 

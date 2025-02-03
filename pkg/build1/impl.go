@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -18,6 +17,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	"github.com/tinyrange/tinyrange/pkg/star"
 	"go.starlark.net/starlark"
 )
@@ -46,7 +46,7 @@ type buildStatus struct {
 }
 
 func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
-	persistPath := filepath.Join(buildDir, "persist")
+	persistPath := path.Native.Join(buildDir, "persist")
 
 	if err := common.Ensure(persistPath, os.ModePerm); err != nil {
 		return nil, err
@@ -358,7 +358,7 @@ func (db *builder1) updateBuildStatus(def common.BuildDefinition, status *buildS
 }
 
 func (db *builder1) filenameFromHash(hash hash.Hash, suffix string) (string, error) {
-	return filepath.Join(db.buildDir, string(hash)+suffix), nil
+	return path.Native.Join(db.buildDir, string(hash)+suffix), nil
 }
 
 func (db *builder1) downloadFromDistributionServer(hash hash.Hash, def common.BuildDefinition) (bool, error) {

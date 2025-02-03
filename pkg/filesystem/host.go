@@ -6,11 +6,10 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path"
-	"path/filepath"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 type osStat struct {
@@ -76,11 +75,11 @@ func (l *localDirectory) GetChild(name string) (DirectoryEntry, error) {
 		return DirectoryEntry{File: l}, nil
 	}
 
-	if path.Base(name) != name {
+	if path.Unix.Base(name) != name {
 		return DirectoryEntry{}, fmt.Errorf("LocalDirectory methods can not handle paths: %s", name)
 	}
 
-	childName := filepath.Join(l.filename, name)
+	childName := path.Native.Join(l.filename, name)
 
 	info, err := os.Stat(childName)
 	if err != nil {
@@ -107,9 +106,9 @@ func (l *localDirectory) Readdir() ([]DirectoryEntry, error) {
 		var f File
 
 		if ent.IsDir() {
-			f = NewLocalDirectory(filepath.Join(l.filename, ent.Name()))
+			f = NewLocalDirectory(path.Native.Join(l.filename, ent.Name()))
 		} else {
-			f = NewLocalFile(filepath.Join(l.filename, ent.Name()), nil)
+			f = NewLocalFile(path.Native.Join(l.filename, ent.Name()), nil)
 		}
 
 		ret = append(ret, DirectoryEntry{File: f, Name: ent.Name()})
@@ -193,11 +192,11 @@ func (l *localMutableDirectory) Create(name string, f File) (File, error) {
 				return nil, err
 			}
 
-			if err := os.Symlink(link, filepath.Join(l.filename, name)); err != nil {
+			if err := os.Symlink(link, path.Native.Join(l.filename, name)); err != nil {
 				return nil, err
 			}
 
-			return NewLocalMutableFile(filepath.Join(l.filename, name), nil), nil
+			return NewLocalMutableFile(path.Native.Join(l.filename, name), nil), nil
 		} else if newInfo.Kind() == TypeLink {
 			return nil, fmt.Errorf("cannot create a hard link")
 		} else if newInfo.Kind() != TypeRegular {
@@ -205,7 +204,7 @@ func (l *localMutableDirectory) Create(name string, f File) (File, error) {
 		}
 	}
 
-	if err := os.WriteFile(filepath.Join(l.filename, name), nil, 0644); err != nil {
+	if err := os.WriteFile(path.Native.Join(l.filename, name), nil, 0644); err != nil {
 		return nil, err
 	}
 
@@ -217,7 +216,7 @@ func (l *localMutableDirectory) Create(name string, f File) (File, error) {
 		}
 		defer src.Close()
 
-		dst, err := os.OpenFile(filepath.Join(l.filename, name), os.O_WRONLY, 0)
+		dst, err := os.OpenFile(path.Native.Join(l.filename, name), os.O_WRONLY, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -236,17 +235,17 @@ func (l *localMutableDirectory) Create(name string, f File) (File, error) {
 		}
 
 		// set the mode of the new file to the mode of the passed file.
-		if err := os.Chmod(filepath.Join(l.filename, name), newInfo.Mode()); err != nil {
+		if err := os.Chmod(path.Native.Join(l.filename, name), newInfo.Mode()); err != nil {
 			return nil, err
 		}
 
 		// set the mtime of the new file to the mtime of the passed file.
-		if err := os.Chtimes(filepath.Join(l.filename, name), newInfo.ModTime(), newInfo.ModTime()); err != nil {
+		if err := os.Chtimes(path.Native.Join(l.filename, name), newInfo.ModTime(), newInfo.ModTime()); err != nil {
 			return nil, err
 		}
 	}
 
-	return NewLocalMutableFile(filepath.Join(l.filename, name), nil), nil
+	return NewLocalMutableFile(path.Native.Join(l.filename, name), nil), nil
 }
 
 // GetChild implements MutableDirectory.
@@ -255,11 +254,11 @@ func (l *localMutableDirectory) GetChild(name string) (DirectoryEntry, error) {
 		return DirectoryEntry{File: l}, nil
 	}
 
-	if path.Base(name) != name {
+	if path.Unix.Base(name) != name {
 		return DirectoryEntry{}, fmt.Errorf("LocalMutableDirectory methods can not handle paths: %s", name)
 	}
 
-	childName := filepath.Join(l.filename, name)
+	childName := path.Native.Join(l.filename, name)
 
 	info, err := os.Stat(childName)
 	if err != nil {
@@ -275,15 +274,15 @@ func (l *localMutableDirectory) GetChild(name string) (DirectoryEntry, error) {
 
 // Mkdir implements MutableDirectory.
 func (l *localMutableDirectory) Mkdir(name string) (MutableDirectory, error) {
-	if err := os.Mkdir(filepath.Join(l.filename, name), 0755); err != nil {
+	if err := os.Mkdir(path.Native.Join(l.filename, name), 0755); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return NewLocalMutableDirectory(filepath.Join(l.filename, name)), nil
+			return NewLocalMutableDirectory(path.Native.Join(l.filename, name)), nil
 		} else {
 			return nil, err
 		}
 	}
 
-	return NewLocalMutableDirectory(filepath.Join(l.filename, name)), nil
+	return NewLocalMutableDirectory(path.Native.Join(l.filename, name)), nil
 }
 
 // Open implements MutableDirectory.
@@ -316,9 +315,9 @@ func (l *localMutableDirectory) Readdir() ([]DirectoryEntry, error) {
 		var f File
 
 		if ent.IsDir() {
-			f = NewLocalMutableDirectory(filepath.Join(l.filename, ent.Name()))
+			f = NewLocalMutableDirectory(path.Native.Join(l.filename, ent.Name()))
 		} else {
-			f = NewLocalMutableFile(filepath.Join(l.filename, ent.Name()), nil)
+			f = NewLocalMutableFile(path.Native.Join(l.filename, ent.Name()), nil)
 		}
 
 		ret = append(ret, DirectoryEntry{File: f, Name: ent.Name()})
@@ -329,7 +328,7 @@ func (l *localMutableDirectory) Readdir() ([]DirectoryEntry, error) {
 
 // Unlink implements MutableDirectory.
 func (l *localMutableDirectory) Unlink(name string) error {
-	return os.RemoveAll(filepath.Join(l.filename, name))
+	return os.RemoveAll(path.Native.Join(l.filename, name))
 }
 
 var (

@@ -7,12 +7,12 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
 	"github.com/tinyrange/tinyrange/pkg/feature"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
@@ -84,7 +84,7 @@ func getExeDirectory() (string, error) {
 		return "", err
 	}
 
-	return filepath.Dir(exePath), nil
+	return path.Native.Dir(exePath), nil
 }
 
 func GetAdjacentExecutable(names ...string) (string, error) {
@@ -94,7 +94,7 @@ func GetAdjacentExecutable(names ...string) (string, error) {
 	}
 
 	for _, name := range names {
-		localPath := filepath.Join(exeDir, name)
+		localPath := path.Native.Join(exeDir, name)
 
 		if runtime.GOOS == "windows" {
 			localPath += ".exe"
@@ -119,7 +119,7 @@ func GetAdjacentFile(names ...string) (string, error) {
 	}
 
 	for _, name := range names {
-		localPath := filepath.Join(exeDir, name)
+		localPath := path.Native.Join(exeDir, name)
 
 		if ok, _ := Exists(localPath); ok {
 			return localPath, nil
@@ -139,7 +139,7 @@ func IsPortable() bool {
 		return false
 	}
 
-	if ok, _ := Exists(filepath.Join(exeDir, "tinyrange.portable")); ok {
+	if ok, _ := Exists(path.Native.Join(exeDir, "tinyrange.portable")); ok {
 		return true
 	}
 
@@ -155,8 +155,8 @@ func GetDefaultBuildDir() string {
 	}
 
 	// If that exists then put the build dir next to our current executables.
-	if ok, _ := Exists(filepath.Join(exeDir, "tinyrange.portable")); ok {
-		return filepath.Join(exeDir, "build")
+	if ok, _ := Exists(path.Native.Join(exeDir, "tinyrange.portable")); ok {
+		return path.Native.Join(exeDir, "build")
 	}
 
 	// Otherwise find the user cache directory...
@@ -167,7 +167,7 @@ func GetDefaultBuildDir() string {
 	}
 
 	// and create a build directory under that.
-	return filepath.Join(cache, "tinyrange", "build")
+	return path.Native.Join(cache, "tinyrange", "build")
 }
 
 func ExecCommand(args []string, environment map[string]string) error {
