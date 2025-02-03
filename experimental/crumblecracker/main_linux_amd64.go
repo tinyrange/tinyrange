@@ -1406,7 +1406,11 @@ func appMain() error {
 		switch exit {
 		case ExitIo:
 			io := cpu.runData.ExitIo()
-			if io.Port == 0x3f8 && io.Direction == 1 {
+			if io.Port == 0x64 {
+				// keyboard
+				slog.Info("keyboard", "direction", io.Direction, "size", io.Size)
+			} else if io.Port == 0x3f8 && io.Direction == 1 {
+				// serial write
 				data := io.Read()
 				if _, err := bufStdout.Write(data); err != nil {
 					return fmt.Errorf("failed to write to stdout: %w", err)
@@ -1417,11 +1421,13 @@ func appMain() error {
 						return fmt.Errorf("failed to flush stdout: %w", err)
 					}
 				}
+			} else if io.Port == 0x3f8+1 {
+				slog.Info("serial interupt control", "direction", io.Direction, "size", io.Size)
 			} else if io.Port == 0x3f8+5 && io.Direction == 0 {
-				// slog.Info("console read")
+				// check serial ready
 				io.Write([]byte{0x20})
 			} else {
-				// slog.Info("unknown io", "port", io.Port, "direction", io.Direction, "size", io.Size)
+				slog.Info("unknown io", "port", fmt.Sprintf("0x%x", io.Port), "direction", io.Direction, "size", io.Size)
 			}
 		case ExitShutdown:
 			slog.Info("shutdown")
