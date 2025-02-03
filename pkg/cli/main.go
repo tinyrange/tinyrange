@@ -13,6 +13,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 var (
@@ -52,7 +53,11 @@ func newDb() (common.PackageDatabase, error) {
 	builderFactory := func(db common.PackageDatabase) (common.Builder, error) {
 		logger := build2.NewSimpleLogger()
 
-		buildDir := rootBuildDir
+		// Make sure the build dir doesn't have any weird characters in it.
+		buildDir, err := path.Native.Abs(rootBuildDir)
+		if err != nil {
+			return nil, err
+		}
 
 		// Check with Exists first so it doesn't have issues if the build dir is behind a symlink.
 		ok, err := common.Exists(buildDir)
@@ -60,7 +65,7 @@ func newDb() (common.PackageDatabase, error) {
 			return nil, err
 		}
 
-		if ok {
+		if !ok {
 			if err := common.Ensure(buildDir, os.ModePerm); err != nil {
 				return nil, err
 			}
