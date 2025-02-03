@@ -1,4 +1,4 @@
-package database
+package planner
 
 import (
 	"fmt"
@@ -327,7 +327,7 @@ var (
 	_ common.InstallationPlan = &installationPlan{}
 )
 
-func newInstallationPlan(tags common.TagList, opts common.PlanOptions) common.InstallationPlan {
+func NewInstallationPlan(tags common.TagList, opts common.PlanOptions) common.InstallationPlan {
 	return &installationPlan{
 		installedNames: make(map[string]*installInfo),
 		tags:           tags,

@@ -62,7 +62,7 @@ var (
 
 type packageDatabase struct {
 	// keys are name-arch
-	ContainerBuilders map[string]*containerBuilder
+	containerBuilders map[string]common.ContainerBuilder
 
 	mirrors map[string][]string
 
@@ -188,12 +188,7 @@ func (db *packageDatabase) AddMirror(name string, options []string) error {
 }
 
 func (db *packageDatabase) AddContainerBuilder(b common.ContainerBuilder) error {
-	builder, ok := b.(*containerBuilder)
-	if !ok {
-		return fmt.Errorf("expected containerBuilder, got %T", b)
-	}
-
-	db.ContainerBuilders[builder.Key()] = builder
+	db.containerBuilders[b.Key()] = b
 
 	return nil
 }
@@ -279,13 +274,13 @@ func (db *packageDatabase) LoadAll(parallel bool) error {
 		done := make(chan bool)
 		errors := make(chan error)
 
-		for _, builder := range db.ContainerBuilders {
+		for _, builder := range db.containerBuilders {
 			wg.Add(1)
 
-			go func(builder *containerBuilder) {
+			go func(builder common.ContainerBuilder) {
 				defer wg.Done()
 
-				if err := builder.ensureLoaded(ctx); err != nil {
+				if err := builder.EnsureLoaded(ctx); err != nil {
 					errors <- err
 				}
 			}(builder)
@@ -304,8 +299,8 @@ func (db *packageDatabase) LoadAll(parallel bool) error {
 			return nil
 		}
 	} else {
-		for _, builder := range db.ContainerBuilders {
-			if err := builder.ensureLoaded(ctx); err != nil {
+		for _, builder := range db.containerBuilders {
+			if err := builder.EnsureLoaded(ctx); err != nil {
 				return err
 			}
 		}
@@ -336,12 +331,12 @@ func (db *packageDatabase) getBuilder(filename string, builder string) (starlark
 }
 
 func (db *packageDatabase) GetContainerBuilder(name string, arch config.CPUArchitecture) (common.ContainerBuilder, error) {
-	builder, ok := db.ContainerBuilders[fmt.Sprintf("%s-%s", name, arch)]
+	builder, ok := db.containerBuilders[fmt.Sprintf("%s-%s", name, arch)]
 	if !ok {
 		return nil, fmt.Errorf("builder %s not found for arch %s", name, arch)
 	}
 
-	if err := builder.ensureLoaded(db.Builder().MinimalContext()); err != nil {
+	if err := builder.EnsureLoaded(db.Builder().MinimalContext()); err != nil {
 		return nil, err
 	}
 
@@ -445,9 +440,9 @@ func (db *packageDatabase) loadBuiltinBuilders() error {
 }
 
 func (db *packageDatabase) GetContainerBuilders() map[string]common.ContainerBuilder {
-	ret := make(map[string]common.ContainerBuilder, len(db.ContainerBuilders))
+	ret := make(map[string]common.ContainerBuilder, len(db.containerBuilders))
 
-	for k, v := range db.ContainerBuilders {
+	for k, v := range db.containerBuilders {
 		ret[k] = v
 	}
 
@@ -481,7 +476,7 @@ var (
 
 func New(builderFactory common.BuilderFactor) (common.PackageDatabase, error) {
 	db := &packageDatabase{
-		ContainerBuilders: make(map[string]*containerBuilder),
+		containerBuilders: make(map[string]common.ContainerBuilder),
 		mirrors:           make(map[string][]string),
 		defs:              make(map[string]starlark.Value),
 		loadedFiles:       make(map[string]bool),

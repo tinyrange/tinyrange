@@ -1,4 +1,4 @@
-package database
+package planner
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"slices"
 	"time"
 
+	build "github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"go.starlark.net/starlark"
@@ -32,7 +33,7 @@ func (builder *containerBuilder) Packages() common.PackageCollection {
 }
 
 // EnsureLoaded ensures that the container builder is loaded.
-func (builder *containerBuilder) ensureLoaded(ctx common.MinimalBuildContext) error {
+func (builder *containerBuilder) EnsureLoaded(ctx common.MinimalBuildContext) error {
 	if !builder.Loaded() {
 		start := time.Now()
 		if err := builder.load(ctx); err != nil {
@@ -175,7 +176,7 @@ func (builder *containerBuilder) Plan(
 	tags common.TagList,
 	opts common.PlanOptions,
 ) (common.InstallationPlan, error) {
-	plan := newInstallationPlan(tags, opts)
+	plan := NewInstallationPlan(tags, opts)
 
 	if tags.Contains("defaults") {
 		for _, pkg := range builder.defaultPackages {
@@ -219,7 +220,7 @@ func (builder *containerBuilder) Plan(
 	var val starlark.Value
 
 	for it.Next(&val) {
-		dir, err := asDirective(val)
+		dir, err := build.AsDirective(val)
 		if err != nil {
 			return nil, err
 		}
@@ -257,14 +258,14 @@ var (
 	_ common.ContainerBuilder = &containerBuilder{}
 )
 
-func newContainerBuilder(
+func NewContainerBuilder(
 	name string,
 	arch config.CPUArchitecture,
 	displayName string,
 	filename string,
 	planCallbackName string,
 	defaultPackages []common.PackageQuery,
-	packages *packageCollection,
+	packages common.PackageCollection,
 	metadata starlark.Value,
 	splitDefaultPackages bool,
 ) (common.ContainerBuilder, error) {
@@ -275,7 +276,7 @@ func newContainerBuilder(
 		filename:             filename,
 		planCallbackName:     planCallbackName,
 		defaultPackages:      defaultPackages,
-		packages:             packages,
+		packages:             packages.(*packageCollection),
 		metadata:             metadata,
 		splitDefaultPackages: splitDefaultPackages,
 	}, nil

@@ -173,6 +173,8 @@ type ContainerBuilder interface {
 	DisplayName() string
 	// Packages returns the package collection of the container builder.
 	Packages() PackageCollection
+	// EnsureLoaded ensures that the container builder is loaded.
+	EnsureLoaded(ctx MinimalBuildContext) error
 
 	// Plan creates an installation plan from a list of queries.
 	Plan(ctx MinimalBuildContext, packages []PackageQuery, tags TagList, opts PlanOptions) (InstallationPlan, error)

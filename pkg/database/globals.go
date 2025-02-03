@@ -15,6 +15,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/planner"
 	"github.com/tinyrange/tinyrange/third_party/regexp"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
@@ -23,62 +24,6 @@ import (
 )
 
 var startTime = time.Now()
-
-func asDirective(val starlark.Value) (common.Directive, error) {
-	if starDir, ok := val.(*common.StarDirective); ok {
-		return starDir.Directive, nil
-	} else if directive, ok := val.(common.Directive); ok {
-		return directive, nil
-	} else if file, ok := val.(filesystem.File); ok {
-		def, err := builder.Factory.NewDefinitionFromFile(file)
-		if err != nil {
-			return nil, err
-		}
-
-		if dir, ok := def.(common.Directive); ok {
-			return dir, nil
-		} else {
-			return nil, fmt.Errorf("could not convert %T to Directive", def)
-		}
-	} else if ark, ok := val.(filesystem.Archive); ok {
-		def, err := builder.SourceFromArchive(ark)
-		if err != nil {
-			return nil, err
-		}
-
-		if dir, ok := def.(common.Directive); ok {
-			return dir, nil
-		} else {
-			return nil, fmt.Errorf("could not convert %T to Directive", def)
-		}
-	} else {
-		return nil, fmt.Errorf("could not convert %s to Directive", val.Type())
-	}
-}
-
-func asDirectiveList(it starlark.Iterable) ([]common.Directive, error) {
-	if it == nil {
-		return nil, nil
-	}
-
-	var val starlark.Value
-
-	var directives []common.Directive
-
-	directiveIter := it.Iterate()
-	defer directiveIter.Done()
-
-	for directiveIter.Next(&val) {
-		dir, err := asDirective(val)
-		if err != nil {
-			return nil, err
-		}
-
-		directives = append(directives, dir)
-	}
-
-	return directives, nil
-}
 
 func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 	ret := starlark.StringDict{}
@@ -178,7 +123,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 
 				filename := thread.CallFrame(1).Pos.Filename()
 
-				return newPackageCollection(filename, parser.Name(), install.Name(), defs)
+				return planner.NewPackageCollection(filename, parser.Name(), install.Name(), defs)
 			}),
 			"container_builder": starlark.NewBuiltin("define.container_builder", func(
 				thread *starlark.Thread,
@@ -191,7 +136,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					archString           string
 					displayName          string
 					planCallback         starlark.Callable
-					packages             *packageCollection
+					packages             common.PackageCollection
 					defaultPackagesList  starlark.Iterable
 					metadata             starlark.Value
 					splitDefaultPackages bool
@@ -235,7 +180,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 
 				filename := thread.CallFrame(1).Pos.Filename()
 
-				return newContainerBuilder(
+				return planner.NewContainerBuilder(
 					name, arch, displayName,
 					filename, planCallback.Name(),
 					defaultPackages,
@@ -393,7 +338,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				directives, err := asDirectiveList(directiveList)
+				directives, err := builder.AsDirectiveList(directiveList)
 				if err != nil {
 					return starlark.None, err
 				}
@@ -455,7 +400,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				directives, err := asDirectiveList(directiveList)
+				directives, err := builder.AsDirectiveList(directiveList)
 				if err != nil {
 					return starlark.None, err
 				}
@@ -482,7 +427,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				directives, err := asDirectiveList(directiveList)
+				directives, err := builder.AsDirectiveList(directiveList)
 				if err != nil {
 					return starlark.None, err
 				}
@@ -818,7 +763,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				directives, err := asDirectiveList(directiveList)
+				directives, err := builder.AsDirectiveList(directiveList)
 				if err != nil {
 					return starlark.None, err
 				}
@@ -902,7 +847,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 			defer directiveIter.Done()
 
 			for directiveIter.Next(&val) {
-				dir, err := asDirective(val)
+				dir, err := builder.AsDirective(val)
 				if err != nil {
 					return nil, err
 				}

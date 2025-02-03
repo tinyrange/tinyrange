@@ -1,4 +1,4 @@
-package database
+package planner
 
 import (
 	"fmt"
@@ -306,7 +306,7 @@ var (
 	_ common.BuildDefinition = &packageCollection{}
 )
 
-func newPackageCollection(
+func NewPackageCollection(
 	filename string,
 	parser string,
 	install string,
