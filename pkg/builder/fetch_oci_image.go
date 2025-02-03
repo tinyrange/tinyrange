@@ -169,7 +169,7 @@ func (ctx *ociRegistryContext) responseHandler(resp *http.Response) (bool, error
 		// Remake the request with the new token.
 		return false, nil
 	} else {
-		return false, fmt.Errorf("failed to handle response code: %s", resp.Status)
+		return false, fmt.Errorf("failed to handle response code %s: %s", resp.Request.URL.String(), resp.Status)
 	}
 }
 
@@ -464,34 +464,7 @@ func (def *fetchOciImageDefinition) buildFromManifest(
 	return ctx.WriteDefault(def)
 }
 
-func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext, regCtx *ociRegistryContext, index oci.ImageIndexV2) error {
-	// Get the right manifest for the architecture.
-	var manifestId oci.ImageManifestIdentifier
-	for _, manifest := range index.Manifests {
-		if manifest.Platform.Architecture == def.params.Architecture {
-			manifestId = manifest
-		}
-	}
-
-	manifestArtifact, err := ctx.BuildChild(&registryRequestDefinition{
-		ctx: regCtx,
-		params: RegistryRequestParameters{
-			Url: fmt.Sprintf("/%s/manifests/%s", def.params.Image, manifestId.Digest),
-			Accept: []string{
-				"application/vnd.oci.image.manifest.v1+json",
-			},
-		},
-		// manifests are content addressed so don't expire.
-	})
-	if err != nil {
-		return err
-	}
-
-	manifestFile, err := manifestArtifact.Default()
-	if err != nil {
-		return err
-	}
-
+func (def *fetchOciImageDefinition) buildFromManifestFile(ctx common.BuildContext, regCtx *ociRegistryContext, manifestFile filesystem.File) error {
 	var manifest oci.ImageManifest
 	if err := ParseJsonFromFile(manifestFile, &manifest); err != nil {
 		return err
@@ -528,6 +501,37 @@ func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext, regC
 	}
 }
 
+func (def *fetchOciImageDefinition) buildFromIndex(ctx common.BuildContext, regCtx *ociRegistryContext, index oci.ImageIndexV2) error {
+	// Get the right manifest for the architecture.
+	var manifestId oci.ImageManifestIdentifier
+	for _, manifest := range index.Manifests {
+		if manifest.Platform.Architecture == def.params.Architecture {
+			manifestId = manifest
+		}
+	}
+
+	manifestArtifact, err := ctx.BuildChild(&registryRequestDefinition{
+		ctx: regCtx,
+		params: RegistryRequestParameters{
+			Url: fmt.Sprintf("/%s/manifests/%s", def.params.Image, manifestId.Digest),
+			Accept: []string{
+				"application/vnd.oci.image.manifest.v1+json",
+			},
+		},
+		// manifests are content addressed so don't expire.
+	})
+	if err != nil {
+		return err
+	}
+
+	manifestFile, err := manifestArtifact.Default()
+	if err != nil {
+		return err
+	}
+
+	return def.buildFromManifestFile(ctx, regCtx, manifestFile)
+}
+
 // Build implements common.BuildDefinition.
 func (def *fetchOciImageDefinition) Build(ctx common.BuildContext) error {
 	regCtx := &ociRegistryContext{registry: def.params.Registry}
@@ -551,6 +555,8 @@ func (def *fetchOciImageDefinition) Build(ctx common.BuildContext) error {
 	switch index.MediaType {
 	case "application/vnd.docker.distribution.manifest.list.v2+json":
 		return def.buildFromIndex(ctx, regCtx, index)
+	case "application/vnd.docker.distribution.manifest.v2+json":
+		return def.buildFromManifestFile(ctx, regCtx, indexFile)
 	case "application/vnd.oci.image.index.v1+json":
 		return def.buildFromIndex(ctx, regCtx, index)
 	case "":

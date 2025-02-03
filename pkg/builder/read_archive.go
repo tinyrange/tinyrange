@@ -269,6 +269,12 @@ func (r *tarToArchiveBuildResult) WriteResult(w io.Writer) error {
 			typeFlag = filesystem.TypeRegular
 		case tar.TypeDir:
 			typeFlag = filesystem.TypeDirectory
+		case tar.TypeChar:
+			// TODO(joshua): Handle character devices.
+			continue
+		case tar.TypeBlock:
+			// TODO(joshua): Handle block devices.
+			continue
 		case tar.TypeSymlink:
 			typeFlag = filesystem.TypeSymlink
 		case tar.TypeLink:
