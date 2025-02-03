@@ -55,7 +55,12 @@ func newDb() (common.PackageDatabase, error) {
 		buildDir := rootBuildDir
 
 		// Check with Exists first so it doesn't have issues if the build dir is behind a symlink.
-		if ok, _ := common.Exists(buildDir); !ok {
+		ok, err := common.Exists(buildDir)
+		if err != nil {
+			return nil, err
+		}
+
+		if ok {
 			if err := common.Ensure(buildDir, os.ModePerm); err != nil {
 				return nil, err
 			}
