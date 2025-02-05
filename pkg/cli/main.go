@@ -49,15 +49,24 @@ Complete documentation is available at https://github.com/tinyrange/tinyrange`, 
 	},
 }
 
+func getBuildDir() (string, error) {
+	// Make sure the build dir doesn't have any weird characters in it.
+	buildDir, err := path.Native.Abs(rootBuildDir)
+	if err != nil {
+		return "", err
+	}
+
+	return buildDir, nil
+}
+
 func newDb() (common.PackageDatabase, error) {
+	buildDir, err := getBuildDir()
+	if err != nil {
+		return nil, err
+	}
+
 	builderFactory := func(db common.PackageDatabase) (common.Builder, error) {
 		logger := build2.NewSimpleLogger()
-
-		// Make sure the build dir doesn't have any weird characters in it.
-		buildDir, err := path.Native.Abs(rootBuildDir)
-		if err != nil {
-			return nil, err
-		}
 
 		// Check with Exists first so it doesn't have issues if the build dir is behind a symlink.
 		ok, err := common.Exists(buildDir)
@@ -77,7 +86,7 @@ func newDb() (common.PackageDatabase, error) {
 	}
 
 	if feature.HasFeature(feature.FeatureBuild1) {
-		builderFactory = build1.NewBuilder(rootBuildDir)
+		builderFactory = build1.NewBuilder(buildDir)
 	}
 
 	db, err := database.New(builderFactory)

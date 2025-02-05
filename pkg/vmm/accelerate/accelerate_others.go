@@ -1,6 +1,6 @@
 //go:build !linux && !darwin && !windows
 
-package vmm
+package accelerate
 
 func SupportsAcceleration() bool {
 	return false

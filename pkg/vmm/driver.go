@@ -40,6 +40,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	_ "github.com/tinyrange/tinyrange/pkg/platform"
+	"github.com/tinyrange/tinyrange/pkg/vmm/accelerate"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"github.com/tinyrange/tinyrange/third_party/go-nbd/backend"
 	"golang.org/x/crypto/ssh"
@@ -1463,7 +1464,7 @@ func (d *driver) Accelerated() bool {
 		return false
 	}
 
-	return SupportsAcceleration()
+	return accelerate.SupportsAcceleration()
 }
 
 func (d *driver) HostOperatingSystem() string               { return runtime.GOOS }

@@ -1,6 +1,6 @@
 //go:build windows
 
-package vmm
+package accelerate
 
 import (
 	"syscall"

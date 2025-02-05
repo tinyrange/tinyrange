@@ -1,6 +1,6 @@
 //go:build darwin
 
-package vmm
+package accelerate
 
 import (
 	"os/exec"

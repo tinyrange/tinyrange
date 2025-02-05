@@ -1,6 +1,6 @@
 //go:build linux
 
-package vmm
+package accelerate
 
 import (
 	"os"
