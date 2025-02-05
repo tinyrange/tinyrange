@@ -122,7 +122,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			b.offset += int64(length)
 
-			return starlark.None, nil
+			return b, nil
 		}), nil
 	} else if name == "tell" {
 		return starlark.NewBuiltin("BinaryReader.tell", func(
@@ -255,6 +255,15 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 			sliceReader := io.NewSectionReader(b.file, int64(offset), int64(length))
 
 			return newBinaryReader(sliceReader), nil
+		}), nil
+	} else if name == "clone" {
+		return starlark.NewBuiltin("BinaryReader.clone", func(
+			thread *starlark.Thread,
+			fn *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			return newBinaryReader(b.file), nil
 		}), nil
 	} else {
 		return nil, nil
@@ -392,6 +401,42 @@ func appMain() error {
 			}
 
 			return value, nil
+		}),
+		"error": starlark.NewBuiltin("error", func(
+			thread *starlark.Thread,
+			builtin *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				message string
+			)
+
+			if err := starlark.UnpackArgs(builtin.Name(), args, kwargs,
+				"message", &message,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return nil, fmt.Errorf("%s", message)
+		}),
+		"oct": starlark.NewBuiltin("oct", func(
+			thread *starlark.Thread,
+			builtin *starlark.Builtin,
+			args starlark.Tuple,
+			kwargs []starlark.Tuple,
+		) (starlark.Value, error) {
+			var (
+				data starlark.Int
+			)
+
+			if err := starlark.UnpackArgs(builtin.Name(), args, kwargs,
+				"data", &data,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			return starlark.String(fmt.Sprintf("%o", data)), nil
 		}),
 	}
 

@@ -203,10 +203,101 @@ def bsdffs_superblock(f):
         "space": f.u8(),  # list of blocks for each rotation
     }
 
+def ufs2_dinode(f):
+    """
+    struct ufs2_dinode {
+	    u_int16_t	di_mode;	/*   0: IFMT, permissions; see below. */
+	    int16_t		di_nlink;	/*   2: File link count. */
+	    u_int32_t	di_uid;		/*   4: File owner. */
+	    u_int32_t	di_gid;		/*   8: File group. */
+	    u_int32_t	di_blksize;	/*  12: Inode blocksize. */
+	    u_int64_t	di_size;	/*  16: File byte count. */
+	    u_int64_t	di_blocks;	/*  24: Bytes actually held. */
+	    int64_t		di_atime;	/*  32: Last access time. */
+	    int64_t		di_mtime;	/*  40: Last modified time. */
+	    int64_t		di_ctime;	/*  48: Last inode change time. */
+	    int64_t		di_birthtime;	/*  56: Inode creation time. */
+	    int32_t		di_mtimensec;	/*  64: Last modified time. */
+	    int32_t		di_atimensec;	/*  68: Last access time. */
+	    int32_t		di_ctimensec;	/*  72: Last inode change time. */
+	    int32_t		di_birthnsec;	/*  76: Inode creation time. */
+	    int32_t		di_gen;		/*  80: Generation number. */
+	    u_int32_t	di_kernflags;	/*  84: Kernel flags. */
+	    u_int32_t	di_flags;	/*  88: Status flags (chflags). */
+	    int32_t		di_extsize;	/*  92: External attributes block. */
+	    int64_t		di_extb[NXADDR];/*  96: External attributes block. */
+	    int64_t		di_db[NDADDR];	/* 112: Direct disk blocks. */
+	    int64_t		di_ib[NIADDR];	/* 208: Indirect disk blocks. */
+	    int64_t		di_spare[3];	/* 232: Reserved; currently unused */
+    };
+    """
+    return {
+        "di_mode": f.u16le(),
+        "di_nlink": f.i16le(),
+        "di_uid": f.u32le(),
+        "di_gid": f.u32le(),
+        "di_blksize": f.u32le(),
+        "di_size": f.u64le(),
+        "di_blocks": f.u64le(),
+        "di_atime": f.i64le(),
+        "di_mtime": f.i64le(),
+        "di_ctime": f.i64le(),
+        "di_birthtime": f.i64le(),
+        "di_mtimensec": f.i32le(),
+        "di_atimensec": f.i32le(),
+        "di_ctimensec": f.i32le(),
+        "di_birthnsec": f.i32le(),
+        "di_gen": f.i32le(),
+        "di_kernflags": f.u32le(),
+        "di_flags": f.u32le(),
+        "di_extsize": f.i32le(),
+        "di_extb": [f.i64le() for _ in range(2)],
+        "di_db": [f.i64le() for _ in range(12)],
+        "di_ib": [f.i64le() for _ in range(3)],
+        "di_spare": [f.i64le() for _ in range(3)],
+    }
+
+ROOTINO = 2
+
+def INOPB(fs):
+    return fs["inopb"]
+
+def fsbtodb(fs, b):
+    return b << fs["fsbtodb"]
+
+def cgbase(fs, c):
+    return fs["fpg"] * c
+
+def cgimin(fs, cg):
+    return cgstart(fs, cg) + fs["iblkno"]
+
+def cgstart(fs, cg):
+    return (cgbase(fs, cg) + fs["cgoffset"] * (cg & ~(fs["cgmask"])))
+
+def ino_to_cg(fs, x):
+    return int(x / fs["ipg"])
+
+def blkstofrags(fs, blks):
+    return blks << fs["fragshift"]
+
+def ino_to_fsba(fs, ino):
+    """
+	((daddr_t)(cgimin(fs, ino_to_cg(fs, x)) +			\
+	    (blkstofrags((fs), (((x) % (fs)->fs_ipg) / INOPB(fs))))))
+    """
+    return cgimin(fs, ino_to_cg(fs, ino)) + blkstofrags(fs, ino % int(fs["ipg"] / INOPB(fs)))
+
+def ufs_get_inode(f, fs, ino):
+    off = fsbtodb(fs, ino_to_fsba(fs, ino)) * BLOCK_SIZE
+    inode_reader = f.clone().skip(off)
+
+    return ufs2_dinode(inode_reader)
+
 def parse_bsdffs(f):
-    f.skip(65536)
-    superblock = bsdffs_superblock(f)
+    superblock = bsdffs_superblock(f.clone().skip(65536))
     print(superblock)
+    root_ino = ufs_get_inode(f, superblock, ROOTINO)
+    print(root_ino, oct(root_ino["di_mode"]))
     return
 
 def main(f):
@@ -231,5 +322,7 @@ def main(f):
             size = part["size"] + (part["sizeh"] << 32)
             offset = part["offset"] + (part["offseth"] << 32)
             parse_bsdffs(f.slice(offset * sector_size, size * sector_size))
+        elif part["fstype"] == "swap":
+            print("swap")
         else:
             print("unhandled", part["fstype"])
