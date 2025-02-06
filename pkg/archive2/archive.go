@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -109,8 +110,10 @@ func (k EntryKind) String() string {
 		return "symlink"
 	case EntryKindHardlink:
 		return "hardlink"
-	default:
+	case EntryKindInvalid:
 		return "invalid"
+	default:
+		panic("invalid entry kind")
 	}
 }
 
@@ -133,12 +136,12 @@ type EntryFactory struct {
 	modTime  int64
 }
 
-func (e EntryFactory) Kind(k EntryKind) EntryFactory {
+func (e *EntryFactory) Kind(k EntryKind) *EntryFactory {
 	e.kind = k
 	return e
 }
 
-func (e EntryFactory) Name(s string) EntryFactory {
+func (e *EntryFactory) Name(s string) *EntryFactory {
 	if strings.ContainsRune(s, '\t') {
 		panic("name contains tab character")
 	}
@@ -147,7 +150,7 @@ func (e EntryFactory) Name(s string) EntryFactory {
 	return e
 }
 
-func (e EntryFactory) Linkname(s string) EntryFactory {
+func (e *EntryFactory) Linkname(s string) *EntryFactory {
 	if strings.ContainsRune(s, '\t') {
 		panic("name contains tab character")
 	}
@@ -156,55 +159,58 @@ func (e EntryFactory) Linkname(s string) EntryFactory {
 	return e
 }
 
-func (e EntryFactory) Size(s int64) EntryFactory {
+func (e *EntryFactory) Size(s int64) *EntryFactory {
 	e.size = s
 	return e
 }
 
-func (e EntryFactory) Mode(s fs.FileMode) EntryFactory {
+func (e *EntryFactory) Mode(s fs.FileMode) *EntryFactory {
 	e.mode = uint32(s)
 	return e
 }
 
-func (e EntryFactory) Owner(uid, gid int) EntryFactory {
+func (e *EntryFactory) Owner(uid, gid int) *EntryFactory {
 	e.uid = uid
 	e.gid = gid
 	return e
 }
 
-func (e EntryFactory) ModTime(t time.Time) EntryFactory {
+func (e *EntryFactory) ModTime(t time.Time) *EntryFactory {
 	e.modTime = t.Unix()
 	return e
 }
 
-// kind mode uid:gid modTime size offset hash
-const staticFormat = " %02x %08x %08x:%08x %016x %016x %016x %064x"
-const staticSize = 2 + 8 + 8 + 8 + 16 + 16 + 16 + 64 + 9
+const (
+	ARCHIVE_MAGIC = "ARCHIVE0\n"
 
-const kindOffset = 1
-const kindSize = 2
-const modeOffset = kindOffset + kindSize + 1
-const modeSize = 8
-const uidOffset = modeOffset + modeSize + 1
-const uidSize = 8
-const gidOffset = uidOffset + uidSize + 1
-const gidSize = 8
-const modTimeOffset = gidOffset + gidSize + 1
-const modTimeSize = 16
-const sizeOffset = modTimeOffset + modTimeSize + 1
-const sizeSize = 16
-const offsetOffset = sizeOffset + sizeSize + 1
-const offsetSize = 16
-const hashOffset = offsetOffset + offsetSize + 1
-const hashSize = 64
+	// kind mode uid:gid modTime size offset hash
+	staticSize = 2 + 8 + 8 + 8 + 16 + 16 + 16 + 64 + 9
+
+	kindOffset    = 1
+	kindSize      = 2
+	modeOffset    = kindOffset + kindSize + 1
+	modeSize      = 8
+	uidOffset     = modeOffset + modeSize + 1
+	uidSize       = 8
+	gidOffset     = uidOffset + uidSize + 1
+	gidSize       = 8
+	modTimeOffset = gidOffset + gidSize + 1
+	modTimeSize   = 16
+	sizeOffset    = modTimeOffset + modTimeSize + 1
+	sizeSize      = 16
+	offsetOffset  = sizeOffset + sizeSize + 1
+	offsetSize    = 16
+	hashOffset    = offsetOffset + offsetSize + 1
+	hashSize      = 64
+
+	terminatorSize = len("\t\n")
+)
 
 // static assert for staticSize
 var _ [0]struct{} = [(hashOffset + hashSize + 1) - staticSize]struct{}{}
 
-const fullFormat = "%04x" + staticFormat + " %s\t%s\n"
-
-func (e EntryFactory) encode(s *staticPrintf, hashBytes []byte, offset int64) error {
-	lineLength := staticSize + len(e.name) + len(e.linkname) + 2
+func (e *EntryFactory) encode(s *staticPrintf, hashBytes []byte, offset int64) error {
+	lineLength := staticSize + len(e.name) + len(e.linkname) + terminatorSize
 	s.Grow(8 + 1 + lineLength)
 
 	s.WriteInt16(int16(lineLength))
@@ -238,38 +244,34 @@ type hashedWriter struct {
 	hash   hash.Hash
 }
 
-func (w *hashedWriter) Write(p []byte) (n int, err error) {
-	n, err = w.writer.Write(p)
+func (w *hashedWriter) Write(p []byte) (int, error) {
+	n, err := w.writer.Write(p)
 	if err == nil {
 		_, err = w.hash.Write(p[:n])
 	}
-	return
+	return n, err
 }
 
 var _ io.Writer = (*hashedWriter)(nil)
 
 type ArchiveWriter struct {
-	index io.Writer
-
-	hashedWriter hashedWriter
-
-	contentsOffset int64
-
-	hashBytes [32]byte
-
-	copyBuffer []byte
-
-	limitReader io.LimitedReader
-
-	staticPrintf staticPrintf
+	index          io.Writer        // the index file writer
+	hashedWriter   hashedWriter     // an optimized version of io.MultiWriter that also hashes the data
+	contentsOffset int64            // the current offset in the contents file (maintained separately from the writer)
+	hashBytes      [32]byte         // used to store the hash of the contents
+	copyBuffer     []byte           // used to copy data from the reader to the contents
+	limitReader    io.LimitedReader // used to limit the number of bytes written to the contents
+	staticPrintf   staticPrintf     // used to write data to the index
 }
 
-func (w *ArchiveWriter) WriteEntry(entry EntryFactory, r io.Reader) error {
+var paddingBytes [4096]byte
+
+func (w *ArchiveWriter) WriteEntry(entry *EntryFactory, r io.Reader) error {
 	if entry.kind == EntryKindInvalid {
-		return fmt.Errorf("invalid entry kind")
+		return errors.New("invalid entry kind")
 	}
 	if entry.name == "" {
-		return fmt.Errorf("empty entry name")
+		return errors.New("empty entry name")
 	}
 
 	w.hashedWriter.hash.Reset()
@@ -279,32 +281,47 @@ func (w *ArchiveWriter) WriteEntry(entry EntryFactory, r io.Reader) error {
 		w.limitReader.R = r
 		w.limitReader.N = entry.size
 
+		// write contents
 		n, err := io.CopyBuffer(&w.hashedWriter, &w.limitReader, w.copyBuffer)
 		if err != nil {
 			return fmt.Errorf("failed to write contents: %w", err)
 		}
 		if n != entry.size {
-			return fmt.Errorf("failed to write contents: short write")
+			return errors.New("failed to write contents: short write")
+		}
+
+		// ensure that each file is aligned to 4096 bytes
+		if n%4096 != 0 {
+			padding := 4096 - (n % 4096)
+			if _, err := w.hashedWriter.writer.Write(paddingBytes[:padding]); err != nil {
+				return fmt.Errorf("failed to write padding: %w", err)
+			}
+			n += padding
 		}
 
 		hashBytes := w.hashedWriter.hash.Sum(w.hashBytes[:0])
 
+		// encode entry
 		if err := entry.encode(&w.staticPrintf, hashBytes, w.contentsOffset); err != nil {
 			return fmt.Errorf("failed to write index entry: %w", err)
 		}
 
+		// write entry to index
 		if _, err := w.staticPrintf.WriteTo(w.index); err != nil {
 			return fmt.Errorf("failed to write index entry: %w", err)
 		}
 
 		w.contentsOffset += n
 	} else {
+		// no contents
 		hashBytes := w.hashedWriter.hash.Sum(w.hashBytes[:0])
 
+		// encode entry
 		if err := entry.encode(&w.staticPrintf, hashBytes, 0); err != nil {
 			return fmt.Errorf("failed to write index entry: %w", err)
 		}
 
+		// write entry to index
 		if _, err := w.staticPrintf.WriteTo(w.index); err != nil {
 			return fmt.Errorf("failed to write index entry: %w", err)
 		}
@@ -313,8 +330,8 @@ func (w *ArchiveWriter) WriteEntry(entry EntryFactory, r io.Reader) error {
 	return nil
 }
 
-func NewArchiveWriter(index io.Writer, contents io.Writer) *ArchiveWriter {
-	return &ArchiveWriter{
+func NewArchiveWriter(index, contents io.Writer) (*ArchiveWriter, error) {
+	ret := &ArchiveWriter{
 		index: index,
 		hashedWriter: hashedWriter{
 			writer: contents,
@@ -322,88 +339,112 @@ func NewArchiveWriter(index io.Writer, contents io.Writer) *ArchiveWriter {
 		},
 		copyBuffer: make([]byte, 32*1024),
 	}
+
+	if _, err := ret.index.Write([]byte(ARCHIVE_MAGIC)); err != nil {
+		return nil, fmt.Errorf("failed to write header: %w", err)
+	}
+
+	return ret, nil
+}
+
+type hashReader struct {
+	reader io.Reader
+	hash   hash.Hash
+}
+
+func (r *hashReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if err == nil {
+		_, err = r.hash.Write(p[:n])
+	}
+	return n, err
 }
 
 type ArchiveReader struct {
+	index          *bufio.Reader
 	contentsReader io.ReaderAt
 	nameEnd        int
 	linkNameEnd    int
-
-	lenHex   [4]byte
-	lenBytes [2]byte
-	buf      [10 * 1024]byte
-	index    io.Reader
+	lenHex         [4]byte
+	lenBytes       [2]byte
+	buf            [10 * 1024]byte
 }
 
-func (e *ArchiveReader) rawKind() []byte {
-	return e.buf[kindOffset : kindOffset+kindSize]
+func (ar *ArchiveReader) rawKind() []byte {
+	return ar.buf[kindOffset : kindOffset+kindSize]
 }
 
-func (e *ArchiveReader) rawMode() []byte {
-	return e.buf[modeOffset : modeOffset+modeSize]
+func (ar *ArchiveReader) rawMode() []byte {
+	return ar.buf[modeOffset : modeOffset+modeSize]
 }
 
-func (e *ArchiveReader) rawUid() []byte {
-	return e.buf[uidOffset : uidOffset+uidSize]
+func (ar *ArchiveReader) rawUID() []byte {
+	return ar.buf[uidOffset : uidOffset+uidSize]
 }
 
-func (e *ArchiveReader) rawGid() []byte {
-	return e.buf[gidOffset : gidOffset+gidSize]
+func (ar *ArchiveReader) rawGID() []byte {
+	return ar.buf[gidOffset : gidOffset+gidSize]
 }
 
-func (e *ArchiveReader) rawModTime() []byte {
-	return e.buf[modTimeOffset : modTimeOffset+modTimeSize]
+func (ar *ArchiveReader) rawModTime() []byte {
+	return ar.buf[modTimeOffset : modTimeOffset+modTimeSize]
 }
 
-func (e *ArchiveReader) rawSize() []byte {
-	return e.buf[sizeOffset : sizeOffset+sizeSize]
+func (ar *ArchiveReader) rawSize() []byte {
+	return ar.buf[sizeOffset : sizeOffset+sizeSize]
 }
 
-func (e *ArchiveReader) rawOffset() []byte {
-	return e.buf[offsetOffset : offsetOffset+offsetSize]
+func (ar *ArchiveReader) rawOffset() []byte {
+	return ar.buf[offsetOffset : offsetOffset+offsetSize]
 }
 
-func (e *ArchiveReader) rawHash() []byte {
-	return e.buf[hashOffset : hashOffset+hashSize]
+func (ar *ArchiveReader) rawHash() []byte {
+	return ar.buf[hashOffset : hashOffset+hashSize]
 }
 
-func (e *ArchiveReader) Kind() EntryKind {
+// Kind returns the kind of the entry.
+func (ar *ArchiveReader) Kind() EntryKind {
 	var kindBytes [1]byte
-	hex.Decode(kindBytes[:], e.rawKind())
+	hex.Decode(kindBytes[:], ar.rawKind())
 	return EntryKind(kindBytes[0])
 }
 
-func (e *ArchiveReader) Size() int64 {
+// Size returns the size of the entry in bytes.
+func (ar *ArchiveReader) Size() int64 {
 	var sizeBytes [8]byte
-	hex.Decode(sizeBytes[:], e.rawSize())
+	hex.Decode(sizeBytes[:], ar.rawSize())
 	return int64(binary.BigEndian.Uint64(sizeBytes[:]))
 }
 
-func (e *ArchiveReader) Mode() fs.FileMode {
+// Mode returns the mode of the entry.
+func (ar *ArchiveReader) Mode() fs.FileMode {
 	var modeBytes [4]byte
-	hex.Decode(modeBytes[:], e.rawMode())
+	hex.Decode(modeBytes[:], ar.rawMode())
 	return fs.FileMode(binary.BigEndian.Uint32(modeBytes[:]))
 }
 
-func (e *ArchiveReader) Owner() (int, int) {
+// Owner returns the uid and gid of the entry.
+func (ar *ArchiveReader) Owner() (uid int, gid int) {
 	var uidBytes [4]byte
-	hex.Decode(uidBytes[:], e.rawUid())
+	hex.Decode(uidBytes[:], ar.rawUID())
 
 	var gidBytes [4]byte
-	hex.Decode(gidBytes[:], e.rawGid())
+	hex.Decode(gidBytes[:], ar.rawGID())
 
 	return int(binary.BigEndian.Uint32(uidBytes[:])), int(binary.BigEndian.Uint32(gidBytes[:]))
 }
 
-func (e *ArchiveReader) ModTime() time.Time {
+// ModTime returns the modification time of the entry.
+func (ar *ArchiveReader) ModTime() time.Time {
 	var modTimeBytes [8]byte
-	hex.Decode(modTimeBytes[:], e.rawModTime())
+	hex.Decode(modTimeBytes[:], ar.rawModTime())
 	return time.Unix(int64(binary.BigEndian.Uint64(modTimeBytes[:])), 0)
 }
 
-func (e *ArchiveReader) Hash() []byte {
+// Hash returns the SHA256 hash of the contents of the entry.
+func (ar *ArchiveReader) Hash() []byte {
 	var hashBytes [32]byte
-	hex.Decode(hashBytes[:], e.rawHash())
+	hex.Decode(hashBytes[:], ar.rawHash())
 	return hashBytes[:]
 }
 
@@ -412,71 +453,104 @@ type Handle interface {
 	io.ReaderAt
 }
 
-func (e *ArchiveReader) offset() int64 {
+func (ar *ArchiveReader) offset() (int64, error) {
 	var offsetBytes [8]byte
-	hex.Decode(offsetBytes[:], e.rawOffset())
-	return int64(binary.BigEndian.Uint64(offsetBytes[:]))
+	if _, err := hex.Decode(offsetBytes[:], ar.rawOffset()); err != nil {
+		return 0, fmt.Errorf("failed to decode offset: %w", err)
+	}
+	return int64(binary.BigEndian.Uint64(offsetBytes[:])), nil
 }
 
-func (e *ArchiveReader) Open() (Handle, error) {
-	if e.Kind() != EntryKindRegular {
+// Open returns a handle to the entry.
+func (ar *ArchiveReader) Open() (Handle, error) {
+	if ar.Kind() != EntryKindRegular {
 		return nil, fs.ErrInvalid
 	}
 
-	off := e.offset()
+	off, err := ar.offset()
+	if err != nil {
+		return nil, err
+	}
 
-	return io.NewSectionReader(e.contentsReader, off, e.Size()), nil
+	return io.NewSectionReader(ar.contentsReader, off, ar.Size()), nil
 }
 
-func (e *ArchiveReader) Name() string {
-	return string(e.buf[staticSize:e.nameEnd])
+// Name returns the name of the entry.
+func (ar *ArchiveReader) Name() string {
+	return string(ar.buf[staticSize:ar.nameEnd])
 }
 
-func (e *ArchiveReader) Linkname() string {
-	return string(e.buf[e.nameEnd+1 : e.linkNameEnd])
+// Linkname returns the linkname of the entry.
+func (ar *ArchiveReader) Linkname() string {
+	return string(ar.buf[ar.nameEnd+1 : ar.linkNameEnd])
 }
 
-func (r *ArchiveReader) NextEntry() error {
-	_, err := io.ReadFull(r.index, r.lenHex[:])
+// NextEntry reads the next entry from the index.
+func (ar *ArchiveReader) NextEntry() error {
+	// Read the length of the index entry first.
+	_, err := io.ReadFull(ar.index, ar.lenHex[:])
 	if err == io.EOF {
 		return err
 	} else if err != nil {
 		return fmt.Errorf("failed to read index entry length: %w", err)
 	}
 
-	// slog.Info("lenHex", "lenHex", string(lenHex[:]))
-
-	if _, err := hex.Decode(r.lenBytes[:], r.lenHex[:]); err != nil {
+	// Decode the length of the index entry.
+	if _, err := hex.Decode(ar.lenBytes[:], ar.lenHex[:]); err != nil {
 		return fmt.Errorf("failed to decode index entry length: %w", err)
 	}
 
-	lineLen := binary.BigEndian.Uint16(r.lenBytes[:])
+	lineLen := binary.BigEndian.Uint16(ar.lenBytes[:])
 
+	// If the line length is less than the static size, then the index entry is invalid.
 	if lineLen < staticSize {
 		return fmt.Errorf("invalid index entry length: %d < %d", lineLen, staticSize)
 	}
 
-	n, err := io.ReadFull(r.index, r.buf[:lineLen])
+	// Read the rest of the index entry.
+	n, err := io.ReadFull(ar.index, ar.buf[:lineLen])
 	if err != nil {
 		return fmt.Errorf("failed to read index entry data: %w", err)
 	}
 	if n != int(lineLen) {
-		return fmt.Errorf("failed to read index entry data: short read")
+		return errors.New("failed to read index entry data: short read")
 	}
 
-	r.nameEnd = bytes.IndexRune(r.buf[staticSize:lineLen], '\t') + staticSize
-	if r.nameEnd == -1 {
-		return fmt.Errorf("invalid index entry format, could not find nameEnd")
+	// The filename and linkname are separated by a tab character.
+	ar.nameEnd = bytes.IndexRune(ar.buf[staticSize:lineLen], '\t') + staticSize
+	if ar.nameEnd == -1 {
+		return errors.New("invalid index entry format, could not find nameEnd")
 	}
 
-	r.linkNameEnd = int(lineLen - 1)
+	ar.linkNameEnd = int(lineLen - 1)
 
 	return nil
 }
 
-func NewArchiveReader(index io.Reader, contents io.ReaderAt) *ArchiveReader {
-	return &ArchiveReader{
+func (ar *ArchiveReader) validateHeader() error {
+	var headerBytes [9]byte
+
+	_, err := io.ReadFull(ar.index, headerBytes[:])
+	if err != nil {
+		return fmt.Errorf("failed to read header: %w", err)
+	}
+
+	if string(headerBytes[:]) != ARCHIVE_MAGIC {
+		return errors.New("invalid header")
+	}
+
+	return nil
+}
+
+func NewArchiveReader(index io.Reader, contents io.ReaderAt) (*ArchiveReader, error) {
+	ret := &ArchiveReader{
 		index:          bufio.NewReaderSize(index, 10*1024),
 		contentsReader: contents,
 	}
+
+	if err := ret.validateHeader(); err != nil {
+		return nil, err
+	}
+
+	return ret, nil
 }

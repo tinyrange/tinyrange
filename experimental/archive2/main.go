@@ -61,7 +61,10 @@ func appMain() error {
 		}
 		defer contentsFile.Close()
 
-		writer := archive2.NewArchiveWriter(indexFile, contentsFile)
+		writer, err := archive2.NewArchiveWriter(indexFile, contentsFile)
+		if err != nil {
+			return fmt.Errorf("failed to create archive writer: %w", err)
+		}
 
 		start := time.Now()
 
@@ -73,7 +76,7 @@ func appMain() error {
 				return fmt.Errorf("failed to read tar header: %w", err)
 			}
 
-			var ent archive2.EntryFactory
+			ent := new(archive2.EntryFactory)
 
 			switch header.Typeflag {
 			case tar.TypeReg:
@@ -126,7 +129,10 @@ func appMain() error {
 		}
 		defer contentsFile.Close()
 
-		reader := archive2.NewArchiveReader(indexFile, contentsFile)
+		reader, err := archive2.NewArchiveReader(indexFile, contentsFile)
+		if err != nil {
+			return fmt.Errorf("failed to create archive reader: %w", err)
+		}
 
 		start := time.Now()
 

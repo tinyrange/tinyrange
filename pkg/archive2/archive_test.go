@@ -21,7 +21,7 @@ func BenchmarkHexEncode(b *testing.B) {
 func BenchmarkEntryEncode(b *testing.B) {
 	hash := make([]byte, sha256.Size)
 
-	var ent EntryFactory
+	ent := new(EntryFactory)
 	ent = ent.Name("file")
 
 	var s staticPrintf
@@ -85,9 +85,12 @@ func BenchmarkHashBuffer(b *testing.B) {
 }
 
 func CreateArchiveWithSize(index io.Writer, contents io.Writer, items int, fileData []byte) error {
-	writer := NewArchiveWriter(index, contents)
+	writer, err := NewArchiveWriter(index, contents)
+	if err != nil {
+		return err
+	}
 
-	var ent EntryFactory
+	ent := new(EntryFactory)
 
 	ent = ent.Name("file")
 
@@ -147,7 +150,10 @@ func BenchmarkArchiveRead(b *testing.B) {
 	}
 
 	for i := 0; i < b.N; i++ {
-		ark := NewArchiveReader(bytes.NewReader(index.Bytes()), bytes.NewReader(contents.Bytes()))
+		ark, err := NewArchiveReader(bytes.NewReader(index.Bytes()), bytes.NewReader(contents.Bytes()))
+		if err != nil {
+			b.Fatal(err)
+		}
 
 		total := 0
 
