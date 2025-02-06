@@ -9,5 +9,6 @@
         "**/node_modules/*/**": true,
         "**/local/cache/**": true
     },
-    "go.buildTags": "official"
+    "go.buildTags": "official",
+    "go.lintTool": "golangci-lint"
 }

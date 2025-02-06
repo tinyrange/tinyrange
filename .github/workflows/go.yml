@@ -5,20 +5,23 @@ name: Go
 
 on:
   push:
-    branches: ["alpha"]
+    branches: [alpha]
   pull_request:
-    branches: ["alpha"]
+    branches: [alpha]
+
+permissions:
+  contents: read
 
 jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: "1.23.4"
+          go-version: 1.23.6
 
       - name: Build
         run: |
@@ -35,12 +38,12 @@ jobs:
   build-linux-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: "1.23.4"
+          go-version: 1.23.6
 
       - name: Build
         run: |
@@ -57,12 +60,12 @@ jobs:
   build-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: "1.23.4"
+          go-version: 1.23.4
 
       - name: Build
         run: |
@@ -78,12 +81,12 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: "1.23.4"
+          go-version: 1.23.4
 
       - name: Install QEMU
         shell: pwsh

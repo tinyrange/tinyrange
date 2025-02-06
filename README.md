@@ -10,7 +10,7 @@ TinyRange is currently a Pre-Alpha and expect major breaking changes as the arch
 
 Currently TinyRange only runs on Linux x86_64 and Windows x86_64 but support for other operating systems (MacOS, BSDs) and architectures (ARM64, RISC-V) is on the roadmap.
 
-TinyRange has to be built from source right now. Binaries can be downloaded from the releases tab https://github.com/tinyrange/tinyrange/releases.
+TinyRange has to be built from source right now. Binaries can be downloaded from the releases tab [https://github.com/tinyrange/tinyrange/releases](https://github.com/tinyrange/tinyrange/releases).
 
 QEMU can be installed with `apt install qemu-system-x86_64` on Debian derived distributions and `dnf install qemu-system-x86_64` on Red Hat derived distributions.
 
@@ -35,10 +35,10 @@ structgen -input pkg/filesystem/ext4/ext4.struct -output pkg/filesystem/ext4/ext
 
 ## Videos implementing TinyRange
 
-- Part 1: https://www.youtube.com/watch?v=W5OwOUV9iAQ
-- Part 2: https://www.youtube.com/watch?v=tTTcN2kflFM
-- Part 3: https://www.youtube.com/watch?v=3d-4S2oaDfw
-- Part 4: https://www.youtube.com/watch?v=HKvnG4SOpzo
-- Part 5: https://www.youtube.com/watch?v=nEC2dUQHLnc
+- Part 1: [https://www.youtube.com/watch?v=W5OwOUV9iAQ](https://www.youtube.com/watch?v=W5OwOUV9iAQ)
+- Part 2: [https://www.youtube.com/watch?v=tTTcN2kflFM](https://www.youtube.com/watch?v=tTTcN2kflFM)
+- Part 3: [https://www.youtube.com/watch?v=3d-4S2oaDfw](https://www.youtube.com/watch?v=3d-4S2oaDfw)
+- Part 4: [https://www.youtube.com/watch?v=HKvnG4SOpzo](https://www.youtube.com/watch?v=HKvnG4SOpzo)
+- Part 5: [https://www.youtube.com/watch?v=nEC2dUQHLnc](https://www.youtube.com/watch?v=nEC2dUQHLnc)
 
 I'll publish another video walking though the configuration syntax and networking code at some point in the future.
