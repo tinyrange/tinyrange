@@ -181,7 +181,7 @@ func (e *EntryFactory) ModTime(t time.Time) *EntryFactory {
 }
 
 const (
-	ARCHIVE_MAGIC = "ARCHIVE0\n"
+	ArchiveMagic = "ARCHIVE0\n"
 
 	// kind mode uid:gid modTime size offset hash
 	staticSize = 2 + 8 + 8 + 8 + 16 + 16 + 16 + 64 + 9
@@ -340,24 +340,11 @@ func NewArchiveWriter(index, contents io.Writer) (*ArchiveWriter, error) {
 		copyBuffer: make([]byte, 32*1024),
 	}
 
-	if _, err := ret.index.Write([]byte(ARCHIVE_MAGIC)); err != nil {
+	if _, err := ret.index.Write([]byte(ArchiveMagic)); err != nil {
 		return nil, fmt.Errorf("failed to write header: %w", err)
 	}
 
 	return ret, nil
-}
-
-type hashReader struct {
-	reader io.Reader
-	hash   hash.Hash
-}
-
-func (r *hashReader) Read(p []byte) (int, error) {
-	n, err := r.reader.Read(p)
-	if err == nil {
-		_, err = r.hash.Write(p[:n])
-	}
-	return n, err
 }
 
 type ArchiveReader struct {
@@ -405,31 +392,41 @@ func (ar *ArchiveReader) rawHash() []byte {
 // Kind returns the kind of the entry.
 func (ar *ArchiveReader) Kind() EntryKind {
 	var kindBytes [1]byte
-	hex.Decode(kindBytes[:], ar.rawKind())
+	if _, err := hex.Decode(kindBytes[:], ar.rawKind()); err != nil {
+		return EntryKindInvalid
+	}
 	return EntryKind(kindBytes[0])
 }
 
 // Size returns the size of the entry in bytes.
 func (ar *ArchiveReader) Size() int64 {
 	var sizeBytes [8]byte
-	hex.Decode(sizeBytes[:], ar.rawSize())
+	if _, err := hex.Decode(sizeBytes[:], ar.rawSize()); err != nil {
+		return 0
+	}
 	return int64(binary.BigEndian.Uint64(sizeBytes[:]))
 }
 
 // Mode returns the mode of the entry.
 func (ar *ArchiveReader) Mode() fs.FileMode {
 	var modeBytes [4]byte
-	hex.Decode(modeBytes[:], ar.rawMode())
+	if _, err := hex.Decode(modeBytes[:], ar.rawMode()); err != nil {
+		return 0
+	}
 	return fs.FileMode(binary.BigEndian.Uint32(modeBytes[:]))
 }
 
 // Owner returns the uid and gid of the entry.
-func (ar *ArchiveReader) Owner() (uid int, gid int) {
+func (ar *ArchiveReader) Owner() (uid, gid int) {
 	var uidBytes [4]byte
-	hex.Decode(uidBytes[:], ar.rawUID())
+	if _, err := hex.Decode(uidBytes[:], ar.rawUID()); err != nil {
+		return 0, 0
+	}
 
 	var gidBytes [4]byte
-	hex.Decode(gidBytes[:], ar.rawGID())
+	if _, err := hex.Decode(gidBytes[:], ar.rawGID()); err != nil {
+		return 0, 0
+	}
 
 	return int(binary.BigEndian.Uint32(uidBytes[:])), int(binary.BigEndian.Uint32(gidBytes[:]))
 }
@@ -437,14 +434,18 @@ func (ar *ArchiveReader) Owner() (uid int, gid int) {
 // ModTime returns the modification time of the entry.
 func (ar *ArchiveReader) ModTime() time.Time {
 	var modTimeBytes [8]byte
-	hex.Decode(modTimeBytes[:], ar.rawModTime())
+	if _, err := hex.Decode(modTimeBytes[:], ar.rawModTime()); err != nil {
+		return time.Time{}
+	}
 	return time.Unix(int64(binary.BigEndian.Uint64(modTimeBytes[:])), 0)
 }
 
 // Hash returns the SHA256 hash of the contents of the entry.
 func (ar *ArchiveReader) Hash() []byte {
 	var hashBytes [32]byte
-	hex.Decode(hashBytes[:], ar.rawHash())
+	if _, err := hex.Decode(hashBytes[:], ar.rawHash()); err != nil {
+		return nil
+	}
 	return hashBytes[:]
 }
 
@@ -535,7 +536,7 @@ func (ar *ArchiveReader) validateHeader() error {
 		return fmt.Errorf("failed to read header: %w", err)
 	}
 
-	if string(headerBytes[:]) != ARCHIVE_MAGIC {
+	if string(headerBytes[:]) != ArchiveMagic {
 		return errors.New("invalid header")
 	}
 
