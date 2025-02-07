@@ -33,10 +33,10 @@ type directoryToArchiveBuildResult struct {
 }
 
 func (d *directoryToArchiveBuildResult) getEntry(
-	ent filesystem.File,
+	file filesystem.File,
 	name string,
-) (*archive.CacheEntry, error) {
-	info, err := ent.Stat()
+) (filesystem.Entry, error) {
+	info, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
@@ -45,26 +45,18 @@ func (d *directoryToArchiveBuildResult) getEntry(
 
 	// slog.Info("info", "name", name, "mode", info.Mode(), "isDir", info.Mode().IsDir(), "size", info.Size())
 
-	var cacheEnt *archive.CacheEntry
+	var cacheEnt filesystem.Entry
 
-	if cEnt, ok := ent.(*archive.CacheEntry); ok {
-		cacheEnt = &archive.CacheEntry{
-			CTypeflag: cEnt.CTypeflag,
-			CName:     name,
-			CLinkname: cEnt.CLinkname,
-			CSize:     int64(info.Size()),
-			CMode:     int64(info.Mode()),
-			CUid:      cEnt.CUid,
-			CGid:      cEnt.CGid,
-			CModTime:  info.ModTime().UnixMicro(),
-			CDevmajor: 0,
-			CDevminor: 0,
-		}
+	if cEnt, ok := file.(filesystem.Entry); ok {
+		cacheEnt = archive.NewEntryBuilder().
+			CloneFrom(cEnt).
+			Name(name).
+			Build()
 	} else {
 		var linkname = ""
 
 		if info.Mode().Type() == fs.ModeSymlink {
-			linkname, err = filesystem.GetLinkName(ent)
+			linkname, err = filesystem.GetLinkName(file)
 			if err != nil {
 				return nil, err
 			}
@@ -75,26 +67,23 @@ func (d *directoryToArchiveBuildResult) getEntry(
 			typ = filesystem.TypeRegular
 		}
 
-		uid, gid, err := filesystem.GetUidAndGid(ent)
+		uid, gid, err := filesystem.GetUidAndGid(file)
 		if err != nil {
 			return nil, err
 		}
 
-		cacheEnt = &archive.CacheEntry{
-			CTypeflag: typ,
-			CName:     name,
-			CLinkname: linkname,
-			CSize:     int64(info.Size()),
-			CMode:     int64(info.Mode()),
-			CUid:      uid,
-			CGid:      gid,
-			CModTime:  info.ModTime().UnixMicro(),
-			CDevmajor: 0,
-			CDevminor: 0,
-		}
+		cacheEnt = archive.NewEntryBuilder().
+			Typeflag(typ).
+			Name(name).
+			Linkname(linkname).
+			Size(info.Size()).
+			Mode(info.Mode()).
+			UidAndGid(uid, gid).
+			ModTime(info.ModTime()).
+			Device(0, 0).Build()
 	}
 
-	// slog.Info("archive", "ent", cacheEnt)
+	// slog.Info("archive", "ent", cacheEnt.Name())
 
 	return cacheEnt, nil
 }
@@ -104,8 +93,8 @@ func (d *directoryToArchiveBuildResult) writeFileTo(ent filesystem.File, name st
 		ent = starEnt.File
 	}
 
-	if cEnt, ok := ent.(*archive.CacheEntry); ok {
-		if cEnt.CTypeflag != filesystem.TypeRegular {
+	if cEnt, ok := ent.(filesystem.Entry); ok {
+		if cEnt.Typeflag() != filesystem.TypeRegular {
 			cache, err := d.getEntry(ent, name)
 			if err != nil {
 				return err
@@ -215,13 +204,12 @@ func (z *zipToArchiveBuildResult) WriteResult(w io.Writer) error {
 			return err
 		}
 
-		if err := ark.WriteEntry(&archive.CacheEntry{
-			CTypeflag: typ,
-			CName:     file.Name,
-			CSize:     int64(file.UncompressedSize64),
-			CMode:     int64(file.Mode()),
-			CModTime:  file.Modified.UnixMicro(),
-		}, fh); err != nil {
+		if err := ark.WriteEntry(archive.NewEntryBuilder().
+			Typeflag(typ).
+			Name(file.Name).
+			Size(int64(file.UncompressedSize64)).
+			Mode(file.Mode()).
+			ModTime(file.Modified).Build(), fh); err != nil {
 			return err
 		}
 	}
@@ -291,18 +279,15 @@ func (r *tarToArchiveBuildResult) WriteResult(w io.Writer) error {
 			typeFlag = filesystem.TypeDeleted
 		}
 
-		if err := ark.WriteEntry(&archive.CacheEntry{
-			CTypeflag: typeFlag,
-			CName:     hdr.Name,
-			CLinkname: hdr.Linkname,
-			CSize:     hdr.Size,
-			CMode:     int64(info.Mode()),
-			CUid:      hdr.Uid,
-			CGid:      hdr.Gid,
-			CModTime:  hdr.ModTime.UnixMicro(),
-			CDevmajor: hdr.Devmajor,
-			CDevminor: hdr.Devminor,
-		}, r.r); err != nil {
+		if err := ark.WriteEntry(archive.NewEntryBuilder().
+			Typeflag(typeFlag).
+			Name(hdr.Name).
+			Linkname(hdr.Linkname).
+			Size(hdr.Size).
+			Mode(info.Mode()).
+			UidAndGid(hdr.Uid, hdr.Gid).
+			ModTime(hdr.ModTime).
+			Device(hdr.Devmajor, hdr.Devminor).Build(), r.r); err != nil {
 			return err
 		}
 	}
@@ -347,16 +332,14 @@ func (c *cpioToArchiveBuildResult) WriteResult(w io.Writer) error {
 			return fmt.Errorf("unknown type flag: %d", typ)
 		}
 
-		if err := ark.WriteEntry(&archive.CacheEntry{
-			CTypeflag: typeFlag,
-			CName:     hdr.Name,
-			CLinkname: hdr.Linkname,
-			CSize:     hdr.Size,
-			CMode:     int64(fileInfo.Mode()),
-			CUid:      hdr.Uid,
-			CGid:      hdr.Guid,
-			CModTime:  hdr.ModTime.UnixMicro(),
-		}, c.r); err != nil {
+		if err := ark.WriteEntry(archive.NewEntryBuilder().
+			Typeflag(typeFlag).
+			Name(hdr.Name).
+			Linkname(hdr.Linkname).
+			Size(hdr.Size).
+			Mode(fileInfo.Mode()).
+			UidAndGid(hdr.Uid, hdr.Guid).
+			ModTime(hdr.ModTime).Build(), c.r); err != nil {
 			return err
 		}
 	}
@@ -386,15 +369,13 @@ func (c *arToArchiveBuildResult) WriteResult(w io.Writer) error {
 
 		var typeFlag = filesystem.TypeRegular
 
-		if err := ark.WriteEntry(&archive.CacheEntry{
-			CTypeflag: typeFlag,
-			CName:     hdr.Name,
-			CSize:     hdr.Size,
-			CMode:     hdr.Mode,
-			CUid:      hdr.Uid,
-			CGid:      hdr.Gid,
-			CModTime:  hdr.ModTime.UnixMicro(),
-		}, c.r); err != nil {
+		if err := ark.WriteEntry(archive.NewEntryBuilder().
+			Typeflag(typeFlag).
+			Name(hdr.Name).
+			Size(hdr.Size).
+			Mode(fs.FileMode(hdr.Mode)).
+			UidAndGid(hdr.Uid, hdr.Gid).
+			ModTime(hdr.ModTime).Build(), c.r); err != nil {
 			return err
 		}
 	}

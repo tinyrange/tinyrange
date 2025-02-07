@@ -305,7 +305,7 @@ func (i *fragmentsToArchiveResult) WriteResult(w io.Writer) error {
 				}
 				defer fh.Close()
 
-				if err := ark.WriteEntry(ent.(*archive.CacheEntry), fh); err != nil {
+				if err := ark.WriteEntry(ent, fh); err != nil {
 					return err
 				}
 			}

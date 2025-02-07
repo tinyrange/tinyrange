@@ -64,7 +64,7 @@ func ReadArchiveFromFile(f filesystem.File) (filesystem.Archive, error) {
 			return nil, fmt.Errorf("invalid header: %s", hdrBytes)
 		}
 
-		var hdr CacheEntry
+		var hdr cacheEntry
 
 		if err := json.Unmarshal(hdrBytes[:hdrEnd], &hdr); err != nil {
 			return nil, err
@@ -92,7 +92,7 @@ func ReadArchiveFromStreamingServer(client *http.Client, server string, f filesy
 	var ret arrayArchive
 
 	for {
-		var cacheEnt CacheEntry
+		var cacheEnt cacheEntry
 
 		err := dec.Decode(&cacheEnt)
 		if err == io.EOF {
@@ -279,7 +279,7 @@ func ExtractArchiveToStreamableIndex(file filesystem.File, idx io.Writer, w file
 	defer pb.Close()
 
 	for _, ent := range ents {
-		cacheEnt := *ent.(*CacheEntry)
+		cacheEnt := *ent.(*cacheEntry)
 
 		if ent.Typeflag() == filesystem.TypeRegular {
 			f, err := ent.Open()
@@ -316,7 +316,7 @@ func ExtractArchiveToStreamableIndex(file filesystem.File, idx io.Writer, w file
 
 const CACHE_ENTRY_SIZE = 1024
 
-type CacheEntry struct {
+type cacheEntry struct {
 	underlyingFile   io.ReaderAt
 	underlyingSource hash.SerializableValue
 
@@ -338,7 +338,7 @@ type CacheEntry struct {
 }
 
 // Source implements filesystem.HasSource.
-func (e *CacheEntry) Source() (hash.SerializableValue, error) {
+func (e *cacheEntry) Source() (hash.SerializableValue, error) {
 	if e.underlyingSource != nil {
 		return filesystem.ChildSource{
 			Source: e.underlyingSource,
@@ -350,27 +350,27 @@ func (e *CacheEntry) Source() (hash.SerializableValue, error) {
 }
 
 // LinkName implements filesystem.Entry.
-func (e *CacheEntry) LinkName() (string, error) {
+func (e *cacheEntry) LinkName() (string, error) {
 	return e.CLinkname, nil
 }
 
 // UidAndGid implements filesystem.Entry.
-func (e *CacheEntry) UidAndGid() (int, int, error) {
+func (e *cacheEntry) UidAndGid() (int, int, error) {
 	return e.CUid, e.CGid, nil
 }
 
 // IsDir implements FileInfo.
-func (e *CacheEntry) IsDir() bool {
+func (e *cacheEntry) IsDir() bool {
 	return e.Mode().IsDir()
 }
 
 // Sys implements FileInfo.
-func (e *CacheEntry) Sys() any {
+func (e *cacheEntry) Sys() any {
 	return nil
 }
 
 // Open implements Entry.
-func (e *CacheEntry) Open() (filesystem.FileHandle, error) {
+func (e *cacheEntry) Open() (filesystem.FileHandle, error) {
 	if e.CTypeflag != filesystem.TypeRegular {
 		return nil, fmt.Errorf("file is not a regular file: %s", e.CTypeflag.String())
 	}
@@ -380,25 +380,25 @@ func (e *CacheEntry) Open() (filesystem.FileHandle, error) {
 }
 
 // Stat implements Entry.
-func (e *CacheEntry) Stat() (filesystem.FileInfo, error) {
+func (e *cacheEntry) Stat() (filesystem.FileInfo, error) {
 	return e, nil
 }
 
-func (e *CacheEntry) Kind() filesystem.FileType     { return e.CTypeflag }
-func (e *CacheEntry) Typeflag() filesystem.FileType { return e.CTypeflag }
-func (e *CacheEntry) Name() string                  { return e.CName }
-func (e *CacheEntry) Linkname() string              { return e.CLinkname }
-func (e *CacheEntry) Size() int64                   { return e.CSize }
-func (e *CacheEntry) Mode() fs.FileMode             { return fs.FileMode(e.CMode) }
-func (e *CacheEntry) Uid() int                      { return e.CUid }
-func (e *CacheEntry) Gid() int                      { return e.CGid }
-func (e *CacheEntry) ModTime() time.Time            { return time.UnixMicro(e.CModTime) }
-func (e *CacheEntry) Devmajor() int64               { return e.CDevmajor }
-func (e *CacheEntry) Devminor() int64               { return e.CDevminor }
+func (e *cacheEntry) Kind() filesystem.FileType     { return e.CTypeflag }
+func (e *cacheEntry) Typeflag() filesystem.FileType { return e.CTypeflag }
+func (e *cacheEntry) Name() string                  { return e.CName }
+func (e *cacheEntry) Linkname() string              { return e.CLinkname }
+func (e *cacheEntry) Size() int64                   { return e.CSize }
+func (e *cacheEntry) Mode() fs.FileMode             { return fs.FileMode(e.CMode) }
+func (e *cacheEntry) Uid() int                      { return e.CUid }
+func (e *cacheEntry) Gid() int                      { return e.CGid }
+func (e *cacheEntry) ModTime() time.Time            { return time.UnixMicro(e.CModTime) }
+func (e *cacheEntry) Devmajor() int64               { return e.CDevmajor }
+func (e *cacheEntry) Devminor() int64               { return e.CDevminor }
 
 var (
-	_ filesystem.Entry     = &CacheEntry{}
-	_ filesystem.HasSource = &CacheEntry{}
+	_ filesystem.Entry     = &cacheEntry{}
+	_ filesystem.HasSource = &cacheEntry{}
 )
 
 type ArchiveWriter struct {
@@ -406,7 +406,12 @@ type ArchiveWriter struct {
 	offset int64
 }
 
-func (w *ArchiveWriter) WriteEntry(ent *CacheEntry, r io.Reader) error {
+func (w *ArchiveWriter) WriteEntry(e filesystem.Entry, r io.Reader) error {
+	ent, ok := e.(*cacheEntry)
+	if !ok {
+		ent = NewEntryBuilder().CloneFrom(e).Build().(*cacheEntry)
+	}
+
 	ent.COffset = w.offset + 1024
 
 	bytes, err := json.Marshal(&ent)
@@ -443,4 +448,70 @@ func (w *ArchiveWriter) WriteEntry(ent *CacheEntry, r io.Reader) error {
 
 func NewArchiveWriter(w io.Writer) *ArchiveWriter {
 	return &ArchiveWriter{w: w}
+}
+
+type EntryBuilder struct {
+	entry *cacheEntry
+}
+
+func (b *EntryBuilder) Typeflag(t filesystem.FileType) *EntryBuilder {
+	b.entry.CTypeflag = t
+	return b
+}
+
+func (b *EntryBuilder) Name(n string) *EntryBuilder {
+	b.entry.CName = n
+	return b
+}
+
+func (b *EntryBuilder) Linkname(n string) *EntryBuilder {
+	b.entry.CLinkname = n
+	return b
+}
+
+func (b *EntryBuilder) Size(s int64) *EntryBuilder {
+	b.entry.CSize = s
+	return b
+}
+
+func (b *EntryBuilder) Mode(m fs.FileMode) *EntryBuilder {
+	b.entry.CMode = int64(m)
+	return b
+}
+
+func (b *EntryBuilder) UidAndGid(uid, gid int) *EntryBuilder {
+	b.entry.CUid = uid
+	b.entry.CGid = gid
+	return b
+}
+
+func (b *EntryBuilder) ModTime(t time.Time) *EntryBuilder {
+	b.entry.CModTime = t.UnixMicro()
+	return b
+}
+
+func (b *EntryBuilder) Device(major, minor int64) *EntryBuilder {
+	b.entry.CDevmajor = major
+	b.entry.CDevminor = minor
+	return b
+}
+
+func (b *EntryBuilder) CloneFrom(ent filesystem.Entry) *EntryBuilder {
+	b.entry.CTypeflag = ent.Typeflag()
+	b.entry.CName = ent.Name()
+	b.entry.CLinkname = ent.Linkname()
+	b.entry.CSize = ent.Size()
+	b.entry.CMode = int64(ent.Mode())
+	b.entry.CUid, b.entry.CGid = ent.Uid(), ent.Gid()
+	b.entry.CModTime = ent.ModTime().UnixMicro()
+	b.entry.CDevmajor, b.entry.CDevminor = ent.Devmajor(), ent.Devminor()
+	return b
+}
+
+func (b *EntryBuilder) Build() filesystem.Entry {
+	return b.entry
+}
+
+func NewEntryBuilder() *EntryBuilder {
+	return &EntryBuilder{entry: &cacheEntry{}}
 }

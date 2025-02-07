@@ -479,29 +479,25 @@ func (builder *Builder) uploadChangedArchive(hostAddress string, changeTrackerFi
 				}
 				defer contents.Close()
 
-				if err := ark.WriteEntry(&archive.CacheEntry{
-					CTypeflag: filesystem.TypeRegular,
-					CName:     filename,
-					CSize:     info.Size(),
-					CMode:     int64(info.Mode()),
-					CUid:      int(sys.Uid),
-					CGid:      int(sys.Gid),
-					CModTime:  info.ModTime().UnixMicro(),
-				}, contents); err != nil {
+				if err := ark.WriteEntry(archive.NewEntryBuilder().
+					Typeflag(filesystem.TypeRegular).
+					Name(filename).
+					Size(info.Size()).
+					Mode(info.Mode()).
+					UidAndGid(int(sys.Uid), int(sys.Gid)).
+					ModTime(info.ModTime()).Build(), contents); err != nil {
 					return err
 				}
 
 				return nil
 			case fs.ModeDir:
-				if err := ark.WriteEntry(&archive.CacheEntry{
-					CTypeflag: filesystem.TypeDirectory,
-					CName:     filename,
-					CSize:     0,
-					CMode:     int64(info.Mode()),
-					CUid:      int(sys.Uid),
-					CGid:      int(sys.Gid),
-					CModTime:  info.ModTime().UnixMicro(),
-				}, nil); err != nil {
+				if err := ark.WriteEntry(archive.NewEntryBuilder().
+					Typeflag(filesystem.TypeDirectory).
+					Name(filename).
+					Size(0).
+					Mode(info.Mode()).
+					UidAndGid(int(sys.Uid), int(sys.Gid)).
+					ModTime(info.ModTime()).Build(), nil); err != nil {
 					return err
 				}
 
@@ -525,16 +521,14 @@ func (builder *Builder) uploadChangedArchive(hostAddress string, changeTrackerFi
 					return err
 				}
 
-				if err := ark.WriteEntry(&archive.CacheEntry{
-					CTypeflag: filesystem.TypeSymlink,
-					CName:     filename,
-					CLinkname: linkName,
-					CSize:     0,
-					CMode:     int64(info.Mode()),
-					CUid:      int(sys.Uid),
-					CGid:      int(sys.Gid),
-					CModTime:  info.ModTime().UnixMicro(),
-				}, nil); err != nil {
+				if err := ark.WriteEntry(archive.NewEntryBuilder().
+					Typeflag(filesystem.TypeSymlink).
+					Name(filename).
+					Linkname(linkName).
+					Size(0).
+					Mode(info.Mode()).
+					UidAndGid(int(sys.Uid), int(sys.Gid)).
+					ModTime(info.ModTime()).Build(), nil); err != nil {
 					return err
 				}
 
