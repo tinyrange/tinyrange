@@ -8,9 +8,9 @@ TinyRange is currently a Pre-Alpha and expect major breaking changes as the arch
 
 ## Getting Started
 
-Currently TinyRange only runs on Linux x86_64 and Windows x86_64 but support for other operating systems (MacOS, BSDs) and architectures (ARM64, RISC-V) is on the roadmap.
+Currently TinyRange runs on Windows (amd64), MacOS (arm64), Linux (amd64, arm64), BSD (OpenBSD, FreeBSD, NetBSD) (amd64), Solaris (OmniOS) (amd64).
 
-TinyRange has to be built from source right now. Binaries can be downloaded from the releases tab [https://github.com/tinyrange/tinyrange/releases](https://github.com/tinyrange/tinyrange/releases).
+Binaries can be downloaded from the releases tab [https://github.com/tinyrange/tinyrange/releases](https://github.com/tinyrange/tinyrange/releases).
 
 QEMU can be installed with `apt install qemu-system-x86_64` on Debian derived distributions and `dnf install qemu-system-x86_64` on Red Hat derived distributions.
 
