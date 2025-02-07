@@ -14,12 +14,20 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
 
+type HasLinkName interface {
+	File
+	LinkName() (string, error)
+}
+
+type HasUidAndGid interface {
+	File
+	UidAndGid() (int, int, error)
+}
+
 func GetLinkName(ent File) (string, error) {
 	switch ent := ent.(type) {
-	case *StarFile:
-		return GetLinkName(ent.File)
-	case *CacheEntry:
-		return ent.CLinkname, nil
+	case HasLinkName:
+		return ent.LinkName()
 	case *memoryFile:
 		if ent.kind != TypeSymlink && ent.kind != TypeLink {
 			return "", fs.ErrInvalid
@@ -36,18 +44,14 @@ func GetLinkName(ent File) (string, error) {
 
 func GetUidAndGid(ent File) (int, int, error) {
 	switch ent := ent.(type) {
-	case *StarDirectory:
-		return GetUidAndGid(ent.Directory)
-	case *StarFile:
-		return GetUidAndGid(ent.File)
+	case HasUidAndGid:
+		return ent.UidAndGid()
 	case *memoryDirectory:
 		return GetUidAndGid(ent.memoryFile)
 	case *memoryFile:
 		return ent.uid, ent.gid, nil
 	case *overlayFile:
 		return ent.uid, ent.gid, nil
-	case *CacheEntry:
-		return ent.CUid, ent.CGid, nil
 	case simpleEntry:
 		return ent.uid, ent.gid, nil
 	case *localFile:
@@ -324,8 +328,14 @@ func NewSourceWrapper(f File, source hash.SerializableValue) File {
 	return &sourceWrapper{File: f, source: source}
 }
 
+type HasSource interface {
+	Source() (hash.SerializableValue, error)
+}
+
 func SourceFromFile(f File) (hash.SerializableValue, error) {
 	switch f := f.(type) {
+	case HasSource:
+		return f.Source()
 	case *localFile:
 		if f.source == nil {
 			return nil, fmt.Errorf("localFile at %s has no source", f.filename)
@@ -336,17 +346,6 @@ func SourceFromFile(f File) (hash.SerializableValue, error) {
 			return nil, fmt.Errorf("localMutableFile at %s has no source", f.filename)
 		}
 		return f.source, nil
-	case *StarFile:
-		return SourceFromFile(f.File)
-	case *CacheEntry:
-		if f.underlyingSource != nil {
-			return ChildSource{
-				Source: f.underlyingSource,
-				Name:   f.CName,
-			}, nil
-		} else {
-			return nil, fmt.Errorf("CacheEntry has no source")
-		}
 	case *sourceWrapper:
 		return f.source, nil
 	case DirectoryEntry:
@@ -358,8 +357,8 @@ func SourceFromFile(f File) (hash.SerializableValue, error) {
 
 func SourceFromArchive(a Archive) (hash.SerializableValue, error) {
 	switch a := a.(type) {
-	case *StarArchive:
-		return a.Source, nil
+	case HasSource:
+		return a.Source()
 	default:
 		return nil, fmt.Errorf("SourceFromArchive not implemented: %T %+v", a, a)
 	}
@@ -582,16 +581,18 @@ type simpleEntry struct {
 	typeFlag FileType
 }
 
-func (s simpleEntry) Devmajor() int64    { return 0 }
-func (s simpleEntry) Devminor() int64    { return 0 }
-func (s simpleEntry) Uid() int           { return s.uid }
-func (s simpleEntry) Gid() int           { return s.gid }
-func (s simpleEntry) Linkname() string   { return s.linkName }
-func (s simpleEntry) ModTime() time.Time { return s.modTime }
-func (s simpleEntry) Mode() fs.FileMode  { return s.mode }
-func (s simpleEntry) Name() string       { return s.name }
-func (s simpleEntry) Size() int64        { return s.size }
-func (s simpleEntry) Typeflag() FileType { return s.typeFlag }
+func (s simpleEntry) LinkName() (string, error)    { return s.linkName, nil }
+func (s simpleEntry) UidAndGid() (int, int, error) { return s.uid, s.gid, nil }
+func (s simpleEntry) Devmajor() int64              { return 0 }
+func (s simpleEntry) Devminor() int64              { return 0 }
+func (s simpleEntry) Uid() int                     { return s.uid }
+func (s simpleEntry) Gid() int                     { return s.gid }
+func (s simpleEntry) Linkname() string             { return s.linkName }
+func (s simpleEntry) ModTime() time.Time           { return s.modTime }
+func (s simpleEntry) Mode() fs.FileMode            { return s.mode }
+func (s simpleEntry) Name() string                 { return s.name }
+func (s simpleEntry) Size() int64                  { return s.size }
+func (s simpleEntry) Typeflag() FileType           { return s.typeFlag }
 
 var (
 	_ Entry = simpleEntry{}

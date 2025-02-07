@@ -9,10 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/cpio"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"go.starlark.net/starlark"
@@ -49,7 +51,7 @@ func (i *initRamFsBuilderResult) WriteResult(w io.Writer) error {
 		if frag.Archive != nil {
 			f := filesystem.NewLocalFile(frag.Archive.HostFilename, nil)
 
-			ark, err := filesystem.ReadArchiveFromFile(f)
+			ark, err := archive.ReadArchiveFromFile(f)
 			if err != nil {
 				return err
 			}
@@ -136,7 +138,7 @@ func (i *tarBuilderResult) WriteResult(w io.Writer) error {
 		if frag.Archive != nil {
 			f := filesystem.NewLocalFile(frag.Archive.HostFilename, nil)
 
-			ark, err := filesystem.ReadArchiveFromFile(f)
+			ark, err := archive.ReadArchiveFromFile(f)
 			if err != nil {
 				return err
 			}
@@ -280,13 +282,13 @@ type fragmentsToArchiveResult struct {
 
 // WriteTo implements common.BuildResult.
 func (i *fragmentsToArchiveResult) WriteResult(w io.Writer) error {
-	ark := filesystem.NewArchiveWriter(w)
+	ark := archive.NewArchiveWriter(w)
 
 	for _, frag := range i.frags {
 		if frag.Archive != nil {
 			f := filesystem.NewLocalFile(frag.Archive.HostFilename, nil)
 
-			ark2, err := filesystem.ReadArchiveFromFile(f)
+			ark2, err := archive.ReadArchiveFromFile(f)
 			if err != nil {
 				return err
 			}
@@ -303,7 +305,7 @@ func (i *fragmentsToArchiveResult) WriteResult(w io.Writer) error {
 				}
 				defer fh.Close()
 
-				if err := ark.WriteEntry(ent.(*filesystem.CacheEntry), fh); err != nil {
+				if err := ark.WriteEntry(ent.(*archive.CacheEntry), fh); err != nil {
 					return err
 				}
 			}
@@ -381,7 +383,7 @@ func (def *buildFsDefinition) ToStarlark(artifact common.BuildArtifact) (starlar
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, artifact.DefinitionHash().String()), nil
+	return star.NewStarFile(result, artifact.DefinitionHash().String()), nil
 }
 
 // Build implements common.BuildDefinition.

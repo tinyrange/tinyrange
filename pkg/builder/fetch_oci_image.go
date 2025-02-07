@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/schollz/progressbar/v3"
+	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/builder/oci"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
@@ -345,17 +347,17 @@ func (def *fetchOciImageDefinition) ToStarlark(artifact common.BuildArtifact) (s
 			return nil, err
 		}
 
-		ark, err := filesystem.ReadArchiveFromFile(layerFile)
+		ark, err := archive.ReadArchiveFromFile(layerFile)
 		if err != nil {
 			return starlark.None, err
 		}
 
-		if err := filesystem.ExtractArchive(ark, fs); err != nil {
+		if err := archive.ExtractArchive(ark, fs); err != nil {
 			return starlark.None, err
 		}
 	}
 
-	return filesystem.NewStarDirectory(fs, ""), nil
+	return star.NewStarDirectory(fs, ""), nil
 }
 
 // tagDirective implements common.Directive.

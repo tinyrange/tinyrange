@@ -14,6 +14,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/emulator/programs/shell"
 	"github.com/tinyrange/tinyrange/pkg/emulator/shared"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"go.starlark.net/starlark"
 )
@@ -101,7 +102,7 @@ func (proc *process) Get(k starlark.Value) (v starlark.Value, found bool, err er
 		return starlark.None, false, err
 	}
 
-	return filesystem.NewStarFile(f, p), true, nil
+	return star.NewStarFile(f, p), true, nil
 }
 
 // SetKey implements starlark.HasSetKey.
@@ -115,7 +116,7 @@ func (proc *process) SetKey(k starlark.Value, v starlark.Value) error {
 
 	root := proc.kernel.Root()
 
-	file, err := filesystem.AsFile(v)
+	file, err := star.AsFile(v)
 	if err != nil {
 		return err
 	}

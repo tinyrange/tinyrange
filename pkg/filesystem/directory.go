@@ -1,22 +1,25 @@
 package filesystem
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"strings"
 	"sync"
 
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
+type AsMutableDirectory interface {
+	AsMutableDirectory() MutableDirectory
+}
+
 func getMutable(dir Directory) MutableDirectory {
-	if mut, ok := dir.(MutableDirectory); ok {
-		return mut
-	} else if mut, ok := dir.(*StarDirectory); ok {
-		return getMutable(mut.Directory)
-	} else {
+	switch dir := dir.(type) {
+	case AsMutableDirectory:
+		return dir.AsMutableDirectory()
+	case MutableDirectory:
+		return dir
+	default:
 		return nil
 	}
 }
@@ -420,42 +423,5 @@ func NewMemoryDirectory() MutableDirectory {
 	return &memoryDirectory{
 		memoryFile: f,
 		entries:    make(map[string]File),
-	}
-}
-
-func extractEntry(ent Entry, dir MutableDirectory) (File, error) {
-	switch ent.Typeflag() {
-	case TypeDirectory:
-		name := strings.TrimSuffix(ent.Name(), "/")
-		name = strings.TrimPrefix(name, "./")
-
-		child, err := Mkdir(dir, name)
-		if errors.Is(err, os.ErrExist) {
-			return nil, nil
-		} else if err != nil {
-			return nil, err
-		}
-
-		if err := child.Chmod(ent.Mode()); err != nil {
-			return nil, err
-		}
-
-		if err := child.Chown(ent.Uid(), ent.Gid()); err != nil {
-			return nil, err
-		}
-
-		if err := child.Chtimes(ent.ModTime()); err != nil {
-			return nil, err
-		}
-
-		return child, nil
-	case TypeRegular:
-		return CreateChild(dir, ent.Name(), ent)
-	case TypeSymlink:
-		return CreateChild(dir, ent.Name(), ent)
-	case TypeLink:
-		return CreateChild(dir, ent.Name(), ent)
-	default:
-		return nil, fmt.Errorf("unknown Entry type: %s", ent.Typeflag())
 	}
 }

@@ -1,4 +1,4 @@
-package filesystem
+package star
 
 import (
 	"encoding/json"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cavaliergopher/rpm"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
@@ -175,8 +176,8 @@ type starRpm struct {
 }
 
 // Kind implements FileInfo.
-func (s *starRpm) Kind() FileType {
-	return TypeRegular
+func (s *starRpm) Kind() filesystem.FileType {
+	return filesystem.TypeRegular
 }
 
 // IsDir implements FileInfo.
@@ -225,12 +226,12 @@ func (s *starRpm) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 // Open implements File.
-func (s *starRpm) Open() (FileHandle, error) {
+func (s *starRpm) Open() (filesystem.FileHandle, error) {
 	return s, nil
 }
 
 // Stat implements File.
-func (s *starRpm) Stat() (FileInfo, error) {
+func (s *starRpm) Stat() (filesystem.FileInfo, error) {
 	return s, nil
 }
 
@@ -338,7 +339,7 @@ func (*starRpm) Freeze()               {}
 var (
 	_ starlark.Value    = &starRpm{}
 	_ starlark.HasAttrs = &starRpm{}
-	_ File              = &starRpm{}
+	_ filesystem.File   = &starRpm{}
 )
 
 func parseRpm(r io.ReadCloser) (starlark.Value, error) {

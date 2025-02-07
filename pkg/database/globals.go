@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/anmitsu/go-shlex"
+	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/planner"
 	"github.com/tinyrange/tinyrange/third_party/regexp"
@@ -573,7 +575,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return starlark.None, err
 				}
 
-				if file, ok := val.(*filesystem.StarFile); ok {
+				if file, ok := val.(*star.StarFile); ok {
 					fh, err := file.Open()
 					if err != nil {
 						return starlark.None, err
@@ -1038,7 +1040,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
 		var (
-			ark *filesystem.StarArchive
+			ark *star.StarArchive
 		)
 
 		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
@@ -1050,12 +1052,12 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 		dir := filesystem.NewMemoryDirectory()
 
 		if ark != nil {
-			if err := filesystem.ExtractArchive(ark, dir); err != nil {
+			if err := archive.ExtractArchive(ark, dir); err != nil {
 				return starlark.None, err
 			}
 		}
 
-		return filesystem.NewStarDirectory(dir, ""), nil
+		return star.NewStarDirectory(dir, ""), nil
 	})
 
 	ret["file"] = starlark.NewBuiltin("file", func(
@@ -1105,7 +1107,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 			}
 		}
 
-		return filesystem.NewStarFile(f, name), nil
+		return star.NewStarFile(f, name), nil
 	})
 
 	ret["eval_starlark"] = starlark.NewBuiltin("eval_starlark", func(

@@ -7,9 +7,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
@@ -113,14 +115,14 @@ func (def *planDefinition) Attr(name string) (starlark.Value, error) {
 
 			for _, frag := range def.Fragments {
 				if frag.Archive != nil {
-					ark, err := filesystem.ReadArchiveFromFile(
+					ark, err := archive.ReadArchiveFromFile(
 						filesystem.NewLocalFile(frag.Archive.HostFilename, nil),
 					)
 					if err != nil {
 						return starlark.None, err
 					}
 
-					if err := filesystem.ExtractArchive(ark, dir); err != nil {
+					if err := archive.ExtractArchive(ark, dir); err != nil {
 						return starlark.None, err
 					}
 				} else if frag.RunCommand != nil {
@@ -131,7 +133,7 @@ func (def *planDefinition) Attr(name string) (starlark.Value, error) {
 			}
 
 			return starlark.Tuple{
-				filesystem.NewStarDirectory(dir, ""),
+				star.NewStarDirectory(dir, ""),
 				starlark.NewList(commands),
 			}, nil
 		}), nil

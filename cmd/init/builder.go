@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -458,7 +459,7 @@ func (builder *Builder) uploadChangedArchive(hostAddress string, changeTrackerFi
 		defer pipeIn.Close()
 		defer wg.Done()
 
-		ark := filesystem.NewArchiveWriter(pipeIn)
+		ark := archive.NewArchiveWriter(pipeIn)
 
 		var writeFile func(filename string) error
 
@@ -478,7 +479,7 @@ func (builder *Builder) uploadChangedArchive(hostAddress string, changeTrackerFi
 				}
 				defer contents.Close()
 
-				if err := ark.WriteEntry(&filesystem.CacheEntry{
+				if err := ark.WriteEntry(&archive.CacheEntry{
 					CTypeflag: filesystem.TypeRegular,
 					CName:     filename,
 					CSize:     info.Size(),
@@ -492,7 +493,7 @@ func (builder *Builder) uploadChangedArchive(hostAddress string, changeTrackerFi
 
 				return nil
 			case fs.ModeDir:
-				if err := ark.WriteEntry(&filesystem.CacheEntry{
+				if err := ark.WriteEntry(&archive.CacheEntry{
 					CTypeflag: filesystem.TypeDirectory,
 					CName:     filename,
 					CSize:     0,
@@ -524,7 +525,7 @@ func (builder *Builder) uploadChangedArchive(hostAddress string, changeTrackerFi
 					return err
 				}
 
-				if err := ark.WriteEntry(&filesystem.CacheEntry{
+				if err := ark.WriteEntry(&archive.CacheEntry{
 					CTypeflag: filesystem.TypeSymlink,
 					CName:     filename,
 					CLinkname: linkName,

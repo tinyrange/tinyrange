@@ -9,6 +9,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
@@ -92,7 +93,7 @@ func (def *fileDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.V
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, artifact.DefinitionHash().String()), nil
+	return star.NewStarFile(result, artifact.DefinitionHash().String()), nil
 }
 
 // Build implements common.BuildDefinition.
@@ -185,7 +186,7 @@ func (c *constantHashDefinition) ToStarlark(artifact common.BuildArtifact) (star
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, c.params.Hash), nil
+	return star.NewStarFile(result, c.params.Hash), nil
 }
 
 var (

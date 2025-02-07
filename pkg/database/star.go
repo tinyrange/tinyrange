@@ -10,6 +10,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"go.starlark.net/starlark"
@@ -299,7 +300,7 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 				if config.CPUArchitecture(arch).IsNative() {
 					f := filesystem.NewMemoryFile(filesystem.TypeRegular)
 					f.Overwrite(initExec.INIT_EXECUTABLE)
-					return filesystem.NewStarFile(f, "init"), nil
+					return star.NewStarFile(f, "init"), nil
 				} else {
 					return starlark.None, fmt.Errorf("invalid architecture for init: %s", arch)
 				}
@@ -311,7 +312,7 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 						return nil, err
 					}
 
-					return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange"), nil
+					return star.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange"), nil
 				} else {
 					return starlark.None, fmt.Errorf("invalid architecture for tinyrange: %s", arch)
 				}
@@ -321,7 +322,7 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 					return nil, err
 				}
 
-				return filesystem.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange_qemu"), nil
+				return star.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange_qemu"), nil
 			} else {
 				return starlark.None, fmt.Errorf("unknown builtin executable: %s", name)
 			}

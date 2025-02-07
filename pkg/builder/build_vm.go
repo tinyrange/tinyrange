@@ -15,7 +15,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
@@ -112,7 +112,7 @@ func (def *buildVmDefinition) ToStarlark(artifact common.BuildArtifact) (starlar
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, artifact.DefinitionHash().String()), nil
+	return star.NewStarFile(result, artifact.DefinitionHash().String()), nil
 }
 
 // WriteTo implements common.BuildResult.

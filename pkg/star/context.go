@@ -5,7 +5,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/record"
 	"go.starlark.net/starlark"
 )
@@ -34,7 +34,7 @@ func BuildContextAttr(ctx common.BuildContext, name string) (starlark.Value, err
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
 			var (
-				dir  *filesystem.StarDirectory
+				dir  *star.StarDirectory
 				kind string
 			)
 

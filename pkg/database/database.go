@@ -13,6 +13,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/macro"
 	"github.com/tinyrange/tinyrange/stdlib"
@@ -247,7 +248,7 @@ func (db *packageDatabase) RunScript(filename string, files map[string]filesyste
 	}
 
 	for k, v := range files {
-		args.args[k] = filesystem.NewStarFile(v, k)
+		args.args[k] = star.NewStarFile(v, k)
 	}
 
 	// Call the main function.

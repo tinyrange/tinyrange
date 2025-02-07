@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/xi2/xz"
 	"go.starlark.net/starlark"
@@ -43,7 +43,7 @@ func (def *decompressFileBuildDefinition) ToStarlark(artifact common.BuildArtifa
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, artifact.DefinitionHash().String()), nil
+	return star.NewStarFile(result, artifact.DefinitionHash().String()), nil
 }
 
 // NeedsBuild implements BuildDefinition.

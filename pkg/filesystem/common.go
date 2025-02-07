@@ -76,6 +76,8 @@ type MutableFile interface {
 // Entry is a single file in an archive.
 type Entry interface {
 	File
+	HasLinkName
+	HasUidAndGid
 
 	Typeflag() FileType
 

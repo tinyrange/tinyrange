@@ -12,9 +12,11 @@ import (
 	"github.com/blakesmith/ar"
 	"github.com/cavaliergopher/cpio"
 	"github.com/klauspost/compress/zstd"
+	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"github.com/xi2/xz"
@@ -27,13 +29,13 @@ func init() {
 
 type directoryToArchiveBuildResult struct {
 	dir filesystem.Directory
-	w   *filesystem.ArchiveWriter
+	w   *archive.ArchiveWriter
 }
 
 func (d *directoryToArchiveBuildResult) getEntry(
 	ent filesystem.File,
 	name string,
-) (*filesystem.CacheEntry, error) {
+) (*archive.CacheEntry, error) {
 	info, err := ent.Stat()
 	if err != nil {
 		return nil, err
@@ -43,10 +45,10 @@ func (d *directoryToArchiveBuildResult) getEntry(
 
 	// slog.Info("info", "name", name, "mode", info.Mode(), "isDir", info.Mode().IsDir(), "size", info.Size())
 
-	var cacheEnt *filesystem.CacheEntry
+	var cacheEnt *archive.CacheEntry
 
-	if cEnt, ok := ent.(*filesystem.CacheEntry); ok {
-		cacheEnt = &filesystem.CacheEntry{
+	if cEnt, ok := ent.(*archive.CacheEntry); ok {
+		cacheEnt = &archive.CacheEntry{
 			CTypeflag: cEnt.CTypeflag,
 			CName:     name,
 			CLinkname: cEnt.CLinkname,
@@ -78,7 +80,7 @@ func (d *directoryToArchiveBuildResult) getEntry(
 			return nil, err
 		}
 
-		cacheEnt = &filesystem.CacheEntry{
+		cacheEnt = &archive.CacheEntry{
 			CTypeflag: typ,
 			CName:     name,
 			CLinkname: linkname,
@@ -98,11 +100,11 @@ func (d *directoryToArchiveBuildResult) getEntry(
 }
 
 func (d *directoryToArchiveBuildResult) writeFileTo(ent filesystem.File, name string) error {
-	if starEnt, ok := ent.(*filesystem.StarFile); ok {
+	if starEnt, ok := ent.(*star.StarFile); ok {
 		ent = starEnt.File
 	}
 
-	if cEnt, ok := ent.(*filesystem.CacheEntry); ok {
+	if cEnt, ok := ent.(*archive.CacheEntry); ok {
 		if cEnt.CTypeflag != filesystem.TypeRegular {
 			cache, err := d.getEntry(ent, name)
 			if err != nil {
@@ -164,7 +166,7 @@ func (d *directoryToArchiveBuildResult) writeDirTo(ent filesystem.Directory, nam
 
 // WriteTo implements common.BuildResult.
 func (d *directoryToArchiveBuildResult) WriteResult(w io.Writer) error {
-	d.w = filesystem.NewArchiveWriter(w)
+	d.w = archive.NewArchiveWriter(w)
 
 	return d.writeDirTo(d.dir, "")
 }
@@ -197,7 +199,7 @@ type zipToArchiveBuildResult struct {
 
 // WriteTo implements common.BuildResult.
 func (z *zipToArchiveBuildResult) WriteResult(w io.Writer) error {
-	ark := filesystem.NewArchiveWriter(w)
+	ark := archive.NewArchiveWriter(w)
 
 	for _, file := range z.r.File {
 		var typ filesystem.FileType
@@ -213,7 +215,7 @@ func (z *zipToArchiveBuildResult) WriteResult(w io.Writer) error {
 			return err
 		}
 
-		if err := ark.WriteEntry(&filesystem.CacheEntry{
+		if err := ark.WriteEntry(&archive.CacheEntry{
 			CTypeflag: typ,
 			CName:     file.Name,
 			CSize:     int64(file.UncompressedSize64),
@@ -238,7 +240,7 @@ type tarToArchiveBuildResult struct {
 
 // WriteTo implements common.BuildResult.
 func (r *tarToArchiveBuildResult) WriteResult(w io.Writer) error {
-	ark := filesystem.NewArchiveWriter(w)
+	ark := archive.NewArchiveWriter(w)
 
 	for {
 		hdr, err := r.r.Next()
@@ -289,7 +291,7 @@ func (r *tarToArchiveBuildResult) WriteResult(w io.Writer) error {
 			typeFlag = filesystem.TypeDeleted
 		}
 
-		if err := ark.WriteEntry(&filesystem.CacheEntry{
+		if err := ark.WriteEntry(&archive.CacheEntry{
 			CTypeflag: typeFlag,
 			CName:     hdr.Name,
 			CLinkname: hdr.Linkname,
@@ -318,7 +320,7 @@ type cpioToArchiveBuildResult struct {
 
 // WriteTo implements common.BuildResult.
 func (c *cpioToArchiveBuildResult) WriteResult(w io.Writer) error {
-	ark := filesystem.NewArchiveWriter(w)
+	ark := archive.NewArchiveWriter(w)
 
 	for {
 		hdr, err := c.r.Next()
@@ -345,7 +347,7 @@ func (c *cpioToArchiveBuildResult) WriteResult(w io.Writer) error {
 			return fmt.Errorf("unknown type flag: %d", typ)
 		}
 
-		if err := ark.WriteEntry(&filesystem.CacheEntry{
+		if err := ark.WriteEntry(&archive.CacheEntry{
 			CTypeflag: typeFlag,
 			CName:     hdr.Name,
 			CLinkname: hdr.Linkname,
@@ -372,7 +374,7 @@ type arToArchiveBuildResult struct {
 
 // WriteTo implements common.BuildResult.
 func (c *arToArchiveBuildResult) WriteResult(w io.Writer) error {
-	ark := filesystem.NewArchiveWriter(w)
+	ark := archive.NewArchiveWriter(w)
 
 	for {
 		hdr, err := c.r.Next()
@@ -384,7 +386,7 @@ func (c *arToArchiveBuildResult) WriteResult(w io.Writer) error {
 
 		var typeFlag = filesystem.TypeRegular
 
-		if err := ark.WriteEntry(&filesystem.CacheEntry{
+		if err := ark.WriteEntry(&archive.CacheEntry{
 			CTypeflag: typeFlag,
 			CName:     hdr.Name,
 			CSize:     hdr.Size,
@@ -473,12 +475,12 @@ func (r *readArchiveBuildDefinition) ToStarlark(artifact common.BuildArtifact) (
 		return nil, err
 	}
 
-	ark, err := filesystem.ReadArchiveFromFile(result)
+	ark, err := archive.ReadArchiveFromFile(result)
 	if err != nil {
 		return starlark.None, err
 	}
 
-	return filesystem.NewStarArchive(ark, r, artifact.DefinitionHash().String()), nil
+	return star.NewStarArchive(ark, r, artifact.DefinitionHash().String()), nil
 }
 
 // NeedsBuild implements BuildDefinition.

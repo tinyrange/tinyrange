@@ -10,7 +10,7 @@ import (
 
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
@@ -51,7 +51,7 @@ func (f *fetchHttpBuildDefinition) ToStarlark(artifact common.BuildArtifact) (st
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, artifact.DefinitionHash().String()), nil
+	return star.NewStarFile(result, artifact.DefinitionHash().String()), nil
 }
 
 // NeedsBuild implements BuildDefinition.

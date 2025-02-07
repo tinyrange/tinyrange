@@ -3,8 +3,8 @@ package builder
 import (
 	"fmt"
 
+	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
@@ -34,7 +34,7 @@ func (def *extractFileDefinition) Build(ctx common.BuildContext) error {
 		return err
 	}
 
-	ark, err := filesystem.ReadArchiveFromFile(baseFile)
+	ark, err := archive.ReadArchiveFromFile(baseFile)
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/record"
 	"go.starlark.net/starlark"
@@ -58,7 +59,7 @@ func SerializableValueToStarlark(ctx common.BuildContext, val hash.SerializableV
 				return starlark.None, err
 			}
 
-			if ark, ok := starVal.(*filesystem.StarArchive); ok {
+			if ark, ok := starVal.(*star.StarArchive); ok {
 				ents, err := ark.Entries()
 				if err != nil {
 					return starlark.None, err
@@ -66,7 +67,7 @@ func SerializableValueToStarlark(ctx common.BuildContext, val hash.SerializableV
 
 				for _, ent := range ents {
 					if ent.Name() == val.Name {
-						return filesystem.NewStarFile(ent, ent.Name()), nil
+						return star.NewStarFile(ent, ent.Name()), nil
 					}
 				}
 
@@ -86,7 +87,7 @@ func StarlarkValueToSerializable(val starlark.Value) (hash.SerializableValue, er
 	switch val := val.(type) {
 	case common.BuildDefinition:
 		return val, nil
-	case *filesystem.StarFile:
+	case *star.StarFile:
 		return filesystem.SourceFromFile(val.File)
 	case starlark.String:
 		return hash.SerializableString(val), nil
@@ -225,7 +226,7 @@ func (def *starBuildDefinition) ToStarlark(artifact common.BuildArtifact) (starl
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, artifact.DefinitionHash().String()), nil
+	return star.NewStarFile(result, artifact.DefinitionHash().String()), nil
 }
 
 // NeedsBuild implements BuildDefinition.

@@ -27,6 +27,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/miekg/dns"
 	"github.com/schollz/progressbar/v3"
+	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
@@ -441,8 +442,8 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 		}
 	} else if ark := frag.Archive; ark != nil {
 		var (
-			archive filesystem.Archive
-			err     error
+			fsark filesystem.Archive
+			err   error
 		)
 
 		// if tr.streamingServer != "" {
@@ -455,13 +456,13 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 		// } else {
 		f := filesystem.NewLocalFile(cfg.Resolve(ark.HostFilename), nil)
 
-		archive, err = filesystem.ReadArchiveFromFile(f)
+		fsark, err = archive.ReadArchiveFromFile(f)
 		if err != nil {
 			return fmt.Errorf("failed to read archive: %w", err)
 		}
 		// }
 
-		entries, err := archive.Entries()
+		entries, err := fsark.Entries()
 		if err != nil {
 			return fmt.Errorf("failed to read archive: %w", err)
 		}

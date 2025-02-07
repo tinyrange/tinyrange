@@ -1,4 +1,4 @@
-package filesystem
+package star
 
 import (
 	"compress/gzip"
@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	xj "github.com/basgys/goxml2json"
+	"github.com/tinyrange/tinyrange/pkg/archive"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	starlarkjson "go.starlark.net/lib/json"
@@ -17,11 +19,11 @@ import (
 
 var starlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builtin).CallInternal
 
-func AsFile(f any) (File, error) {
+func AsFile(f any) (filesystem.File, error) {
 	switch f := f.(type) {
 	case *StarFile:
 		return f.File, nil
-	case File:
+	case filesystem.File:
 		return f, nil
 	case starlark.Value:
 		str, ok := starlark.AsString(f)
@@ -29,7 +31,7 @@ func AsFile(f any) (File, error) {
 			return nil, fmt.Errorf("could not convert %s to File", f.Type())
 		}
 
-		ret := NewMemoryFile(TypeRegular)
+		ret := filesystem.NewMemoryFile(filesystem.TypeRegular)
 
 		if err := ret.Overwrite([]byte(str)); err != nil {
 			return nil, err
@@ -42,8 +44,23 @@ func AsFile(f any) (File, error) {
 }
 
 type StarFile struct {
-	File
+	filesystem.File
 	Name string
+}
+
+// Source implements filesystem.HasSource.
+func (f *StarFile) Source() (hash.SerializableValue, error) {
+	return filesystem.SourceFromFile(f.File)
+}
+
+// LinkName implements filesystem.HasLinkName.
+func (f *StarFile) LinkName() (string, error) {
+	return filesystem.GetLinkName(f.File)
+}
+
+// UidAndGid implements filesystem.HasUidAndGid.
+func (f *StarFile) UidAndGid() (int, int, error) {
+	return filesystem.GetUidAndGid(f.File)
 }
 
 // AsSerializableValue implements hash.ValueCaster.
@@ -82,7 +99,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
-			ark, err := ReadArchiveFromFile(f)
+			ark, err := archive.ReadArchiveFromFile(f)
 			if err != nil {
 				return starlark.None, nil
 			}
@@ -189,7 +206,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 		return starlark.String(path.Unix.Dir(f.Name)), nil
 	}
 
-	if mut, ok := f.File.(MutableFile); ok {
+	if mut, ok := f.File.(filesystem.MutableFile); ok {
 		_ = mut
 	}
 
@@ -200,7 +217,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 func (f *StarFile) AttrNames() []string {
 	ret := []string{"read", "read_archive", "name", "base", "dir"}
 
-	if _, ok := f.File.(MutableFile); ok {
+	if _, ok := f.File.(filesystem.MutableFile); ok {
 		ret = append(ret, []string{}...)
 	}
 
@@ -214,17 +231,20 @@ func (*StarFile) Truth() starlark.Bool  { return starlark.True }
 func (*StarFile) Freeze()               {}
 
 var (
-	_ starlark.Value    = &StarFile{}
-	_ starlark.HasAttrs = &StarFile{}
-	_ hash.ValueCaster  = &StarFile{}
+	_ starlark.Value          = &StarFile{}
+	_ starlark.HasAttrs       = &StarFile{}
+	_ filesystem.HasUidAndGid = &StarFile{}
+	_ filesystem.HasLinkName  = &StarFile{}
+	_ filesystem.HasSource    = &StarFile{}
+	_ hash.ValueCaster        = &StarFile{}
 )
 
-func NewStarFile(f File, name string) *StarFile {
+func NewStarFile(f filesystem.File, name string) *StarFile {
 	return &StarFile{File: f, Name: name}
 }
 
 type archiveIterator struct {
-	ents []Entry
+	ents []filesystem.Entry
 	i    int
 }
 
@@ -253,7 +273,7 @@ var (
 )
 
 type StarArchive struct {
-	Archive
+	filesystem.Archive
 	Source hash.SerializableValue
 	Name   string
 }
@@ -302,13 +322,13 @@ var (
 	_ starlark.Iterable = &StarArchive{}
 )
 
-func NewStarArchive(ark Archive, source hash.SerializableValue, name string) *StarArchive {
+func NewStarArchive(ark filesystem.Archive, source hash.SerializableValue, name string) *StarArchive {
 	return &StarArchive{Archive: ark, Source: source, Name: name}
 }
 
 type starDirectoryIterator struct {
 	name string
-	ents []DirectoryEntry
+	ents []filesystem.DirectoryEntry
 	off  int
 }
 
@@ -327,7 +347,7 @@ func (s *starDirectoryIterator) Next(p *starlark.Value) bool {
 
 	childName := path.Unix.Join(s.name, ent.Name)
 
-	if dir, ok := ent.File.(Directory); ok {
+	if dir, ok := ent.File.(filesystem.Directory); ok {
 		*p = NewStarDirectory(dir, childName)
 	} else {
 		*p = NewStarFile(ent.File, childName)
@@ -344,7 +364,17 @@ var (
 
 type StarDirectory struct {
 	Name string
-	Directory
+	filesystem.Directory
+}
+
+// LinkName implements filesystem.HasLinkName.
+func (f *StarDirectory) LinkName() (string, error) {
+	return filesystem.GetLinkName(f.Directory)
+}
+
+// UidAndGid implements filesystem.HasUidAndGid.
+func (f *StarDirectory) UidAndGid() (int, int, error) {
+	return filesystem.GetUidAndGid(f.Directory)
 }
 
 // Iterate implements starlark.Iterable.
@@ -365,7 +395,7 @@ func (f *StarDirectory) Get(k starlark.Value) (v starlark.Value, found bool, err
 		return nil, false, fmt.Errorf("expected string got %s", k.Type())
 	}
 
-	ent, err := OpenPath(f, name)
+	ent, err := filesystem.OpenPath(f, name)
 	if err == fs.ErrNotExist {
 		return nil, false, nil
 	} else if err != nil {
@@ -374,7 +404,7 @@ func (f *StarDirectory) Get(k starlark.Value) (v starlark.Value, found bool, err
 
 	childName := path.Unix.Join(f.Name, ent.Name)
 
-	if dir, ok := ent.File.(Directory); ok {
+	if dir, ok := ent.File.(filesystem.Directory); ok {
 		return NewStarDirectory(dir, childName), true, nil
 	} else {
 		return NewStarFile(ent.File, childName), true, nil
@@ -388,20 +418,20 @@ func (f *StarDirectory) SetKey(k starlark.Value, v starlark.Value) error {
 		return fmt.Errorf("expected string got %s", k.Type())
 	}
 
-	if file, ok := v.(File); ok {
-		if _, err := CreateChild(f, name, file); err != nil {
+	if file, ok := v.(filesystem.File); ok {
+		if _, err := filesystem.CreateChild(f, name, file); err != nil {
 			return err
 		}
 
 		return nil
 	} else if contents, ok := v.(starlark.String); ok {
-		file := NewMemoryFile(TypeRegular)
+		file := filesystem.NewMemoryFile(filesystem.TypeRegular)
 
 		if err := file.Overwrite([]byte(contents)); err != nil {
 			return err
 		}
 
-		if _, err := CreateChild(f, name, file); err != nil {
+		if _, err := filesystem.CreateChild(f, name, file); err != nil {
 			return err
 		}
 
@@ -428,6 +458,15 @@ func (f *StarDirectory) AttrNames() []string {
 	return []string{"name", "base"}
 }
 
+func (f *StarDirectory) AsMutableDirectory() filesystem.MutableDirectory {
+	mut, ok := f.Directory.(filesystem.MutableDirectory)
+	if !ok {
+		return nil
+	}
+
+	return mut
+}
+
 func (f *StarDirectory) String() string      { return fmt.Sprintf("Directory{%s}", f.Name) }
 func (*StarDirectory) Type() string          { return "Directory" }
 func (*StarDirectory) Hash() (uint32, error) { return 0, fmt.Errorf("Directory is not hashable") }
@@ -435,13 +474,16 @@ func (*StarDirectory) Truth() starlark.Bool  { return starlark.True }
 func (*StarDirectory) Freeze()               {}
 
 var (
-	_ starlark.Value     = &StarDirectory{}
-	_ starlark.HasAttrs  = &StarDirectory{}
-	_ starlark.Mapping   = &StarDirectory{}
-	_ starlark.HasSetKey = &StarDirectory{}
-	_ starlark.Iterable  = &StarDirectory{}
+	_ starlark.Value                = &StarDirectory{}
+	_ starlark.HasAttrs             = &StarDirectory{}
+	_ starlark.Mapping              = &StarDirectory{}
+	_ starlark.HasSetKey            = &StarDirectory{}
+	_ starlark.Iterable             = &StarDirectory{}
+	_ filesystem.AsMutableDirectory = &StarDirectory{}
+	_ filesystem.HasLinkName        = &StarDirectory{}
+	_ filesystem.HasUidAndGid       = &StarDirectory{}
 )
 
-func NewStarDirectory(dir Directory, name string) *StarDirectory {
+func NewStarDirectory(dir filesystem.Directory, name string) *StarDirectory {
 	return &StarDirectory{Directory: dir, Name: name}
 }

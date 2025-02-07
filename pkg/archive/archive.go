@@ -1,9 +1,10 @@
-package filesystem
+package archive
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	goHash "hash"
 	"io"
@@ -14,22 +15,23 @@ import (
 	"time"
 
 	"github.com/schollz/progressbar/v3"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
-type arrayArchive []Entry
+type arrayArchive []filesystem.Entry
 
 // Entries implements Archive.
-func (a arrayArchive) Entries() ([]Entry, error) {
+func (a arrayArchive) Entries() ([]filesystem.Entry, error) {
 	return a, nil
 }
 
 var (
-	_ Archive = arrayArchive{}
+	_ filesystem.Archive = arrayArchive{}
 )
 
-func ReadArchiveFromFile(f File) (Archive, error) {
+func ReadArchiveFromFile(f filesystem.File) (filesystem.Archive, error) {
 	fh, err := f.Open()
 	if err != nil {
 		return nil, err
@@ -37,7 +39,7 @@ func ReadArchiveFromFile(f File) (Archive, error) {
 
 	var source hash.SerializableValue
 
-	if src, err := SourceFromFile(f); err == nil {
+	if src, err := filesystem.SourceFromFile(f); err == nil {
 		source = src
 	}
 
@@ -79,7 +81,7 @@ func ReadArchiveFromFile(f File) (Archive, error) {
 	return ret, nil
 }
 
-func ReadArchiveFromStreamingServer(client *http.Client, server string, f File) (Archive, error) {
+func ReadArchiveFromStreamingServer(client *http.Client, server string, f filesystem.File) (filesystem.Archive, error) {
 	fh, err := f.Open()
 	if err != nil {
 		return nil, err
@@ -101,7 +103,7 @@ func ReadArchiveFromStreamingServer(client *http.Client, server string, f File) 
 
 		if cacheEnt.ContentsFilename != "" {
 			cacheEnt.COffset = 0
-			cacheEnt.underlyingFile = NewLazyRemoteFile(client, server+cacheEnt.ContentsFilename, cacheEnt.CSize)
+			cacheEnt.underlyingFile = filesystem.NewLazyRemoteFile(client, server+cacheEnt.ContentsFilename, cacheEnt.CSize)
 		}
 
 		ret = append(ret, &cacheEnt)
@@ -110,7 +112,44 @@ func ReadArchiveFromStreamingServer(client *http.Client, server string, f File) 
 	return ret, nil
 }
 
-func ExtractArchive(ark Archive, mut MutableDirectory) error {
+func extractEntry(ent filesystem.Entry, dir filesystem.MutableDirectory) (filesystem.File, error) {
+	switch ent.Typeflag() {
+	case filesystem.TypeDirectory:
+		name := strings.TrimSuffix(ent.Name(), "/")
+		name = strings.TrimPrefix(name, "./")
+
+		child, err := filesystem.Mkdir(dir, name)
+		if errors.Is(err, os.ErrExist) {
+			return nil, nil
+		} else if err != nil {
+			return nil, err
+		}
+
+		if err := child.Chmod(ent.Mode()); err != nil {
+			return nil, err
+		}
+
+		if err := child.Chown(ent.Uid(), ent.Gid()); err != nil {
+			return nil, err
+		}
+
+		if err := child.Chtimes(ent.ModTime()); err != nil {
+			return nil, err
+		}
+
+		return child, nil
+	case filesystem.TypeRegular:
+		return filesystem.CreateChild(dir, ent.Name(), ent)
+	case filesystem.TypeSymlink:
+		return filesystem.CreateChild(dir, ent.Name(), ent)
+	case filesystem.TypeLink:
+		return filesystem.CreateChild(dir, ent.Name(), ent)
+	default:
+		return nil, fmt.Errorf("unknown Entry type: %s", ent.Typeflag())
+	}
+}
+
+func ExtractArchive(ark filesystem.Archive, mut filesystem.MutableDirectory) error {
 	ents, err := ark.Entries()
 	if err != nil {
 		return err
@@ -170,7 +209,7 @@ func (t *tempFile) Write(p []byte) (n int, err error) {
 }
 
 var (
-	_ StreamableTempFile = &tempFile{}
+	_ filesystem.StreamableTempFile = &tempFile{}
 )
 
 type filesystemStreamableWriter struct {
@@ -178,7 +217,7 @@ type filesystemStreamableWriter struct {
 }
 
 // Writer implements StreamableWriter.
-func (f *filesystemStreamableWriter) Writer() (StreamableTempFile, error) {
+func (f *filesystemStreamableWriter) Writer() (filesystem.StreamableTempFile, error) {
 	// make a temporary file.
 	tmp, err := os.CreateTemp(f.outputPath, "temp.*.bin")
 	if err != nil {
@@ -211,14 +250,14 @@ func (f *filesystemStreamableWriter) complete(oldFilename string, hash []byte) (
 }
 
 var (
-	_ StreamableWriter = &filesystemStreamableWriter{}
+	_ filesystem.StreamableWriter = &filesystemStreamableWriter{}
 )
 
-func NewFilesystemStreamableWriter(outputPath string) StreamableWriter {
+func NewFilesystemStreamableWriter(outputPath string) filesystem.StreamableWriter {
 	return &filesystemStreamableWriter{outputPath: outputPath}
 }
 
-func ExtractArchiveToStreamableIndex(file File, idx io.Writer, w StreamableWriter) error {
+func ExtractArchiveToStreamableIndex(file filesystem.File, idx io.Writer, w filesystem.StreamableWriter) error {
 	ark, err := ReadArchiveFromFile(file)
 	if err != nil {
 		return err
@@ -231,7 +270,7 @@ func ExtractArchiveToStreamableIndex(file File, idx io.Writer, w StreamableWrite
 
 	idxWriter := json.NewEncoder(idx)
 
-	filename, err := GetHostFilename(file)
+	filename, err := filesystem.GetHostFilename(file)
 	if err != nil {
 		return err
 	}
@@ -242,7 +281,7 @@ func ExtractArchiveToStreamableIndex(file File, idx io.Writer, w StreamableWrite
 	for _, ent := range ents {
 		cacheEnt := *ent.(*CacheEntry)
 
-		if ent.Typeflag() == TypeRegular {
+		if ent.Typeflag() == filesystem.TypeRegular {
 			f, err := ent.Open()
 			if err != nil {
 				return err
@@ -281,21 +320,43 @@ type CacheEntry struct {
 	underlyingFile   io.ReaderAt
 	underlyingSource hash.SerializableValue
 
-	COffset   int64    `json:"o"`
-	CTypeflag FileType `json:"t"`
-	CName     string   `json:"n"`
-	CLinkname string   `json:"l"`
-	CSize     int64    `json:"s"`
-	CMode     int64    `json:"m"`
-	CUid      int      `json:"u"`
-	CGid      int      `json:"g"`
-	CModTime  int64    `json:"e"` // in microseconds since the unix epoch.
-	CDevmajor int64    `json:"a"`
-	CDevminor int64    `json:"i"`
+	COffset   int64               `json:"o"`
+	CTypeflag filesystem.FileType `json:"t"`
+	CName     string              `json:"n"`
+	CLinkname string              `json:"l"`
+	CSize     int64               `json:"s"`
+	CMode     int64               `json:"m"`
+	CUid      int                 `json:"u"`
+	CGid      int                 `json:"g"`
+	CModTime  int64               `json:"e"` // in microseconds since the unix epoch.
+	CDevmajor int64               `json:"a"`
+	CDevminor int64               `json:"i"`
 
 	// Used for streaming files only.
 	Hash             string `json:"hash,omitempty"`
 	ContentsFilename string `json:"contents,omitempty"`
+}
+
+// Source implements filesystem.HasSource.
+func (e *CacheEntry) Source() (hash.SerializableValue, error) {
+	if e.underlyingSource != nil {
+		return filesystem.ChildSource{
+			Source: e.underlyingSource,
+			Name:   e.CName,
+		}, nil
+	} else {
+		return nil, fmt.Errorf("CacheEntry has no source")
+	}
+}
+
+// LinkName implements filesystem.Entry.
+func (e *CacheEntry) LinkName() (string, error) {
+	return e.CLinkname, nil
+}
+
+// UidAndGid implements filesystem.Entry.
+func (e *CacheEntry) UidAndGid() (int, int, error) {
+	return e.CUid, e.CGid, nil
 }
 
 // IsDir implements FileInfo.
@@ -309,34 +370,35 @@ func (e *CacheEntry) Sys() any {
 }
 
 // Open implements Entry.
-func (e *CacheEntry) Open() (FileHandle, error) {
-	if e.CTypeflag != TypeRegular {
+func (e *CacheEntry) Open() (filesystem.FileHandle, error) {
+	if e.CTypeflag != filesystem.TypeRegular {
 		return nil, fmt.Errorf("file is not a regular file: %s", e.CTypeflag.String())
 	}
-	return NewNopCloserFileHandle(
+	return filesystem.NewNopCloserFileHandle(
 		io.NewSectionReader(e.underlyingFile, e.COffset, e.CSize),
 	), nil
 }
 
 // Stat implements Entry.
-func (e *CacheEntry) Stat() (FileInfo, error) {
+func (e *CacheEntry) Stat() (filesystem.FileInfo, error) {
 	return e, nil
 }
 
-func (e *CacheEntry) Kind() FileType     { return e.CTypeflag }
-func (e *CacheEntry) Typeflag() FileType { return e.CTypeflag }
-func (e *CacheEntry) Name() string       { return e.CName }
-func (e *CacheEntry) Linkname() string   { return e.CLinkname }
-func (e *CacheEntry) Size() int64        { return e.CSize }
-func (e *CacheEntry) Mode() fs.FileMode  { return fs.FileMode(e.CMode) }
-func (e *CacheEntry) Uid() int           { return e.CUid }
-func (e *CacheEntry) Gid() int           { return e.CGid }
-func (e *CacheEntry) ModTime() time.Time { return time.UnixMicro(e.CModTime) }
-func (e *CacheEntry) Devmajor() int64    { return e.CDevmajor }
-func (e *CacheEntry) Devminor() int64    { return e.CDevminor }
+func (e *CacheEntry) Kind() filesystem.FileType     { return e.CTypeflag }
+func (e *CacheEntry) Typeflag() filesystem.FileType { return e.CTypeflag }
+func (e *CacheEntry) Name() string                  { return e.CName }
+func (e *CacheEntry) Linkname() string              { return e.CLinkname }
+func (e *CacheEntry) Size() int64                   { return e.CSize }
+func (e *CacheEntry) Mode() fs.FileMode             { return fs.FileMode(e.CMode) }
+func (e *CacheEntry) Uid() int                      { return e.CUid }
+func (e *CacheEntry) Gid() int                      { return e.CGid }
+func (e *CacheEntry) ModTime() time.Time            { return time.UnixMicro(e.CModTime) }
+func (e *CacheEntry) Devmajor() int64               { return e.CDevmajor }
+func (e *CacheEntry) Devminor() int64               { return e.CDevminor }
 
 var (
-	_ Entry = &CacheEntry{}
+	_ filesystem.Entry     = &CacheEntry{}
+	_ filesystem.HasSource = &CacheEntry{}
 )
 
 type ArchiveWriter struct {

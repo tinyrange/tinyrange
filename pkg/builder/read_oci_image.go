@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/builder/oci"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -109,7 +110,7 @@ func (r *readOciImageDefinition) Build(ctx common.BuildContext) error {
 		return err
 	}
 
-	ark, err := filesystem.ReadArchiveFromFile(childFile)
+	ark, err := archive.ReadArchiveFromFile(childFile)
 	if err != nil {
 		return err
 	}

@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/emulator"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
@@ -52,7 +54,7 @@ func (def *buildEmulatorDefinition) ToStarlark(artifact common.BuildArtifact) (s
 		return nil, err
 	}
 
-	return filesystem.NewStarFile(result, artifact.DefinitionHash().String()), nil
+	return star.NewStarFile(result, artifact.DefinitionHash().String()), nil
 }
 
 // Build implements common.BuildDefinition.
@@ -80,14 +82,14 @@ func (def *buildEmulatorDefinition) Build(ctx common.BuildContext) error {
 
 	for _, frag := range def.frags {
 		if frag.Archive != nil {
-			ark, err := filesystem.ReadArchiveFromFile(
+			ark, err := archive.ReadArchiveFromFile(
 				filesystem.NewLocalFile(frag.Archive.HostFilename, nil),
 			)
 			if err != nil {
 				return err
 			}
 
-			if err := filesystem.ExtractArchive(ark, dir); err != nil {
+			if err := archive.ExtractArchive(ark, dir); err != nil {
 				return err
 			}
 		} else {
