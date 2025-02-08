@@ -534,7 +534,7 @@ var (
 	buildOs   = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
 	buildArch = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
 	buildDir  = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
-	cross     = flag.String("cross", "", "Specify another init executable architecture to build.")
+	cross     = flag.String("cross", "", "Specify another init executable architecture to build (options x86_64 and aarch64).")
 	debug     = flag.Bool("debug", false, "Print executed commands.")
 	run       = flag.Bool("run", false, "Run TinyRange with the remaining arguments.")
 	test      = flag.String("test", "", "Run all .yml files in a subdirectory using TinyRange.")
@@ -571,6 +571,16 @@ func main() {
 
 	if *cross != "" {
 		if err := buildInitForCross(*cross); err != nil {
+			log.Fatal(err)
+		}
+
+		// automatically copy the kernel to the build directory
+		kernelFilename := filepath.Join("pkg", "linux", "kernel", *cross, "vmlinux")
+
+		if err := copyFile(kernelFilename, filepath.Join(
+			*buildDir,
+			fmt.Sprintf("tinyrange_kernel_%s", *cross),
+		)); err != nil {
 			log.Fatal(err)
 		}
 	}
