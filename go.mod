@@ -1,6 +1,6 @@
 module github.com/tinyrange/tinyrange
 
-go 1.23.6
+go 1.24.0
 
 require (
 	github.com/Code-Hex/vz/v3 v3.6.0
