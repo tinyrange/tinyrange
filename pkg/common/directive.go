@@ -32,6 +32,7 @@ type Directive interface {
 
 type DirectiveRunCommand struct {
 	Command string
+	Raw     bool
 }
 
 // SerializableType implements Directive.
@@ -43,7 +44,7 @@ func (d DirectiveRunCommand) Dependencies() ([]BuildDefinition, error) { return 
 // AsFragments implements Directive.
 func (d DirectiveRunCommand) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	return []config.Fragment{
-		{RunCommand: &config.RunCommandFragment{Command: string(d.Command)}},
+		{RunCommand: &config.RunCommandFragment{Command: string(d.Command), Raw: d.Raw}},
 	}, nil
 }
 

@@ -802,6 +802,29 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 		return starlark.None, nil
 	})
 
+	globals["path_remove"] = starlark.NewBuiltin("path_remove", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			path string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"path", &path,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := os.Remove(path); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
+	})
+
 	globals["file_read"] = starlark.NewBuiltin("file_read", func(
 		thread *starlark.Thread,
 		fn *starlark.Builtin,

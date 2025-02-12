@@ -32,6 +32,11 @@ type BuildFSDefinition interface {
 	common.Directive
 }
 
+type ReadArchiveDefinition interface {
+	common.StarBuildDefinition
+	common.Directive
+}
+
 type BuilderFunc func() (io.ReadCloser, error)
 
 type DefinitionFactory interface {
@@ -90,7 +95,7 @@ type DefinitionFactory interface {
 	NewReadArchiveBuildDefinition(
 		base common.BuildDefinition,
 		kind string,
-	) common.StarBuildDefinition
+	) ReadArchiveDefinition
 	NewReadOCIImageDefinition(
 		base common.BuildDefinition,
 	) ReadOCIImageDefinition
@@ -189,7 +194,7 @@ func (*definitionFactory) NewPlanDefinition(
 func (*definitionFactory) NewReadArchiveBuildDefinition(
 	base common.BuildDefinition,
 	kind string,
-) common.StarBuildDefinition {
+) ReadArchiveDefinition {
 	return newReadArchiveBuildDefinition(base, kind)
 }
 

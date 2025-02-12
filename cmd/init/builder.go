@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/anmitsu/go-shlex"
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -659,6 +660,20 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 	// Start services
 	for _, cmd := range cfg.ServiceCommands {
 		if _, err := common.RunService(cmd); err != nil {
+			return err
+		}
+	}
+
+	// Run raw commands.
+	for _, cmd := range cfg.RawCommands {
+		slog.Info("running", "cmd", cmd)
+
+		args, err := shlex.Split(cmd, true)
+		if err != nil {
+			return err
+		}
+
+		if err := common.ExecCommand(args, nil); err != nil {
 			return err
 		}
 	}

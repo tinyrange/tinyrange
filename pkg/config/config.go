@@ -68,6 +68,7 @@ type ArchiveFragment struct {
 
 type RunCommandFragment struct {
 	Command string `json:"command" yaml:"command"`
+	Raw     bool   `json:"raw" yaml:"raw"`
 }
 
 type StartServiceCommandFragment struct {

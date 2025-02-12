@@ -556,6 +556,6 @@ var (
 	_ common.Directive       = &readArchiveBuildDefinition{}
 )
 
-func newReadArchiveBuildDefinition(base common.BuildDefinition, kind string) common.StarBuildDefinition {
+func newReadArchiveBuildDefinition(base common.BuildDefinition, kind string) ReadArchiveDefinition {
 	return &readArchiveBuildDefinition{params: ReadArchiveParameters{Base: base, Kind: kind}}
 }
