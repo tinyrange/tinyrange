@@ -33,8 +33,8 @@ require (
 	github.com/wader/readline v0.0.0-20230307172220-bcb7158e7448
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
 	go.starlark.net v0.0.0-20241125201518-c05ff208a98f
-	golang.org/x/arch v0.13.0
-	golang.org/x/crypto v0.32.0
+	golang.org/x/arch v0.14.0
+	golang.org/x/crypto v0.33.0
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
 	golang.org/x/net v0.34.0
 	golang.org/x/sys v0.30.0
@@ -84,8 +84,8 @@ require (
 	go.opentelemetry.io/otel/metric v1.31.0 // indirect
 	go.opentelemetry.io/otel/trace v1.31.0 // indirect
 	golang.org/x/mod v0.22.0 // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/sync v0.11.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.7.0 // indirect
 	golang.org/x/tools v0.28.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
