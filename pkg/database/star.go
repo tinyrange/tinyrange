@@ -4,14 +4,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
-	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
-	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"go.starlark.net/starlark"
 )
@@ -277,56 +273,6 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 
 			return builder, nil
 		}), nil
-	} else if name == "get_builtin_executable" {
-		return starlark.NewBuiltin("Database.get_builtin_executable", func(
-			thread *starlark.Thread,
-			fn *starlark.Builtin,
-			args starlark.Tuple,
-			kwargs []starlark.Tuple,
-		) (starlark.Value, error) {
-			var (
-				name string
-				arch string
-			)
-
-			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
-				"name", &name,
-				"arch", &arch,
-			); err != nil {
-				return starlark.None, err
-			}
-
-			if name == "init" {
-				if config.CPUArchitecture(arch).IsNative() {
-					f := filesystem.NewMemoryFile(filesystem.TypeRegular)
-					f.Overwrite(initExec.INIT_EXECUTABLE)
-					return star.NewStarFile(f, "init"), nil
-				} else {
-					return starlark.None, fmt.Errorf("invalid architecture for init: %s", arch)
-				}
-			} else if name == "tinyrange" {
-				// Assume that the user wants a Linux executable.
-				if config.CPUArchitecture(arch).IsNative() && runtime.GOOS == "linux" {
-					local, err := os.Executable()
-					if err != nil {
-						return nil, err
-					}
-
-					return star.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange"), nil
-				} else {
-					return starlark.None, fmt.Errorf("invalid architecture for tinyrange: %s", arch)
-				}
-			} else if name == "tinyrange_qemu" {
-				local, err := common.GetAdjacentExecutable("tinyrange_qemu", "tinyqemu/tinyrange_qemu")
-				if err != nil {
-					return nil, err
-				}
-
-				return star.NewStarFile(filesystem.NewLocalFile(local, nil), "tinyrange_qemu"), nil
-			} else {
-				return starlark.None, fmt.Errorf("unknown builtin executable: %s", name)
-			}
-		}), nil
 	} else if name == "urls_for" {
 		return starlark.NewBuiltin("Database.urls_for", func(
 			thread *starlark.Thread,
@@ -358,7 +304,7 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (db *packageDatabaseValue) AttrNames() []string {
-	return []string{"add_mirror", "add_container_builder", "build", "builder", "get_builtin_executable", "urls_for"}
+	return []string{"add_mirror", "add_container_builder", "build", "builder", "urls_for"}
 }
 
 func (*packageDatabaseValue) String() string        { return "Database" }
