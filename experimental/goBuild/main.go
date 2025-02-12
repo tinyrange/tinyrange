@@ -179,7 +179,7 @@ def main():
 	set_env("GOSUMDB", "off")
 	set_env("GOPROXY", "file:///modules")
 	# Run the build
-	run("%s/bin/go", "build", "-o", "/tinyrange_init", "github.com/tinyrange/tinyrange/cmd/init")
+	run("%s/bin/go", "run", "./tools/build.go", "-release")
 `, modDir, toolchainBase)),
 	})
 
@@ -190,9 +190,9 @@ def main():
 	def := builder.Factory.NewBuildVmDefinition(
 		dirs,
 		nil, nil,
-		"/tinyrange_init",
+		fmt.Sprintf("/src/%s/release/tinyrange-%s-%s.zip", modDir, runtime.GOOS, runtime.GOARCH),
 		1, 1024, config.ArchInvalid, config.HostArchitecture,
-		1024,
+		4096,
 		"ssh",
 		false,
 	)
