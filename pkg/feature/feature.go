@@ -7,19 +7,17 @@ import "log/slog"
 type Feature string
 
 const (
-	FeatureTranslateShell Feature = "translate_shell"
-	FeatureRosetta        Feature = "rosetta"   // (darwin only) Use Rosetta 2 for emulation
-	FeatureVz             Feature = "vz"        // (darwin only) Use VZ instead of QEMU
-	FeatureBuild1         Feature = "build1"    // Use build1 for building instead of build2
-	Feature9P             Feature = "9p"        // Use 9p for file sharing
-	FeatureBuildOci       Feature = "build_oci" // Enable the build-oci command
-	FeatureSlowBoot       Feature = "slow_boot"
+	FeatureRosetta  Feature = "rosetta"   // (darwin only) Use Rosetta 2 for emulation
+	FeatureVz       Feature = "vz"        // (darwin only) Use VZ instead of QEMU
+	FeatureBuild1   Feature = "build1"    // Use build1 for building instead of build2
+	Feature9P       Feature = "9p"        // Use 9p for file sharing
+	FeatureBuildOci Feature = "build_oci" // Enable the build-oci command
+	FeatureSlowBoot Feature = "slow_boot"
 )
 
 var features = make(map[Feature]bool)
 
 func init() {
-	features[FeatureTranslateShell] = false
 	features[FeatureRosetta] = false
 	features[FeatureVz] = false
 	features[FeatureBuild1] = false

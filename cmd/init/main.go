@@ -1432,7 +1432,6 @@ var (
 	runScripts            = flag.String("run-scripts", "", "run a JSON file of scripts")
 	lockFile              = flag.String("lock-file", "", "don't run scripts if this file exists and create it if it doesn't exist")
 	runBasicScripts       = flag.String("run-basic-scripts", "", "run a JSON file containing an array of commands")
-	translateScripts      = flag.Bool("translate-scripts", false, "translate scripts into starlark before running them")
 	runConfig             = flag.String("run-config", "", "run a JSON file with a given builder config")
 	dumpFs                = flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
 	runStarlarkScriptFile = flag.String("star", "", "run a starlark script")
@@ -1514,10 +1513,7 @@ func initMain() error {
 			}
 		}
 
-		if feature.HasFeature(feature.FeatureTranslateShell) {
-			*translateScripts = true
-		}
-		return builderRunScripts(*runScripts, *translateScripts)
+		return builderRunScripts(*runScripts)
 	}
 
 	if *runBasicScripts != "" {

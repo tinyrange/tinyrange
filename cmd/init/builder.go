@@ -24,17 +24,12 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/path"
-	shelltranslater "github.com/tinyrange/tinyrange/pkg/shellTranslater"
 	"go.starlark.net/starlark"
 	"golang.org/x/sys/unix"
 )
 
 type Builder struct {
-	translateShell bool
-
-	totalTranslate     time.Duration
-	totalRunTranslated time.Duration
-	totalRunCommand    time.Duration
+	totalRunCommand time.Duration
 }
 
 // OnBuiltin implements shelltranslater.Notifier.
@@ -82,69 +77,7 @@ func (b *Builder) uploadFile(address string, filename string) error {
 	return nil
 }
 
-func (b *Builder) translateAndRun(args []string, environment map[string]string) (bool, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return false, err
-	}
-	defer os.Chdir(cwd)
-
-	transpileStart := time.Now()
-
-	f, err := os.Open(args[0])
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-
-	sh := shelltranslater.NewTranspiler(true, true)
-
-	translated, err := sh.TranslateFile(f, args[0])
-	if err != nil {
-		return false, err
-	}
-
-	transpileTime := time.Since(transpileStart)
-
-	runStart := time.Now()
-
-	rt := shelltranslater.NewRuntime(true, b)
-
-	if common.IsVerbose() {
-		fmt.Fprintf(os.Stderr, "|| > translated(%s)\n", args[0])
-	}
-
-	if err := rt.Run(args[0], translated, args, environment); err != nil {
-		return true, err
-	}
-
-	runTime := time.Since(runStart)
-
-	if common.IsVerbose() {
-		fmt.Fprintf(os.Stderr, "|| < translated(%s) [transpile=%s, run=%s]\n", args[0], transpileTime, runTime)
-		b.totalTranslate += transpileTime
-		b.totalRunTranslated += runTime
-	}
-
-	return true, nil
-}
-
 func (b *Builder) execCommand(args []string, env map[string]string) error {
-	if b.translateShell {
-		fatal, err := b.translateAndRun(args, env)
-		if err != nil {
-			if fatal {
-				return fmt.Errorf("failed to translate and run: %s", err)
-			} else {
-				if common.IsVerbose() {
-					fmt.Fprintf(os.Stderr, "|| W translate(%s) = %s\n", args[0], err)
-				}
-			}
-		} else {
-			return nil
-		}
-	}
-
 	start := time.Now()
 
 	if err := common.ExecCommand(args, env); err != nil {
@@ -263,9 +196,8 @@ func (b *Builder) RunScripts(filename string) error {
 	}
 
 	if common.IsVerbose() {
-		fmt.Fprintf(os.Stderr, "Finished running %s at %s [%s]\nTotal Translate Time: %s\nTotal Translated Runtime: %s\nTotal Regular Runtime: %s\n",
-			filename, time.Now().Format(time.RFC1123), time.Since(start),
-			b.totalTranslate, b.totalRunTranslated, b.totalRunCommand)
+		fmt.Fprintf(os.Stderr, "Finished running %s at %s [%s]\nTotal Runtime: %s\n",
+			filename, time.Now().Format(time.RFC1123), time.Since(start), b.totalRunCommand)
 	}
 
 	return nil
@@ -603,8 +535,8 @@ func (b *Builder) forkSSHServer() error {
 	return nil
 }
 
-func builderRunScripts(filename string, translateShell bool) error {
-	builder := &Builder{translateShell: translateShell}
+func builderRunScripts(filename string) error {
+	builder := &Builder{}
 
 	return builder.RunScripts(filename)
 }

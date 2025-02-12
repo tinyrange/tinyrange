@@ -182,7 +182,6 @@ func init() {
 	loginCmd.PersistentFlags().IntVar(&currentConfig.StorageSize, "storage", 1024, "The amount of storage to allocate in the virtual machine in megabytes.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.Debug, "debug", false, "Redirect output from the hypervisor to the host. the guest will exit as soon as the VM finishes startup.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.WriteRoot, "write-root", "", "Write the root filesystem as a .tar.gz archive.")
-	loginCmd.PersistentFlags().StringVar(&currentConfig.WriteDocker, "write-docker", "", "Write the root filesystem to a docker tag on the local docker daemon.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.WebSSH, "web", "", "Start a web interface on the given port.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.WriteTemplate, "template", false, "If true then just generate the config and don't run the VM.")
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ReadOnlyMounts, "mount", []string{}, "Mount a host directory into the VM using 9P.")

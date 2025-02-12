@@ -7,14 +7,11 @@ require (
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/basgys/goxml2json v1.1.0
-	github.com/bazelbuild/buildtools v0.0.0-20241212155839-a9c248f4b684
 	github.com/blakesmith/ar v0.0.0-20190502131153-809d4375e1fb
 	github.com/cavaliergopher/cpio v1.0.1
 	github.com/cavaliergopher/rpm v1.2.0
 	github.com/creack/pty v1.1.24
-	github.com/docker/docker v27.5.1+incompatible
 	github.com/fatih/color v1.18.0
-	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/gopacket v1.1.19
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
@@ -36,6 +33,7 @@ require (
 	golang.org/x/arch v0.14.0
 	golang.org/x/crypto v0.33.0
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
+	golang.org/x/mod v0.22.0
 	golang.org/x/net v0.34.0
 	golang.org/x/sys v0.30.0
 	golang.org/x/term v0.29.0
@@ -45,23 +43,14 @@ require (
 )
 
 require (
-	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/BurntSushi/freetype-go v0.0.0-20160129220410-b763ddbfe298 // indirect
 	github.com/BurntSushi/graphics-go v0.0.0-20160129215708-b43f31a4a966 // indirect
 	github.com/Code-Hex/go-infinity-channel v1.0.0 // indirect
-	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/containerd/typeurl/v2 v2.2.3 // indirect
-	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/go-connections v0.5.0 // indirect
-	github.com/docker/go-units v0.5.0 // indirect
-	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/go-logr/logr v1.4.2 // indirect
-	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
@@ -70,20 +59,12 @@ require (
 	github.com/mdlayher/netlink v1.7.2 // indirect
 	github.com/mdlayher/socket v0.4.1 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
-	github.com/moby/docker-image-spec v1.3.1 // indirect
-	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.14 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.56.0 // indirect
-	go.opentelemetry.io/otel v1.31.0 // indirect
-	go.opentelemetry.io/otel/metric v1.31.0 // indirect
-	go.opentelemetry.io/otel/trace v1.31.0 // indirect
-	golang.org/x/mod v0.22.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.7.0 // indirect

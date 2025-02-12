@@ -1,11 +1,8 @@
 package login
 
 import (
-	"archive/tar"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,8 +12,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -162,7 +157,6 @@ type Config struct {
 	StorageSize     int      `json:"-" yaml:"-"`
 	Debug           bool     `json:"-" yaml:"-"`
 	WriteRoot       string   `json:"-" yaml:"-"`
-	WriteDocker     string   `json:"-" yaml:"-"`
 	WebSSH          string   `json:"-" yaml:"-"`
 	WriteTemplate   bool     `json:"-" yaml:"-"`
 	ReadOnlyMounts  []string `json:"-" yaml:"-"`
@@ -248,119 +242,6 @@ func (config *Config) writeRoot(db common.PackageDatabase, directives []common.D
 
 	if _, err := io.Copy(out, fh); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-func (config *Config) writeDocker(db common.PackageDatabase, directives []common.Directive, arch config.CPUArchitecture) error {
-	ctx := context.Background()
-
-	apiClient, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		slog.Error("fatal", "err", err)
-		os.Exit(1)
-	}
-	defer apiClient.Close()
-
-	directives = append(directives, common.DirectiveBuiltin{Name: "init", Architecture: string(arch), GuestFilename: "init"})
-
-	def := builder.Factory.NewBuildFsDefinition(directives, "tar")
-
-	art, err := db.Builder().Build(def, common.BuildOptions{})
-	if err != nil {
-		slog.Error("fatal", "err", err)
-		os.Exit(1)
-	}
-
-	f, err := art.Default()
-	if err != nil {
-		return err
-	}
-
-	buildCtxOut, buildCtxIn := io.Pipe()
-
-	go func() {
-		err := func() error {
-			defer buildCtxIn.Close()
-
-			w := tar.NewWriter(buildCtxIn)
-
-			fh, err := f.Open()
-			if err != nil {
-				return err
-			}
-			defer fh.Close()
-
-			info, err := f.Stat()
-			if err != nil {
-				return err
-			}
-
-			if err := w.WriteHeader(&tar.Header{
-				Typeflag: tar.TypeReg,
-				Name:     "rootfs.tar",
-				Size:     info.Size(),
-				Mode:     int64(info.Mode()),
-			}); err != nil {
-				return err
-			}
-
-			if _, err := io.Copy(w, fh); err != nil {
-				return err
-			}
-
-			dockerfile := "FROM scratch\nADD rootfs.tar .\nRUN /init -run-basic-scripts /init.commands.json"
-
-			if err := w.WriteHeader(&tar.Header{
-				Typeflag: tar.TypeReg,
-				Name:     "Dockerfile",
-				Size:     int64(len(dockerfile)),
-				Mode:     int64(os.ModePerm),
-			}); err != nil {
-				return err
-			}
-
-			if _, err := w.Write([]byte(dockerfile)); err != nil {
-				return err
-			}
-
-			return nil
-		}()
-		if err != nil {
-			slog.Error("fatal", "err", err)
-			os.Exit(1)
-		}
-	}()
-
-	resp, err := apiClient.ImageBuild(ctx, buildCtxOut, types.ImageBuildOptions{
-		Tags:       []string{config.WriteDocker},
-		Dockerfile: "Dockerfile",
-	})
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	dec := json.NewDecoder(resp.Body)
-
-	var item map[string]any
-
-	for {
-		item = nil
-
-		err := dec.Decode(&item)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return err
-		}
-
-		if stream, ok := item["stream"]; ok {
-			fmt.Fprintf(os.Stdout, "%s", stream)
-		} else {
-			slog.Info("", "item", item)
-		}
 	}
 
 	return nil
@@ -810,7 +691,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		directives = append(directives, def)
 	}
 
-	if config.WriteRoot == "" && config.WriteDocker == "" {
+	if config.WriteRoot == "" {
 		for _, cmd := range config.ServiceCommands {
 			directives = append(directives, common.DirectiveStartServiceCommand{Command: cmd})
 		}
@@ -833,10 +714,6 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 	if config.WriteRoot != "" {
 		return config.writeRoot(db, directives, arch)
-	}
-
-	if config.WriteDocker != "" {
-		return config.writeDocker(db, directives, arch)
 	}
 
 	if config.Init != "" {
