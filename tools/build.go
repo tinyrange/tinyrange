@@ -490,6 +490,11 @@ func ensureQemu(version string, repo string, targetDir string, buildOs string, b
 	}
 	defer out.Close()
 
+	// make QEMU executable
+	if err := out.Chmod(0755); err != nil {
+		return err
+	}
+
 	log.Printf("Downloading QEMU %s for %s/%s", version, buildOs, buildArch)
 
 	if _, err := io.Copy(io.MultiWriter(&simpleDownloadProgress{contentLength: resp.ContentLength}, out), resp.Body); err != nil {
