@@ -12,11 +12,11 @@ Currently TinyRange runs on Windows (amd64), MacOS (arm64), Linux (amd64, arm64)
 
 Binaries can be downloaded from the releases tab [https://github.com/tinyrange/tinyrange/releases](https://github.com/tinyrange/tinyrange/releases).
 
-QEMU can be installed with `apt install qemu-system-x86_64` on Debian derived distributions and `dnf install qemu-system-x86_64` on Red Hat derived distributions.
-
 ## Building from Source
 
-TinyRange is written in [Go](https://go.dev/) and requires both Go and [QEMU](https://www.qemu.org/) to be installed before it can be built.
+TinyRange is written in [Go](https://go.dev/) and requires both Go to be installed before it can be built.
+
+`./tools/build.go` will automatically download a copy of QEMU if you are on Windows (amd64), MacOS (arm64), or Linux (amd64, arm64).
 
 It can be built and run from source with the following code.
 
