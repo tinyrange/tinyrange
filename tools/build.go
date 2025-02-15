@@ -9,12 +9,18 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 )
+
+var QEMU_VERSION = "v9.2.1"
+var QEMU_REPO = "https://github.com/tinyrange/qemu_autobuild"
 
 type ZipArchive struct {
 	writer *zip.Writer
@@ -193,7 +199,7 @@ func buildInitForCross(crossArch string) error {
 
 func getTarget(buildDir string, buildOs string, name string) string {
 	targetFilename := filepath.Join(buildDir, name)
-	if buildOs == "windows" {
+	if buildOs == "windows" && !strings.HasSuffix(targetFilename, ".exe") {
 		targetFilename += ".exe"
 	}
 	return targetFilename
@@ -291,16 +297,16 @@ func buildVMMForTarget(buildDir string, buildOs string, buildArch string, name s
 	return outputFilename, nil
 }
 
-func getTargetDir(buildDir string, targetOs string, targetArch string) (string, string, error) {
+func getTargetDir(buildDir string, targetOs string, targetArch string) (newBuildDir string, targetName string, err error) {
 	if targetOs == runtime.GOOS && targetArch == runtime.GOARCH {
 		return buildDir, "", nil
 	}
 
-	targetName := fmt.Sprintf("cross-%s-%s", targetOs, targetArch)
+	targetName = fmt.Sprintf("cross-%s-%s", targetOs, targetArch)
 
 	newDir := filepath.Join(buildDir, targetName)
 
-	err := os.MkdirAll(newDir, os.ModePerm)
+	err = os.MkdirAll(newDir, os.ModePerm)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create directory: %v", err)
 	}
@@ -409,6 +415,12 @@ func buildRelease(buildOs string, buildArch string, cgo bool) error {
 	if err := archive.CopyFile(getTarget(targetDir, buildOs, "tinyrange_qemu"), "tinyqemu/tinyrange_qemu"+exeSuffix); err != nil {
 		return err
 	}
+	// If there's a QEMU prebuilt for this OS, copy it to the archive.
+	if qemuInfo, ok := qemuExecutables[fmt.Sprintf("%s/%s", buildOs, buildArch)]; ok {
+		if err := archive.CopyFile(getTarget(targetDir, buildOs, qemuInfo.executableName), "tinyqemu/"+qemuInfo.executableName); err != nil {
+			return err
+		}
+	}
 
 	if buildOs == "darwin" && cgo {
 		if err := archive.CopyFile(getTarget(targetDir, buildOs, "tinyrange_vz"), "tinyrange_vz"+exeSuffix); err != nil {
@@ -416,40 +428,77 @@ func buildRelease(buildOs string, buildArch string, cgo bool) error {
 		}
 	}
 
-	// If this is windows and local/tinyqemu.zip exists, extract it to the archive.
-	if buildOs == "windows" {
-		if _, err := os.Stat("local/tinyqemu.zip"); err == nil {
-			zf, err := os.Open("local/tinyqemu.zip")
-			if err != nil {
-				return err
-			}
-			defer zf.Close()
+	slog.Info("built release", "os", buildOs, "arch", buildArch, "archive", archiveName)
 
-			fi, err := zf.Stat()
-			if err != nil {
-				return err
-			}
+	return nil
+}
 
-			zr, err := zip.NewReader(zf, fi.Size())
-			if err != nil {
-				return err
-			}
+type qemuInfo struct {
+	downloadName   string
+	executableName string
+}
 
-			for _, file := range zr.File {
-				rc, err := file.Open()
-				if err != nil {
-					return err
-				}
-				defer rc.Close()
+var qemuExecutables = map[string]qemuInfo{
+	"linux/amd64":   {"qemu-linux-amd64", "qemu-system-x86_64"},
+	"linux/arm64":   {"qemu-linux-arm64", "qemu-system-aarch64"},
+	"darwin/arm64":  {"qemu-darwin-arm64", "qemu-system-aarch64"},
+	"windows/amd64": {"qemu-windows-amd64.exe", "qemu-system-x86_64.exe"},
+}
 
-				if err := archive.CopyFromReader(file.Name, rc); err != nil {
-					return err
-				}
-			}
-		}
+type simpleDownloadProgress struct {
+	total         int64
+	contentLength int64
+	lastPrint     time.Time
+}
+
+func (s *simpleDownloadProgress) Write(p []byte) (int, error) {
+	s.total += int64(len(p))
+	if time.Since(s.lastPrint) > 100*time.Millisecond || s.total == s.contentLength {
+		fmt.Printf("\rDownloading QEMU: % 10d/% 10d (% 3.2f)", s.total, s.contentLength, float64(s.total)/float64(s.contentLength)*100)
+		s.lastPrint = time.Now()
+	}
+	return len(p), nil
+}
+
+func ensureQemu(version string, repo string, targetDir string, buildOs string, buildArch string) error {
+	qemuInfo, ok := qemuExecutables[fmt.Sprintf("%s/%s", buildOs, buildArch)]
+	if !ok {
+		return fmt.Errorf("no QEMU prebuilt for %s/%s", buildOs, buildArch)
 	}
 
-	slog.Info("built release", "os", buildOs, "arch", buildArch, "archive", archiveName)
+	qemuPath := filepath.Join(targetDir, qemuInfo.executableName)
+	if _, err := os.Stat(qemuPath); err == nil {
+		return nil
+	}
+
+	// download qemu
+	downloadUrl := fmt.Sprintf("%s/releases/download/%s/%s", repo, version, qemuInfo.downloadName)
+
+	resp, err := http.Get(downloadUrl)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download QEMU: %s", resp.Status)
+	}
+
+	out, err := os.Create(qemuPath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	log.Printf("Downloading QEMU %s for %s/%s", version, buildOs, buildArch)
+
+	if _, err := io.Copy(io.MultiWriter(&simpleDownloadProgress{contentLength: resp.ContentLength}, out), resp.Body); err != nil {
+		return err
+	}
+
+	fmt.Println()
+
+	log.Printf("Finished Downloading QEMU %s for %s/%s", version, buildOs, buildArch)
 
 	return nil
 }
@@ -544,6 +593,12 @@ func main() {
 	for _, vmm := range buildVmmList {
 		if _, err := buildVMMForTarget(target, *buildOs, *buildArch, vmm.Name, vmm.Cgo); err != nil {
 			log.Fatal(err)
+		}
+
+		if vmm.Name == "qemu" {
+			if err := ensureQemu(QEMU_VERSION, QEMU_REPO, target, *buildOs, *buildArch); err != nil {
+				log.Printf("WARN: %v", err)
+			}
 		}
 	}
 
