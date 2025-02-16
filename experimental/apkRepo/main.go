@@ -239,6 +239,7 @@ type DownloadEntryParams struct {
 	Package                 string
 	Version                 string
 	Architecture            string
+	IndexVersion            string
 	IndexOutputDirectory    string
 	ContentsOutputDirectory string
 }
@@ -398,6 +399,7 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 			Architecture:            entry.Architecture,
 			IndexOutputDirectory:    params.IndexOutput,
 			ContentsOutputDirectory: params.ContentsOutput,
+			IndexVersion:            "1",
 		}).(common.BuildDefinition))
 	}
 
