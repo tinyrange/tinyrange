@@ -93,12 +93,13 @@ func newTokenLocker(size int) *tokenLocker {
 	}
 
 	if feature.HasFeature(feature.FeatureTokenLockerDebug) {
+		slog.Info("token locker debug enabled", "size", size)
 		go func() {
 			for {
 				if tl.currentlyLocked.Load() < 0 {
-					slog.Error("currentlyLocked is less than 0")
+					slog.Error("currentlyLocked is less than 0", "value", tl.currentlyLocked.Load())
 				} else if tl.currentlyLocked.Load() > int32(size) {
-					slog.Error("currentlyLocked is greater than size")
+					slog.Error("currentlyLocked is greater than size", "value", tl.currentlyLocked.Load(), "size", size)
 				}
 
 				time.Sleep(1 * time.Second)

@@ -402,7 +402,7 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 		groups = append(groups, entries[i:end])
 	}
 
-	for _, group := range groups {
+	for i, group := range groups {
 		var downloadEntries []common.BuildDefinition
 
 		for _, entry := range group {
@@ -426,6 +426,8 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 				return err
 			}
 		}
+
+		slog.Info("built group", "index", i, "size", len(group))
 	}
 
 	return nil
