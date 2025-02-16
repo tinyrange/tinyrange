@@ -37,15 +37,15 @@ func (t *token) Donate() {
 }
 
 // Lock waits until it can acquire a token or receives a donation.
-func (t *token) Lock() io.Closer {
+func (t *token) Lock(reason string) io.Closer {
 	if t.locker.debug {
-		slog.Info("try lock", "currentlyLocked", t.locker.currentlyLocked.Load())
+		slog.Info("try lock", "reason", reason, "currentlyLocked", t.locker.currentlyLocked.Load())
 	}
 
 	select {
 	case <-t.locker.c:
 		if t.locker.debug {
-			slog.Info("acquire token", "currentlyLocked", t.locker.currentlyLocked.Load())
+			slog.Info("acquire token", "reason", reason, "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
 
 		t.locker.currentlyLocked.Add(1)
@@ -61,6 +61,10 @@ func (t *token) Close() error {
 	defer t.mu.Unlock()
 
 	if t.closed {
+		if t.locker.debug {
+			slog.Error("token already closed", "currentlyLocked", t.locker.currentlyLocked.Load())
+		}
+
 		return errors.New("token already closed")
 	}
 

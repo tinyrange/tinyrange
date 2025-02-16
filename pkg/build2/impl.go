@@ -612,7 +612,7 @@ func (c *buildContext) ensureUpToDate() error {
 
 	if c.options.AlwaysRebuild {
 		// force a rebuild
-		defer c.token.Lock().Close()
+		defer c.token.Lock("forced rebuild").Close()
 
 		return c.build()
 	}
@@ -621,7 +621,7 @@ func (c *buildContext) ensureUpToDate() error {
 		// load the recept
 		c.recept, err = c.loadRecept()
 		if errors.Is(err, fs.ErrNotExist) || err == io.EOF {
-			defer c.token.Lock().Close()
+			defer c.token.Lock("fresh build").Close()
 
 			return c.build()
 		} else if err != nil {
@@ -636,13 +636,13 @@ func (c *buildContext) ensureUpToDate() error {
 	if needsBuild {
 		c.logger.Describe(ColorYellow, "rebuilding due to user NeedsBuild")
 
-		defer c.token.Lock().Close()
+		defer c.token.Lock("user needs build").Close()
 
 		return c.build()
 	}
 
 	// Lock a token since we might be triggering rebuilds of children so we need to ensure we have a token.
-	defer c.token.Lock().Close()
+	defer c.token.Lock("child rebuild").Close()
 
 	// Check all requirements in parallel.
 	for _, req := range c.recept.Requirements {
