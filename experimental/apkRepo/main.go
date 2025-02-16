@@ -279,10 +279,16 @@ var downloadEntry = NewSimpleBuildDefinition("downloadEntry", func(ctx common.Bu
 
 	tarReader := tar.NewReader(reader)
 
-	indexFile, err := os.Create(path.Native.Join(
+	indexFilename := path.Native.Join(
 		params.IndexOutputDirectory,
-		fmt.Sprintf("%s-%s-%s.index", params.Package, params.Version, params.Architecture),
-	))
+		fmt.Sprintf("%s/%s/%s.index", params.Architecture, params.Package, params.Version),
+	)
+
+	if err := common.Ensure(path.Native.Dir(indexFilename), os.ModePerm); err != nil {
+		return err
+	}
+
+	indexFile, err := os.Create(indexFilename)
 	if err != nil {
 		return err
 	}
