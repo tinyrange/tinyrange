@@ -390,27 +390,40 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 		return err
 	}
 
-	var downloadEntries []common.BuildDefinition
-
-	for _, entry := range entries {
-		downloadEntries = append(downloadEntries, downloadEntry.Create(DownloadEntryParams{
-			Repo:                    params.Repo,
-			Package:                 entry.Package,
-			Version:                 entry.Version,
-			Architecture:            entry.Architecture,
-			IndexOutputDirectory:    params.IndexOutput,
-			ContentsOutputDirectory: params.ContentsOutput,
-			IndexVersion:            "1",
-		}).(common.BuildDefinition))
+	// split entries into groups of 1000
+	// this is to prevent the number of threads from getting too high
+	var groups [][]apkEntry
+	for i := 0; i < len(entries); i += 1000 {
+		end := i + 1000
+		if end > len(entries) {
+			end = len(entries)
+		}
+		groups = append(groups, entries[i:end])
 	}
 
-	if err := ctx.PrenotifyChildren(downloadEntries); err != nil {
-		return err
-	}
+	for _, group := range groups {
+		var downloadEntries []common.BuildDefinition
 
-	for _, entry := range downloadEntries {
-		if _, err := ctx.BuildChild(entry); err != nil {
+		for _, entry := range group {
+			downloadEntries = append(downloadEntries, downloadEntry.Create(DownloadEntryParams{
+				Repo:                    params.Repo,
+				Package:                 entry.Package,
+				Version:                 entry.Version,
+				Architecture:            entry.Architecture,
+				IndexOutputDirectory:    params.IndexOutput,
+				ContentsOutputDirectory: params.ContentsOutput,
+				IndexVersion:            "1",
+			}).(common.BuildDefinition))
+		}
+
+		if err := ctx.PrenotifyChildren(downloadEntries); err != nil {
 			return err
+		}
+
+		for _, entry := range downloadEntries {
+			if _, err := ctx.BuildChild(entry); err != nil {
+				return err
+			}
 		}
 	}
 
