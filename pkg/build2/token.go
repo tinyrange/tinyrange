@@ -11,14 +11,24 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/feature"
 )
 
+var (
+	modeFresh    = int32(0)
+	modeWaiting  = int32(1)
+	modeLocked   = int32(2)
+	modeDonated  = int32(3)
+	modeReleased = int32(4)
+)
+
 // token represents a reusable token that can be locked and unlocked.
 type token struct {
 	locker *tokenLocker
 
-	mu      sync.Mutex
-	closed  bool
-	donated bool
-	donate  chan struct{}
+	mode       atomic.Int32
+	mu         sync.Mutex
+	lockReason string
+	closed     bool
+	donated    bool
+	donate     chan struct{}
 }
 
 // Donate unlocks another waiting locker by signaling through the donate channel.
@@ -29,6 +39,12 @@ func (t *token) Donate() {
 
 	if t.closed || t.donated {
 		return
+	}
+
+	if t.mode.Load() > modeWaiting {
+		if t.locker.debug {
+			panic("unexpected token mode")
+		}
 	}
 
 	t.donated = true
@@ -42,8 +58,24 @@ func (t *token) Lock(reason string) io.Closer {
 		slog.Info("try lock", "reason", reason, "currentlyLocked", t.locker.currentlyLocked.Load())
 	}
 
+	if !t.mode.CompareAndSwap(modeFresh, modeWaiting) {
+		if t.locker.debug {
+			slog.Error("token already waiting", "currentlyLocked", t.locker.currentlyLocked.Load())
+		}
+
+		return nil
+	}
+
 	select {
 	case <-t.locker.c:
+		if !t.mode.CompareAndSwap(modeWaiting, modeLocked) {
+			if t.locker.debug {
+				panic("unexpected token mode")
+			}
+		}
+
+		t.lockReason = reason
+
 		if t.locker.debug {
 			slog.Info("acquire token", "reason", reason, "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
@@ -51,6 +83,12 @@ func (t *token) Lock(reason string) io.Closer {
 		t.locker.currentlyLocked.Add(1)
 		return t
 	case <-t.donate:
+		if !t.mode.CompareAndSwap(modeWaiting, modeDonated) {
+			if t.locker.debug {
+				panic("unexpected token mode")
+			}
+		}
+
 		return t
 	}
 }
@@ -70,25 +108,44 @@ func (t *token) Close() error {
 
 	t.closed = true
 
-	if t.donated {
-		return nil // Do not return the token to the locker if it was donated.
-	}
-
-	// Non-blocking send to avoid deadlock if the locker channel is full.
-	select {
-	case t.locker.c <- struct{}{}:
+	switch t.mode.Load() {
+	case modeLocked:
 		if t.locker.debug {
-			slog.Info("return token", "currentlyLocked", t.locker.currentlyLocked.Load())
+			slog.Info("release token", "reason", t.lockReason, "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
 
-		t.locker.currentlyLocked.Add(-1)
+		t.mode.Store(modeReleased)
+
+		// Non-blocking send to avoid deadlock if the locker channel is full.
+		select {
+		case t.locker.c <- struct{}{}:
+			if t.locker.debug {
+				slog.Info("return token", "currentlyLocked", t.locker.currentlyLocked.Load())
+			}
+
+			t.locker.currentlyLocked.Add(-1)
+			return nil
+		default:
+			if t.locker.debug {
+				slog.Error("locker channel is full, cannot return token", "currentlyLocked", t.locker.currentlyLocked.Load())
+			}
+
+			return errors.New("locker channel is full, cannot return token")
+		}
+	case modeDonated:
+		if t.locker.debug {
+			slog.Info("donated token", "currentlyLocked", t.locker.currentlyLocked.Load())
+		}
+
+		t.mode.Store(modeReleased)
+
 		return nil
 	default:
 		if t.locker.debug {
-			slog.Error("locker channel is full, cannot return token", "currentlyLocked", t.locker.currentlyLocked.Load())
+			panic("unexpected token mode")
 		}
 
-		return errors.New("locker channel is full, cannot return token")
+		return errors.New("unexpected token mode")
 	}
 }
 
