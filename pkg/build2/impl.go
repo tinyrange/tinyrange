@@ -395,7 +395,7 @@ func (c *buildContext) ensureUpToDate() error {
 	if c.recept == nil {
 		// load the recept
 		c.recept, err = c.loadRecept()
-		if errors.Is(err, fs.ErrNotExist) {
+		if errors.Is(err, fs.ErrNotExist) || err == io.EOF {
 			defer c.token.Lock().Close()
 
 			return c.build()
