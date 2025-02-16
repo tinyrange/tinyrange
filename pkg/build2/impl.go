@@ -33,6 +33,264 @@ const (
 	defaultSuffix      = "default"
 )
 
+type OutputFileHandle interface {
+	filesystem.WritableFileHandle
+
+	GetHostFilename() (string, error)
+}
+
+type BuildCacheDirectory interface {
+	// OpenDefinition opens the definition file.
+	OpenDefinition() (io.ReadCloser, error)
+
+	// GetOutputFile opens a output file in the build directory.
+	GetOutputFile(name string) (filesystem.File, error)
+
+	// GetReceipt returns the build receipt.
+	GetReceipt() (*common.BuildReceipt, error)
+
+	// WriteDefinition writes the build definition.
+	WriteDefinition(def []byte) error
+
+	// WriteReceipt writes the build receipt.
+	WriteReceipt(recept []byte) error
+
+	// CreateOutputFile creates a new output file in the build directory.
+	CreateOutputFile(name string) (OutputFileHandle, error)
+}
+
+type BuildCacheFilesystem interface {
+	// GetHostFilename returns the host filename of the build cache directory.
+	GetHostFilename() (string, error)
+
+	// CreateBuildDirectory creates a new build directory.
+	CreateBuildDirectory(hash hash.Hash) (BuildCacheDirectory, error)
+
+	// GetBuildDirectory returns the build directory for the given hash.
+	GetBuildDirectory(hash hash.Hash) (BuildCacheDirectory, error)
+
+	// GetAllHashes returns all the hashes in the build cache.
+	GetAllHashes() ([]hash.Hash, error)
+}
+
+type filesystemOutputFileHandle struct {
+	filesystem.WritableFileHandle
+
+	mut filesystem.MutableFile
+}
+
+// GetHostFilename implements OutputFileHandle.
+func (f *filesystemOutputFileHandle) GetHostFilename() (string, error) {
+	return filesystem.GetHostFilename(f.mut)
+}
+
+var (
+	_ OutputFileHandle = &filesystemOutputFileHandle{}
+)
+
+type filesystemBuildDirectory struct {
+	dir filesystem.MutableDirectory
+}
+
+// OpenDefinition implements BuildCacheDirectory.
+func (f *filesystemBuildDirectory) OpenDefinition() (io.ReadCloser, error) {
+	file, err := f.dir.GetChild(definitionFileName)
+	if err != nil {
+		return nil, err
+	}
+
+	return file.File.Open()
+}
+
+// OpenOutputFile implements BuildCacheDirectory.
+func (f *filesystemBuildDirectory) GetOutputFile(name string) (filesystem.File, error) {
+	file, err := f.dir.GetChild(outputPrefix + name)
+	if err != nil {
+		return nil, err
+	}
+
+	return file.File, nil
+}
+
+// GetReceipt implements BuildCacheDirectory.
+func (f *filesystemBuildDirectory) GetReceipt() (*common.BuildReceipt, error) {
+	dh, err := f.dir.GetChild(receiptFileName)
+	if err != nil {
+		// This error could not not-exist so we propagate it.
+		return nil, err
+	}
+
+	file, err := dh.Open()
+	if err != nil {
+		return nil, err
+	}
+
+	var recept common.BuildReceipt
+	if err := json.NewDecoder(file).Decode(&recept); err != nil {
+		return nil, err
+	}
+
+	return &recept, nil
+}
+
+// CreateOutputFile implements BuildCacheDirectory.
+func (f *filesystemBuildDirectory) CreateOutputFile(name string) (OutputFileHandle, error) {
+	file, err := f.dir.Create(outputPrefix+name, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	mut, ok := file.(filesystem.MutableFile)
+	if !ok {
+		return nil, fmt.Errorf("file %T is not mutable", f)
+	}
+
+	mutHandle, err := mut.OpenMut()
+	if err != nil {
+		return nil, err
+	}
+
+	return &filesystemOutputFileHandle{
+		WritableFileHandle: mutHandle,
+		mut:                mut,
+	}, nil
+}
+
+// WriteDefinition implements BuildCacheDirectory.
+func (f *filesystemBuildDirectory) WriteDefinition(def []byte) error {
+	memFile := filesystem.NewMemoryFile(filesystem.TypeRegular)
+	if err := memFile.Overwrite(def); err != nil {
+		return err
+	}
+
+	if _, err := f.dir.Create(definitionFileName, memFile); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// WriteReceipt implements BuildCacheDirectory.
+func (f *filesystemBuildDirectory) WriteReceipt(recept []byte) error {
+	memFile := filesystem.NewMemoryFile(filesystem.TypeRegular)
+	if err := memFile.Overwrite(recept); err != nil {
+		return err
+	}
+
+	if _, err := f.dir.Create(receiptFileName, memFile); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+var (
+	_ BuildCacheDirectory = &filesystemBuildDirectory{}
+)
+
+type filesystemBuildCache struct {
+	dir filesystem.MutableDirectory
+}
+
+// GetHostFilename implements BuildCacheFilesystem.
+func (f *filesystemBuildCache) GetHostFilename() (string, error) {
+	return filesystem.GetHostFilename(f.dir)
+}
+
+// CreateBuildDirectory implements BuildCacheFilesystem.
+func (f *filesystemBuildCache) CreateBuildDirectory(hash hash.Hash) (BuildCacheDirectory, error) {
+	// take the first byte of the hash as the directory name
+	buildDirTop, err := f.dir.Mkdir(hash.String()[:2])
+	if err != nil {
+		return nil, fmt.Errorf("failed to create top build directory: %w", err)
+	}
+
+	// create a new build directory
+	// If it already exists, it will be reused.
+	buildDir, err := buildDirTop.Mkdir(hash.String()[2:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to create build directory: %w", err)
+	}
+
+	return &filesystemBuildDirectory{dir: buildDir}, nil
+}
+
+// GetBuildDirectory implements BuildCacheFilesystem.
+func (f *filesystemBuildCache) GetBuildDirectory(hash hash.Hash) (BuildCacheDirectory, error) {
+	buildEntTop, err := f.dir.GetChild(hash.String()[:2])
+	if err != nil {
+		return nil, fmt.Errorf("failed to get top build directory: %w", err)
+	}
+
+	buildDirTop, ok := buildEntTop.File.(filesystem.MutableDirectory)
+	if !ok {
+		return nil, fmt.Errorf("top build directory is not a mutable directory")
+	}
+
+	buildEnt, err := buildDirTop.GetChild(hash.String()[2:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to get build directory: %w", err)
+	}
+
+	buildDir, ok := buildEnt.File.(filesystem.MutableDirectory)
+	if !ok {
+		return nil, fmt.Errorf("build directory is not a mutable directory")
+	}
+
+	return &filesystemBuildDirectory{dir: buildDir}, nil
+}
+
+var (
+	validByte   = regexp.MustCompile(`^[0-9a-f]{2}$`)
+	validSha256 = regexp.MustCompile(`^[0-9a-f]{62}$`)
+)
+
+// GetAllHashes implements BuildCacheFilesystem.
+func (f *filesystemBuildCache) GetAllHashes() ([]hash.Hash, error) {
+	ents, err := f.dir.Readdir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	var ret []hash.Hash
+
+	// Populate the receipts map.
+	for _, ent := range ents {
+		if !validByte.MatchString(ent.Name) {
+			continue
+		}
+
+		childDir, ok := ent.File.(filesystem.Directory)
+		if !ok {
+			continue
+		}
+
+		childEnts, err := childDir.Readdir()
+		if err != nil {
+			slog.Warn("failed to read directory", "err", err)
+			continue
+		}
+
+		for _, childEnt := range childEnts {
+			if !validSha256.MatchString(childEnt.Name) {
+				continue
+			}
+
+			ret = append(ret, hash.Hash(ent.Name+childEnt.Name))
+		}
+	}
+
+	return ret, nil
+}
+
+var (
+	_ BuildCacheFilesystem = &filesystemBuildCache{}
+)
+
+func NewFilesystemBuildCache(dir filesystem.MutableDirectory) BuildCacheFilesystem {
+	return &filesystemBuildCache{dir: dir}
+}
+
 type buildArtifact struct {
 	*buildContext
 }
@@ -43,12 +301,12 @@ func (a *buildArtifact) OpenFile(name string) (filesystem.FileHandle, error) {
 		return nil, fmt.Errorf("file %s not found", name)
 	}
 
-	f, err := a.buildDir.GetChild(outputPrefix + name)
+	f, err := a.buildDir.GetOutputFile(name)
 	if err != nil {
 		return nil, err
 	}
 
-	return f.File.Open()
+	return f.Open()
 }
 
 // Default implements BuildArtifact.
@@ -57,12 +315,12 @@ func (a *buildArtifact) Default() (filesystem.File, error) {
 		return nil, fmt.Errorf("file default not found")
 	}
 
-	f, err := a.buildDir.GetChild(outputPrefix + defaultSuffix)
+	f, err := a.buildDir.GetOutputFile(defaultSuffix)
 	if err != nil {
 		return nil, err
 	}
 
-	return filesystem.NewSourceWrapper(f.File, a.def), nil
+	return filesystem.NewSourceWrapper(f, a.def), nil
 }
 
 // Receipt implements BuildArtifact.
@@ -75,10 +333,9 @@ var (
 )
 
 type contextFile struct {
-	writer io.WriteCloser
+	writer OutputFileHandle
 	multi  io.Writer
 	hash   cryptoHash.Hash
-	file   filesystem.MutableFile
 }
 
 // Write implements io.Writer.
@@ -135,7 +392,7 @@ type buildContext struct {
 	parent       *buildContext
 	hash         hash.Hash
 	def          common.BuildDefinition
-	buildDir     filesystem.MutableDirectory
+	buildDir     BuildCacheDirectory
 	options      common.BuildOptions
 	recept       *common.BuildReceipt
 	requirements map[hash.Hash]struct{}
@@ -192,7 +449,7 @@ func (c *buildContext) RunVMM(name string, config config.TinyRangeConfig) (*exec
 		return nil, err
 	}
 
-	configFilename, err := filesystem.GetHostFilename(out.(*contextFile).file)
+	configFilename, err := out.(*contextFile).writer.GetHostFilename()
 	if err != nil {
 		out.Close()
 		return nil, err
@@ -229,7 +486,7 @@ func (c *buildContext) RunVMM(name string, config config.TinyRangeConfig) (*exec
 		return nil, fmt.Errorf("unknown VMM: %s", name)
 	}
 
-	buildDirPath, err := filesystem.GetHostFilename(c.builder.buildDir)
+	buildDirPath, err := c.builder.buildDir.GetHostFilename()
 	if err != nil {
 		return nil, err
 	}
@@ -261,11 +518,7 @@ func (c *buildContext) build() error {
 	if err != nil {
 		return err
 	}
-	memFile := filesystem.NewMemoryFile(filesystem.TypeRegular)
-	if err := memFile.Overwrite(def); err != nil {
-		return err
-	}
-	if _, err := c.buildDir.Create(definitionFileName, memFile); err != nil {
+	if err := c.buildDir.WriteDefinition(def); err != nil {
 		return err
 	}
 
@@ -319,11 +572,7 @@ func (c *buildContext) build() error {
 	if err != nil {
 		return err
 	}
-	memFile = filesystem.NewMemoryFile(filesystem.TypeRegular)
-	if err := memFile.Overwrite(recept); err != nil {
-		return err
-	}
-	if _, err := c.buildDir.Create(receiptFileName, memFile); err != nil {
+	if err := c.buildDir.WriteReceipt(recept); err != nil {
 		return err
 	}
 
@@ -335,23 +584,7 @@ func (c *buildContext) build() error {
 }
 
 func (c *buildContext) loadRecept() (*common.BuildReceipt, error) {
-	dh, err := c.buildDir.GetChild(receiptFileName)
-	if err != nil {
-		// This error could not not-exist so we propagate it.
-		return nil, err
-	}
-
-	f, err := dh.Open()
-	if err != nil {
-		return nil, err
-	}
-
-	var recept common.BuildReceipt
-	if err := json.NewDecoder(f).Decode(&recept); err != nil {
-		return nil, err
-	}
-
-	return &recept, nil
+	return c.buildDir.GetReceipt()
 }
 
 // Precondition: The context has an exclusive lock on the definition.
@@ -371,15 +604,7 @@ func (c *buildContext) ensureUpToDate() error {
 	}
 
 	if c.buildDir == nil {
-		// take the first byte of the hash as the directory name
-		buildDirTop, err := c.builder.buildDir.Mkdir(c.hash.String()[:2])
-		if err != nil {
-			return fmt.Errorf("failed to create top build directory: %w", err)
-		}
-
-		// create a new build directory
-		// If it already exists, it will be reused.
-		c.buildDir, err = buildDirTop.Mkdir(c.hash.String()[2:])
+		c.buildDir, err = c.builder.buildDir.CreateBuildDirectory(c.hash)
 		if err != nil {
 			return fmt.Errorf("failed to create build directory: %w", err)
 		}
@@ -524,17 +749,7 @@ func (c *buildContext) CreateFile(name string) (io.WriteCloser, error) {
 	}
 
 	// Create the file.
-	f, err := c.buildDir.Create(outputPrefix+name, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	mut, ok := f.(filesystem.MutableFile)
-	if !ok {
-		return nil, fmt.Errorf("file %T is not mutable", f)
-	}
-
-	mutHandle, err := mut.OpenMut()
+	mutHandle, err := c.buildDir.CreateOutputFile(name)
 	if err != nil {
 		return nil, err
 	}
@@ -548,7 +763,6 @@ func (c *buildContext) CreateFile(name string) (io.WriteCloser, error) {
 		writer: mutHandle,
 		multi:  multi,
 		hash:   hash,
-		file:   mut,
 	}
 
 	return c.files[name], nil
@@ -596,7 +810,7 @@ var (
 type builder struct {
 	currentlyBuilding      atomic.Bool
 	database               common.PackageDatabase
-	buildDir               filesystem.MutableDirectory
+	buildDir               BuildCacheFilesystem
 	defDb                  *hash.DefinitionDatabase
 	contextCache           sync.Map
 	logger                 Logger
@@ -719,32 +933,12 @@ func (b *builder) Build(def common.BuildDefinition, opts common.BuildOptions) (c
 }
 
 func (b *builder) loadDefinition(hash hash.Hash) (io.ReadCloser, error) {
-	dirFileTop, err := b.buildDir.GetChild(hash.String()[:2])
+	dir, err := b.buildDir.GetBuildDirectory(hash)
 	if err != nil {
 		return nil, err
 	}
 
-	dir, ok := dirFileTop.File.(filesystem.MutableDirectory)
-	if !ok {
-		return nil, fmt.Errorf("file is not a directory: %T", dirFileTop)
-	}
-
-	dirFile, err := dir.GetChild(hash.String()[2:])
-	if err != nil {
-		return nil, err
-	}
-
-	dir, ok = dirFile.File.(filesystem.MutableDirectory)
-	if !ok {
-		return nil, fmt.Errorf("file is not a directory: %T", dirFile)
-	}
-
-	f, err := dir.GetChild(definitionFileName)
-	if err != nil {
-		return nil, err
-	}
-
-	return f.File.Open()
+	return dir.OpenDefinition()
 }
 
 func (b *builder) contextForHash(parent *buildContext, hash hash.Hash, opts common.BuildOptions) (*buildContext, error) {
@@ -762,35 +956,15 @@ func (b *builder) contextForHash(parent *buildContext, hash hash.Hash, opts comm
 }
 
 func (b *builder) receiptFromHash(hash hash.Hash) (*common.BuildReceipt, error) {
-	dirFileTop, err := b.buildDir.GetChild(hash.String()[:2])
+	dir, err := b.buildDir.GetBuildDirectory(hash)
 	if err != nil {
 		return nil, err
-	}
-
-	dir, ok := dirFileTop.File.(filesystem.MutableDirectory)
-	if !ok {
-		return nil, fmt.Errorf("file is not a directory: %T", dirFileTop)
-	}
-
-	dirFile, err := dir.GetChild(hash.String()[2:])
-	if err != nil {
-		return nil, err
-	}
-
-	dir, ok = dirFile.File.(filesystem.MutableDirectory)
-	if !ok {
-		return nil, fmt.Errorf("file is not a directory: %T", dirFile)
 	}
 
 	fakeCtx := &buildContext{buildDir: dir}
 
 	return fakeCtx.loadRecept()
 }
-
-var (
-	validByte   = regexp.MustCompile(`^[0-9a-f]{2}$`)
-	validSha256 = regexp.MustCompile(`^[0-9a-f]{62}$`)
-)
 
 type garbageCollectorState struct {
 	receipt    common.BuildReceipt
@@ -799,41 +973,24 @@ type garbageCollectorState struct {
 
 // GarbageCollect implements Builder.
 func (b *builder) GarbageCollect(olderThan time.Time) ([]hash.Hash, error) {
-	ents, err := b.buildDir.Readdir()
+	receipts := make(map[hash.Hash]*garbageCollectorState)
+
+	hashes, err := b.buildDir.GetAllHashes()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read directory: %w", err)
 	}
 
-	receipts := make(map[hash.Hash]*garbageCollectorState)
-
 	// Populate the receipts map.
-	for _, ent := range ents {
-		if !validByte.MatchString(ent.Name) {
-			continue
-		}
-
-		childDir, ok := ent.File.(filesystem.Directory)
-		if !ok {
-			continue
-		}
-
-		childEnts, err := childDir.Readdir()
+	for _, hash := range hashes {
+		receipt, err := b.receiptFromHash(hash)
 		if err != nil {
-			slog.Warn("failed to read directory", "err", err)
+			slog.Warn("failed to load receipt", "err", err)
 			continue
 		}
 
-		for _, childEnt := range childEnts {
-			receipt, err := b.receiptFromHash(hash.Hash(ent.Name + childEnt.Name))
-			if err != nil {
-				slog.Warn("failed to load receipt", "err", err)
-				continue
-			}
-
-			receipts[hash.Hash(ent.Name)] = &garbageCollectorState{
-				receipt:    *receipt,
-				references: 0,
-			}
+		receipts[hash] = &garbageCollectorState{
+			receipt:    *receipt,
+			references: 0,
 		}
 	}
 
@@ -899,7 +1056,7 @@ var (
 
 func New(buildDir filesystem.MutableDirectory, db common.PackageDatabase, maxJobs int, logger Logger) common.Builder {
 	b := &builder{
-		buildDir:    buildDir,
+		buildDir:    NewFilesystemBuildCache(buildDir),
 		database:    db,
 		logger:      logger,
 		tokenLocker: newTokenLocker(maxJobs),
