@@ -7,12 +7,13 @@ import "log/slog"
 type Feature string
 
 const (
-	FeatureRosetta  Feature = "rosetta"   // (darwin only) Use Rosetta 2 for emulation
-	FeatureVz       Feature = "vz"        // (darwin only) Use VZ instead of QEMU
-	FeatureBuild1   Feature = "build1"    // Use build1 for building instead of build2
-	Feature9P       Feature = "9p"        // Use 9p for file sharing
-	FeatureBuildOci Feature = "build_oci" // Enable the build-oci command
-	FeatureSlowBoot Feature = "slow_boot"
+	FeatureRosetta          Feature = "rosetta"   // (darwin only) Use Rosetta 2 for emulation
+	FeatureVz               Feature = "vz"        // (darwin only) Use VZ instead of QEMU
+	FeatureBuild1           Feature = "build1"    // Use build1 for building instead of build2
+	Feature9P               Feature = "9p"        // Use 9p for file sharing
+	FeatureBuildOci         Feature = "build_oci" // Enable the build-oci command
+	FeatureSlowBoot         Feature = "slow_boot"
+	FeatureTokenLockerDebug Feature = "token_locker_debug"
 )
 
 var features = make(map[Feature]bool)
@@ -24,6 +25,7 @@ func init() {
 	features[Feature9P] = true
 	features[FeatureSlowBoot] = false
 	features[FeatureBuildOci] = false
+	features[FeatureTokenLockerDebug] = false
 }
 
 func SetFeaturesFromExperimentalFlags(flags []string) {
@@ -47,6 +49,10 @@ func SetFeaturesFromExperimentalFlags(flags []string) {
 
 func HasFeature(f Feature) bool {
 	return features[f]
+}
+
+func ToggleFeature(f Feature) {
+	features[f] = !features[f]
 }
 
 func GetFeatureFlags() []string {

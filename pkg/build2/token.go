@@ -3,7 +3,12 @@ package build2
 import (
 	"errors"
 	"io"
+	"log/slog"
 	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/tinyrange/tinyrange/pkg/feature"
 )
 
 // token represents a reusable token that can be locked and unlocked.
@@ -35,6 +40,7 @@ func (t *token) Donate() {
 func (t *token) Lock() io.Closer {
 	select {
 	case <-t.locker.c:
+		t.locker.currentlyLocked.Add(1)
 		return t
 	case <-t.donate:
 		return t
@@ -59,6 +65,7 @@ func (t *token) Close() error {
 	// Non-blocking send to avoid deadlock if the locker channel is full.
 	select {
 	case t.locker.c <- struct{}{}:
+		t.locker.currentlyLocked.Add(-1)
 		return nil
 	default:
 		return errors.New("locker channel is full, cannot return token")
@@ -67,7 +74,8 @@ func (t *token) Close() error {
 
 // tokenLocker hands out closable locks from a pool of a limited size.
 type tokenLocker struct {
-	c chan struct{}
+	c               chan struct{}
+	currentlyLocked atomic.Int32
 }
 
 // New creates a new token associated with the locker.
@@ -82,6 +90,20 @@ func (t *tokenLocker) New() *token {
 func newTokenLocker(size int) *tokenLocker {
 	tl := &tokenLocker{
 		c: make(chan struct{}, size),
+	}
+
+	if feature.HasFeature(feature.FeatureTokenLockerDebug) {
+		go func() {
+			for {
+				if tl.currentlyLocked.Load() < 0 {
+					slog.Error("currentlyLocked is less than 0")
+				} else if tl.currentlyLocked.Load() > int32(size) {
+					slog.Error("currentlyLocked is greater than size")
+				}
+
+				time.Sleep(1 * time.Second)
+			}
+		}()
 	}
 
 	// Fill the channel to represent available tokens.
