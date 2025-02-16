@@ -80,6 +80,11 @@ type buildContext struct {
 	lastBuild time.Time
 }
 
+// PrenotifyChildren implements common.BuildContext.
+func (b *buildContext) PrenotifyChildren(children []common.BuildDefinition) error {
+	return nil // noop
+}
+
 // CreateFile implements common.BuildContext.
 func (b *buildContext) CreateFile(name string) (io.WriteCloser, error) {
 	return nil, fmt.Errorf("not implemented")

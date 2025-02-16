@@ -147,6 +147,15 @@ type buildContext struct {
 	files        map[string]*contextFile
 }
 
+// PrenotifyChildren implements common.BuildContext.
+func (c *buildContext) PrenotifyChildren(children []common.BuildDefinition) error {
+	for _, child := range children {
+		c.builder.contextForDefinition(c, child, common.BuildOptions{})
+	}
+
+	return nil
+}
+
 // DigestFromFile implements common.BuildContext.
 func (c *buildContext) DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error) {
 	filename, err := filesystem.GetHostFilename(file)

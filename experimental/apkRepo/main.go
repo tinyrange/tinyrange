@@ -393,6 +393,10 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 		}).(common.BuildDefinition))
 	}
 
+	if err := ctx.PrenotifyChildren(downloadEntries); err != nil {
+		return err
+	}
+
 	for _, entry := range downloadEntries {
 		if _, err := ctx.BuildChild(entry); err != nil {
 			return err

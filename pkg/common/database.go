@@ -117,6 +117,9 @@ type BuildContext interface {
 	MinimalBuildContext
 	DigestHandler
 
+	// PrenotifyChildren starts builds in the background for a list of children.
+	PrenotifyChildren(children []BuildDefinition) error
+
 	// ShouldRebuildUserDefinitions returns whether user definitions should be rebuilt.
 	ShouldRebuildUserDefinitions() bool
 	// LastBuild returns the time of the last build.
