@@ -412,6 +412,7 @@ var (
 	arch           = flag.String("arch", "x86_64", "Architecture to build for")
 	indexOutput    = flag.String("index-output", "local/apkRepo/index", "Directory to store index files")
 	contentsOutput = flag.String("contents-output", "local/apkRepo/contents", "Directory to store contents files")
+	jobs           = flag.Int("jobs", 1, "Number of jobs to run in parallel")
 )
 
 func appMain() error {
@@ -430,7 +431,7 @@ func appMain() error {
 
 		logger := build2.NewSimpleLogger()
 
-		return build2.New(mutBuildDir, pd, 10, logger.Group("root")), nil
+		return build2.New(mutBuildDir, pd, *jobs, logger.Group("root")), nil
 	})
 	if err != nil {
 		return err
