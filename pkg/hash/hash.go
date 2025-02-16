@@ -303,6 +303,11 @@ func (db *DefinitionDatabase) marshalSerializableValue(params SerializableValue)
 		field := val.Field(i)
 		fieldType := typ.Field(i)
 
+		// only encode fields that are exported.
+		if fieldType.PkgPath != "" {
+			continue
+		}
+
 		encoded, err := encodeValue(field)
 		if err != nil {
 			return nil, err
