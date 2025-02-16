@@ -38,8 +38,16 @@ func (t *token) Donate() {
 
 // Lock waits until it can acquire a token or receives a donation.
 func (t *token) Lock() io.Closer {
+	if t.locker.debug {
+		slog.Info("try lock", "currentlyLocked", t.locker.currentlyLocked.Load())
+	}
+
 	select {
 	case <-t.locker.c:
+		if t.locker.debug {
+			slog.Info("acquire token", "currentlyLocked", t.locker.currentlyLocked.Load())
+		}
+
 		t.locker.currentlyLocked.Add(1)
 		return t
 	case <-t.donate:
@@ -65,9 +73,17 @@ func (t *token) Close() error {
 	// Non-blocking send to avoid deadlock if the locker channel is full.
 	select {
 	case t.locker.c <- struct{}{}:
+		if t.locker.debug {
+			slog.Info("return token", "currentlyLocked", t.locker.currentlyLocked.Load())
+		}
+
 		t.locker.currentlyLocked.Add(-1)
 		return nil
 	default:
+		if t.locker.debug {
+			slog.Error("locker channel is full, cannot return token", "currentlyLocked", t.locker.currentlyLocked.Load())
+		}
+
 		return errors.New("locker channel is full, cannot return token")
 	}
 }
@@ -76,6 +92,7 @@ func (t *token) Close() error {
 type tokenLocker struct {
 	c               chan struct{}
 	currentlyLocked atomic.Int32
+	debug           bool
 }
 
 // New creates a new token associated with the locker.
@@ -89,10 +106,11 @@ func (t *tokenLocker) New() *token {
 // newTokenLocker initializes a new token locker with a given size.
 func newTokenLocker(size int) *tokenLocker {
 	tl := &tokenLocker{
-		c: make(chan struct{}, size),
+		c:     make(chan struct{}, size),
+		debug: feature.HasFeature(feature.FeatureTokenLockerDebug),
 	}
 
-	if feature.HasFeature(feature.FeatureTokenLockerDebug) {
+	if tl.debug {
 		slog.Info("token locker debug enabled", "size", size)
 		go func() {
 			for {
