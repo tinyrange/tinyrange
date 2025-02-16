@@ -321,6 +321,8 @@ var downloadEntry = NewSimpleBuildDefinition("downloadEntry", func(ctx common.Bu
 			ent = ent.Kind(archive2.EntryKindDirectory)
 		case tar.TypeSymlink:
 			ent = ent.Kind(archive2.EntryKindSymlink)
+		case tar.TypeLink:
+			ent = ent.Kind(archive2.EntryKindHardlink)
 		default:
 			return fmt.Errorf("unknown typeflag %v", header.Typeflag)
 		}
