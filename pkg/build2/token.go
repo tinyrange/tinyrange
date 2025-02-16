@@ -41,10 +41,9 @@ func (t *token) Donate() {
 		return
 	}
 
+	// Only donate if the token is waiting.
 	if t.mode.Load() > modeWaiting {
-		if t.locker.debug {
-			panic("unexpected token mode")
-		}
+		return
 	}
 
 	t.donated = true
