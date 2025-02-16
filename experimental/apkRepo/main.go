@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -423,6 +424,7 @@ var (
 	indexOutput    = flag.String("index-output", "local/apkRepo/index", "Directory to store index files")
 	contentsOutput = flag.String("contents-output", "local/apkRepo/contents", "Directory to store contents files")
 	jobs           = flag.Int("jobs", 1, "Number of jobs to run in parallel")
+	maxThreads     = flag.Int("max-threads", 10000, "Set the maximum number of threads")
 )
 
 func appMain() error {
@@ -431,6 +433,8 @@ func appMain() error {
 	}
 
 	flag.Parse()
+
+	debug.SetMaxThreads(*maxThreads)
 
 	db, err := database.New(func(pd common.PackageDatabase) (common.Builder, error) {
 		if err := common.Ensure(*buildDir, os.ModePerm); err != nil {
