@@ -33,7 +33,7 @@ require (
 	golang.org/x/arch v0.14.0
 	golang.org/x/crypto v0.33.0
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
-	golang.org/x/mod v0.22.0
+	golang.org/x/mod v0.23.0
 	golang.org/x/net v0.34.0
 	golang.org/x/sys v0.30.0
 	golang.org/x/term v0.29.0
