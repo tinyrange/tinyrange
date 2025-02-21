@@ -25,6 +25,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
+	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/path"
@@ -178,7 +179,7 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.Buil
 	var defFile filesystem.File
 	defEnt, err := defDir.GetChild(hash.String() + ".definition")
 	if errors.Is(err, os.ErrNotExist) {
-		slog.Info("creating definition file", "hash", hash)
+		// slog.Info("creating definition file", "hash", hash)
 		defFile, err = defDir.Create(hash.String()+".definition", nil)
 		if err != nil {
 			return nil, err
@@ -186,7 +187,7 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.Buil
 	} else if err != nil {
 		return nil, err
 	} else {
-		slog.Info("definition file exists", "hash", hash)
+		// slog.Info("definition file exists", "hash", hash)
 		defFile = defEnt.File
 	}
 
@@ -198,7 +199,7 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.Buil
 	var receptFile filesystem.File
 	receptEnt, err := receptDir.GetChild(hash.String() + ".receipt")
 	if errors.Is(err, os.ErrNotExist) {
-		slog.Info("creating receipt file", "hash", hash)
+		// slog.Info("creating receipt file", "hash", hash)
 		receptFile, err = receptDir.Create(hash.String()+".receipt", nil)
 		if err != nil {
 			return nil, err
@@ -206,7 +207,7 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.Buil
 	} else if err != nil {
 		return nil, err
 	} else {
-		slog.Info("receipt file exists", "hash", hash)
+		// slog.Info("receipt file exists", "hash", hash)
 		receptFile = receptEnt.File
 	}
 
@@ -268,49 +269,49 @@ func (s *splitBuildFilesystem) GetAllHashes() ([]hash.Hash, error) {
 func (s *splitBuildFilesystem) GetBuildDirectory(hash hash.Hash) (build2.BuildCacheDirectory, error) {
 	defDir, err := s.definitionDirectory.GetChild(hash.String()[:2])
 	if err != nil {
-		slog.Info("failed to get definition directory", "hash", hash, "err", err)
+		// slog.Info("failed to get definition directory", "hash", hash, "err", err)
 		return nil, err
 	}
 
 	defEnt, ok := defDir.File.(filesystem.Directory)
 	if !ok {
-		slog.Info("definition directory is not a directory", "hash", hash)
+		// slog.Info("definition directory is not a directory", "hash", hash)
 		return nil, fmt.Errorf("definition directory is not a directory")
 	}
 
 	defFile, err := defEnt.GetChild(hash.String() + ".definition")
 	if err != nil {
-		slog.Info("failed to get definition file", "hash", hash, "err", err)
+		// slog.Info("failed to get definition file", "hash", hash, "err", err)
 		return nil, err
 	}
 
 	defFileMut, ok := defFile.File.(filesystem.MutableFile)
 	if !ok {
-		slog.Info("definition file is not mutable", "hash", hash)
+		// slog.Info("definition file is not mutable", "hash", hash)
 		return nil, fmt.Errorf("definition file is not mutable")
 	}
 
 	receptDir, err := s.receptDirectory.GetChild(hash.String()[:2])
 	if err != nil {
-		slog.Info("failed to get receipt directory", "hash", hash, "err", err)
+		// slog.Info("failed to get receipt directory", "hash", hash, "err", err)
 		return nil, err
 	}
 
 	receptEnt, ok := receptDir.File.(filesystem.Directory)
 	if !ok {
-		slog.Info("receipt directory is not a directory", "hash", hash)
+		// slog.Info("receipt directory is not a directory", "hash", hash)
 		return nil, fmt.Errorf("receipt directory is not a directory")
 	}
 
 	receptFile, err := receptEnt.GetChild(hash.String() + ".receipt")
 	if err != nil {
-		slog.Info("failed to get receipt file", "hash", hash, "err", err)
+		// slog.Info("failed to get receipt file", "hash", hash, "err", err)
 		return nil, err
 	}
 
 	receptFileMut, ok := receptFile.File.(filesystem.MutableFile)
 	if !ok {
-		slog.Info("receipt file is not mutable", "hash", hash)
+		// slog.Info("receipt file is not mutable", "hash", hash)
 		return nil, fmt.Errorf("receipt file is not mutable")
 	}
 
@@ -719,6 +720,9 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 		groups = append(groups, entries[i:end])
 	}
 
+	pb := progressbar.Default(int64(len(groups)))
+	defer pb.Finish()
+
 	for i, group := range groups {
 		var downloadEntries []common.BuildDefinition
 
@@ -742,6 +746,8 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 			if _, err := ctx.BuildChild(entry); err != nil {
 				return err
 			}
+
+			pb.Add(1)
 		}
 
 		slog.Info("built group", "index", i, "size", len(group))
@@ -900,7 +906,7 @@ func appMain() error {
 	}
 
 	debug.SetMaxThreads(*maxThreads)
-	// feature.ToggleFeature(feature.FeatureTokenLockerDebug)
+	feature.ToggleFeature(feature.FeatureTokenLockerDebug)
 
 	db, err := database.New(func(pd common.PackageDatabase) (common.Builder, error) {
 		if err := common.Ensure(*buildDir, os.ModePerm); err != nil {
