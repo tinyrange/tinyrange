@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/schollz/progressbar/v3"
@@ -720,7 +721,7 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 	return nil
 })
 
-func migrateToSplitBuildCache(buildDir string, splitDefinitions string, splitReceipts string) error {
+func migrateToSplitBuildCache(buildDir string, splitDefinitions string, splitReceipts string, threads int) error {
 	buildDirEnt := filesystem.NewLocalMutableDirectory(buildDir)
 	if err := common.Ensure(splitDefinitions, os.ModePerm); err != nil {
 		return err
@@ -745,47 +746,87 @@ func migrateToSplitBuildCache(buildDir string, splitDefinitions string, splitRec
 
 	pb := progressbar.Default(int64(len(hashes)))
 
-	// Migration is simple: read the definition and receipt from the old cache and write it to the new cache.
-	// The output files use the same directory format as the old cache.
-	for _, hash := range hashes {
-		dir, err := oldFs.GetBuildDirectory(hash)
-		if err != nil {
-			return err
-		}
+	var wg sync.WaitGroup
+	wg.Add(threads)
+	hashesChannel := make(chan hash.Hash, threads)
+	errorChannel := make(chan error, threads)
 
-		def, err := dir.ReadDefinition()
-		if errors.Is(err, os.ErrNotExist) {
-			// don't create it if the definition doesn't exist
-			continue
-		} else if err != nil {
-			return err
-		}
+	// use a series of worker threads.
+	for i := 0; i < threads; i++ {
+		go func() {
+			for {
+				hash, ok := <-hashesChannel
+				if !ok {
+					return
+				}
 
-		recept, err := dir.ReadReceipt()
-		if errors.Is(err, os.ErrNotExist) {
-			// don't create it if the receipt doesn't exist
-			continue
-		} else if err != nil {
-			return err
-		}
+				dir, err := oldFs.GetBuildDirectory(hash)
+				if err != nil {
+					errorChannel <- err
+					return
+				}
 
-		newDir, err := newFs.CreateBuildDirectory(hash)
-		if err != nil {
-			return err
-		}
+				def, err := dir.ReadDefinition()
+				if errors.Is(err, os.ErrNotExist) {
+					// don't create it if the definition doesn't exist
+					continue
+				} else if err != nil {
+					errorChannel <- err
+					return
+				}
 
-		if err := newDir.WriteDefinition(def); err != nil {
-			return err
-		}
+				recept, err := dir.ReadReceipt()
+				if errors.Is(err, os.ErrNotExist) {
+					// don't create it if the receipt doesn't exist
+					continue
+				} else if err != nil {
+					errorChannel <- err
+					return
+				}
 
-		if err := newDir.WriteReceipt(recept); err != nil {
-			return err
-		}
+				newDir, err := newFs.CreateBuildDirectory(hash)
+				if err != nil {
+					errorChannel <- err
+					return
+				}
 
-		pb.Add(1)
+				if err := newDir.WriteDefinition(def); err != nil {
+					errorChannel <- err
+					return
+				}
+
+				if err := newDir.WriteReceipt(recept); err != nil {
+					errorChannel <- err
+					return
+				}
+
+				pb.Add(1)
+			}
+		}()
 	}
 
-	return nil
+	go func() {
+		// Migration is simple: read the definition and receipt from the old cache and write it to the new cache.
+		// The output files use the same directory format as the old cache.
+		for _, hash := range hashes {
+			hashesChannel <- hash
+		}
+		close(hashesChannel)
+	}()
+
+	doneChan := make(chan struct{})
+
+	go func() {
+		wg.Wait()
+		close(doneChan)
+	}()
+
+	select {
+	case <-doneChan:
+		return nil
+	case err := <-errorChannel:
+		return err
+	}
 }
 
 var (
@@ -797,6 +838,7 @@ var (
 	jobs             = flag.Int("jobs", 1, "Number of jobs to run in parallel")
 	maxThreads       = flag.Int("max-threads", 10000, "Set the maximum number of threads")
 	migrateToSplit   = flag.Bool("migrate-to-split", false, "Migrate to the split build cache")
+	migrationThreads = flag.Int("migration-threads", 32, "Number of threads to use for migration")
 	useSplit         = flag.Bool("use-split", false, "Use the split build cache")
 	splitDefinitions = flag.String("split-definitions", "local/apkRepo/build/definitions", "Directory to store split definitions")
 	splitReceipts    = flag.String("split-receipts", "local/apkRepo/build/receipts", "Directory to store split receipts")
@@ -820,7 +862,12 @@ func appMain() error {
 	}
 
 	if *migrateToSplit {
-		return migrateToSplitBuildCache(*buildDir, *splitDefinitions, *splitReceipts)
+		return migrateToSplitBuildCache(
+			*buildDir,
+			*splitDefinitions,
+			*splitReceipts,
+			*migrationThreads,
+		)
 	}
 
 	debug.SetMaxThreads(*maxThreads)
