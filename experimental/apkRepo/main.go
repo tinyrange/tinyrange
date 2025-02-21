@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -24,6 +27,280 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"go.starlark.net/starlark"
 )
+
+const (
+	outputPrefix = "output."
+)
+
+type filesystemOutputFileHandle struct {
+	filesystem.WritableFileHandle
+
+	mut filesystem.MutableFile
+}
+
+// GetHostFilename implements OutputFileHandle.
+func (f *filesystemOutputFileHandle) GetHostFilename() (string, error) {
+	return filesystem.GetHostFilename(f.mut)
+}
+
+type splitBuildDirectory struct {
+	definitionFile  filesystem.MutableFile
+	receptFile      filesystem.MutableFile
+	outputDirectory filesystem.MutableDirectory
+}
+
+// CreateOutputFile implements build2.BuildCacheDirectory.
+func (s *splitBuildDirectory) CreateOutputFile(name string) (build2.OutputFileHandle, error) {
+	file, err := s.outputDirectory.Create(outputPrefix+name, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	mut, ok := file.(filesystem.MutableFile)
+	if !ok {
+		return nil, fmt.Errorf("file %T is not mutable", file)
+	}
+
+	mutHandle, err := mut.OpenMut()
+	if err != nil {
+		return nil, err
+	}
+
+	return &filesystemOutputFileHandle{
+		WritableFileHandle: mutHandle,
+		mut:                mut,
+	}, nil
+}
+
+// GetOutputFile implements build2.BuildCacheDirectory.
+func (s *splitBuildDirectory) GetOutputFile(name string) (filesystem.File, error) {
+	file, err := s.outputDirectory.GetChild(outputPrefix + name)
+	if err != nil {
+		return nil, err
+	}
+
+	return file.File, nil
+}
+
+// ReadDefinition implements build2.BuildCacheDirectory.
+func (s *splitBuildDirectory) ReadDefinition() ([]byte, error) {
+	fh, err := s.definitionFile.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+
+	return io.ReadAll(fh)
+}
+
+// ReadReceipt implements build2.BuildCacheDirectory.
+func (s *splitBuildDirectory) ReadReceipt() ([]byte, error) {
+	fh, err := s.receptFile.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+
+	return io.ReadAll(fh)
+}
+
+// WriteDefinition implements build2.BuildCacheDirectory.
+func (s *splitBuildDirectory) WriteDefinition(def []byte) error {
+	return s.definitionFile.Overwrite(def)
+}
+
+// WriteReceipt implements build2.BuildCacheDirectory.
+func (s *splitBuildDirectory) WriteReceipt(recept []byte) error {
+	return s.receptFile.Overwrite(recept)
+}
+
+var (
+	_ build2.BuildCacheDirectory = &splitBuildDirectory{}
+)
+
+type splitBuildFilesystem struct {
+	// definitions are stored as <first 2 chars of hash>/<hash>.definition
+	definitionDirectory filesystem.MutableDirectory
+	// receipts are stored as <first 2 chars of hash>/<hash>.receipt
+	receptDirectory filesystem.MutableDirectory
+	// output directories are stored as <first 2 chars of hash>/<hash>/
+	outputDirectory filesystem.MutableDirectory
+}
+
+// CreateBuildDirectory implements build2.BuildCacheFilesystem.
+func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.BuildCacheDirectory, error) {
+	defDir, err := s.definitionDirectory.Mkdir(hash.String()[:2])
+	if err != nil {
+		return nil, err
+	}
+
+	receptDir, err := s.receptDirectory.Mkdir(hash.String()[:2])
+	if err != nil {
+		return nil, err
+	}
+
+	outputTopDir, err := s.outputDirectory.Mkdir(hash.String()[:2])
+	if err != nil {
+		return nil, err
+	}
+
+	defFile, err := defDir.Create(hash.String()+".definition", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	defMut, ok := defFile.(filesystem.MutableFile)
+	if !ok {
+		return nil, fmt.Errorf("definition file is not mutable")
+	}
+
+	receptFile, err := receptDir.Create(hash.String()+".receipt", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	receptMut, ok := receptFile.(filesystem.MutableFile)
+	if !ok {
+		return nil, fmt.Errorf("receipt file is not mutable")
+	}
+
+	outputDir, err := outputTopDir.Mkdir(hash.String()[2:])
+	if err != nil {
+		return nil, err
+	}
+
+	return &splitBuildDirectory{
+		definitionFile:  defMut,
+		receptFile:      receptMut,
+		outputDirectory: outputDir,
+	}, nil
+}
+
+var (
+	validByte   = regexp.MustCompile(`^[0-9a-f]{2}$`)
+	validSha256 = regexp.MustCompile(`^[0-9a-f]{62}$`)
+)
+
+// GetAllHashes implements build2.BuildCacheFilesystem.
+func (s *splitBuildFilesystem) GetAllHashes() ([]hash.Hash, error) {
+	// enumerate the definition directory
+	definitions, err := s.definitionDirectory.Readdir()
+	if err != nil {
+		return nil, err
+	}
+
+	var ret []hash.Hash
+	for _, def := range definitions {
+		if !validByte.MatchString(def.Name) {
+			continue
+		}
+
+		defDir, ok := def.File.(filesystem.Directory)
+		if !ok {
+			continue
+		}
+
+		defEnts, err := defDir.Readdir()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, defEnt := range defEnts {
+			if !validSha256.MatchString(defEnt.Name) {
+				continue
+			}
+
+			ret = append(ret, hash.Hash(def.Name+defEnt.Name))
+		}
+	}
+
+	return ret, nil
+}
+
+// GetBuildDirectory implements build2.BuildCacheFilesystem.
+func (s *splitBuildFilesystem) GetBuildDirectory(hash hash.Hash) (build2.BuildCacheDirectory, error) {
+	defDir, err := s.definitionDirectory.GetChild(hash.String()[:2])
+	if err != nil {
+		return nil, err
+	}
+
+	defEnt, ok := defDir.File.(filesystem.Directory)
+	if !ok {
+		return nil, fmt.Errorf("definition directory is not a directory")
+	}
+
+	defFile, err := defEnt.GetChild(hash.String() + ".definition")
+	if err != nil {
+		return nil, err
+	}
+
+	defFileMut, ok := defFile.File.(filesystem.MutableFile)
+	if !ok {
+		return nil, fmt.Errorf("definition file is not mutable")
+	}
+
+	receptDir, err := s.receptDirectory.GetChild(hash.String()[:2])
+	if err != nil {
+		return nil, err
+	}
+
+	receptEnt, ok := receptDir.File.(filesystem.Directory)
+	if !ok {
+		return nil, fmt.Errorf("receipt directory is not a directory")
+	}
+
+	receptFile, err := receptEnt.GetChild(hash.String() + ".receipt")
+	if err != nil {
+		return nil, err
+	}
+
+	receptFileMut, ok := receptFile.File.(filesystem.MutableFile)
+	if !ok {
+		return nil, fmt.Errorf("receipt file is not mutable")
+	}
+
+	outputDir, err := s.outputDirectory.GetChild(hash.String()[:2])
+	if err != nil {
+		return nil, err
+	}
+
+	outputTopDir, ok := outputDir.File.(filesystem.Directory)
+	if !ok {
+		return nil, fmt.Errorf("output top directory is not a directory")
+	}
+
+	outputDir, err = outputTopDir.GetChild(hash.String()[2:])
+	if err != nil {
+		return nil, err
+	}
+
+	return &splitBuildDirectory{
+		definitionFile:  defFileMut,
+		receptFile:      receptFileMut,
+		outputDirectory: outputDir.File.(filesystem.MutableDirectory),
+	}, nil
+}
+
+// GetHostFilename implements build2.BuildCacheFilesystem.
+func (s *splitBuildFilesystem) GetHostFilename() (string, error) {
+	return filesystem.GetHostFilename(s.outputDirectory)
+}
+
+var (
+	_ build2.BuildCacheFilesystem = &splitBuildFilesystem{}
+)
+
+func newSplitBuildDirectory(
+	defDir filesystem.MutableDirectory,
+	receiptDir filesystem.MutableDirectory,
+	outputDir filesystem.MutableDirectory,
+) build2.BuildCacheFilesystem {
+	return &splitBuildFilesystem{
+		definitionDirectory: defDir,
+		receptDirectory:     receiptDir,
+		outputDirectory:     outputDir,
+	}
+}
 
 type SimpleBuildDefinition struct {
 	Name   string
@@ -432,14 +709,67 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 	return nil
 })
 
+func migrateToSplitBuildCache(buildDir string, splitDefinitions string, splitReceipts string) error {
+	buildDirEnt := filesystem.NewLocalMutableDirectory(buildDir)
+	defsDirEnt := filesystem.NewLocalMutableDirectory(splitDefinitions)
+	receiptsDirEnt := filesystem.NewLocalMutableDirectory(splitReceipts)
+
+	oldFs := build2.NewFilesystemBuildCache(buildDirEnt)
+	newFs := newSplitBuildDirectory(defsDirEnt, receiptsDirEnt, buildDirEnt)
+
+	hashes, err := oldFs.GetAllHashes()
+	if err != nil {
+		return err
+	}
+
+	// Migration is simple: read the definition and receipt from the old cache and write it to the new cache.
+	// The output files use the same directory format as the old cache.
+	for _, hash := range hashes {
+		dir, err := oldFs.GetBuildDirectory(hash)
+		if err != nil {
+			return err
+		}
+
+		def, err := dir.ReadDefinition()
+		if err != nil {
+			return err
+		}
+
+		recept, err := dir.ReadReceipt()
+		if err != nil {
+			return err
+		}
+
+		newDir, err := newFs.CreateBuildDirectory(hash)
+		if err != nil {
+			return err
+		}
+
+		if err := newDir.WriteDefinition(def); err != nil {
+			return err
+		}
+
+		if err := newDir.WriteReceipt(recept); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 var (
-	repo           = flag.String("repo", "https://packages.wolfi.dev/os", "Alpine repository to use")
-	buildDir       = flag.String("build-dir", "local/apkRepo", "Directory to store build files")
-	arch           = flag.String("arch", "x86_64", "Architecture to build for")
-	indexOutput    = flag.String("index-output", "local/apkRepo/index", "Directory to store index files")
-	contentsOutput = flag.String("contents-output", "local/apkRepo/contents", "Directory to store contents files")
-	jobs           = flag.Int("jobs", 1, "Number of jobs to run in parallel")
-	maxThreads     = flag.Int("max-threads", 10000, "Set the maximum number of threads")
+	repo             = flag.String("repo", "https://packages.wolfi.dev/os", "Alpine repository to use")
+	buildDir         = flag.String("build-dir", "local/apkRepo", "Directory to store build files")
+	arch             = flag.String("arch", "x86_64", "Architecture to build for")
+	indexOutput      = flag.String("index-output", "local/apkRepo/index", "Directory to store index files")
+	contentsOutput   = flag.String("contents-output", "local/apkRepo/contents", "Directory to store contents files")
+	jobs             = flag.Int("jobs", 1, "Number of jobs to run in parallel")
+	maxThreads       = flag.Int("max-threads", 10000, "Set the maximum number of threads")
+	migrateToSplit   = flag.Bool("migrate-to-split", false, "Migrate to the split build cache")
+	useSplit         = flag.Bool("use-split", false, "Use the split build cache")
+	splitDefinitions = flag.String("split-definitions", "local/apkRepo/build/definitions", "Directory to store split definitions")
+	splitReceipts    = flag.String("split-receipts", "local/apkRepo/build/receipts", "Directory to store split receipts")
+	pprofAddr        = flag.String("pprof-addr", "", "Address to serve pprof on")
 )
 
 func appMain() error {
@@ -449,6 +779,19 @@ func appMain() error {
 
 	flag.Parse()
 
+	if *pprofAddr != "" {
+		go func() {
+			slog.Info("serving pprof", "addr", *pprofAddr)
+			if err := http.ListenAndServe(*pprofAddr, nil); err != nil {
+				slog.Error("failed to serve pprof", "error", err)
+			}
+		}()
+	}
+
+	if *migrateToSplit {
+		return migrateToSplitBuildCache(*buildDir, *splitDefinitions, *splitReceipts)
+	}
+
 	debug.SetMaxThreads(*maxThreads)
 	// feature.ToggleFeature(feature.FeatureTokenLockerDebug)
 
@@ -457,11 +800,21 @@ func appMain() error {
 			return nil, err
 		}
 
-		mutBuildDir := filesystem.NewLocalMutableDirectory(*buildDir)
-
 		logger := build2.NewSimpleLogger()
 
-		buildFs := build2.NewFilesystemBuildCache(mutBuildDir)
+		var buildFs build2.BuildCacheFilesystem
+
+		if *useSplit {
+			defDir := filesystem.NewLocalMutableDirectory(*splitDefinitions)
+			receiptDir := filesystem.NewLocalMutableDirectory(*splitReceipts)
+			outputDir := filesystem.NewLocalMutableDirectory(*buildDir)
+
+			buildFs = newSplitBuildDirectory(defDir, receiptDir, outputDir)
+		} else {
+			mutBuildDir := filesystem.NewLocalMutableDirectory(*buildDir)
+
+			buildFs = build2.NewFilesystemBuildCache(mutBuildDir)
+		}
 
 		return build2.New(buildFs, pd, *jobs, logger.Group("root")), nil
 	})

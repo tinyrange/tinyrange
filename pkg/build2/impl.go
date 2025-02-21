@@ -28,10 +28,7 @@ import (
 )
 
 const (
-	definitionFileName = "definition.json"
-	receiptFileName    = "receipt.json"
-	outputPrefix       = "output."
-	defaultSuffix      = "default"
+	defaultSuffix = "default"
 )
 
 type OutputFileHandle interface {

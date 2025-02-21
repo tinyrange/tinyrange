@@ -10,6 +10,12 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
 
+const (
+	definitionFileName = "definition.json"
+	receiptFileName    = "receipt.json"
+	outputPrefix       = "output."
+)
+
 type filesystemOutputFileHandle struct {
 	filesystem.WritableFileHandle
 
@@ -92,7 +98,7 @@ func (f *filesystemBuildDirectory) CreateOutputFile(name string) (OutputFileHand
 
 	mut, ok := file.(filesystem.MutableFile)
 	if !ok {
-		return nil, fmt.Errorf("file %T is not mutable", f)
+		return nil, fmt.Errorf("file %T is not mutable", file)
 	}
 
 	mutHandle, err := mut.OpenMut()
