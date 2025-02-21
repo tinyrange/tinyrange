@@ -247,41 +247,49 @@ func (s *splitBuildFilesystem) GetAllHashes() ([]hash.Hash, error) {
 func (s *splitBuildFilesystem) GetBuildDirectory(hash hash.Hash) (build2.BuildCacheDirectory, error) {
 	defDir, err := s.definitionDirectory.GetChild(hash.String()[:2])
 	if err != nil {
+		slog.Info("failed to get definition directory", "hash", hash, "err", err)
 		return nil, err
 	}
 
 	defEnt, ok := defDir.File.(filesystem.Directory)
 	if !ok {
+		slog.Info("definition directory is not a directory", "hash", hash)
 		return nil, fmt.Errorf("definition directory is not a directory")
 	}
 
 	defFile, err := defEnt.GetChild(hash.String() + ".definition")
 	if err != nil {
+		slog.Info("failed to get definition file", "hash", hash, "err", err)
 		return nil, err
 	}
 
 	defFileMut, ok := defFile.File.(filesystem.MutableFile)
 	if !ok {
+		slog.Info("definition file is not mutable", "hash", hash)
 		return nil, fmt.Errorf("definition file is not mutable")
 	}
 
 	receptDir, err := s.receptDirectory.GetChild(hash.String()[:2])
 	if err != nil {
+		slog.Info("failed to get receipt directory", "hash", hash, "err", err)
 		return nil, err
 	}
 
 	receptEnt, ok := receptDir.File.(filesystem.Directory)
 	if !ok {
+		slog.Info("receipt directory is not a directory", "hash", hash)
 		return nil, fmt.Errorf("receipt directory is not a directory")
 	}
 
 	receptFile, err := receptEnt.GetChild(hash.String() + ".receipt")
 	if err != nil {
+		slog.Info("failed to get receipt file", "hash", hash, "err", err)
 		return nil, err
 	}
 
 	receptFileMut, ok := receptFile.File.(filesystem.MutableFile)
 	if !ok {
+		slog.Info("receipt file is not mutable", "hash", hash)
 		return nil, fmt.Errorf("receipt file is not mutable")
 	}
 
