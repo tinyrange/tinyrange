@@ -82,7 +82,9 @@ func newDb() (common.PackageDatabase, error) {
 
 		buildDirMut := filesystem.NewLocalMutableDirectory(buildDir)
 
-		return build2.New(buildDirMut, db, rootBuildJobs, logger.Group("builder")), nil
+		buildFs := build2.NewFilesystemBuildCache(buildDirMut)
+
+		return build2.New(buildFs, db, rootBuildJobs, logger.Group("builder")), nil
 	}
 
 	if feature.HasFeature(feature.FeatureBuild1) {

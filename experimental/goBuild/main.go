@@ -91,8 +91,9 @@ func appMain() error {
 		}
 
 		buildDir := filesystem.NewLocalMutableDirectory(*buildPath)
+		buildFs := build2.NewFilesystemBuildCache(buildDir)
 		logger := build2.NewSimpleLogger()
-		return build2.New(buildDir, db, 1, logger.Group("root")), nil
+		return build2.New(buildFs, db, 1, logger.Group("root")), nil
 	})
 	if err != nil {
 		return err

@@ -461,7 +461,9 @@ func appMain() error {
 
 		logger := build2.NewSimpleLogger()
 
-		return build2.New(mutBuildDir, pd, *jobs, logger.Group("root")), nil
+		buildFs := build2.NewFilesystemBuildCache(mutBuildDir)
+
+		return build2.New(buildFs, pd, *jobs, logger.Group("root")), nil
 	})
 	if err != nil {
 		return err
