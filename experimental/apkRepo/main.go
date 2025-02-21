@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/archive2"
 	"github.com/tinyrange/tinyrange/pkg/build2"
@@ -44,6 +45,8 @@ func (f *filesystemOutputFileHandle) GetHostFilename() (string, error) {
 }
 
 type splitBuildDirectory struct {
+	fs              *splitBuildFilesystem
+	hash            hash.Hash
 	definitionFile  filesystem.MutableFile
 	receptFile      filesystem.MutableFile
 	outputDirectory filesystem.MutableDirectory
@@ -51,6 +54,14 @@ type splitBuildDirectory struct {
 
 // CreateOutputFile implements build2.BuildCacheDirectory.
 func (s *splitBuildDirectory) CreateOutputFile(name string) (build2.OutputFileHandle, error) {
+	if s.outputDirectory == nil {
+		out, err := s.fs.getOutputDirectory(s.hash)
+		if err != nil {
+			return nil, err
+		}
+		s.outputDirectory = out
+	}
+
 	file, err := s.outputDirectory.Create(outputPrefix+name, nil)
 	if err != nil {
 		return nil, err
@@ -74,6 +85,14 @@ func (s *splitBuildDirectory) CreateOutputFile(name string) (build2.OutputFileHa
 
 // GetOutputFile implements build2.BuildCacheDirectory.
 func (s *splitBuildDirectory) GetOutputFile(name string) (filesystem.File, error) {
+	if s.outputDirectory == nil {
+		out, err := s.fs.getOutputDirectory(s.hash)
+		if err != nil {
+			return nil, err
+		}
+		s.outputDirectory = out
+	}
+
 	file, err := s.outputDirectory.GetChild(outputPrefix + name)
 	if err != nil {
 		return nil, err
@@ -127,6 +146,20 @@ type splitBuildFilesystem struct {
 	outputDirectory filesystem.MutableDirectory
 }
 
+func (s *splitBuildFilesystem) getOutputDirectory(hash hash.Hash) (filesystem.MutableDirectory, error) {
+	outputTopDir, err := s.outputDirectory.Mkdir(hash.String()[:2])
+	if err != nil {
+		return nil, err
+	}
+
+	outputDir, err := outputTopDir.Mkdir(hash.String()[2:])
+	if err != nil {
+		return nil, err
+	}
+
+	return outputDir, nil
+}
+
 // CreateBuildDirectory implements build2.BuildCacheFilesystem.
 func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.BuildCacheDirectory, error) {
 	defDir, err := s.definitionDirectory.Mkdir(hash.String()[:2])
@@ -135,11 +168,6 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.Buil
 	}
 
 	receptDir, err := s.receptDirectory.Mkdir(hash.String()[:2])
-	if err != nil {
-		return nil, err
-	}
-
-	outputTopDir, err := s.outputDirectory.Mkdir(hash.String()[:2])
 	if err != nil {
 		return nil, err
 	}
@@ -164,15 +192,11 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.Buil
 		return nil, fmt.Errorf("receipt file is not mutable")
 	}
 
-	outputDir, err := outputTopDir.Mkdir(hash.String()[2:])
-	if err != nil {
-		return nil, err
-	}
-
 	return &splitBuildDirectory{
-		definitionFile:  defMut,
-		receptFile:      receptMut,
-		outputDirectory: outputDir,
+		fs:             s,
+		hash:           hash,
+		definitionFile: defMut,
+		receptFile:     receptMut,
 	}, nil
 }
 
@@ -259,25 +283,11 @@ func (s *splitBuildFilesystem) GetBuildDirectory(hash hash.Hash) (build2.BuildCa
 		return nil, fmt.Errorf("receipt file is not mutable")
 	}
 
-	outputDir, err := s.outputDirectory.GetChild(hash.String()[:2])
-	if err != nil {
-		return nil, err
-	}
-
-	outputTopDir, ok := outputDir.File.(filesystem.Directory)
-	if !ok {
-		return nil, fmt.Errorf("output top directory is not a directory")
-	}
-
-	outputDir, err = outputTopDir.GetChild(hash.String()[2:])
-	if err != nil {
-		return nil, err
-	}
-
 	return &splitBuildDirectory{
-		definitionFile:  defFileMut,
-		receptFile:      receptFileMut,
-		outputDirectory: outputDir.File.(filesystem.MutableDirectory),
+		fs:             s,
+		hash:           hash,
+		definitionFile: defFileMut,
+		receptFile:     receptFileMut,
 	}, nil
 }
 
@@ -711,16 +721,28 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 
 func migrateToSplitBuildCache(buildDir string, splitDefinitions string, splitReceipts string) error {
 	buildDirEnt := filesystem.NewLocalMutableDirectory(buildDir)
+	if err := common.Ensure(splitDefinitions, os.ModePerm); err != nil {
+		return err
+	}
 	defsDirEnt := filesystem.NewLocalMutableDirectory(splitDefinitions)
+	if err := common.Ensure(splitReceipts, os.ModePerm); err != nil {
+		return err
+	}
 	receiptsDirEnt := filesystem.NewLocalMutableDirectory(splitReceipts)
 
 	oldFs := build2.NewFilesystemBuildCache(buildDirEnt)
 	newFs := newSplitBuildDirectory(defsDirEnt, receiptsDirEnt, buildDirEnt)
 
+	slog.Info("migrating to split build cache")
+
 	hashes, err := oldFs.GetAllHashes()
 	if err != nil {
 		return err
 	}
+
+	slog.Info("migrating", "count", len(hashes))
+
+	pb := progressbar.Default(int64(len(hashes)))
 
 	// Migration is simple: read the definition and receipt from the old cache and write it to the new cache.
 	// The output files use the same directory format as the old cache.
@@ -752,6 +774,8 @@ func migrateToSplitBuildCache(buildDir string, splitDefinitions string, splitRec
 		if err := newDir.WriteReceipt(recept); err != nil {
 			return err
 		}
+
+		pb.Add(1)
 	}
 
 	return nil
@@ -805,7 +829,13 @@ func appMain() error {
 		var buildFs build2.BuildCacheFilesystem
 
 		if *useSplit {
+			if err := common.Ensure(*splitDefinitions, os.ModePerm); err != nil {
+				return nil, err
+			}
 			defDir := filesystem.NewLocalMutableDirectory(*splitDefinitions)
+			if err := common.Ensure(*splitReceipts, os.ModePerm); err != nil {
+				return nil, err
+			}
 			receiptDir := filesystem.NewLocalMutableDirectory(*splitReceipts)
 			outputDir := filesystem.NewLocalMutableDirectory(*buildDir)
 
