@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -753,12 +754,18 @@ func migrateToSplitBuildCache(buildDir string, splitDefinitions string, splitRec
 		}
 
 		def, err := dir.ReadDefinition()
-		if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// don't create it if the definition doesn't exist
+			continue
+		} else if err != nil {
 			return err
 		}
 
 		recept, err := dir.ReadReceipt()
-		if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// don't create it if the receipt doesn't exist
+			continue
+		} else if err != nil {
 			return err
 		}
 
