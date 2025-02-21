@@ -1,6 +1,10 @@
 package main
 
-import "github.com/google/uuid"
+import (
+	"fmt"
+
+	"github.com/google/uuid"
+)
 
 type virtualPackage struct {
 	name PackageID
@@ -38,10 +42,7 @@ type planner struct {
 }
 
 func (p *planner) addPackage(source PackageSource, id PackageID) error {
-	deps, err := source.GetPackageDependencies(id)
-	if err != nil {
-		return err
-	}
+	return fmt.Errorf("not implemented")
 }
 
 // AddPackages implements Planner.
