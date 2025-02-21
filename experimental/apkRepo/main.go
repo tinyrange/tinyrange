@@ -174,9 +174,18 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.Buil
 		return nil, err
 	}
 
-	defFile, err := defDir.Create(hash.String()+".definition", nil)
-	if err != nil {
+	// try and get the file. If it doesn't exist then create it.
+	var defFile filesystem.File
+	defEnt, err := defDir.GetChild(hash.String() + ".definition")
+	if errors.Is(err, os.ErrNotExist) {
+		defFile, err = defDir.Create(hash.String()+".definition", nil)
+		if err != nil {
+			return nil, err
+		}
+	} else if err != nil {
 		return nil, err
+	} else {
+		defFile = defEnt.File
 	}
 
 	defMut, ok := defFile.(filesystem.MutableFile)
@@ -184,9 +193,17 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.Buil
 		return nil, fmt.Errorf("definition file is not mutable")
 	}
 
-	receptFile, err := receptDir.Create(hash.String()+".receipt", nil)
-	if err != nil {
+	var receptFile filesystem.File
+	receptEnt, err := receptDir.GetChild(hash.String() + ".receipt")
+	if errors.Is(err, os.ErrNotExist) {
+		receptFile, err = receptDir.Create(hash.String()+".receipt", nil)
+		if err != nil {
+			return nil, err
+		}
+	} else if err != nil {
 		return nil, err
+	} else {
+		receptFile = receptEnt.File
 	}
 
 	receptMut, ok := receptFile.(filesystem.MutableFile)
