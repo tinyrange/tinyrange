@@ -25,7 +25,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
-	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/path"
@@ -906,7 +905,7 @@ func appMain() error {
 	}
 
 	debug.SetMaxThreads(*maxThreads)
-	feature.ToggleFeature(feature.FeatureTokenLockerDebug)
+	// feature.ToggleFeature(feature.FeatureTokenLockerDebug)
 
 	db, err := database.New(func(pd common.PackageDatabase) (common.Builder, error) {
 		if err := common.Ensure(*buildDir, os.ModePerm); err != nil {
