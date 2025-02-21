@@ -754,7 +754,9 @@ func migrateToSplitBuildCache(buildDir string, splitDefinitions string, splitRec
 	// use a series of worker threads.
 	for i := 0; i < threads; i++ {
 		go func() {
+			defer wg.Done()
 			for {
+				pb.Add(1)
 				hash, ok := <-hashesChannel
 				if !ok {
 					return
@@ -799,8 +801,6 @@ func migrateToSplitBuildCache(buildDir string, splitDefinitions string, splitRec
 					errorChannel <- err
 					return
 				}
-
-				pb.Add(1)
 			}
 		}()
 	}

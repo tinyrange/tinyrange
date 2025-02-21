@@ -369,6 +369,10 @@ func (c *buildContext) loadRecept() (*common.BuildReceipt, error) {
 		return nil, err
 	}
 
+	if len(recept) == 0 {
+		return nil, io.EOF
+	}
+
 	var ret common.BuildReceipt
 	if err := json.Unmarshal(recept, &ret); err != nil {
 		return nil, err
