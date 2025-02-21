@@ -178,6 +178,7 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.Buil
 	var defFile filesystem.File
 	defEnt, err := defDir.GetChild(hash.String() + ".definition")
 	if errors.Is(err, os.ErrNotExist) {
+		slog.Info("creating definition file", "hash", hash)
 		defFile, err = defDir.Create(hash.String()+".definition", nil)
 		if err != nil {
 			return nil, err
@@ -185,6 +186,7 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.Buil
 	} else if err != nil {
 		return nil, err
 	} else {
+		slog.Info("definition file exists", "hash", hash)
 		defFile = defEnt.File
 	}
 
@@ -196,6 +198,7 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.Buil
 	var receptFile filesystem.File
 	receptEnt, err := receptDir.GetChild(hash.String() + ".receipt")
 	if errors.Is(err, os.ErrNotExist) {
+		slog.Info("creating receipt file", "hash", hash)
 		receptFile, err = receptDir.Create(hash.String()+".receipt", nil)
 		if err != nil {
 			return nil, err
@@ -203,6 +206,7 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.Buil
 	} else if err != nil {
 		return nil, err
 	} else {
+		slog.Info("receipt file exists", "hash", hash)
 		receptFile = receptEnt.File
 	}
 
