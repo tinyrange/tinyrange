@@ -959,7 +959,7 @@ func appMain() error {
 		return err
 	}
 
-	return fmt.Errorf("not implemented")
+	return nil
 }
 
 func main() {
