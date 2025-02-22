@@ -320,6 +320,26 @@ func (c *buildContext) build() error {
 
 	// Call the user builder function.
 	err = c.def.Build(c)
+	if errors.Is(err, common.ErrNonFatal{}) {
+		attempts := 0
+
+		// If the error is non-fatal, retry the build.
+		for {
+			attempts += 1
+			if attempts > 10 {
+				return fmt.Errorf("error building %s after %d: %w", c.def.String(), attempts, err)
+			}
+
+			slog.Warn("non-fatal error building", "def", c.def.String(), "err", err, "attempts", attempts)
+
+			time.Sleep(1 * time.Second)
+
+			err = c.def.Build(c)
+			if err == nil || !errors.Is(err, common.ErrNonFatal{}) {
+				break
+			}
+		}
+	}
 	if errors.Is(err, common.ErrUseExistingBuild) {
 		// The user has requested to use the existing build.
 		// This is a special case where the user has determined that the build is not needed.

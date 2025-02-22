@@ -14,6 +14,26 @@ import (
 	"go.starlark.net/starlark"
 )
 
+type ErrNonFatal struct {
+	Err error
+}
+
+func (e ErrNonFatal) Error() string {
+	return e.Err.Error()
+}
+
+func (e ErrNonFatal) Unwrap() error {
+	return e.Err
+}
+
+var (
+	_ error = ErrNonFatal{}
+)
+
+func MakeNonFatal(err error) error {
+	return ErrNonFatal{Err: err}
+}
+
 type ErrTemplateBuilt string
 
 // Error implements error.

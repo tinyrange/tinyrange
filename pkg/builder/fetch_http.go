@@ -75,7 +75,7 @@ func (f *fetchHttpBuildDefinition) WriteResult(w io.Writer) error {
 	defer prog.Close()
 
 	if _, err := io.Copy(io.MultiWriter(prog, w), f.resp.Body); err != nil {
-		return err
+		return common.MakeNonFatal(fmt.Errorf("failed to write response: %w", err))
 	}
 
 	return nil
@@ -100,7 +100,7 @@ func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext) error {
 
 		req, err = http.NewRequest("GET", url, nil)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create request: %w", err)
 		}
 
 		if f.params.Headers != nil {
