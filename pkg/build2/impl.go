@@ -321,6 +321,8 @@ func (c *buildContext) build() error {
 	// Call the user builder function.
 	err = c.def.Build(c)
 	if errors.Is(err, common.ErrNonFatal{}) {
+		slog.Warn("non-fatal error building", "def", c.def.String(), "err", err)
+
 		attempts := 0
 
 		// If the error is non-fatal, retry the build.
@@ -356,7 +358,7 @@ func (c *buildContext) build() error {
 
 		c.recept = currentRecept
 	} else if err != nil {
-		return err
+		return fmt.Errorf("failed to build %s: %w", c.def.String(), err)
 	} else {
 		c.recept.StartTime = startTime
 		c.recept.Duration = time.Since(c.recept.StartTime)

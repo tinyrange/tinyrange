@@ -719,7 +719,7 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 		groups = append(groups, entries[i:end])
 	}
 
-	pb := progressbar.Default(int64(len(groups)))
+	pb := progressbar.Default(int64(len(entries)))
 	defer pb.Finish()
 
 	for i, group := range groups {

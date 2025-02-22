@@ -19,7 +19,7 @@ type ErrNonFatal struct {
 }
 
 func (e ErrNonFatal) Error() string {
-	return e.Err.Error()
+	return "non-fatal: " + e.Err.Error()
 }
 
 func (e ErrNonFatal) Unwrap() error {
