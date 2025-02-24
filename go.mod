@@ -31,7 +31,7 @@ require (
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
 	go.starlark.net v0.0.0-20241125201518-c05ff208a98f
 	golang.org/x/arch v0.14.0
-	golang.org/x/crypto v0.33.0
+	golang.org/x/crypto v0.34.0
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
 	golang.org/x/mod v0.23.0
 	golang.org/x/net v0.35.0
