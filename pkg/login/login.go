@@ -3,6 +3,7 @@ package login
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -735,7 +736,8 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		def.SetBuildTemplateMode()
 
 		_, err := db.Builder().Build(def, common.BuildOptions{AlwaysRebuild: true})
-		if built, ok := err.(common.ErrTemplateBuilt); ok {
+		var built common.ErrTemplateBuilt
+		if errors.As(err, &built) {
 			fmt.Printf("%s\n", string(built))
 
 			return nil
