@@ -55,7 +55,7 @@ type splitBuildDirectory struct {
 }
 
 // CreateOutputFile implements build2.BuildCacheDirectory.
-func (s *splitBuildDirectory) CreateOutputFile(name string) (build2.OutputFileHandle, error) {
+func (s *splitBuildDirectory) CreateOutputFile(name string) (common.OutputFileHandle, error) {
 	if s.outputDirectory == nil {
 		out, err := s.fs.getOutputDirectory(s.hash)
 		if err != nil {
@@ -136,7 +136,7 @@ func (s *splitBuildDirectory) WriteReceipt(recept []byte) error {
 }
 
 var (
-	_ build2.BuildCacheDirectory = &splitBuildDirectory{}
+	_ common.BuildCacheDirectory = &splitBuildDirectory{}
 )
 
 type splitBuildFilesystem struct {
@@ -163,7 +163,7 @@ func (s *splitBuildFilesystem) getOutputDirectory(hash hash.Hash) (filesystem.Mu
 }
 
 // CreateBuildDirectory implements build2.BuildCacheFilesystem.
-func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (build2.BuildCacheDirectory, error) {
+func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (common.BuildCacheDirectory, error) {
 	defDir, err := s.definitionDirectory.Mkdir(hash.String()[:2])
 	if err != nil {
 		return nil, err
@@ -265,7 +265,7 @@ func (s *splitBuildFilesystem) GetAllHashes() ([]hash.Hash, error) {
 }
 
 // GetBuildDirectory implements build2.BuildCacheFilesystem.
-func (s *splitBuildFilesystem) GetBuildDirectory(hash hash.Hash) (build2.BuildCacheDirectory, error) {
+func (s *splitBuildFilesystem) GetBuildDirectory(hash hash.Hash) (common.BuildCacheDirectory, error) {
 	defDir, err := s.definitionDirectory.GetChild(hash.String()[:2])
 	if err != nil {
 		// slog.Info("failed to get definition directory", "hash", hash, "err", err)
@@ -328,14 +328,14 @@ func (s *splitBuildFilesystem) GetHostFilename() (string, error) {
 }
 
 var (
-	_ build2.BuildCacheFilesystem = &splitBuildFilesystem{}
+	_ common.BuildCacheFilesystem = &splitBuildFilesystem{}
 )
 
 func newSplitBuildDirectory(
 	defDir filesystem.MutableDirectory,
 	receiptDir filesystem.MutableDirectory,
 	outputDir filesystem.MutableDirectory,
-) build2.BuildCacheFilesystem {
+) common.BuildCacheFilesystem {
 	return &splitBuildFilesystem{
 		definitionDirectory: defDir,
 		receptDirectory:     receiptDir,
@@ -914,7 +914,7 @@ func appMain() error {
 
 		logger := build2.NewSimpleLogger()
 
-		var buildFs build2.BuildCacheFilesystem
+		var buildFs common.BuildCacheFilesystem
 
 		if *useSplit {
 			if err := common.Ensure(*splitDefinitions, os.ModePerm); err != nil {

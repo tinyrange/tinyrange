@@ -31,46 +31,6 @@ const (
 	defaultSuffix = "default"
 )
 
-type OutputFileHandle interface {
-	filesystem.WritableFileHandle
-
-	GetHostFilename() (string, error)
-}
-
-type BuildCacheDirectory interface {
-	// ReadDefinition opens the definition file in the build directory and reads it.
-	ReadDefinition() ([]byte, error)
-
-	// ReadReceipt opens the receipt file in the build directory and reads it.
-	ReadReceipt() ([]byte, error)
-
-	// GetOutputFile opens a output file in the build directory.
-	GetOutputFile(name string) (filesystem.File, error)
-
-	// WriteDefinition writes the build definition.
-	WriteDefinition(def []byte) error
-
-	// WriteReceipt writes the build receipt.
-	WriteReceipt(recept []byte) error
-
-	// CreateOutputFile creates a new output file in the build directory.
-	CreateOutputFile(name string) (OutputFileHandle, error)
-}
-
-type BuildCacheFilesystem interface {
-	// GetHostFilename returns the host filename of the build cache directory.
-	GetHostFilename() (string, error)
-
-	// CreateBuildDirectory creates a new build directory.
-	CreateBuildDirectory(hash hash.Hash) (BuildCacheDirectory, error)
-
-	// GetBuildDirectory returns the build directory for the given hash.
-	GetBuildDirectory(hash hash.Hash) (BuildCacheDirectory, error)
-
-	// GetAllHashes returns all the hashes in the build cache.
-	GetAllHashes() ([]hash.Hash, error)
-}
-
 type buildArtifact struct {
 	*buildContext
 }
@@ -113,7 +73,7 @@ var (
 )
 
 type contextFile struct {
-	writer OutputFileHandle
+	writer common.OutputFileHandle
 	multi  io.Writer
 	hash   cryptoHash.Hash
 }
@@ -172,7 +132,7 @@ type buildContext struct {
 	parent       *buildContext
 	hash         hash.Hash
 	def          common.BuildDefinition
-	buildDir     BuildCacheDirectory
+	buildDir     common.BuildCacheDirectory
 	options      common.BuildOptions
 	recept       *common.BuildReceipt
 	requirements map[hash.Hash]struct{}
@@ -626,7 +586,7 @@ var (
 type builder struct {
 	currentlyBuilding      atomic.Bool
 	database               common.PackageDatabase
-	buildDir               BuildCacheFilesystem
+	buildDir               common.BuildCacheFilesystem
 	defDb                  *hash.DefinitionDatabase
 	contextCache           sync.Map
 	logger                 Logger
@@ -875,7 +835,12 @@ var (
 	_ common.Builder = &builder{}
 )
 
-func New(cache BuildCacheFilesystem, db common.PackageDatabase, maxJobs int, logger Logger) common.Builder {
+func New(
+	cache common.BuildCacheFilesystem,
+	db common.PackageDatabase,
+	maxJobs int,
+	logger Logger,
+) common.Builder {
 	b := &builder{
 		buildDir:    cache,
 		database:    db,

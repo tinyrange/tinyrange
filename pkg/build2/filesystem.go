@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"regexp"
 
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
@@ -28,7 +29,7 @@ func (f *filesystemOutputFileHandle) GetHostFilename() (string, error) {
 }
 
 var (
-	_ OutputFileHandle = &filesystemOutputFileHandle{}
+	_ common.OutputFileHandle = &filesystemOutputFileHandle{}
 )
 
 type filesystemBuildDirectory struct {
@@ -90,7 +91,7 @@ func (f *filesystemBuildDirectory) ReadReceipt() ([]byte, error) {
 }
 
 // CreateOutputFile implements BuildCacheDirectory.
-func (f *filesystemBuildDirectory) CreateOutputFile(name string) (OutputFileHandle, error) {
+func (f *filesystemBuildDirectory) CreateOutputFile(name string) (common.OutputFileHandle, error) {
 	file, err := f.dir.Create(outputPrefix+name, nil)
 	if err != nil {
 		return nil, err
@@ -141,7 +142,7 @@ func (f *filesystemBuildDirectory) WriteReceipt(recept []byte) error {
 }
 
 var (
-	_ BuildCacheDirectory = &filesystemBuildDirectory{}
+	_ common.BuildCacheDirectory = &filesystemBuildDirectory{}
 )
 
 type filesystemBuildCache struct {
@@ -154,7 +155,7 @@ func (f *filesystemBuildCache) GetHostFilename() (string, error) {
 }
 
 // CreateBuildDirectory implements BuildCacheFilesystem.
-func (f *filesystemBuildCache) CreateBuildDirectory(hash hash.Hash) (BuildCacheDirectory, error) {
+func (f *filesystemBuildCache) CreateBuildDirectory(hash hash.Hash) (common.BuildCacheDirectory, error) {
 	// take the first byte of the hash as the directory name
 	buildDirTop, err := f.dir.Mkdir(hash.String()[:2])
 	if err != nil {
@@ -172,7 +173,7 @@ func (f *filesystemBuildCache) CreateBuildDirectory(hash hash.Hash) (BuildCacheD
 }
 
 // GetBuildDirectory implements BuildCacheFilesystem.
-func (f *filesystemBuildCache) GetBuildDirectory(hash hash.Hash) (BuildCacheDirectory, error) {
+func (f *filesystemBuildCache) GetBuildDirectory(hash hash.Hash) (common.BuildCacheDirectory, error) {
 	buildEntTop, err := f.dir.GetChild(hash.String()[:2])
 	if err != nil {
 		return nil, fmt.Errorf("failed to get top build directory: %w", err)
@@ -240,9 +241,9 @@ func (f *filesystemBuildCache) GetAllHashes() ([]hash.Hash, error) {
 }
 
 var (
-	_ BuildCacheFilesystem = &filesystemBuildCache{}
+	_ common.BuildCacheFilesystem = &filesystemBuildCache{}
 )
 
-func NewFilesystemBuildCache(dir filesystem.MutableDirectory) BuildCacheFilesystem {
+func NewFilesystemBuildCache(dir filesystem.MutableDirectory) common.BuildCacheFilesystem {
 	return &filesystemBuildCache{dir: dir}
 }
