@@ -594,6 +594,35 @@ type builder struct {
 	rebuildUserDefinitions bool
 }
 
+// ImportAndValidate implements common.Builder.
+func (b *builder) ImportAndValidate(def []byte) (common.BuildDefinition, error) {
+	unmarshaled, err := b.defDb.UnmarshalDefinition(bytes.NewReader(def))
+	if err != nil {
+		return nil, err
+	}
+
+	buildDef, ok := unmarshaled.(common.BuildDefinition)
+	if !ok {
+		return nil, fmt.Errorf("definition %T is not a BuildDefinition", unmarshaled)
+	}
+
+	defHash, err := b.defDb.HashDefinition(buildDef)
+	if err != nil {
+		return nil, err
+	}
+
+	defDir, err := b.buildDir.CreateBuildDirectory(defHash)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := defDir.WriteDefinition(def); err != nil {
+		return nil, err
+	}
+
+	return buildDef, nil
+}
+
 // GetDefinitionByHash implements common.Builder.
 func (b *builder) GetDefinitionByHash(hash hash.Hash) (common.BuildDefinition, error) {
 	def, err := b.defDb.GetDefinitionByHash(hash)

@@ -336,6 +336,11 @@ type builder1 struct {
 	buildDir string
 }
 
+// ImportAndValidate implements common.Builder.
+func (db *builder1) ImportAndValidate(def []byte) (common.BuildDefinition, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
 // MinimalContext implements common.Builder.
 func (db *builder1) MinimalContext() common.MinimalBuildContext {
 	return db.newBuildContext(nil)

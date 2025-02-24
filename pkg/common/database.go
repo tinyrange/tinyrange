@@ -312,6 +312,8 @@ type Builder interface {
 	MinimalContext() MinimalBuildContext
 	// GetDefinitionByHash returns a definition by hash.
 	GetDefinitionByHash(hash hash.Hash) (BuildDefinition, error)
+	// ImportAndValidate imports and validates a definition adding it to the build cache in an unbuilt state.
+	ImportAndValidate(def []byte) (BuildDefinition, error)
 }
 
 // PackageDatabase is the core interface.
