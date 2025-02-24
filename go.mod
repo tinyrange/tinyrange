@@ -21,7 +21,7 @@ require (
 	github.com/jsimonetti/rtnetlink v1.4.2
 	github.com/klauspost/compress v1.17.11
 	github.com/miekg/dns v1.1.63
-	github.com/moby/buildkit v0.19.0
+	github.com/moby/buildkit v0.20.0
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/ramr/go-reaper v0.2.3
 	github.com/schollz/progressbar/v3 v3.18.0
