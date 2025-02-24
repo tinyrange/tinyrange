@@ -324,15 +324,16 @@ func (r *loggerRegion) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 type driver struct {
-	configs      []config.TinyRangeConfig
-	buildDir     string
-	debug        bool
-	secureSSH    string
-	persistPath  string
-	exportFsPath string
-	dumpFsPath   string
-	nbdBlockSize int
-	wireguardUrl string
+	configs           []config.TinyRangeConfig
+	buildDir          string
+	debug             bool
+	secureSSH         string
+	persistPath       string
+	exportFsPath      string
+	dumpFsPath        string
+	nbdBlockSize      int
+	wireguardUrl      string
+	packetCapturePath string
 
 	dumpWriter *csv.Writer
 
@@ -1251,6 +1252,18 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		}
 	}
 
+	if d.packetCapturePath != "" {
+		writer, err := os.Create(d.packetCapturePath)
+		if err != nil {
+			return fmt.Errorf("failed to create packet capture: %w", err)
+		}
+		defer writer.Close()
+
+		if err := ns.OpenPacketCapture(writer); err != nil {
+			return fmt.Errorf("failed to open packet capture: %w", err)
+		}
+	}
+
 	nic, err := ns.AttachNetworkInterface()
 	if err != nil {
 		return fmt.Errorf("failed to attach network interface: %w", err)
@@ -1509,16 +1522,17 @@ var (
 )
 
 var (
-	doPrepare    = flag.Bool("prepare", false, "prepare the driver and check if it is runnable")
-	buildDir     = flag.String("build-dir", common.GetDefaultBuildDir(), "the build directory")
-	debug        = flag.Bool("debug", false, "enable debug mode")
-	verbose      = flag.Bool("verbose", false, "enable verbose mode")
-	secureSSH    = flag.String("secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
-	persistPath  = flag.String("persist-path", "", "Specify a path to save VM files to.")
-	exportFsPath = flag.String("exportfs", "", "Export the filesystem to a file.")
-	dumpFsPath   = flag.String("dumpfs", "", "Dump the filename and offset of any reads from the filesystem to a CSV file.")
-	wireguardUrl = flag.String("wireguard-url", "", "URL to fetch wireguard config from.")
-	nbdBlockSize = flag.Int("nbd-block-size", 0, "Override the preferred and maximum block size for the NBD server. This can have major performance implications.")
+	doPrepare         = flag.Bool("prepare", false, "prepare the driver and check if it is runnable")
+	buildDir          = flag.String("build-dir", common.GetDefaultBuildDir(), "the build directory")
+	debug             = flag.Bool("debug", false, "enable debug mode")
+	verbose           = flag.Bool("verbose", false, "enable verbose mode")
+	secureSSH         = flag.String("secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
+	persistPath       = flag.String("persist-path", "", "Specify a path to save VM files to.")
+	exportFsPath      = flag.String("exportfs", "", "Export the filesystem to a file.")
+	dumpFsPath        = flag.String("dumpfs", "", "Dump the filename and offset of any reads from the filesystem to a CSV file.")
+	wireguardUrl      = flag.String("wireguard-url", "", "URL to fetch wireguard config from.")
+	nbdBlockSize      = flag.Int("nbd-block-size", 0, "Override the preferred and maximum block size for the NBD server. This can have major performance implications.")
+	packetCapturePath = flag.String("packet-capture", "", "Path to write packet capture in pcap format to.")
 )
 
 func entryMain(
@@ -1532,14 +1546,15 @@ func entryMain(
 	}
 
 	driver := &driver{
-		buildDir:     *buildDir,
-		debug:        *debug,
-		secureSSH:    *secureSSH,
-		persistPath:  *persistPath,
-		exportFsPath: *exportFsPath,
-		dumpFsPath:   *dumpFsPath,
-		wireguardUrl: *wireguardUrl,
-		nbdBlockSize: *nbdBlockSize,
+		buildDir:          *buildDir,
+		debug:             *debug,
+		secureSSH:         *secureSSH,
+		persistPath:       *persistPath,
+		exportFsPath:      *exportFsPath,
+		dumpFsPath:        *dumpFsPath,
+		wireguardUrl:      *wireguardUrl,
+		nbdBlockSize:      *nbdBlockSize,
+		packetCapturePath: *packetCapturePath,
 	}
 
 	if *doPrepare {
