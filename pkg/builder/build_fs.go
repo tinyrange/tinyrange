@@ -106,6 +106,10 @@ func (i *initRamFsBuilderResult) WriteResult(w io.Writer) error {
 			} else {
 				return fmt.Errorf("unhandled builtin: %s", c.Name)
 			}
+		} else if frag.RunCommand != nil {
+			// Ignore run commands.
+		} else if frag.Environment != nil {
+			// Ignore environment.
 		} else {
 			return fmt.Errorf("unhandled fragment type: %+v", frag)
 		}

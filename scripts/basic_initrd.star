@@ -3,9 +3,7 @@ INIT_C = """
 #include <stdbool.h>
 
 int main() {
-    while (true) {
-        fprintf(stdout, "Hello, world!\\n");
-    }
+    printf("Hello, world!\\n");
     return 0x1337;
 }
 """
@@ -23,6 +21,20 @@ simple_init = define.build_vm(
         directive.run_command("gcc -static -o /root/init /root/init.c"),
     ],
     output = "/root/init",
+)
+
+init_script = file("""#!/bin/sh
+
+/bin/sh""")
+
+planned_init = define.build_fs(
+    directives = [
+        define.fetch_oci_image(
+            image = "library/alpine",
+        ),
+        directive.add_file("init", init_script, executable=True),
+    ],
+    kind = "initramfs",
 )
 
 init = define.build_fs(
