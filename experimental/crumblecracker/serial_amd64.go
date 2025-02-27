@@ -23,14 +23,15 @@ const (
 	serialIIR_RLSI   = 0x6
 	serialIIR_CTI    = 0xc
 
-	serialLSR_DATA_READY        = 0x1
-	serialLSR_TX_EMPTY          = 0x20
-	serialLSR_TRANSMITTER_EMPTY = 0x40
+	serialLSR_DR   = 0x1
+	serialLSR_THRE = 0x20
+	serialLSR_TEMT = 0x40
 )
 
 type SerialDevice struct {
 	Base   uint16
 	Writer io.Writer
+	IRQ    byte
 	Input  chan byte
 
 	vm VMDevice
@@ -45,7 +46,6 @@ type SerialDevice struct {
 	scratch      byte
 	lsr          byte
 
-	irq  byte
 	ints uint32
 }
 
@@ -54,7 +54,7 @@ func (s *SerialDevice) Init(dev VMDevice) error {
 
 	s.vm = dev
 
-	s.lsr = serialLSR_TRANSMITTER_EMPTY | serialLSR_TX_EMPTY
+	s.lsr = serialLSR_TEMT | serialLSR_THRE
 	s.iir = serialIIR_NO_INT
 
 	return nil
@@ -63,6 +63,14 @@ func (s *SerialDevice) Init(dev VMDevice) error {
 func (s *SerialDevice) Write(data []byte) (int, error) {
 	for _, b := range data {
 		s.Input <- b
+	}
+
+	s.lsr |= serialLSR_DR
+
+	if s.fifoControl&1 != 0 {
+		s.throwInterrupt(serialIIR_CTI)
+	} else {
+		s.throwInterrupt(serialIIR_RDI)
 	}
 
 	return len(data), nil
@@ -96,7 +104,7 @@ func (s *SerialDevice) IO(io *kvm.KVMIoEvent) error {
 				select {
 				case data = <-s.Input:
 				default:
-					s.lsr &^= serialLSR_DATA_READY
+					s.lsr &^= serialLSR_DR
 					if err := s.clearInterrupt(serialIIR_CTI); err != nil {
 						return fmt.Errorf("failed to clear interrupt: %w", err)
 					}
@@ -110,10 +118,19 @@ func (s *SerialDevice) IO(io *kvm.KVMIoEvent) error {
 				return nil
 			}
 		case kvm.IoDirectionWrite: // serial write
+			if s.lineControl&serialDLAB != 0 {
+				s.baudRate = s.baudRate&0xFF00 | uint16(io.Read()[0])
+				return nil
+			}
+
 			data := io.Read()
 
 			if _, err := s.Writer.Write(data); err != nil {
 				return fmt.Errorf("failed to write to stdout: %w", err)
+			}
+
+			if err := s.throwInterrupt(serialIIR_THRI); err != nil {
+				return fmt.Errorf("failed to throw interrupt: %w", err)
 			}
 
 			return nil
@@ -243,21 +260,17 @@ func (s *SerialDevice) setModemStatus(status byte) {
 }
 
 func (s *SerialDevice) checkInterrupt() error {
-	if (s.ints&(1<<serialIIR_CTI) != 0) && (s.ier&serialIER_RDI != 0) {
-		s.iir = serialIIR_CTI
-		return s.vm.RaiseIrq(s.irq)
-	} else if (s.ints&(1<<serialIIR_RDI) != 0) && (s.ier&serialIER_RDI != 0) {
+	if (s.lsr&serialLSR_DR != 0) && (s.ier&serialIER_RDI != 0) {
 		s.iir = serialIIR_RDI
-		return s.vm.RaiseIrq(s.irq)
-	} else if (s.ints&(1<<serialIIR_THRI) != 0) && (s.ier&serialIER_THRI != 0) {
+	} else if (s.lsr&serialLSR_THRE != 0) && (s.ier&serialIER_THRI != 0) {
 		s.iir = serialIIR_THRI
-		return s.vm.RaiseIrq(s.irq)
-	} else if (s.ints&(1<<serialIIR_MSI) != 0) && (s.ier&serialIER_MSI != 0) {
-		s.iir = serialIIR_MSI
-		return s.vm.RaiseIrq(s.irq)
 	} else {
 		s.iir = serialIIR_NO_INT
-		return s.vm.LowerIrq(s.irq)
+	}
+	if s.iir != serialIIR_NO_INT {
+		return s.vm.RaiseIrq(s.IRQ)
+	} else {
+		return s.vm.LowerIrq(s.IRQ)
 	}
 }
 

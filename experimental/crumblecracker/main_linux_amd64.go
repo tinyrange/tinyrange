@@ -13,14 +13,16 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/tinyrange/tinyrange/experimental/crumblecracker/kvm"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 	"golang.org/x/arch/x86/x86asm"
+	"golang.org/x/term"
 )
+
+var START_TIME = time.Now()
 
 // From: https://github.com/bobuhiro11/gokvm
 
@@ -42,74 +44,6 @@ const (
 	MBBIOSBegin      = 0x000f0000
 	MBBIOSEnd        = 0x000fffff
 )
-
-type E820Entry struct {
-	Addr uint64
-	Size uint64
-	Type uint32
-}
-
-// The so-called "zeropage"
-// https://www.kernel.org/doc/html/latest/x86/boot.html
-// https://github.com/torvalds/linux/blob/master/arch/x86/include/uapi/asm/bootparam.h
-type BootParam struct {
-	Padding             [0x1e8]uint8
-	E820Entries         uint8
-	EddbufEntries       uint8
-	EddMbrSigBufEntries uint8
-	KdbStatus           uint8
-	Padding2            [5]uint8
-	Hdr                 SetupHeader
-	Padding3            [0x290 - 0x1f1 - unsafe.Sizeof(SetupHeader{})]uint8
-
-	// Required to adjust the offset of E820Map to 0x2D0.
-	Padding4 [0x3d]uint8
-
-	EddMbrSigBuffer [EddMbrSigMax]uint8
-	E820Map         [E820Max]E820Entry
-}
-
-type SetupHeader struct {
-	SetupSects          uint8
-	RootFlags           uint16
-	SysSize             uint32
-	RAMSize             uint16
-	VidMode             uint16
-	RootDev             uint16
-	BootFlag            uint16
-	Jump                uint16
-	Header              uint32
-	Version             uint16
-	ReadModeSwitch      uint32
-	StartSysSeg         uint16
-	KernelVersion       uint16
-	TypeOfLoader        uint8
-	LoadFlags           uint8
-	SetupMoveSize       uint16
-	Code32Start         uint32
-	RamdiskImage        uint32
-	RamdiskSize         uint32
-	BootsectKludge      uint32
-	HeapEndPtr          uint16
-	ExtLoaderVer        uint8
-	ExtLoaderType       uint8
-	CmdlinePtr          uint32
-	InitrdAddrMax       uint32
-	KernelAlignment     uint32
-	RelocatableKernel   uint8
-	MinAlignment        uint8
-	XloadFlags          uint16
-	CmdlineSize         uint32
-	HardwareSubarch     uint32
-	HardwareSubarchData uint64
-	PayloadOffset       uint32
-	PayloadLength       uint32
-	SetupData           uint64
-	PrefAddress         uint64
-	InitSize            uint32
-	HandoverOffset      uint32
-	KernelInfoOffset    uint32
-}
 
 type HypervisorDevice struct {
 	kvm       *kvm.KVMDevice
@@ -215,6 +149,13 @@ func (vm *VirtualMachine) RaiseIrq(irq byte) error {
 	return vm.vm.SetIRQStatus(uint32(irq), 1)
 }
 
+const (
+	KERNEL_PARAMS_ADDR  = 0x10000
+	KERNEL_CMDLINE_ADDR = 0x20000
+	KERNEL_LOAD_ADDR    = 0x100000
+	KERNEL_INITRD_ADDR  = 0x4000000
+)
+
 func (vm *VirtualMachine) loadLinux(imagePath string, initrdPath string, cmdline string) error {
 	image, err := os.Open(imagePath)
 	if err != nil {
@@ -227,25 +168,48 @@ func (vm *VirtualMachine) loadLinux(imagePath string, initrdPath string, cmdline
 		return fmt.Errorf("failed to stat image: %w", err)
 	}
 
-	var hdr BootParam
+	var hdr BootParams
 
-	if err := binary.Read(io.NewSectionReader(image, 0, int64(binary.Size(&hdr))), binary.LittleEndian, &hdr); err != nil {
+	// if err := binary.Read(io.NewSectionReader(image, 0, int64(binary.Size(&hdr))), binary.LittleEndian, &hdr); err != nil {
+	// 	return fmt.Errorf("failed to read boot param: %w", err)
+	// }
+
+	if _, err := io.Copy(
+		io.NewOffsetWriter(&hdr, 0),
+		io.NewSectionReader(image, 0, int64(binary.Size(&hdr))),
+	); err != nil {
 		return fmt.Errorf("failed to read boot param: %w", err)
 	}
 
-	if hdr.Hdr.Header != MagicSignature {
-		return fmt.Errorf("invalid boot param signature: %x", hdr.Hdr.Header)
+	if hdr.SetupSignature() != MagicSignature {
+		return fmt.Errorf("invalid boot param signature: %x", hdr.SetupSignature())
 	}
 
-	if hdr.Hdr.Version < 0x0206 {
-		return fmt.Errorf("unsupported boot param version: %x", hdr.Hdr.Version)
+	if hdr.HeaderFormatVersion() < 0x0206 {
+		return fmt.Errorf("unsupported boot param version: %x", hdr.HeaderFormatVersion())
 	}
 
-	setupSectors := int64(hdr.Hdr.SetupSects)
+	setupSectors := int64(hdr.SetupSects())
 	setupSize := int64(setupSectors+1) * 512
 
-	hdr.Hdr.VidMode = 0xffff // VGA
-	hdr.Hdr.TypeOfLoader = 0xff
+	var newHdr BootParams
+
+	var setupHdrStart int64 = 0x1f1
+	var setupHdrEnd int64 = 0x202 + int64(hdr[0x201])
+
+	// copy the setup header
+	if _, err := io.Copy(
+		io.NewOffsetWriter(&newHdr, setupHdrStart), // start of setup_sects
+		io.NewSectionReader(hdr, setupHdrStart, (setupHdrEnd)-setupHdrStart),
+	); err != nil {
+		return fmt.Errorf("failed to copy setup header: %w", err)
+	}
+
+	newHdr.SetMountRootRdonly(0)
+	newHdr.SetOrigVideoMode(0xff) // VGA
+	newHdr.SetCmdLinePtr(KERNEL_CMDLINE_ADDR)
+	newHdr.SetAltMemK(uint32(vm.mem.Size()/1024 - 1024))
+	newHdr.SetLoaderType(0x01)
 	if initrdPath != "" {
 		initrd, err := os.Open(initrdPath)
 		if err != nil {
@@ -258,28 +222,39 @@ func (vm *VirtualMachine) loadLinux(imagePath string, initrdPath string, cmdline
 			return fmt.Errorf("failed to stat initrd: %w", err)
 		}
 
-		hdr.Hdr.RamdiskImage = 0x30000
-		hdr.Hdr.RamdiskSize = uint32(initrdStat.Size())
+		// slog.Info("", "kernel end", fmt.Sprintf("0x%x", KERNEL_LOAD_ADDR+imageStat.Size()-setupSize))
 
-		if _, err := io.Copy(io.NewOffsetWriter(vm.mem, 0x30000), initrd); err != nil {
+		// if KERNEL_INITRD_ADDR+uint64(initrdStat.Size()) > 0x100000 {
+		// 	return fmt.Errorf("initrd too large: 0x%x", initrdStat.Size())
+		// }
+
+		newHdr.SetInitrdStart(KERNEL_INITRD_ADDR)
+		newHdr.SetInitrdSize(uint32(initrdStat.Size()))
+
+		if _, err := io.Copy(io.NewOffsetWriter(vm.mem, KERNEL_INITRD_ADDR), initrd); err != nil {
 			return fmt.Errorf("failed to write initrd: %w", err)
 		}
-	} else {
-		hdr.Hdr.RamdiskImage = 0x0
-		hdr.Hdr.RamdiskSize = 0x0
 	}
-	hdr.Hdr.LoadFlags = CanUseHeap | LoadedHigh | KeepSegments
-	hdr.Hdr.HeapEndPtr = 0xfe00
-	hdr.Hdr.ExtLoaderVer = 0x0
-	hdr.Hdr.CmdlinePtr = 0x20000
+	newHdr.SetLoadflags(CanUseHeap | LoadedHigh | KeepSegments)
+	newHdr.SetSetupSHeapEndPointer(0xfe00)
+	// hdr.Hdr.ExtLoaderVer = 0x0
 
-	if err := binary.Write(io.NewOffsetWriter(vm.mem, 0x10000), binary.LittleEndian, &hdr); err != nil {
+	newHdr.SetGdtTable(2, 0x00cf9b000000ffff) // CS
+	newHdr.SetGdtTable(3, 0x00cf93000000ffff) // DS
+
+	// if err := binary.Write(io.NewOffsetWriter(vm.mem, 0x10000), binary.LittleEndian, &newHdr); err != nil {
+	// 	return fmt.Errorf("failed to write boot param: %w", err)
+	// }
+	if _, err := io.Copy(
+		io.NewOffsetWriter(vm.mem, KERNEL_PARAMS_ADDR),
+		io.NewSectionReader(&newHdr, 0, int64(binary.Size(&newHdr))),
+	); err != nil {
 		return fmt.Errorf("failed to write boot param: %w", err)
 	}
-	if _, err := io.Copy(io.NewOffsetWriter(vm.mem, 0x20000), bytes.NewBufferString(cmdline)); err != nil {
+	if _, err := io.Copy(io.NewOffsetWriter(vm.mem, KERNEL_CMDLINE_ADDR), bytes.NewBufferString(cmdline)); err != nil {
 		return fmt.Errorf("failed to write command line: %w", err)
 	}
-	if _, err := io.Copy(io.NewOffsetWriter(vm.mem, 0x100000), io.NewSectionReader(image, setupSize, imageStat.Size()-setupSize)); err != nil {
+	if _, err := io.Copy(io.NewOffsetWriter(vm.mem, KERNEL_LOAD_ADDR), io.NewSectionReader(image, setupSize, imageStat.Size()-setupSize)); err != nil {
 		return fmt.Errorf("failed to write kernel: %w", err)
 	}
 
@@ -418,33 +393,32 @@ func (vm *VirtualCPU) setRegisters() error {
 		return fmt.Errorf("failed to get special registers: %w", err)
 	}
 
-	sregs.CS.Base = 0
-	sregs.CS.Limit = ^uint32(0)
-	sregs.CS.G = 1
+	sregs.CR0 |= (1 << 0) // CR0_PE
+	// sregs.gdt.base = KERNEL_PARAMS_ADDR +
+	// 				 offsetof(struct linux_params, gdt_table);
+	sregs.GDT.Base = KERNEL_PARAMS_ADDR + 4096
+	// sregs.gdt.limit = sizeof(params->gdt_table) - 1;
+	sregs.GDT.Limit = 32 - 1
 
-	sregs.DS.Base = 0
-	sregs.DS.Limit = ^uint32(0)
-	sregs.DS.G = 1
+	seg := kvm.KVMSegment{}
 
-	sregs.FS.Base = 0
-	sregs.FS.Limit = ^uint32(0)
-	sregs.FS.G = 1
+	seg.Limit = 0xffffffff
+	seg.Present = 1
+	seg.DB = 1
+	seg.S = 1 // code/data
+	seg.G = 1 // 4KB granularity
 
-	sregs.GS.Base = 0
-	sregs.GS.Limit = ^uint32(0)
-	sregs.GS.G = 1
+	seg.Type = 0xb // code
+	seg.Selector = 2 << 3
+	sregs.CS = seg
 
-	sregs.ES.Base = 0
-	sregs.ES.Limit = ^uint32(0)
-	sregs.ES.G = 1
-
-	sregs.SS.Base = 0
-	sregs.SS.Limit = ^uint32(0)
-	sregs.SS.G = 1
-
-	sregs.CS.DB = 1
-	sregs.DS.DB = 1
-	sregs.CR0 |= 1 // Enable protected mode.
+	seg.Type = 0x3 // data
+	seg.Selector = 3 << 3
+	sregs.DS = seg
+	sregs.ES = seg
+	sregs.SS = seg
+	sregs.FS = seg
+	sregs.GS = seg
 
 	if err := vm.cpu.SetSpecialRegisters(sregs); err != nil {
 		return fmt.Errorf("failed to set special registers: %w", err)
@@ -455,9 +429,9 @@ func (vm *VirtualCPU) setRegisters() error {
 		return fmt.Errorf("failed to get registers: %w", err)
 	}
 
+	regs.RIP = KERNEL_LOAD_ADDR
+	regs.RSI = KERNEL_PARAMS_ADDR
 	regs.RFLAGS = 2
-	regs.RIP = 0x100000
-	regs.RSI = 0x10000
 
 	if err := vm.cpu.SetRegisters(regs); err != nil {
 		return fmt.Errorf("failed to set registers: %w", err)
@@ -491,18 +465,24 @@ func (vm *VirtualCPU) setCPUID() error {
 
 func (cpu *VirtualCPU) Run() error {
 	go func() {
+		counts := 0
 		for {
 			os.WriteFile("dump.mem", cpu.vm.mem.(vm.RawRegion), os.ModePerm)
 
 			slog.Info("dumped memory")
 
 			time.Sleep(1 * time.Second)
+
+			if counts++; counts > 4 {
+				os.Exit(1)
+			}
 		}
 	}()
 
 	var devices []IODevice
 
 	devices = append(devices, &NopDevice{PortList: []uint16{
+		0x60,
 		0x61,
 		0x64,
 
@@ -510,6 +490,8 @@ func (cpu *VirtualCPU) Run() error {
 		0x71,
 
 		0x80,
+
+		0xde,
 
 		0x2e9,
 
@@ -529,8 +511,16 @@ func (cpu *VirtualCPU) Run() error {
 
 	serial := &SerialDevice{
 		Base:   0x3f8,
+		IRQ:    4,
 		Writer: os.Stdout,
 	}
+
+	fd := int(os.Stdin.Fd())
+	state, err := term.MakeRaw(fd)
+	if err != nil {
+		return fmt.Errorf("failed to make terminal raw: %v", err)
+	}
+	defer func() { _ = term.Restore(fd, state) }()
 
 	go func() {
 		buf := make([]byte, 1024)
@@ -561,6 +551,8 @@ func (cpu *VirtualCPU) Run() error {
 		}
 	}
 
+	slog.Info("running", "initTime", time.Since(START_TIME))
+
 	for {
 		exit, err := cpu.cpu.RunOnce()
 		if err != nil {
@@ -590,7 +582,6 @@ func (cpu *VirtualCPU) Run() error {
 
 			return nil
 		case kvm.ExitIntr:
-			// slog.Info("interrupt")
 			continue
 		case kvm.ExitDebug:
 			// if err := cpu.DumpRegisters(os.Stderr); err != nil {

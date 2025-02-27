@@ -1,0 +1,98 @@
+type E820Map struct {
+    m_addr  u64_le
+    m_size  u64_le
+    m_type  u32_le
+}
+
+type BootParams struct {
+    orig_x                   u8            // 0x00
+    orig_y                   u8            // 0x01
+    ext_mem_k                u16_le        // 0x02
+    orig_video_page          u16_le        // 0x04
+    orig_video_mode          u8            // 0x06
+    orig_video_cols          u8            // 0x07
+    flags                    u8            // 0x08
+    unused2                  u8            // 0x09
+    orig_video_ega_bx        u16_le        // 0x0a
+    unused3                  u16_le        // 0x0c
+    orig_video_lines         u8            // 0x0e
+    orig_video_isVGA         u8            // 0x0f
+    orig_video_points        u16_le        // 0x10
+
+    lfb_width                u16_le        // 0x12
+    lfb_height               u16_le        // 0x14
+    lfb_depth                u16_le        // 0x16
+    lfb_base                 u32_le        // 0x18
+    lfb_size                 u32_le        // 0x1c
+    cl_magic                 u16_le        // 0x20
+    cl_offset                u16_le        // 0x22
+    lfb_linelength           u16_le        // 0x24
+    red_size                 u8            // 0x26
+    red_pos                  u8            // 0x27
+    green_size               u8            // 0x28
+    green_pos                u8            // 0x29
+    blue_size                u8            // 0x2a
+    blue_pos                 u8            // 0x2b
+    rsvd_size                u8            // 0x2c
+    rsvd_pos                 u8            // 0x2d
+    vesapm_seg               u16_le        // 0x2e
+    vesapm_off               u16_le        // 0x30
+    pages                    u16_le        // 0x32
+    vesa_attributes          u16_le        // 0x34
+    capabilities             u32_le        // 0x36
+    ext_lfb_base             u32_le        // 0x3a
+    _reserved                [2]u8         // 0x3e
+
+    apm_bios_info            [20]u8       // 0x40
+    pad2                     [44]u8       // 0x54 .. 0x80
+
+    hd0_info                 [16]u8       // 0x80
+    hd1_info                 [16]u8       // 0x90
+
+    sys_description_len      u16_le       // 0x0a0
+    sys_description_table    [14]u8       // 0x0a2
+    pad3                     [304]u8      // 0x0b0 .. 0x1e0
+
+    alt_mem_k                u32_le       // 0x1e0
+    pad4                     [4]u8        // 0x1e4
+
+    e820map_entries          u8           // 0x1e8
+    eddbuf_entries           u8           // 0x1e9
+    pad5                     [7]u8        // 0x1ea .. 0x1f1
+    setup_sects              u8           // 0x1f1
+    mount_root_rdonly        u16_le       // 0x1f2
+    sys_size                 u16_le       // 0x1f4
+    swap_dev                 u16_le       // 0x1f6
+    ramdisk_flags            u16_le       // 0x1f8
+    vga_mode                 u16_le       // 0x1fa
+    orig_root_dev            u16_le       // 0x1fc
+    pad6                     [1]u8        // 0x1fe
+    aux_device_info          u8           // 0x1ff
+    jump_setup               u16_le       // 0x200
+    setup_signature          u32_le       // 0x202
+    header_format_version    u16_le       // 0x206
+    setup_S_temp0            [8]u8        // 0x208
+    loader_type              u8           // 0x210
+    loadflags                u8           // 0x211
+    setup_S_temp1            u16_le       // 0x212
+    kernel_start             u32_le       // 0x214
+    initrd_start             u32_le       // 0x218
+    initrd_size              u32_le       // 0x21c
+    setup_S_temp2            [4]u8        // 0x220
+    setup_S_heap_end_pointer u16_le       // 0x224
+    ext_loader_ver           u8           // 0x226
+    ext_loader_type          u8           // 0x227
+    cmd_line_ptr             u32_le       // 0x228
+    initrd_addr_max          u32_le       // 0x22c
+    pad7                     [160]u8      // 0x230 .. 0x2d0
+
+    e820map                  [32]E820Map  // 0x2d0
+
+    pad8                     [176]u8      // 0x550 .. 0x600
+    eddbuf                   [468]u8      // 0x600 .. 0x7d4
+    pad9                     [44]u8       // 0x7d4 .. 0x800
+
+    commandline              [0x800]u8    // 0x800
+
+    gdt_table                [4]u64_le
+}
