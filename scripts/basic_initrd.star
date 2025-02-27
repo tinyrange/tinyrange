@@ -4,16 +4,16 @@ INIT_C = """
 
 int main() {
     while (true) {
-        fprintf(stderr, "Hello, world!\\n");
+        fprintf(stdout, "Hello, world!\\n");
     }
-    return 0;
+    return 0x1337;
 }
 """
 
 simple_init = define.build_vm(
     directives = [
         define.plan(
-            builder = "alpine@3.20",
+            builder = "alpine@3.21",
             packages = [
                 query("build-base"),
             ],

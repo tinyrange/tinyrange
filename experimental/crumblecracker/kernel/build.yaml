@@ -4,7 +4,7 @@ version: 1
 architecture: x86_64
 builder: alpine@3.21
 environment:
-  - KERNEL_VERSION=4.19.28
+  - KERNEL_VERSION=5.15.178
 commands:
   - mv /root/linux-$KERNEL_VERSION.proposed.config /root/linux-$KERNEL_VERSION/.config
   - cd /root/linux-$KERNEL_VERSION; make -j6
@@ -12,7 +12,7 @@ commands:
 files:
   - linux-$KERNEL_VERSION.proposed.config
 archives:
-  - https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-$KERNEL_VERSION.tar.xz
+  - https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-$KERNEL_VERSION.tar.xz
 output: /root/vmlinux-$KERNEL_VERSION.proposed
 packages:
   - build-base
