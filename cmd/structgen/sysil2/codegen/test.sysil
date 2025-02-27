@@ -1,0 +1,22 @@
+type test struct {
+    by byte
+
+    a u8
+    b u16_le
+    c u32_le
+    d u64_le
+
+    ai i8
+    bi i16_le
+    ci i32_le
+    di i64_le
+}
+
+type test2 struct {
+    arr [10]u32_le
+}
+
+type test3 struct {
+    a u64_le
+    b test2
+}
