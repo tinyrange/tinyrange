@@ -533,6 +533,16 @@ func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.
 				field.SetBool(ret)
 
 				return nil
+			case reflect.Uint8:
+				var ret uint8
+
+				if err := json.Unmarshal(val, &ret); err != nil {
+					return err
+				}
+
+				field.SetUint(uint64(ret))
+
+				return nil
 			case reflect.Int64:
 				var ret int64
 

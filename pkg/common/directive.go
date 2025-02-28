@@ -10,6 +10,9 @@ import (
 )
 
 func init() {
+	hash.RegisterType(DirectiveAddFile{})
+	hash.RegisterType(DirectiveArchive{})
+	hash.RegisterType(DirectiveLocalFile{})
 	hash.RegisterType(DirectiveRunCommand{})
 	hash.RegisterType(DirectiveRunStarlarkScript{})
 	hash.RegisterType(DirectiveStartServiceCommand{})

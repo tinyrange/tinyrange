@@ -11,7 +11,8 @@ import (
 )
 
 var (
-	buildOutput string
+	buildOutput   string
+	buildUseCache bool
 )
 
 var buildCmd = &cobra.Command{
@@ -45,7 +46,7 @@ var buildCmd = &cobra.Command{
 
 		if def, ok := ret.(common.BuildDefinition); ok {
 			art, err := db.Builder().Build(def, common.BuildOptions{
-				AlwaysRebuild: true,
+				AlwaysRebuild: !buildUseCache,
 			})
 			if err != nil {
 				slog.Error("fatal", "err", err)
@@ -84,5 +85,6 @@ var buildCmd = &cobra.Command{
 
 func init() {
 	buildCmd.PersistentFlags().StringVarP(&buildOutput, "output", "o", "", "if specified then copy the build output to a local file at path")
+	buildCmd.PersistentFlags().BoolVarP(&buildUseCache, "use-cache", "c", false, "if specified then don't rebuild the top level definition if it already exists in the cache")
 	rootCmd.AddCommand(buildCmd)
 }

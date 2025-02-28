@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -29,7 +30,7 @@ var importCmd = &cobra.Command{
 		for _, def := range data.Definitions {
 			buildDef, err := db.Builder().ImportAndValidate(def)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to import definition: %w", err)
 			}
 
 			slog.Info("imported", "definition", buildDef)

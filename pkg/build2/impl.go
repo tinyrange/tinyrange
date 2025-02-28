@@ -598,7 +598,7 @@ type builder struct {
 func (b *builder) ImportAndValidate(def []byte) (common.BuildDefinition, error) {
 	unmarshaled, err := b.defDb.UnmarshalDefinition(bytes.NewReader(def))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal definition: %w", err)
 	}
 
 	buildDef, ok := unmarshaled.(common.BuildDefinition)
@@ -608,7 +608,7 @@ func (b *builder) ImportAndValidate(def []byte) (common.BuildDefinition, error) 
 
 	defHash, err := b.defDb.HashDefinition(buildDef)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to hash definition: %w", err)
 	}
 
 	defDir, err := b.buildDir.CreateBuildDirectory(defHash)
