@@ -12,6 +12,7 @@ import (
 	"runtime/pprof"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tinyrange/tinyrange/experimental/crumblecracker/kvm"
@@ -134,9 +135,17 @@ var (
 )
 
 type VirtualMachine struct {
-	hv  *HypervisorDevice
-	vm  *kvm.KVMVirtualMachine
-	mem vm.MemoryRegion
+	hv       *HypervisorDevice
+	vm       *kvm.KVMVirtualMachine
+	mem      vm.MemoryRegion
+	shutdown atomic.Bool
+}
+
+// Shutdown implements VMDevice.
+func (vm *VirtualMachine) Shutdown() error {
+	vm.shutdown.Store(true)
+
+	return nil
 }
 
 // LowerIrq implements CPUDevice.
@@ -464,22 +473,37 @@ func (vm *VirtualCPU) setCPUID() error {
 }
 
 func (cpu *VirtualCPU) Run() error {
+	var exit atomic.Bool
+
 	go func() {
 		counts := 0
 		for {
-			os.WriteFile("dump.mem", cpu.vm.mem.(vm.RawRegion), os.ModePerm)
-
-			slog.Info("dumped memory")
-
 			time.Sleep(1 * time.Second)
 
 			if counts++; counts > 4 {
-				os.Exit(1)
+				exit.Store(true)
+
+				return
 			}
 		}
 	}()
 
 	var devices []IODevice
+
+	cmos := &CMOSDevice{}
+
+	// RTC
+	devices = append(devices, cmos)
+
+	pci := &PciBus{
+		devices: make(map[uint8]*PciDevice),
+	}
+
+	// add i440fx chipset
+	pci.AddDevice(0x00, NewPciDevice(0x8086, 0x1237, 0x02, 0x0600))
+
+	// PCI
+	devices = append(devices, pci)
 
 	// Labels from https://bochs.sourceforge.io/techspec/PORTS.LST
 	devices = append(devices, &NopDevice{PortList: []uint16{
@@ -487,10 +511,6 @@ func (cpu *VirtualCPU) Run() error {
 		0x60, // data port (r/w)
 		0x61, // port B control (r/w)
 		0x64, // read status/input buffer (r/w)
-
-		// CMOS
-		0x70, // cmos address (w)
-		0x71, // cmos data (r/w)
 
 		// DMA page registers 74612
 		0x80, // extra page register (r/w)
@@ -520,10 +540,8 @@ func (cpu *VirtualCPU) Run() error {
 		0x3e9,
 
 		// Intel Pentium motherboard ("Neptune" chipset) ?
-		0xcf8, // i440fx PCI configuration address
 		0xcfa,
 		0xcfb,
-		0xcfc, // i440fx PCI configuration data
 		0xcfe,
 
 		// Intel Pentium motherboard ("Neptune" chipset) ?
@@ -606,6 +624,10 @@ func (cpu *VirtualCPU) Run() error {
 	slog.Info("running", "initTime", time.Since(START_TIME))
 
 	for {
+		if cpu.vm.shutdown.Load() || exit.Load() {
+			break
+		}
+
 		exit, err := cpu.cpu.RunOnce()
 		if err != nil {
 			return fmt.Errorf("failed to run CPU: %w", err)
@@ -620,8 +642,7 @@ func (cpu *VirtualCPU) Run() error {
 				continue
 			}
 			if err := device.IO(io); err != nil {
-				slog.Error("failed to handle io", "error", err)
-				continue
+				return fmt.Errorf("failed to handle io: %w", err)
 			}
 		case kvm.ExitShutdown:
 			slog.Info("shutdown")
@@ -629,8 +650,6 @@ func (cpu *VirtualCPU) Run() error {
 			if err := cpu.cpu.DumpRegisters(os.Stderr); err != nil {
 				return fmt.Errorf("failed to dump registers: %w", err)
 			}
-
-			os.WriteFile("dump.mem", cpu.vm.mem.(vm.RawRegion), os.ModePerm)
 
 			return nil
 		case kvm.ExitIntr:
@@ -662,6 +681,8 @@ func (cpu *VirtualCPU) Run() error {
 			return fmt.Errorf("unexpected exit: %s", exit)
 		}
 	}
+
+	return nil
 }
 
 // Attr implements starlark.HasAttrs.
@@ -761,6 +782,7 @@ func parseCommandLine(args []string) (*commandLineParams, error) {
 type VMDevice interface {
 	RaiseIrq(irq byte) error
 	LowerIrq(irq byte) error
+	Shutdown() error
 }
 
 type IODevice interface {
@@ -789,7 +811,87 @@ var (
 	_ IODevice = (*NopDevice)(nil)
 )
 
+type CMOSDevice struct {
+	Data [256]byte
+	addr uint8
+	cpu  VMDevice
+}
+
+func (c *CMOSDevice) Init(cpu VMDevice) error {
+	c.cpu = cpu
+
+	return nil
+}
+
+func (c *CMOSDevice) Ports() []uint16 {
+	return []uint16{
+		0x70, // address
+		0x71, // data
+	}
+}
+
+func (c *CMOSDevice) IO(io *kvm.KVMIoEvent) error {
+	port := io.Port - 0x70
+
+	if port == 0 && io.Direction == kvm.IoDirectionWrite {
+		c.addr = uint8(io.Read()[0]) & 0x7f
+
+		return nil
+	} else if port == 0 && io.Direction == kvm.IoDirectionRead {
+		io.Write([]byte{c.addr})
+
+		return nil
+	} else if port == 1 && io.Direction == kvm.IoDirectionWrite {
+		data := io.Read()[0]
+		slog.Info("CMOS write",
+			"addr", fmt.Sprintf("0x%02x", c.addr),
+			"data", fmt.Sprintf("0x%02x", data),
+		)
+		c.Data[c.addr] = io.Read()[0]
+
+		if c.addr == 0x0f {
+			switch data {
+			case 0x00:
+				slog.Info("CMOS shutdown")
+
+				return c.cpu.Shutdown()
+			}
+		}
+
+		return nil
+	} else if port == 1 && io.Direction == kvm.IoDirectionRead {
+		slog.Info("CMOS read",
+			"addr", fmt.Sprintf("0x%02x", c.addr),
+			"data", fmt.Sprintf("0x%02x", c.Data[c.addr]),
+		)
+
+		io.Write([]byte{c.Data[c.addr]})
+
+		return nil
+	} else {
+		return fmt.Errorf("unimplemented: port=0x%04x dir=%s size=%d", io.Port, io.Direction, io.Size)
+	}
+}
+
+var (
+	_ IODevice = (*CMOSDevice)(nil)
+)
+
+type newlineReplaceWriter struct {
+	w           io.Writer
+	replaceWith string
+}
+
+func (w *newlineReplaceWriter) Write(p []byte) (n int, err error) {
+	return w.w.Write(bytes.ReplaceAll(p, []byte("\n"), []byte(w.replaceWith)))
+}
+
 func appMain() error {
+	slog.SetDefault(slog.New(slog.NewTextHandler(&newlineReplaceWriter{
+		w:           os.Stderr,
+		replaceWith: "\r\n",
+	}, &slog.HandlerOptions{})))
+
 	args, err := parseCommandLine(os.Args[1:])
 	if err != nil {
 		return fmt.Errorf("failed to parse command line: %w", err)

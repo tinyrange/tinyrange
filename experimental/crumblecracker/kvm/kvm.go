@@ -878,11 +878,17 @@ type KVMIoEvent struct {
 }
 
 func (evt *KVMIoEvent) Read() []byte {
-	return unsafe.Slice((*byte)(unsafe.Pointer(uintptr(unsafe.Pointer(evt.runData))+uintptr(evt.dataOffset))), evt.Size)
+	return unsafe.Slice(
+		(*byte)(unsafe.Pointer(uintptr(unsafe.Pointer(evt.runData))+uintptr(evt.dataOffset))),
+		evt.Size,
+	)
 }
 
 func (evt *KVMIoEvent) Write(data []byte) {
-	copy(unsafe.Slice((*byte)(unsafe.Pointer(uintptr(unsafe.Pointer(evt.runData))+uintptr(evt.dataOffset))), evt.Size), data)
+	copy(
+		unsafe.Slice((*byte)(unsafe.Pointer(uintptr(unsafe.Pointer(evt.runData))+uintptr(evt.dataOffset))), evt.Size),
+		data,
+	)
 }
 
 type IoDirection uint8
@@ -1038,6 +1044,19 @@ func (cpu *KVMCPU) RaiseNMI() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to raise NMI: %w", err)
+	}
+
+	return nil
+}
+
+func (cpu *KVMCPU) Pause() error {
+	_, err := ioctl(
+		cpu.vcpuFd,
+		iio(kvmKVMClockCtrl),
+		uintptr(0),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to pause CPU: %w", err)
 	}
 
 	return nil
