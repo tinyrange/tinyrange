@@ -500,15 +500,22 @@ func (cpu *VirtualCPU) Run() error {
 	}
 
 	// add i440fx chipset
-	chipset := NewPciDevice(0x8086, 0x1237, 0x02, 0x0600)
+	chipset := NewPciDevice("i440fx", 0x8086, 0x1237, 0x02, 0x0600)
 	chipset.writeU16(0x2c, 0x1af4) // Red Hat, Inc.
 	chipset.writeU16(0x2e, 0x1100) // QEMU Virtual Machine
 	pci.AddDevice(0x00, chipset)
 
 	// add PIIX3
-	piix3 := NewPciDevice(0x8086, 0x7000, 0x00, 0x0601)
+	piix3 := NewPciDevice("PIIX3", 0x8086, 0x7000, 0x00, 0x0601)
 	piix3.writeU8(0x0e, 0x80) // header type
 	pci.AddDevice(0x08, piix3)
+
+	virtio := NewVirtioBus(cpu.vm, pci)
+
+	console := NewVirtioConsole(os.Stdout, os.Stderr)
+	if err := virtio.AddDevice(console); err != nil {
+		return fmt.Errorf("failed to add virtio console: %w", err)
+	}
 
 	// PCI
 	devices = append(devices, pci)
