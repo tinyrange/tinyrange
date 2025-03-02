@@ -12,6 +12,18 @@ type PciDevice struct {
 	config [256]byte
 }
 
+func (p *PciDevice) writeU32(addr uint32, val uint32) {
+	binary.LittleEndian.PutUint32(p.config[addr:addr+4], val)
+}
+
+func (p *PciDevice) writeU16(addr uint32, val uint16) {
+	binary.LittleEndian.PutUint16(p.config[addr:addr+2], val)
+}
+
+func (p *PciDevice) writeU8(addr uint32, val uint8) {
+	p.config[addr] = val
+}
+
 func (p *PciDevice) ConfigIO(io *kvm.KVMIoEvent, addr uint32) error {
 	switch io.Direction {
 	case kvm.IoDirectionRead:

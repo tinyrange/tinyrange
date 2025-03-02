@@ -23,16 +23,15 @@ simple_init = define.build_vm(
     output = "/root/init",
 )
 
-init_script = file("""#!/bin/sh
-
-/bin/sh""")
+init_script = file("""
+def main():
+    print("Hello, world!")
+""")
 
 planned_init = define.build_fs(
     directives = [
-        define.fetch_oci_image(
-            image = "library/alpine",
-        ),
-        directive.add_file("init", init_script, executable=True),
+        directive.builtin("init", "init"),
+        directive.add_file("init.star", init_script),
     ],
     kind = "initramfs",
 )
