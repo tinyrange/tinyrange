@@ -481,32 +481,84 @@ func (cpu *VirtualCPU) Run() error {
 
 	var devices []IODevice
 
+	// Labels from https://bochs.sourceforge.io/techspec/PORTS.LST
 	devices = append(devices, &NopDevice{PortList: []uint16{
-		0x60,
-		0x61,
-		0x64,
+		// keyboard controller
+		0x60, // data port (r/w)
+		0x61, // port B control (r/w)
+		0x64, // read status/input buffer (r/w)
 
-		0x70,
-		0x71,
+		// CMOS
+		0x70, // cmos address (w)
+		0x71, // cmos data (r/w)
 
-		0x80,
+		// DMA page registers 74612
+		0x80, // extra page register (r/w)
+		0x87, // DMA channel 0 address byte 2 (r/w)
 
-		0xde,
+		// DMA 2 (second Direct Memory Access controller 8237)
+		0xde, // DMA channel 4-7 write mask register (w)
 
+		// Serial Port
 		0x2e9,
 
+		// Serial Port
+		0x2f9,
+
+		// 1st Enhanced Graphics Adapter/VGA
 		0x3c0,
 		0x3c6,
 		0x3c8,
 		0x3c9,
 
+		// CGA
 		0x3d4,
 		0x3d5,
 		0x3da,
 
+		// Serial Port
 		0x3e9,
 
-		0x2f9,
+		// Intel Pentium motherboard ("Neptune" chipset) ?
+		0xcf8, // i440fx PCI configuration address
+		0xcfa,
+		0xcfb,
+		0xcfc, // i440fx PCI configuration data
+		0xcfe,
+
+		// Intel Pentium motherboard ("Neptune" chipset) ?
+		0xc000,
+		0xc00a,
+		0xc100,
+		0xc10a,
+		0xc200,
+		0xc20a,
+		0xc300,
+		0xc30a,
+		0xc400,
+		0xc40a,
+		0xc500,
+		0xc50a,
+		0xc600,
+		0xc60a,
+		0xc700,
+		0xc70a,
+		0xc800,
+		0xc80a,
+		0xc900,
+		0xc90a,
+		0xca00,
+		0xca0a,
+		0xcb00,
+		0xcb0a,
+		0xcc00,
+		0xcc0a,
+		0xcd00,
+		0xcd0a,
+		0xce00,
+		0xce0a,
+		0xcf00,
+		0xcf0a,
 	}})
 
 	serial := &SerialDevice{
