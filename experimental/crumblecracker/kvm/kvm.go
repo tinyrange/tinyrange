@@ -715,6 +715,20 @@ type KVMVirtualMachine struct {
 	memorySlots []*memoryRegion
 }
 
+func (vm *KVMVirtualMachine) Close() error {
+	for _, slot := range vm.memorySlots {
+		if err := syscall.Munmap(slot.mem); err != nil {
+			return fmt.Errorf("failed to unmap memory: %w", err)
+		}
+	}
+
+	if err := syscall.Close(int(vm.vmFd)); err != nil {
+		return fmt.Errorf("failed to close VM file descriptor: %w", err)
+	}
+
+	return nil
+}
+
 // UserSpaceMemoryRegion defines Memory Regions.
 type userSpaceMemoryRegion struct {
 	Slot          uint32
