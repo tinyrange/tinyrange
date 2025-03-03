@@ -194,6 +194,12 @@ func (sh *shellProgram) evalStmt(stmt *syntax.Stmt) error {
 			}
 
 			return nil
+		case syntax.OrStmt:
+			if err := sh.evalStmt(cmd.X); err != nil {
+				return sh.evalStmt(cmd.Y)
+			}
+
+			return nil
 		default:
 			return fmt.Errorf("BinaryCmd op %s not implemented", cmd.Op.String())
 		}
@@ -214,6 +220,9 @@ func (sh *shellProgram) evalStmt(stmt *syntax.Stmt) error {
 			return fmt.Errorf("DeclClause: %s not implemented", cmd.Variant.Value)
 		}
 	case *syntax.IfClause:
+		// ignore
+		return nil
+	case *syntax.ForClause:
 		// ignore
 		return nil
 	default:
@@ -327,13 +336,14 @@ func (sh *shellProgram) init() {
 	}
 
 	sh.builtIns["source"] = func(args []string) error {
-		if len(args) == 2 {
-			filename := args[1]
-
-			return sh.sourceFile(filename)
-		} else {
-			return fmt.Errorf("source not implemented: %+v", args)
+		if len(args) < 2 {
+			return fmt.Errorf("source requires a filename")
 		}
+
+		filename := args[1]
+		args = args[1:]
+
+		return sh.sourceFile(filename, args)
 	}
 
 	sh.builtIns["cd"] = func(args []string) error {
@@ -367,9 +377,24 @@ func (sh *shellProgram) init() {
 			return fmt.Errorf("cd not implemented: %+v", args)
 		}
 	}
+
+	sh.builtIns["exit"] = func(args []string) error {
+		if len(args) == 2 {
+			code, err := strconv.ParseInt(args[1], 10, 64)
+			if err != nil {
+				return err
+			}
+
+			sh.proc.Exit(int(code))
+		} else {
+			sh.proc.Exit(0)
+		}
+
+		return nil
+	}
 }
 
-func (sh *shellProgram) sourceFile(filename string) error {
+func (sh *shellProgram) sourceFile(filename string, args []string) error {
 	fh, err := sh.proc.Open(filename)
 	if err != nil {
 		return err
@@ -419,7 +444,7 @@ func (sh *shellProgram) Run(proc shared.Process, argv []string) error {
 
 		return sh.evalFile(f)
 	} else {
-		return sh.sourceFile(argv[1])
+		return sh.sourceFile(argv[1], argv[1:])
 	}
 }
 

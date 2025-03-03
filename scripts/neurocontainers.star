@@ -212,7 +212,7 @@ def cmd_neurodocker(proc, args):
 def cmd_sed(proc, args):
     print("sed", args)
 
-def create_neurocontainer_emulator(emu):
+def create_neurocontainer_emulator(ctx, emu):
     emu.add_command("wget", cmd_wget)
     emu.add_command("pip", cmd_pip)
     emu.add_command("python", cmd_python)
@@ -223,8 +223,14 @@ def create_neurocontainer_emulator(emu):
 EXCLUDED_RECIPES = [
     "neurocontainers-master/recipes/afni",  # AFNI.version is empty (19/08/2024)
     "neurocontainers-master/recipes/brkraw",  # Uses old TinyRange to generate.
-    "neurocontainers-master/recipes/cartool",  # Non-working with addtional commands for testing.
+    "neurocontainers-master/recipes/cartool",  # Non-working with additional commands for testing.
     "neurocontainers-master/recipes/itksnap",  # Has option for old TinyRange build.
+    "neurocontainers-master/recipes/brainnetviewer", # Uses new TinyRange.
+    "neurocontainers-master/recipes/niimath",  # Uses new TinyRange.
+    "neurocontainers-master/recipes/qmrlab",  # Uses new TinyRange.
+    "neurocontainers-master/recipes/radtract",  # Uses new TinyRange.
+    "neurocontainers-master/recipes/synthstrip",  # Uses new TinyRange.
+    "neurocontainers-master/recipes/vmtk",  # Uses new TinyRange.
 ]
 
 def main(args):

@@ -86,6 +86,11 @@ type process struct {
 	stderr io.Writer
 }
 
+// Exit implements shared.Process.
+func (proc *process) Exit(code int) error {
+	return fmt.Errorf("exit code %d", code)
+}
+
 // Get implements starlark.HasSetKey.
 func (proc *process) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
 	filename, ok := starlark.AsString(k)

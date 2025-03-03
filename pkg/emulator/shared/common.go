@@ -48,6 +48,7 @@ type Process interface {
 	Chdir(name string) error
 	Setenv(key string, value string)
 	Getenv(key string) string
+	Exit(code int) error
 
 	Stderr() io.Writer
 
