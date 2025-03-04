@@ -1,0 +1,6 @@
+version: 1
+builder: alpine@3.21
+commands:
+  - echo hello > /test/hello.txt
+volumes:
+  - trTest,128,/test,persist
