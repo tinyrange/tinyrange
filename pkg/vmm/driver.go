@@ -38,6 +38,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
+	"github.com/tinyrange/tinyrange/pkg/linux/goboot"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	_ "github.com/tinyrange/tinyrange/pkg/platform"
@@ -1595,6 +1596,10 @@ func Entry(
 	prepare func(vmm Driver) (PrepareResult, error),
 	create func(vmm Driver) (VirtualMachineMonitor, error),
 ) {
+	if goboot.MaybeExecInit() {
+		return
+	}
+
 	if os.Getenv("TINYRANGE_VERBOSE") == "on" {
 		if err := common.EnableVerbose(); err != nil {
 			slog.Error("failed to enable verbose logging", "err", err)

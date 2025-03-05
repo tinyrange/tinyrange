@@ -116,7 +116,12 @@ func NewArchive(w io.Writer, prefix string) *ZipArchive {
 	return &ZipArchive{writer: zip.NewWriter(w), prefix: prefix}
 }
 
-func buildInitForTarget(buildArch string) error {
+func buildInitForTarget(buildOs string, buildArch string) error {
+	if buildOs == "linux" {
+		// init is embedded inside the main TinyRange executable so make sure the file is empty.
+		return os.WriteFile(filepath.Join("pkg", "init", "init"), []byte{}, os.ModePerm)
+	}
+
 	if buildArch == "wasm" {
 		buildArch = "amd64"
 	}
@@ -570,7 +575,7 @@ func main() {
 		log.Fatalf("No VMMs supported for %s/%s", *buildOs, *buildArch)
 	}
 
-	if err := buildInitForTarget(*buildArch); err != nil {
+	if err := buildInitForTarget(*buildOs, *buildArch); err != nil {
 		log.Fatal(err)
 	}
 
