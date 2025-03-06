@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -104,7 +105,25 @@ func getFd(reader io.Reader) (fd int, ok bool) {
 	return fd, term.IsTerminal(fd)
 }
 
-func connectOverSsh(ns *netstack.NetStack, address string, username string, secureSSH SecureSSHConfig) error {
+type exitNotify struct {
+	val atomic.Bool
+}
+
+func (e *exitNotify) Set() {
+	e.val.Store(true)
+}
+
+func (e *exitNotify) Get() bool {
+	return e.val.Load()
+}
+
+func connectOverSsh(
+	ns *netstack.NetStack,
+	address string,
+	username string,
+	secureSSH SecureSSHConfig,
+	exited *exitNotify,
+) error {
 	start := time.Now()
 
 	config := &ssh.ClientConfig{
@@ -133,6 +152,10 @@ func connectOverSsh(ns *netstack.NetStack, address string, username string, secu
 	)
 
 	for {
+		if exited.Get() {
+			return nil
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 		defer cancel()
 

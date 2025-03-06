@@ -1381,11 +1381,16 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 	switch d.Interaction() {
 	case config.InteractionSSH, config.InteractionVNC:
+		exited := &exitNotify{}
+
 		go func() {
 			if err := vmm.Run(d.debug); err != nil {
 				slog.Error("failed to run virtual machine", "err", err)
 				os.Exit(1)
 			}
+
+			// VM has exited. Send an event to notify.
+			exited.Set()
 		}()
 
 		if d.Interaction() == config.InteractionVNC {
@@ -1394,7 +1399,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 		// Start a loop so SSH can be restarted when requested by the user.
 		for {
-			err = connectOverSsh(ns, "10.42.0.2:2222", "root", secureSSH)
+			err = connectOverSsh(ns, "10.42.0.2:2222", "root", secureSSH, exited)
 			if err == ErrRestart {
 				continue
 			} else if err != nil {
