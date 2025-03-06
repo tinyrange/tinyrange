@@ -554,10 +554,27 @@ var (
 	test      = flag.String("test", "", "Run all .yml files in a subdirectory using TinyRange.")
 	release   = flag.Bool("release", false, "Build a release version of TinyRange.")
 	cgo       = flag.Bool("cgo", false, "Build VMMs that require CGO.")
+	exp       = flag.String("exp", "", "Run a experimental feature.")
 )
 
 func main() {
 	flag.Parse()
+
+	if *exp != "" {
+		args := []string{"go", "run", "github.com/tinyrange/tinyrange/experimental/" + *exp}
+		args = append(args, flag.Args()...)
+		cmd := exec.Command(args[0], args[1:]...)
+
+		cmd.Stdout = os.Stdout
+		cmd.Stdin = os.Stdin
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			log.Fatal(err)
+		}
+
+		return
+	}
 
 	var buildVmmList []VMMInfo
 

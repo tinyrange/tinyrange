@@ -2,6 +2,7 @@ package builder
 
 import (
 	"compress/gzip"
+	"compress/zlib"
 	"fmt"
 	"io"
 
@@ -87,6 +88,13 @@ func (def *decompressFileBuildDefinition) Build(ctx common.BuildContext) error {
 		def.r = io.NopCloser(reader)
 	case ".gz":
 		reader, err := gzip.NewReader(fh)
+		if err != nil {
+			return err
+		}
+
+		def.r = io.NopCloser(reader)
+	case ".zlib":
+		reader, err := zlib.NewReader(fh)
 		if err != nil {
 			return err
 		}
