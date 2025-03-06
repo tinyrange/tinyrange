@@ -1431,21 +1431,27 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 func (d *driver) addConfig(p string) error {
 	var cfg config.TinyRangeConfig
 
-	f, err := os.Open(p)
-	if err != nil {
-		return fmt.Errorf("failed to open config file: %w", err)
-	}
-
-	if path.Native.Ext(p) == ".json" {
-		if err := json.NewDecoder(f).Decode(&cfg); err != nil {
-			return fmt.Errorf("failed to decode config file: %w", err)
-		}
-	} else if path.Native.Ext(p) == ".yaml" || path.Native.Ext(p) == ".yml" {
-		if err := yaml.NewDecoder(f).Decode(&cfg); err != nil {
-			return fmt.Errorf("failed to decode config file: %w", err)
+	if p == "-" {
+		if err := json.NewDecoder(os.Stdin).Decode(&cfg); err != nil {
+			return fmt.Errorf("failed to decode config from stdin: %w", err)
 		}
 	} else {
-		return fmt.Errorf("unknown file extension: %s", path.Native.Ext(p))
+		f, err := os.Open(p)
+		if err != nil {
+			return fmt.Errorf("failed to open config file: %w", err)
+		}
+
+		if path.Native.Ext(p) == ".json" {
+			if err := json.NewDecoder(f).Decode(&cfg); err != nil {
+				return fmt.Errorf("failed to decode config file: %w", err)
+			}
+		} else if path.Native.Ext(p) == ".yaml" || path.Native.Ext(p) == ".yml" {
+			if err := yaml.NewDecoder(f).Decode(&cfg); err != nil {
+				return fmt.Errorf("failed to decode config file: %w", err)
+			}
+		} else {
+			return fmt.Errorf("unknown file extension: %s", path.Native.Ext(p))
+		}
 	}
 
 	d.configs = append(d.configs, cfg)

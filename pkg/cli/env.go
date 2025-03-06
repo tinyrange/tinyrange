@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/vmm/accelerate"
 )
 
@@ -44,9 +45,25 @@ var checkHardwareAccelerationCmd = &cobra.Command{
 	},
 }
 
+var getDefaultVMMCmd = &cobra.Command{
+	Use:   "get-default-vmm",
+	Short: "Print the default VMM",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		exe, err := common.GetAdjacentExecutable("tinyrange_qemu", "tinyqemu/tinyrange_qemu")
+		if err != nil {
+			return err
+		}
+
+		fmt.Fprintf(os.Stdout, "%s", exe)
+
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(envCmd)
 
 	envCmd.AddCommand(buildDirCmd)
 	envCmd.AddCommand(checkHardwareAccelerationCmd)
+	envCmd.AddCommand(getDefaultVMMCmd)
 }

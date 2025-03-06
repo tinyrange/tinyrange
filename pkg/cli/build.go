@@ -1,18 +1,21 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 )
 
 var (
-	buildOutput   string
-	buildUseCache bool
+	buildOutput        string
+	buildUseCache      bool
+	buildGetVMTemplate bool
 )
 
 var buildCmd = &cobra.Command{
@@ -45,6 +48,27 @@ var buildCmd = &cobra.Command{
 		}
 
 		if def, ok := ret.(common.BuildDefinition); ok {
+			if buildGetVMTemplate {
+				vmDef, ok := def.(builder.BuildVmDefinition)
+				if !ok {
+					return fmt.Errorf("definition is not a VM definition")
+				}
+
+				vmDef.SetBuildTemplateMode()
+
+				_, err := db.Builder().Build(vmDef, common.BuildOptions{AlwaysRebuild: true})
+				var built common.ErrTemplateBuilt
+				if errors.As(err, &built) {
+					fmt.Printf("%s\n", string(built))
+
+					return nil
+				} else if err != nil {
+					return err
+				} else {
+					return fmt.Errorf("failed to write template output")
+				}
+			}
+
 			art, err := db.Builder().Build(def, common.BuildOptions{
 				AlwaysRebuild: !buildUseCache,
 			})
@@ -86,5 +110,6 @@ var buildCmd = &cobra.Command{
 func init() {
 	buildCmd.PersistentFlags().StringVarP(&buildOutput, "output", "o", "", "if specified then copy the build output to a local file at path")
 	buildCmd.PersistentFlags().BoolVarP(&buildUseCache, "use-cache", "c", false, "if specified then don't rebuild the top level definition if it already exists in the cache")
+	buildCmd.PersistentFlags().BoolVar(&buildGetVMTemplate, "get-vm-template", false, "if specified then get the VM template instead of running the VM")
 	rootCmd.AddCommand(buildCmd)
 }
