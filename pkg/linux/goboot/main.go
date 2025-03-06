@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -1592,10 +1593,16 @@ func initMain() error {
 		}
 	}
 
+	// Check for the existence of /init.noreaper to disable reaping.
+	if ok, _ := common.Exists("/init.noreaper"); ok {
+		needsReaper = false
+	}
+
 	// Use an environment variable REAPER to indicate whether or not
 	// we are the child/parent.
 	if _, hasReaper := os.LookupEnv("REAPER"); !hasReaper && needsReaper {
 		if os.Getpid() != 1 {
+			slog.Error("init must run as PID 1", "env", os.Environ())
 			return fmt.Errorf("/init must run as PID 1")
 		}
 
@@ -1667,6 +1674,14 @@ func InitMain() {
 			os.Exit(1)
 		}
 	}
+
+	version := "dev"
+	buildinfo, ok := debug.ReadBuildInfo()
+	if ok {
+		version = buildinfo.Main.Version
+	}
+
+	slog.Debug("TinyRange Init", "version", version, "pid", os.Getpid())
 
 	if err := initMain(); err != nil {
 		slog.Error("fatal", "err", err)

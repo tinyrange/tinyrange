@@ -116,6 +116,8 @@ def alpine_initramfs(kernel_fs):
             define.build(get_inital_modules, kernel_fs),
             directive.builtin("init", "init"),
             directive.add_file("/init.star", file(INIT_STAR)),
+            # this file signals that we are running from a initramfs so init shouldn't fork a reaper yet.
+            directive.add_file("/init.noreaper", file("")),
         ],
         kind = "initramfs",
     )
