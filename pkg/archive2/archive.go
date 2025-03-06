@@ -262,6 +262,7 @@ type ArchiveWriter struct {
 	copyBuffer     []byte           // used to copy data from the reader to the contents
 	limitReader    io.LimitedReader // used to limit the number of bytes written to the contents
 	staticPrintf   staticPrintf     // used to write data to the index
+	enablePadding  bool             // whether to enable padding the size of files to 4096 bytes
 }
 
 var paddingBytes [4096]byte
@@ -291,7 +292,7 @@ func (w *ArchiveWriter) WriteEntry(entry *EntryFactory, r io.Reader) error {
 		}
 
 		// ensure that each file is aligned to 4096 bytes
-		if n%4096 != 0 {
+		if n%4096 != 0 && w.enablePadding {
 			padding := 4096 - (n % 4096)
 			if _, err := w.hashedWriter.writer.Write(paddingBytes[:padding]); err != nil {
 				return fmt.Errorf("failed to write padding: %w", err)
@@ -330,6 +331,10 @@ func (w *ArchiveWriter) WriteEntry(entry *EntryFactory, r io.Reader) error {
 	return nil
 }
 
+func (w *ArchiveWriter) DisablePadding() {
+	w.enablePadding = false
+}
+
 func NewArchiveWriter(index, contents io.Writer) (*ArchiveWriter, error) {
 	ret := &ArchiveWriter{
 		index: index,
@@ -337,7 +342,8 @@ func NewArchiveWriter(index, contents io.Writer) (*ArchiveWriter, error) {
 			writer: contents,
 			hash:   sha256.New(),
 		},
-		copyBuffer: make([]byte, 32*1024),
+		copyBuffer:    make([]byte, 32*1024),
+		enablePadding: true,
 	}
 
 	if _, err := ret.index.Write([]byte(ArchiveMagic)); err != nil {

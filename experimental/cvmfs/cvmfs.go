@@ -2,34 +2,94 @@ package cvmfs
 
 import (
 	"bufio"
+	"cmp"
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
+const (
+	CVMFS_FLAG_DIR                       = 1
+	CVMFS_FLAG_NESTED_CATALOG_TRANSITION = 2
+	CVMFS_FLAG_NESTED_CATALOG_ROOT       = 32
+	CVMFS_FLAG_REGULAR_FILE              = 4
+	CVMFS_FLAG_SYMLINK                   = 8
+	CVMFS_FLAG_CHUNKED_FILE              = 64
+	CVMFS_FLAG_EXTERNAL_FILE             = 128
+)
+
+type CVMFSNestedCatalog struct {
+	Path string
+	Sha1 string
+	Size int64
+}
+
+type CVMFSChunk struct {
+	Md5Path1 int64
+	Md5Path2 int64
+	Offset   int64
+	Size     int64
+	Hash     []byte
+}
+
+func (chunk *CVMFSChunk) PathHash() string {
+	return fmt.Sprintf("%x:%x", chunk.Md5Path1, chunk.Md5Path2)
+}
+
 type CVMFSEntry struct {
-	Md5Path1  uint64
-	Md5Path2  uint64
-	Parent1   uint64
-	Parent2   uint64
-	Hardlinks uint64
+	Catalog *CVMFSCatalog
+
+	Md5Path1  int64
+	Md5Path2  int64
+	Parent1   int64
+	Parent2   int64
+	Hardlinks int64
 	Hash      []byte
-	Size      uint64
-	Mode      uint64
-	Mtime     uint64
-	Flags     uint64
+	Size      int64
+	Mode      int64
+	Mtime     int64
+	Flags     int64
 	Name      string
 	Symlink   string
-	Uid       uint64
-	Gid       uint64
+	Uid       int64
+	Gid       int64
 	Xattr     []byte
+
+	FullPath string
+	Chunks   []CVMFSChunk
+}
+
+func (ent *CVMFSEntry) PathHash() string {
+	return fmt.Sprintf("%x:%x", ent.Md5Path1, ent.Md5Path2)
+}
+
+func (ent *CVMFSEntry) ParentHash() string {
+	return fmt.Sprintf("%x:%x", ent.Parent1, ent.Parent2)
+}
+
+func (ent *CVMFSEntry) IsChunked() bool {
+	return ent.Flags&CVMFS_FLAG_CHUNKED_FILE != 0
+}
+
+func (ent *CVMFSEntry) Kind() filesystem.FileType {
+	if ent.Flags&CVMFS_FLAG_DIR != 0 {
+		return filesystem.TypeDirectory
+	}
+
+	if ent.Flags&CVMFS_FLAG_SYMLINK != 0 {
+		return filesystem.TypeSymlink
+	}
+
+	return filesystem.TypeRegular
 }
 
 type CVMFSCatalog struct {
@@ -37,6 +97,11 @@ type CVMFSCatalog struct {
 }
 
 func (catalog *CVMFSCatalog) Entries() ([]CVMFSEntry, error) {
+	chunks, err := catalog.Chunks()
+	if err != nil {
+		return nil, err
+	}
+
 	tbl, err := catalog.db.Table("catalog")
 	if err != nil {
 		return nil, err
@@ -46,19 +111,21 @@ func (catalog *CVMFSCatalog) Entries() ([]CVMFSEntry, error) {
 
 	if err := tbl.Read(func(row []any) error {
 		ent := CVMFSEntry{
-			Md5Path1:  row[0].(uint64),
-			Md5Path2:  row[1].(uint64),
-			Parent1:   row[2].(uint64),
-			Parent2:   row[3].(uint64),
-			Hardlinks: row[4].(uint64),
-			Size:      row[6].(uint64),
-			Mode:      row[7].(uint64),
-			Mtime:     row[8].(uint64),
-			Flags:     row[9].(uint64),
+			Catalog: catalog,
+
+			Md5Path1:  row[0].(int64),
+			Md5Path2:  row[1].(int64),
+			Parent1:   row[2].(int64),
+			Parent2:   row[3].(int64),
+			Hardlinks: row[4].(int64),
+			Size:      row[6].(int64),
+			Mode:      row[7].(int64),
+			Mtime:     row[8].(int64),
+			Flags:     row[9].(int64),
 			Name:      row[10].(string),
 			Symlink:   row[11].(string),
-			Uid:       row[12].(uint64),
-			Gid:       row[13].(uint64),
+			Uid:       row[12].(int64),
+			Gid:       row[13].(int64),
 		}
 
 		if row[5] != nil {
@@ -69,6 +136,19 @@ func (catalog *CVMFSCatalog) Entries() ([]CVMFSEntry, error) {
 			ent.Xattr = row[14].([]byte)
 		}
 
+		if ent.IsChunked() {
+			pathHash := ent.PathHash()
+
+			if chunks, ok := chunks[pathHash]; ok {
+				slices.SortFunc(chunks, func(a CVMFSChunk, b CVMFSChunk) int {
+					return cmp.Compare(a.Offset, b.Offset)
+				})
+				ent.Chunks = chunks
+			} else {
+				return fmt.Errorf("chunks not found for %s", pathHash)
+			}
+		}
+
 		ret = append(ret, ent)
 
 		return nil
@@ -77,12 +157,6 @@ func (catalog *CVMFSCatalog) Entries() ([]CVMFSEntry, error) {
 	}
 
 	return ret, nil
-}
-
-type CVMFSNestedCatalog struct {
-	Path string
-	Sha1 string
-	Size uint64
 }
 
 func (catalog *CVMFSCatalog) NestedCatalogs() ([]CVMFSNestedCatalog, error) {
@@ -99,8 +173,43 @@ func (catalog *CVMFSCatalog) NestedCatalogs() ([]CVMFSNestedCatalog, error) {
 		ret = append(ret, CVMFSNestedCatalog{
 			Path: row[0].(string),
 			Sha1: row[1].(string),
-			Size: row[2].(uint64),
+			Size: row[2].(int64),
 		})
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (catalog *CVMFSCatalog) Chunks() (map[string][]CVMFSChunk, error) {
+	chunks, err := catalog.db.Table("chunks")
+	if _, ok := err.(ErrTableNotFound); ok {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	ret := make(map[string][]CVMFSChunk)
+
+	if err := chunks.Read(func(row []any) error {
+		chunk := CVMFSChunk{
+			Md5Path1: row[0].(int64),
+			Md5Path2: row[1].(int64),
+			Offset:   row[2].(int64),
+			Size:     row[3].(int64),
+			Hash:     row[4].([]byte),
+		}
+
+		pathHash := chunk.PathHash()
+
+		if _, ok := ret[pathHash]; !ok {
+			ret[pathHash] = make([]CVMFSChunk, 0)
+		}
+
+		ret[pathHash] = append(ret[pathHash], chunk)
 
 		return nil
 	}); err != nil {
@@ -310,14 +419,6 @@ func (repo *CVMFSRepository) GetAllFilesWithPrefix(prefix string) ([]CVMFSEntry,
 
 	paths["0:0"] = "/"
 
-	hashPath := func(ent CVMFSEntry) string {
-		return fmt.Sprintf("%x:%x", ent.Md5Path1, ent.Md5Path2)
-	}
-
-	hashParent := func(ent CVMFSEntry) string {
-		return fmt.Sprintf("%x:%x", ent.Parent1, ent.Parent2)
-	}
-
 	collectFilesFromCatalog = func(catalog *CVMFSCatalog) error {
 		ents, err := catalog.Entries()
 		if err != nil {
@@ -325,19 +426,22 @@ func (repo *CVMFSRepository) GetAllFilesWithPrefix(prefix string) ([]CVMFSEntry,
 		}
 
 		for _, ent := range ents {
-			parentPath, ok := paths[hashParent(ent)]
+			parentPath, ok := paths[ent.ParentHash()]
 			if !ok {
-				return fmt.Errorf("parent not found: %s", hashParent(ent))
+				return fmt.Errorf("parent not found: %s", ent.ParentHash())
 			}
 
 			childPath := path.Unix.Join(parentPath, ent.Name)
 
-			if _, ok := paths[hashPath(ent)]; hasCommonFragment(childPath, prefix) && !ok {
-				slog.Info("entry", "path", childPath)
+			if _, ok := paths[ent.PathHash()]; strings.HasPrefix(childPath, prefix) && !ok {
+				ent.FullPath = strings.TrimPrefix(childPath, prefix)
+				if ent.FullPath == "" {
+					ent.FullPath = "/"
+				}
 				ret = append(ret, ent)
 			}
 
-			paths[hashPath(ent)] = childPath
+			paths[ent.PathHash()] = childPath
 		}
 
 		nested, err := catalog.NestedCatalogs()
@@ -354,6 +458,8 @@ func (repo *CVMFSRepository) GetAllFilesWithPrefix(prefix string) ([]CVMFSEntry,
 			if err != nil {
 				return err
 			}
+
+			slog.Info("read nested", "path", nestedCatalog.Path, "hash", nestedCatalog.Sha1)
 
 			if err := collectFilesFromCatalog(child); err != nil {
 				return err

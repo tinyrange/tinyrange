@@ -21,7 +21,7 @@ func (r BinaryReader) u8(off int64) uint8         { return uint8(r[off]) }
 func (r BinaryReader) u24(off int64) uint32 {
 	var b [4]byte
 
-	copy(b[:], r[off:off+3])
+	copy(b[1:], r[off:off+3])
 
 	return endian.Uint32(b[:])
 }
@@ -29,7 +29,7 @@ func (r BinaryReader) u24(off int64) uint32 {
 func (r BinaryReader) u48(off int64) uint64 {
 	var b [8]byte
 
-	copy(b[:], r[off:off+6])
+	copy(b[2:], r[off:off+6])
 
 	return endian.Uint64(b[:])
 }
@@ -71,7 +71,7 @@ func (r BinaryReader) varint(off int64) (uint64, int64) {
 type Table struct {
 	db       *SQLiteDatabase
 	Name     string
-	rootPage uint64
+	rootPage int64
 	Sql      string
 }
 
@@ -118,33 +118,33 @@ func (t *Table) Read(cb func(val []any) error) error {
 			if typ == 0 {
 				values = append(values, nil)
 			} else if typ == 1 {
-				values = append(values, uint64(payload.u8(payloadOff)))
+				values = append(values, int64(payload.u8(payloadOff)))
 
 				payloadOff += 1
 			} else if typ == 2 {
-				values = append(values, uint64(payload.u16(payloadOff)))
+				values = append(values, int64(payload.u16(payloadOff)))
 
 				payloadOff += 2
 			} else if typ == 3 {
-				values = append(values, uint64(payload.u24(payloadOff)))
+				values = append(values, int64(payload.u24(payloadOff)))
 
 				payloadOff += 3
 			} else if typ == 4 {
-				values = append(values, uint64(payload.u32(payloadOff)))
+				values = append(values, int64(payload.u32(payloadOff)))
 
 				payloadOff += 4
 			} else if typ == 5 {
-				values = append(values, uint64(payload.u48(payloadOff)))
+				values = append(values, int64(payload.u48(payloadOff)))
 
 				payloadOff += 6
 			} else if typ == 6 {
-				values = append(values, uint64(payload.u64(payloadOff)))
+				values = append(values, int64(payload.u64(payloadOff)))
 
 				payloadOff += 8
 			} else if typ == 8 {
-				values = append(values, uint64(0))
+				values = append(values, int64(0))
 			} else if typ == 9 {
-				values = append(values, uint64(1))
+				values = append(values, int64(1))
 			} else if typ >= 12 && typ%2 == 0 {
 				length := (typ - 12) / 2
 
@@ -329,7 +329,7 @@ func OpenDatabase(r io.ReaderAt) (*SQLiteDatabase, error) {
 
 		db.tables[val[1].(string)] = &Table{
 			db:       db,
-			rootPage: val[3].(uint64),
+			rootPage: val[3].(int64),
 			Sql:      val[4].(string),
 		}
 
