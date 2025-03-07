@@ -6,25 +6,47 @@ TinyRange is a light-weight scriptable orchestration system for building and run
 
 TinyRange is currently a Pre-Alpha and expect major breaking changes as the architecture is improved and features are explored.
 
+
+
 ## Getting Started
 
-Currently TinyRange runs on Windows (amd64), MacOS (arm64), Linux (amd64, arm64), BSD (OpenBSD, FreeBSD, NetBSD) (amd64), Solaris (OmniOS) (amd64).
+Currently TinyRange runs on Windows (amd64), MacOS (arm64), and Linux (amd64, arm64).
 
 Binaries can be downloaded from the releases tab [https://github.com/tinyrange/tinyrange/releases](https://github.com/tinyrange/tinyrange/releases).
 
+The latest release can also be installed in one command on MacOS and Linux with...
+
+```shell
+curl -sSL https://j5.nz/install_tinyrange.sh | bash
+```
+
+TinyRange can also be installed via PyPI with...
+
+```shell
+pip install tinyrange-sys
+```
+
+**Note:** TinyRange can also run on BSD (OpenBSD, FreeBSD, NetBSD) (amd64), and Solaris (OmniOS) (amd64) but binaries are not tested and acceleration is not currently supported.
+
 ## Building from Source
 
-TinyRange is written in [Go](https://go.dev/) and requires both Go to be installed before it can be built.
+TinyRange is written in [Go](https://go.dev/) and requires Go to be installed before it can be built.
 
 `./tools/build.go` will automatically download a copy of QEMU if you are on Windows (amd64), MacOS (arm64), or Linux (amd64, arm64).
 
-It can be built and run from source with the following code.
+TinyRange can be built and run from source with the following code.
 
 ```sh
 git clone https://github.com/tinyrange/tinyrange
 cd tinyrange
 ./tools/build.go -run -- login
 ```
+
+## What is TinyRange
+
+![TinyRange Architecture Diagram](docs/archDiagram.svg)
+
+TinyRange is an alternative to containers and virtual machines sitting somewhere in between the two in functionality and tradeoffs.
 
 ## Rebuilding `pkg/filesystem/ext4/ext4_gen.go`
 
