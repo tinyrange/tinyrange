@@ -230,7 +230,7 @@ func appMain() error {
 				return fmt.Errorf("failed to marshal metadata: %w", err)
 			}
 
-			fac = *fac.Kind(archive2.EntryKindRegular).
+			fac = *fac.Kind(archive2.EntryKindExtended).
 				Name(file.FullPath).
 				Size(int64(len(metadataMarshaled))).
 				Mode(fs.FileMode(file.Mode)).

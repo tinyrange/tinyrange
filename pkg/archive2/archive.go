@@ -118,11 +118,12 @@ func (k EntryKind) String() string {
 }
 
 const (
-	EntryKindInvalid EntryKind = iota
-	EntryKindRegular
-	EntryKindDirectory
-	EntryKindSymlink
-	EntryKindHardlink
+	EntryKindInvalid   EntryKind = iota
+	EntryKindRegular             // Regular file with contents
+	EntryKindDirectory           // Directory
+	EntryKindSymlink             // Symbolic link to another file
+	EntryKindHardlink            // Hard link to another file
+	EntryKindExtended            // Extended file with metadata
 )
 
 type EntryFactory struct {

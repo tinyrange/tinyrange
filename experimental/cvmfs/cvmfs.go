@@ -5,7 +5,6 @@ import (
 	"cmp"
 	"fmt"
 	"io"
-	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -458,8 +457,6 @@ func (repo *CVMFSRepository) GetAllFilesWithPrefix(prefix string) ([]CVMFSEntry,
 			if err != nil {
 				return err
 			}
-
-			slog.Info("read nested", "path", nestedCatalog.Path, "hash", nestedCatalog.Sha1)
 
 			if err := collectFilesFromCatalog(child); err != nil {
 				return err
