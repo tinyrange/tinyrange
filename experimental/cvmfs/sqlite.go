@@ -80,7 +80,7 @@ func (t *Table) Read(cb func(val []any) error) error {
 	return t.db.readPage(int(t.rootPage), func(rowId uint64, payload BinaryReader) error {
 		// HACK: Right now we just ignore reading duplicate rows.
 		if _, ok := rowIds[rowId]; ok {
-			return nil
+			return fmt.Errorf("duplicate row: %d", rowId)
 		}
 
 		rowIds[rowId] = true
@@ -228,33 +228,29 @@ func (db *SQLiteDatabase) readPage(page int, cbCell func(rowId uint64, r BinaryR
 	case 0x02: // index interior
 		return nil
 	case 0x05: // table interior cell
-		for i, cellPointer := range cellPointers {
-			var off = int64(cellPointer)
+		for _, cellPointer := range cellPointers {
+			off := int64(cellPointer)
 
-			leftMostPointer := pageReader.u32(off)
+			// Read the 4-byte left pointer and ignore the rowid/key here.
+			leftPointer := pageReader.u32(off)
 			off += 4
-			key, _ := pageReader.varint(off)
+			_, off = pageReader.varint(off)
 
-			_ = key
+			if leftPointer == uint32(page) {
+				return fmt.Errorf("attempt to re-read own page")
+			}
+			if err := db.readPage(int(leftPointer), cbCell); err != nil {
+				return err
+			}
+		}
 
-			if i == len(cellPointers)-1 {
-				for x := leftMostPointer; x <= rightMostPointer; x++ {
-					if x == uint32(page) {
-						return fmt.Errorf("attempt to re-read own page")
-					}
-
-					if err := db.readPage(int(x), cbCell); err != nil {
-						return err
-					}
-				}
-			} else {
-				if leftMostPointer == uint32(page) {
-					return fmt.Errorf("attempt to re-read own page")
-				}
-
-				if err := db.readPage(int(leftMostPointer), cbCell); err != nil {
-					return err
-				}
+		// After handling all cells, recurse once into the right-most pointer
+		if rightMostPointer != 0 {
+			if rightMostPointer == uint32(page) {
+				return fmt.Errorf("attempt to re-read own page")
+			}
+			if err := db.readPage(int(rightMostPointer), cbCell); err != nil {
+				return err
 			}
 		}
 
