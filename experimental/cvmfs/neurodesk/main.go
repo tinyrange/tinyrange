@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -102,10 +103,24 @@ var (
 	containerName    = flag.String("name", "", "Name of the container (empty to list)")
 	containerVersion = flag.String("version", "", "Version of the container (empty to list)")
 	outputBase       = flag.String("output-base", "", "Base filename to write a archive2 to")
+	cpuProfile       = flag.String("cpu-profile", "", "Write CPU profile to file")
 )
 
 func appMain() error {
 	flag.Parse()
+
+	if *cpuProfile != "" {
+		f, err := os.Create(*cpuProfile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return err
+		}
+		defer pprof.StopCPUProfile()
+	}
 
 	db, err := database.New(func(pd common.PackageDatabase) (common.Builder, error) {
 		if err := common.Ensure(*buildDir, os.ModePerm); err != nil {
