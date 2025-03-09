@@ -427,6 +427,7 @@ func (db *packageDatabase) NewMacroContext() common.MacroContext {
 
 func (db *packageDatabase) loadBuiltinBuilders() error {
 	for _, builder := range []string{
+		"//fetchers/scratch.star",
 		"//fetchers/alpine.star",
 		"//fetchers/rpm.star",
 		"//fetchers/debian.star",

@@ -98,6 +98,10 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 				args starlark.Tuple,
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
+				if len(args) < 2 {
+					return starlark.None, errors.New("expected at least 3 arguments (parser, install, and at least one package source)")
+				}
+
 				parser, ok := args[0].(starlark.Callable)
 				if !ok {
 					return starlark.None, fmt.Errorf("could not convert %s to Callable", args[0].Type())
