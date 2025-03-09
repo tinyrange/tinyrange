@@ -1,4 +1,4 @@
-package cvmfs
+package sqlite
 
 import (
 	"bytes"
@@ -78,7 +78,6 @@ type Table struct {
 func (t *Table) Read(cb func(val []any) error) error {
 	rowIds := make(map[uint64]bool)
 	return t.db.readPage(int(t.rootPage), func(rowId uint64, payload BinaryReader) error {
-		// HACK: Right now we just ignore reading duplicate rows.
 		if _, ok := rowIds[rowId]; ok {
 			return fmt.Errorf("duplicate row: %d", rowId)
 		}

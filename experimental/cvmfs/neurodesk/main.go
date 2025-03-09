@@ -15,13 +15,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinyrange/tinyrange/experimental/cvmfs"
 	"github.com/tinyrange/tinyrange/pkg/archive2"
 	"github.com/tinyrange/tinyrange/pkg/build2"
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/cvmfs"
 )
 
 const (
@@ -164,7 +164,7 @@ func appMain() error {
 
 	start := time.Now()
 
-	repo := cvmfs.NewRepository(db, *mirror, NEURODESK_REPO)
+	repo := cvmfs.NewRepository(db.Builder().MinimalContext(), *mirror, NEURODESK_REPO)
 
 	files, err := repo.GetAllFilesWithPrefix(fmt.Sprintf("/containers/%s_%s/%s_%s.simg", *containerName, *containerVersion, *containerName, *containerVersion))
 	if err != nil {

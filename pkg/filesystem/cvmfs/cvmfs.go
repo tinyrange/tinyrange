@@ -14,6 +14,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/path"
+	"github.com/tinyrange/tinyrange/pkg/sqlite"
 )
 
 const (
@@ -92,7 +93,7 @@ func (ent *CVMFSEntry) Kind() filesystem.FileType {
 }
 
 type CVMFSCatalog struct {
-	db *SQLiteDatabase
+	db *sqlite.SQLiteDatabase
 }
 
 func (catalog *CVMFSCatalog) Entries() ([]CVMFSEntry, error) {
@@ -160,7 +161,7 @@ func (catalog *CVMFSCatalog) Entries() ([]CVMFSEntry, error) {
 
 func (catalog *CVMFSCatalog) NestedCatalogs() ([]CVMFSNestedCatalog, error) {
 	tbl, err := catalog.db.Table("nested_catalogs")
-	if _, ok := err.(ErrTableNotFound); ok {
+	if _, ok := err.(sqlite.ErrTableNotFound); ok {
 		return nil, nil
 	} else if err != nil {
 		return nil, err
@@ -185,7 +186,7 @@ func (catalog *CVMFSCatalog) NestedCatalogs() ([]CVMFSNestedCatalog, error) {
 
 func (catalog *CVMFSCatalog) Chunks() (map[string][]CVMFSChunk, error) {
 	chunks, err := catalog.db.Table("chunks")
-	if _, ok := err.(ErrTableNotFound); ok {
+	if _, ok := err.(sqlite.ErrTableNotFound); ok {
 		return nil, nil
 	} else if err != nil {
 		return nil, err
@@ -219,7 +220,7 @@ func (catalog *CVMFSCatalog) Chunks() (map[string][]CVMFSChunk, error) {
 }
 
 func openCVMFSCatalog(file io.ReaderAt) (*CVMFSCatalog, error) {
-	db, err := OpenDatabase(file)
+	db, err := sqlite.OpenDatabase(file)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +311,7 @@ func parseCVMFSManifest(file io.Reader) (*CVMFSManifest, error) {
 }
 
 type CVMFSRepository struct {
-	db       common.PackageDatabase
+	db       common.MinimalBuildContext
 	mirror   string
 	repo     string
 	manifest *CVMFSManifest
@@ -325,7 +326,7 @@ func (repo *CVMFSRepository) fetchFile(hash string, suffix string, compressed bo
 		def = builder.Factory.NewDecompressFileBuildDefinition(def, ".zlib")
 	}
 
-	art, err := repo.db.Builder().Build(def, common.BuildOptions{})
+	art, err := repo.db.BuildChild(def)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +344,7 @@ func (repo *CVMFSRepository) fetchManifest() (io.Reader, error) {
 
 	def := builder.Factory.NewFetchHttpBuildDefinition(url, time.Hour*4, nil)
 
-	art, err := repo.db.Builder().Build(def, common.BuildOptions{})
+	art, err := repo.db.BuildChild(def)
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +479,7 @@ func (repo *CVMFSRepository) GetAllFilesWithPrefix(prefix string) ([]CVMFSEntry,
 	return ret, nil
 }
 
-func NewRepository(db common.PackageDatabase, mirror string, repo string) *CVMFSRepository {
+func NewRepository(db common.MinimalBuildContext, mirror string, repo string) *CVMFSRepository {
 	return &CVMFSRepository{
 		db:     db,
 		mirror: mirror,
