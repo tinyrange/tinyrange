@@ -66,6 +66,12 @@ type ArchiveFragment struct {
 	Target       string `json:"target" yaml:"target"`
 }
 
+type Archive2Fragment struct {
+	IndexHostFilename    string `json:"index_host_filename" yaml:"index_host_filename"`
+	ContentsHostFilename string `json:"contents_host_filename" yaml:"contents_host_filename"`
+	Target               string `json:"target" yaml:"target"`
+}
+
 type RunCommandFragment struct {
 	Command string `json:"command" yaml:"command"`
 	Raw     bool   `json:"raw" yaml:"raw"`
@@ -133,6 +139,7 @@ type Fragment struct {
 	LocalFile          *LocalFileFragment          `json:"local_file,omitempty" yaml:"local_file"`
 	FileContents       *FileContentsFragment       `json:"file_contents,omitempty" yaml:"file_contents"`
 	Archive            *ArchiveFragment            `json:"archive,omitempty" yaml:"archive"`
+	Archive2           *Archive2Fragment           `json:"archive2,omitempty" yaml:"archive2"`
 	Builtin            *BuiltinFragment            `json:"builtin,omitempty" yaml:"builtin"`
 	ExportPort         *ExportPortFragment         `json:"export_port,omitempty" yaml:"export_port"`
 	MountHostDirectory *MountHostDirectoryFragment `json:"mount_host_directory,omitempty" yaml:"mount_host_directory"`

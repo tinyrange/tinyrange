@@ -1680,9 +1680,10 @@ func (fs *Ext4Filesystem) MakeDeterministic(fsUuid uuid.UUID, createTime time.Ti
 type RegionWrapperFunc func(string, vm.MemoryRegion) vm.MemoryRegion
 
 type filesystemCreationContext struct {
-	deferredFilesystem []func() error
-	regionWrapper      RegionWrapperFunc
-	skipDirectories    map[filesystem.Directory]struct{}
+	extendedRegionMethods filesystem.ExtendedRegionMethods
+	deferredFilesystem    []func() error
+	regionWrapper         RegionWrapperFunc
+	skipDirectories       map[filesystem.Directory]struct{}
 }
 
 // Recurse into an filesystem.Directory and put all it's contents into a ext4 filesystem.
@@ -1763,12 +1764,21 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 				return fmt.Errorf("failed to make symlink: %w", err)
 			}
 		case filesystem.TypeRegular:
-			f, err := ent.File.Open()
-			if err != nil {
-				return fmt.Errorf("failed to open file for guest: %T %w", ent.File, err)
-			}
+			var region vm.MemoryRegion
 
-			var region vm.MemoryRegion = vm.NewReaderRegion(f, info.Size())
+			if openRegion, ok := ent.File.(filesystem.HasOpenRegion); ok {
+				region, err = openRegion.OpenRegion(ctx.extendedRegionMethods)
+				if err != nil {
+					return fmt.Errorf("failed to open region for guest: %T %w", ent.File, err)
+				}
+			} else {
+				f, err := ent.File.Open()
+				if err != nil {
+					return fmt.Errorf("failed to open file for guest: %T %w", ent.File, err)
+				}
+
+				region = vm.NewReaderRegion(f, info.Size())
+			}
 
 			if ctx.regionWrapper != nil {
 				region = ctx.regionWrapper(name, region)
@@ -1802,13 +1812,15 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 }
 
 func (fs *Ext4Filesystem) AddDirectory(
+	extendedRegionMethods filesystem.ExtendedRegionMethods,
 	dir filesystem.Directory,
 	wrapper RegionWrapperFunc,
 	skipDirectories map[filesystem.Directory]struct{},
 ) error {
 	ctx := &filesystemCreationContext{
-		regionWrapper:   wrapper,
-		skipDirectories: skipDirectories,
+		extendedRegionMethods: extendedRegionMethods,
+		regionWrapper:         wrapper,
+		skipDirectories:       skipDirectories,
 	}
 
 	if err := fs.addDirectory(ctx, dir, "/"); err != nil {

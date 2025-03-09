@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	builderFactory "github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -33,6 +34,20 @@ const (
 
 type buildArtifact struct {
 	*buildContext
+}
+
+// File implements common.BuildArtifact.
+func (a *buildArtifact) File(name string) (filesystem.File, error) {
+	if _, ok := a.recept.Files[name]; !ok {
+		return nil, fmt.Errorf("file %s not found", name)
+	}
+
+	f, err := a.buildDir.GetOutputFile(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return filesystem.NewSourceWrapper(f, a.def), nil
 }
 
 // OpenFile implements BuildArtifact.
@@ -142,6 +157,11 @@ type buildContext struct {
 	logger       Logger
 	token        *token
 	files        map[string]*contextFile
+}
+
+// Factory implements common.BuildContext.
+func (b *buildContext) Factory() common.DefinitionFactory {
+	return builderFactory.Factory
 }
 
 // PrenotifyChildren implements common.BuildContext.

@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 )
 
@@ -49,7 +48,7 @@ var buildCmd = &cobra.Command{
 
 		if def, ok := ret.(common.BuildDefinition); ok {
 			if buildGetVMTemplate {
-				vmDef, ok := def.(builder.BuildVmDefinition)
+				vmDef, ok := def.(common.BuildVmDefinition)
 				if !ok {
 					return fmt.Errorf("definition is not a VM definition")
 				}
@@ -77,12 +76,12 @@ var buildCmd = &cobra.Command{
 				os.Exit(1)
 			}
 
-			f, err := art.Default()
-			if err != nil {
-				return err
-			}
-
 			if buildOutput != "" {
+				f, err := art.Default()
+				if err != nil {
+					return err
+				}
+
 				fh, err := f.Open()
 				if err != nil {
 					return err

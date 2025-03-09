@@ -160,6 +160,8 @@ type BuildArtifact interface {
 	Receipt() BuildReceipt
 	// Default returns the default file written with WriteDefault.
 	Default() (filesystem.File, error)
+	// File returns a file in the artifact.
+	File(name string) (filesystem.File, error)
 	// OpenFile opens a file in the artifact.
 	OpenFile(name string) (filesystem.FileHandle, error)
 }
@@ -169,6 +171,8 @@ type MinimalBuildContext interface {
 	BuildChild(def BuildDefinition) (BuildArtifact, error)
 	// Database returns the package database.
 	Database() PackageDatabase
+	// Return a factory to make definitions.
+	Factory() DefinitionFactory
 }
 
 // BuildContext is the context of a build.

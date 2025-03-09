@@ -73,6 +73,14 @@ type FetchOciImageParameters struct {
 	Architecture string
 }
 
+// Create a streaming archive from a CernVM-FS filesystem.
+// The output is a archive2 file.
+type FetchCVMFSParameters struct {
+	Mirror string
+	Repo   string
+	Path   string
+}
+
 // Read a OCI image from a file.
 // The output is a serialized copy of FetchOciImageDefinition (for compatibility reasons).
 type ReadOciImageParameters struct {
@@ -127,6 +135,7 @@ func (d DecompressFileParameters) SerializableType() string  { return "Decompres
 func (f FetchHttpParameters) SerializableType() string       { return "FetchHttpParameters" }
 func (r RegistryRequestParameters) SerializableType() string { return "RegistryRequestParameters" }
 func (f FetchOciImageParameters) SerializableType() string   { return "FetchOciImageParameters" }
+func (f FetchCVMFSParameters) SerializableType() string      { return "FetchCVMFSParameters" }
 func (r ReadOciImageParameters) SerializableType() string    { return "ReadOciImageParameters" }
 func (f FileParameters) SerializableType() string            { return "FileParameters" }
 func (f ConstantHashParameters) SerializableType() string    { return "ConstantHashParameters" }
@@ -143,6 +152,7 @@ var (
 	_ hash.SerializableValue = FetchHttpParameters{}
 	_ hash.SerializableValue = RegistryRequestParameters{}
 	_ hash.SerializableValue = FetchOciImageParameters{}
+	_ hash.SerializableValue = FetchCVMFSParameters{}
 	_ hash.SerializableValue = ReadOciImageParameters{}
 	_ hash.SerializableValue = FileParameters{}
 	_ hash.SerializableValue = ConstantHashParameters{}

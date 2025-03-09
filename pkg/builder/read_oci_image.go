@@ -181,7 +181,7 @@ var (
 	_ common.BuildDefinition = &readOciImageDefinition{}
 )
 
-func newReadOCIImageDefinition(base common.BuildDefinition) ReadOCIImageDefinition {
+func newReadOCIImageDefinition(base common.BuildDefinition) common.ReadOCIImageDefinition {
 	return &readOciImageDefinition{
 		params: ReadOciImageParameters{
 			Base: base,

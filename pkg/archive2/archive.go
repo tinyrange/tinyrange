@@ -112,6 +112,8 @@ func (k EntryKind) String() string {
 		return "hardlink"
 	case EntryKindInvalid:
 		return "invalid"
+	case EntryKindExtended:
+		return "extended"
 	default:
 		panic("invalid entry kind")
 	}
@@ -471,7 +473,7 @@ func (ar *ArchiveReader) offset() (int64, error) {
 
 // Open returns a handle to the entry.
 func (ar *ArchiveReader) Open() (Handle, error) {
-	if ar.Kind() != EntryKindRegular {
+	if ar.Kind() != EntryKindRegular && ar.Kind() != EntryKindExtended {
 		return nil, fs.ErrInvalid
 	}
 

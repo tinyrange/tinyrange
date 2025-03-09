@@ -422,7 +422,7 @@ func newBuildVmDefinition(
 	storageSize int,
 	interaction string,
 	debug bool,
-) BuildVmDefinition {
+) common.BuildVmDefinition {
 	if storageSize == 0 {
 		storageSize = 1024
 	}

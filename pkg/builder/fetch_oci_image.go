@@ -619,7 +619,7 @@ var (
 	_ common.Directive       = &fetchOciImageDefinition{}
 )
 
-func newFetchOCIImageDefinition(registry, image, tag, architecture string) FetchOciImageDefinition {
+func newFetchOCIImageDefinition(registry, image, tag, architecture string) common.FetchOciImageDefinition {
 	ret := &fetchOciImageDefinition{
 		params: FetchOciImageParameters{
 			Registry:     registry,

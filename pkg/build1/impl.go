@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/schollz/progressbar/v3"
+	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -78,6 +79,11 @@ type buildContext struct {
 	filename  string
 	output    io.WriteCloser
 	lastBuild time.Time
+}
+
+// Factory implements common.BuildContext.
+func (b *buildContext) Factory() common.DefinitionFactory {
+	return builder.Factory
 }
 
 // PrenotifyChildren implements common.BuildContext.
@@ -269,6 +275,11 @@ var (
 type tempArtifact struct {
 	hash        hash.Hash
 	defaultFile filesystem.File
+}
+
+// File implements common.BuildArtifact.
+func (c *tempArtifact) File(name string) (filesystem.File, error) {
+	return nil, fmt.Errorf("unimplemented")
 }
 
 // DigestFromFile implements common.BuildContext.

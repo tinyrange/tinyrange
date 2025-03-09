@@ -14,16 +14,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
 
-type HasLinkName interface {
-	File
-	LinkName() (string, error)
-}
-
-type HasUidAndGid interface {
-	File
-	UidAndGid() (int, int, error)
-}
-
 func GetLinkName(ent File) (string, error) {
 	switch ent := ent.(type) {
 	case HasLinkName:

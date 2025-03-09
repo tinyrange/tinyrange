@@ -1,6 +1,7 @@
 package vmm
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -28,6 +29,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/archive"
+	"github.com/tinyrange/tinyrange/pkg/archive2"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
@@ -93,7 +95,8 @@ var (
 )
 
 type vmBackend struct {
-	vm BlockDevice
+	vm     BlockDevice
+	driver *driver
 }
 
 // Close implements common.Backend.
@@ -106,6 +109,10 @@ func (vm *vmBackend) ReadAt(p []byte, off int64) (n int, err error) {
 	n, err = vm.vm.ReadAt(p, off)
 	if err != nil {
 		slog.Error("vmBackend readAt", "len", len(p), "off", off, "err", err)
+
+		// assume the VM will detect this as corruption and exit immediately.
+		vm.driver.fatalError()
+
 		return 0, nil
 	}
 
@@ -117,6 +124,10 @@ func (vm *vmBackend) WriteAt(p []byte, off int64) (n int, err error) {
 	n, err = vm.vm.WriteAt(p, off)
 	if err != nil {
 		slog.Error("vmBackend writeAt", "len", len(p), "off", off, "err", err)
+
+		// assume the VM will detect this as corruption and exit immediately.
+		vm.driver.fatalError()
+
 		return 0, nil
 	}
 
@@ -345,6 +356,40 @@ type driver struct {
 
 	onExit       []func()
 	deletedFiles map[string]bool
+
+	simpleCache map[string][]byte
+}
+
+func (tr *driver) fatalError() {
+	for _, f := range tr.onExit {
+		f()
+	}
+
+	os.Exit(1)
+}
+
+// GetOrSetCacheForHash implements filesystem.ExtendedRegionMethods.
+func (tr *driver) GetOrSetCacheForHash(hash string, setter func(w io.Writer) error) (io.ReaderAt, error) {
+	if tr.simpleCache == nil {
+		tr.simpleCache = make(map[string][]byte)
+	}
+
+	if _, ok := tr.simpleCache[hash]; !ok {
+		var buf bytes.Buffer
+
+		if err := setter(&buf); err != nil {
+			return nil, err
+		}
+
+		tr.simpleCache[hash] = buf.Bytes()
+	}
+
+	return bytes.NewReader(tr.simpleCache[hash]), nil
+}
+
+// HttpClient implements filesystem.ExtendedRegionMethods.
+func (tr *driver) HttpClient() *http.Client {
+	return http.DefaultClient
 }
 
 func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
@@ -549,6 +594,139 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 			}
 
 			if err := file.Chown(ent.Uid(), ent.Gid()); err != nil {
+				return fmt.Errorf("failed to chown in guest: %w", err)
+			}
+
+			if err := file.Chmod(fs.FileMode(ent.Mode())); err != nil {
+				return fmt.Errorf("failed to chmod in guest: %w", err)
+			}
+		}
+
+		return nil
+	} else if ark2 := frag.Archive2; ark2 != nil {
+		index := filesystem.NewLocalFile(cfg.Resolve(ark2.IndexHostFilename), nil)
+		contents := filesystem.NewLocalFile(cfg.Resolve(ark2.ContentsHostFilename), nil)
+
+		indexFh, err := index.Open()
+		if err != nil {
+			return fmt.Errorf("failed to open index: %w", err)
+		}
+		defer indexFh.Close()
+
+		contentsFh, err := contents.Open()
+		if err != nil {
+			return fmt.Errorf("failed to open contents: %w", err)
+		}
+		// don't close contents
+
+		ark, err := archive2.NewArchiveReader(indexFh, contentsFh)
+		if err != nil {
+			return fmt.Errorf("failed to read archive: %w", err)
+		}
+
+		for {
+			err := ark.NextEntry()
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				return fmt.Errorf("failed to read entry: %w", err)
+			}
+
+			ent := ark
+
+			// TODO(joshua): Why is this not path.Native.Join?
+			name := ark2.Target + "/" + ent.Name()
+
+			if _, ok := tr.deletedFiles[name]; ok {
+				continue
+			}
+
+			var file filesystem.MutableFile
+
+			if name != "/" {
+				if filesystem.Exists(dir, name) {
+					continue
+				}
+
+				dirname := path.Unix.Dir(name)
+
+				if !filesystem.Exists(dir, dirname) && path.Unix.Clean(name) != dirname {
+					// slog.Info("mkdir", "dirname", dirname)
+					if _, err := filesystem.Mkdir(dir, dirname); err != nil {
+						return err
+					}
+				}
+
+				switch ent.Kind() {
+				case archive2.EntryKindDirectory:
+					// slog.Info("directory", "name", name)
+					name = strings.TrimSuffix(name, "/")
+
+					file, err = filesystem.Mkdir(dir, name)
+					if err != nil {
+						return err
+					}
+				case archive2.EntryKindSymlink:
+					// slog.Info("symlink", "name", name)
+					symlink := filesystem.NewSymlink(ent.Linkname())
+
+					file = symlink
+
+					if _, err := filesystem.CreateChild(dir, name, symlink); err != nil {
+						return err
+					}
+				case archive2.EntryKindHardlink:
+					// slog.Info("link", "name", name, "target", ent.Linkname())
+					link, err := filesystem.NewHardLink(ent.Linkname())
+					if err != nil {
+						return err
+					}
+
+					file = link
+
+					if _, err := filesystem.CreateChild(dir, name, link); err != nil {
+						return err
+					}
+				case archive2.EntryKindRegular:
+					f, err := ent.File()
+					if err != nil {
+						return fmt.Errorf("failed to get file: %w", err)
+					}
+
+					// slog.Info("reg", "name", name)
+					file, err = filesystem.NewOverlayFile(f)
+					if err != nil {
+						return err
+					}
+
+					if _, err := filesystem.CreateChild(dir, name, f); err != nil {
+						return err
+					}
+				case archive2.EntryKindExtended:
+					f, err := ent.File()
+					if err != nil {
+						return fmt.Errorf("failed to get file: %w", err)
+					}
+
+					// slog.Info("reg", "name", name)
+					file, err = filesystem.NewOverlayFile(f)
+					if err != nil {
+						return err
+					}
+
+					if _, err := filesystem.CreateChild(dir, name, f); err != nil {
+						return err
+					}
+				default:
+					return fmt.Errorf("unimplemented entry type: %s", ent.Kind())
+				}
+			} else {
+				file = dir
+			}
+
+			uid, gid := ent.Owner()
+
+			if err := file.Chown(uid, gid); err != nil {
 				return fmt.Errorf("failed to chown in guest: %w", err)
 			}
 
@@ -837,7 +1015,7 @@ func (tr *driver) buildFilesystem(
 			}
 		}
 
-		if err := fs.AddDirectory(root, regionWrapper, skipDirectories); err != nil {
+		if err := fs.AddDirectory(tr, root, regionWrapper, skipDirectories); err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
 		}
 
@@ -1185,7 +1363,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 		exports = append(exports, nbdExport{
 			name:    volume.VolumeName,
-			backend: &vmBackend{vm: vmem},
+			backend: &vmBackend{driver: d, vm: vmem},
 		})
 
 		if ext4Fs != nil {
@@ -1530,7 +1708,8 @@ func (d *driver) EnsureFile(contents []byte) (File, error) {
 }
 
 var (
-	_ Driver = &driver{}
+	_ Driver                           = &driver{}
+	_ filesystem.ExtendedRegionMethods = &driver{}
 )
 
 var (

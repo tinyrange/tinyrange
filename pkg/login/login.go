@@ -421,7 +421,7 @@ func (config *Config) makeBuildVMDefinition(
 	arch config.CPUArchitecture,
 	outputName string,
 	interaction string,
-) (builder.BuildVmDefinition, error) {
+) (common.BuildVmDefinition, error) {
 	var kernel common.BuildDefinition
 	var initramfs common.BuildDefinition
 
@@ -542,7 +542,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		macroCtx.AddVariable("guest_arch", string(vmArch))
 	}
 
-	var planDirective builder.PlanDefinition
+	var planDirective common.PlanDefinition
 	if config.OciImage != "" {
 		def, err := config.addOCIImage(config.OciImage, arch)
 		if err != nil {

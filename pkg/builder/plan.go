@@ -20,14 +20,6 @@ func init() {
 	hash.RegisterType(&planDefinition{})
 }
 
-type PlanDefinition interface {
-	common.BuildDefinition
-	common.InstallationPlanBuilder
-	common.Directive
-
-	AddPackage(name common.PackageQuery) (PlanDefinition, error)
-}
-
 type planDefinition struct {
 	params PlanParameters
 
@@ -336,7 +328,7 @@ func (def *planDefinition) Tag() string {
 	}, "_")
 }
 
-func (def *planDefinition) AddPackage(name common.PackageQuery) (PlanDefinition, error) {
+func (def *planDefinition) AddPackage(name common.PackageQuery) (common.PlanDefinition, error) {
 	return &planDefinition{
 		params: PlanParameters{
 			Builder:      def.params.Builder,
@@ -363,7 +355,7 @@ var (
 	_ common.Directive       = &planDefinition{}
 )
 
-func newPlanDefinition(builder string, arch config.CPUArchitecture, search []common.PackageQuery, tagList common.TagList) (PlanDefinition, error) {
+func newPlanDefinition(builder string, arch config.CPUArchitecture, search []common.PackageQuery, tagList common.TagList) (common.PlanDefinition, error) {
 	if builder == "" {
 		return nil, fmt.Errorf("no builder specified")
 	}

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/path"
@@ -320,10 +319,10 @@ type CVMFSRepository struct {
 func (repo *CVMFSRepository) fetchFile(hash string, suffix string, compressed bool) (io.ReaderAt, error) {
 	url := fmt.Sprintf("%s/%s/data/%s/%s%s", repo.mirror, repo.repo, hash[:2], hash[2:], suffix)
 
-	def := builder.Factory.NewFetchHttpBuildDefinition(url, 0, nil)
+	def := repo.db.Factory().NewFetchHttpBuildDefinition(url, 0, nil)
 
 	if compressed {
-		def = builder.Factory.NewDecompressFileBuildDefinition(def, ".zlib")
+		def = repo.db.Factory().NewDecompressFileBuildDefinition(def, ".zlib")
 	}
 
 	art, err := repo.db.BuildChild(def)
@@ -342,7 +341,7 @@ func (repo *CVMFSRepository) fetchFile(hash string, suffix string, compressed bo
 func (repo *CVMFSRepository) fetchManifest() (io.Reader, error) {
 	url := fmt.Sprintf("%s/%s/.cvmfspublished", repo.mirror, repo.repo)
 
-	def := builder.Factory.NewFetchHttpBuildDefinition(url, time.Hour*4, nil)
+	def := repo.db.Factory().NewFetchHttpBuildDefinition(url, time.Hour*4, nil)
 
 	art, err := repo.db.BuildChild(def)
 	if err != nil {

@@ -186,6 +186,7 @@ func (d DirectiveLocalFile) Tag() string {
 type DirectiveArchive struct {
 	Definition BuildDefinition
 	Target     string
+	Archive2   bool
 }
 
 // SerializableType implements Directive.
@@ -203,22 +204,52 @@ func (d DirectiveArchive) AsFragments(ctx BuildContext, special SpecialDirective
 		return nil, err
 	}
 
-	res, err := art.Default()
-	if err != nil {
-		return nil, err
-	}
+	if d.Archive2 {
+		index, err := art.File("index")
+		if err != nil {
+			return nil, err
+		}
 
-	filename, err := ctx.HostFilenameFromFile(res)
-	if err != nil {
-		return nil, err
-	}
+		indexFilename, err := ctx.HostFilenameFromFile(index)
+		if err != nil {
+			return nil, err
+		}
 
-	return []config.Fragment{
-		{Archive: &config.ArchiveFragment{
-			HostFilename: filename,
-			Target:       d.Target,
-		}},
-	}, nil
+		contents, err := art.File("contents")
+		if err != nil {
+			return nil, err
+		}
+
+		contentsFilename, err := ctx.HostFilenameFromFile(contents)
+		if err != nil {
+			return nil, err
+		}
+
+		return []config.Fragment{
+			{Archive2: &config.Archive2Fragment{
+				IndexHostFilename:    indexFilename,
+				ContentsHostFilename: contentsFilename,
+				Target:               d.Target,
+			}},
+		}, nil
+	} else {
+		res, err := art.Default()
+		if err != nil {
+			return nil, err
+		}
+
+		filename, err := ctx.HostFilenameFromFile(res)
+		if err != nil {
+			return nil, err
+		}
+
+		return []config.Fragment{
+			{Archive: &config.ArchiveFragment{
+				HostFilename: filename,
+				Target:       d.Target,
+			}},
+		}, nil
+	}
 }
 
 type DirectiveExportPort struct {

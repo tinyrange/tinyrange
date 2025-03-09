@@ -142,7 +142,7 @@ var (
 
 type constantHashDefinition struct {
 	params  ConstantHashParameters
-	builder BuilderFunc
+	builder common.BuilderFunc
 }
 
 // Dependencies implements common.BuildDefinition.
@@ -222,6 +222,6 @@ func SourceFromArchive(archive filesystem.Archive) (hash.SerializableValue, erro
 	return filesystem.SourceFromArchive(archive)
 }
 
-func newConstantHashDefinition(hash string, builder BuilderFunc) common.BuildDefinition {
+func newConstantHashDefinition(hash string, builder common.BuilderFunc) common.BuildDefinition {
 	return &constantHashDefinition{params: ConstantHashParameters{Hash: hash}, builder: builder}
 }

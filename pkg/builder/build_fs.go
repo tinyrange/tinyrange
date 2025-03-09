@@ -437,6 +437,6 @@ var (
 	_ common.Directive       = &buildFsDefinition{}
 )
 
-func newBuildFsDefinition(dir []common.Directive, kind string) BuildFSDefinition {
+func newBuildFsDefinition(dir []common.Directive, kind string) common.BuildFSDefinition {
 	return &buildFsDefinition{params: BuildFsParameters{Directives: dir, Kind: kind}}
 }

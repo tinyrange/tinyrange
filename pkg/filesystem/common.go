@@ -3,7 +3,10 @@ package filesystem
 import (
 	"io"
 	"io/fs"
+	"net/http"
 	"time"
+
+	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 )
 
 // BasicFileHandle is a basic file handle that can be used for reading but doesn't support being closed.
@@ -35,6 +38,15 @@ type FileInfo interface {
 // FileDigest is a savable digest that identifies a file.
 type FileDigest struct {
 	Hash string
+}
+
+type ExtendedRegionMethods interface {
+	HttpClient() *http.Client
+	GetOrSetCacheForHash(hash string, setter func(w io.Writer) error) (io.ReaderAt, error)
+}
+
+type HasOpenRegion interface {
+	OpenRegion(ctx ExtendedRegionMethods) (vm.MemoryRegion, error)
 }
 
 // File is an interface that represents a file.
@@ -71,6 +83,16 @@ type MutableFile interface {
 
 	// Truncate truncates the file to the specified size.
 	Truncate(size int64) error
+}
+
+type HasLinkName interface {
+	File
+	LinkName() (string, error)
+}
+
+type HasUidAndGid interface {
+	File
+	UidAndGid() (int, int, error)
 }
 
 // Entry is a single file in an archive.

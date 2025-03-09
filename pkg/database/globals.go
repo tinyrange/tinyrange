@@ -235,6 +235,28 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 
 				return builder.Factory.NewFetchHttpBuildDefinition(url, time.Duration(expireTime), headers), nil
 			}),
+			"fetch_cvmfs": starlark.NewBuiltin("define.fetch_cvmfs", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					mirror string
+					repo   string
+					path   string
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"mirror", &mirror,
+					"repo", &repo,
+					"path", &path,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				return builder.Factory.NewFetchCvmfsDefinition(mirror, repo, path), nil
+			}),
 			"read_archive": starlark.NewBuiltin("define.read_archive", func(
 				thread *starlark.Thread,
 				fn *starlark.Builtin,
@@ -539,13 +561,15 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
 				var (
-					ark    starlark.Value
-					target string
+					ark      starlark.Value
+					target   string
+					archive2 bool
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"ark", &ark,
 					"target?", &target,
+					"archive2?", &archive2,
 				); err != nil {
 					return starlark.None, err
 				}
@@ -554,6 +578,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					return &common.StarDirective{Directive: common.DirectiveArchive{
 						Definition: def,
 						Target:     target,
+						Archive2:   archive2,
 					}}, nil
 				} else {
 					return starlark.None, fmt.Errorf("could not convert %s to BuildDefinition", ark.Type())
