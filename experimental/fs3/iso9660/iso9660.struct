@@ -1,0 +1,150 @@
+type VolumeDescriptorKind enum {
+    type u8
+
+    BootRecord = 0
+    Primary = 1
+    Supplementary = 2
+    Partition = 3
+    Terminator = 255
+}
+
+type VolumeDescriptor struct {
+    kind VolumeDescriptorKind
+    identifier [5]u8
+    version u8
+    contents VolumeDescriptorContent
+}
+
+type VolumeDescriptorContent union {
+    rawBytes [2041]u8
+    bootRecord BootRecord
+    primaryVolumeDescriptor PrimaryVolumeDescriptor
+    volumeDescriptorSetTerminator VolumeDescriptorSetTerminator
+}
+
+type BootRecord struct {
+    bootSystemIdentifier [32]char
+    bootIdentifier [32]char
+    bootSystemUse [1977]u8
+}
+
+type VolumeDescriptorSetTerminator struct {
+
+}
+
+type int16_lsb_msb struct {
+    lsb i16_le
+    msb i16_be
+}
+
+type int32_lsb_msb struct {
+    lsb i32_le
+    msb i32_be
+}
+
+type decDatetime struct {
+    year [4]char
+    month [2]char
+    day [2]char
+    hour [2]char
+    minute [2]char
+    second [2]char
+    hundredths [2]char
+    timezoneOffset i8
+}
+
+type dirDatetime struct {
+    year i8
+    month i8
+    day i8
+    hour i8
+    minute i8
+    second i8
+    gmtOffset i8
+}
+
+type DirectoryEntryFlags bitset {
+    Hidden
+    Directory
+    AssociatedFile
+    HasExtendedAttributeRecord
+    HasOwnerAndGroup
+    Reserved1
+    Reserved2
+    NotFinalRecordForFile
+}
+
+type DirectoryEntry dyn_struct {
+    size u8
+    
+    extendedAttributeRecordLength u8
+
+    extentLocation int32_lsb_msb
+    dataLength int32_lsb_msb
+
+    dateTime dirDatetime
+    flags DirectoryEntryFlags
+    fileUnitSize u8
+    interleaveGap u8
+    volumeSequenceNumber int16_lsb_msb
+
+    filenameLength u8
+    filename [$filenameLength]char
+}
+
+type PathTableEntry dyn_struct {
+    size u8
+
+    extendedAttributeRecordLength u8
+    location i32_le
+    parentDirectory u64_le
+
+    name [$size - $_]char
+}
+
+type PrimaryVolumeDescriptor struct {
+    _ u8
+    systemIdentifier [32]char
+    volumeIdentifier [32]char
+    
+    _ [8]u8
+    
+    volumeSpaceSize int32_lsb_msb
+    
+    _ [32]u8
+    
+    volumeSetSize int16_lsb_msb
+    volumeSequenceNumber int16_lsb_msb
+    
+    logicalBlockSize int16_lsb_msb
+    
+    pathTableSize int32_lsb_msb
+    locationOfTypeLPathTable i32_le
+    locationOfOptionalTypeLPathTable i32_le
+    locationOfTypeMPathTable i32_be
+    locationOfOptionalTypeMPathTable i32_be
+
+    rootDirectoryEntry DirectoryEntry
+
+    volumeSetIdentifier [128]char
+    publisherIdentifier [128]char
+    dataPreparerIdentifier [128]char
+    applicationIdentifier [128]char
+
+    copyrightFileIdentifier [37]char
+    abstractFileIdentifier [37]char
+    bibliographicFileIdentifier [37]char
+
+    volumeCreationDateTime decDatetime
+    volumeModificationDateTime decDatetime
+    volumeExpirationDateTime decDatetime
+    volumeEffectiveDateTime decDatetime
+
+    fileStructureVersion u8
+
+    _ u8
+
+    applicationUsed [512]u8
+
+    _ [653]u8
+}
