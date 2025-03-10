@@ -741,6 +741,22 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 		_ = fid
 
 		return ret.EncodeBody(MsgRfsync, msg.Tag, &Rfsync{})
+	case MsgTlock:
+		var body Tlock
+
+		if err := msg.DecodeBody(&body); err != nil {
+			return nil, err
+		}
+
+		if P9_DEBUG {
+			slog.Debug("9p: message", "type", msg.Type, "body", body)
+		}
+
+		// TOOD(joshua): This is a no-op for now.
+
+		return ret.EncodeBody(MsgRlock, msg.Tag, &Rlock{
+			Status: P9_LOCK_SUCCESS,
+		})
 	case MsgTlink:
 		var body Tlink
 
@@ -890,6 +906,7 @@ func (s *Server) handleClient(client net.Conn) error {
 
 		ret, err := s.handleMessage(&msg)
 		if errors.Is(err, os.ErrNotExist) {
+			slog.Debug("9p: file not found", "kind", msg.Type, "error", err)
 			ret, err = msg.EncodeBody(MsgRlerror, msg.Tag, &Rlerror{Ecode: ENOENT})
 			if err != nil {
 				return fmt.Errorf("failed to encode response: %v", err)

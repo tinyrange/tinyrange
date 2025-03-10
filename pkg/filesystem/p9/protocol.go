@@ -46,6 +46,8 @@ const (
 	MsgRreaddir     MsgType = 41
 	MsgTfsync       MsgType = 50
 	MsgRfsync       MsgType = 51
+	MsgTlock        MsgType = 52
+	MsgRlock        MsgType = 53
 	MsgTlink        MsgType = 70
 	MsgRlink        MsgType = 71
 	MsgTmkdir       MsgType = 72
@@ -150,6 +152,10 @@ func (m MsgType) String() string {
 		return "Tfsync"
 	case MsgRfsync:
 		return "Rfsync"
+	case MsgTlock:
+		return "Tlock"
+	case MsgRlock:
+		return "Rlock"
 	case MsgTlink:
 		return "Tlink"
 	case MsgRlink:
@@ -402,6 +408,13 @@ const (
 	P9_SETATTR_CTIME     = 0x00000040
 	P9_SETATTR_ATIME_SET = 0x00000080
 	P9_SETATTR_MTIME_SET = 0x00000100
+)
+
+const (
+	P9_LOCK_SUCCESS = 0
+	P9_LOCK_BLOCKED = 1
+	P9_LOCK_ERROR   = 2
+	P9_LOCK_GRACE   = 3
 )
 
 var (
