@@ -18,6 +18,8 @@ func GetLinkName(ent File) (string, error) {
 	switch ent := ent.(type) {
 	case HasLinkName:
 		return ent.LinkName()
+	case DirectoryEntry:
+		return GetLinkName(ent.File)
 	case *memoryFile:
 		if ent.kind != TypeSymlink && ent.kind != TypeLink {
 			return "", fs.ErrInvalid
@@ -36,6 +38,8 @@ func GetUidAndGid(ent File) (int, int, error) {
 	switch ent := ent.(type) {
 	case HasUidAndGid:
 		return ent.UidAndGid()
+	case DirectoryEntry:
+		return GetUidAndGid(ent.File)
 	case *memoryDirectory:
 		return GetUidAndGid(ent.memoryFile)
 	case *memoryFile:
