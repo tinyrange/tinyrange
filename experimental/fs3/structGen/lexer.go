@@ -17,6 +17,7 @@ const (
 	keywordUnion         keywordToken = "union"
 	keywordBitset        keywordToken = "bitset"
 	keywordDynamicStruct keywordToken = "dyn_struct"
+	keywordConst         keywordToken = "const"
 )
 
 type identifierToken string
@@ -108,6 +109,8 @@ func (p *sysIL4Parser) nextIdentifier(first rune) (token, error) {
 		return keywordBitset, nil
 	case string(keywordDynamicStruct):
 		return keywordDynamicStruct, nil
+	case string(keywordConst):
+		return keywordConst, nil
 	default:
 		return identifierToken(ret), nil
 	}

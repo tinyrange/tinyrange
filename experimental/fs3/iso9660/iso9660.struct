@@ -5,21 +5,7 @@ type VolumeDescriptorKind enum {
     Primary = 1
     Supplementary = 2
     Partition = 3
-    Terminator = 255
-}
-
-type VolumeDescriptor struct {
-    kind VolumeDescriptorKind
-    identifier [5]u8
-    version u8
-    contents VolumeDescriptorContent
-}
-
-type VolumeDescriptorContent union {
-    rawBytes [2041]u8
-    bootRecord BootRecord
-    primaryVolumeDescriptor PrimaryVolumeDescriptor
-    volumeDescriptorSetTerminator VolumeDescriptorSetTerminator
+    EndOfVolume = 255
 }
 
 type BootRecord struct {
@@ -28,7 +14,7 @@ type BootRecord struct {
     bootSystemUse [1977]u8
 }
 
-type VolumeDescriptorSetTerminator struct {
+type VolumeDescriptorSetEndOfVolume struct {
 
 }
 
@@ -64,13 +50,15 @@ type dirDatetime struct {
 }
 
 type DirectoryEntryFlags bitset {
+    type u8
+
     Hidden
     Directory
     AssociatedFile
     HasExtendedAttributeRecord
     HasOwnerAndGroup
-    Reserved1
-    Reserved2
+    _
+    _
     NotFinalRecordForFile
 }
 
@@ -98,6 +86,8 @@ type PathTableEntry dyn_struct {
     extendedAttributeRecordLength u8
     location i32_le
     parentDirectory u64_le
+
+    const fixedLength = $_
 
     name [$size - $_]char
 }
@@ -147,4 +137,18 @@ type PrimaryVolumeDescriptor struct {
     applicationUsed [512]u8
 
     _ [653]u8
+}
+
+type VolumeDescriptorContent union {
+    rawBytes [2041]u8
+    bootRecord BootRecord
+    primaryVolumeDescriptor PrimaryVolumeDescriptor
+    volumeDescriptorSetTerminator VolumeDescriptorSetTerminator
+}
+
+type VolumeDescriptor struct {
+    kind VolumeDescriptorKind
+    identifier [5]u8
+    version u8
+    contents VolumeDescriptorContent
 }

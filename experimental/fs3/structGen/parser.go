@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"log/slog"
 )
 
 // Systems Immediate Language 4 (sysIL4) is a simple language that is used to define data structures.
@@ -58,8 +57,36 @@ func (p *sysIL4Parser) parseTypeInstance() (typeInstance, error) {
 	switch tk := tk.(type) {
 	case identifierToken:
 		switch tk {
-		case "u8":
+		case identifierToken(typeInstanceBuiltinUint8):
 			return typeInstanceBuiltinUint8, nil
+		case identifierToken(typeInstanceBuiltinUint16LE):
+			return typeInstanceBuiltinUint16LE, nil
+		case identifierToken(typeInstanceBuiltinUint32LE):
+			return typeInstanceBuiltinUint32LE, nil
+		case identifierToken(typeInstanceBuiltinUint64LE):
+			return typeInstanceBuiltinUint64LE, nil
+		case identifierToken(typeInstanceBuiltinUint16BE):
+			return typeInstanceBuiltinUint16BE, nil
+		case identifierToken(typeInstanceBuiltinUint32BE):
+			return typeInstanceBuiltinUint32BE, nil
+		case identifierToken(typeInstanceBuiltinUint64BE):
+			return typeInstanceBuiltinUint64BE, nil
+		case identifierToken(typeInstanceBuiltinInt8):
+			return typeInstanceBuiltinInt8, nil
+		case identifierToken(typeInstanceBuiltinInt16LE):
+			return typeInstanceBuiltinInt16LE, nil
+		case identifierToken(typeInstanceBuiltinInt32LE):
+			return typeInstanceBuiltinInt32LE, nil
+		case identifierToken(typeInstanceBuiltinInt64LE):
+			return typeInstanceBuiltinInt64LE, nil
+		case identifierToken(typeInstanceBuiltinInt16BE):
+			return typeInstanceBuiltinInt16BE, nil
+		case identifierToken(typeInstanceBuiltinInt32BE):
+			return typeInstanceBuiltinInt32BE, nil
+		case identifierToken(typeInstanceBuiltinInt64BE):
+			return typeInstanceBuiltinInt64BE, nil
+		case identifierToken(typeInstanceBuiltinChar):
+			return typeInstanceBuiltinChar, nil
 		default:
 			return typeInstanceReference(tk), nil
 		}
@@ -201,6 +228,43 @@ func (p *sysIL4Parser) parseStructOrUnionMember() (*structOrUnionMember, error) 
 	return ret, nil
 }
 
+func (p *sysIL4Parser) parseStructConstMember() (*structConstMember, error) {
+	ret := &structConstMember{}
+
+	name, err := p.parseIdentifier()
+	if err != nil {
+		return nil, err
+	}
+	ret.name = name
+
+	if err := p.expectToken(specialEquals); err != nil {
+		return nil, err
+	}
+
+	value, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	ret.value = value
+
+	return ret, nil
+}
+
+func (p *sysIL4Parser) parseStructMember() (structMember, error) {
+	tk, err := p.nextSignificantToken()
+	if err != nil {
+		return nil, err
+	}
+
+	switch tk {
+	case keywordConst:
+		return p.parseStructConstMember()
+	default:
+		p.unreadToken(tk)
+		return p.parseStructOrUnionMember()
+	}
+}
+
 func (p *sysIL4Parser) parseStructDeclaration(dynamic bool) (*structDeclaration, error) {
 	ret := &structDeclaration{dynamic: dynamic}
 
@@ -220,7 +284,7 @@ func (p *sysIL4Parser) parseStructDeclaration(dynamic bool) (*structDeclaration,
 
 		p.unreadToken(next)
 
-		member, err := p.parseStructOrUnionMember()
+		member, err := p.parseStructMember()
 		if err != nil {
 			return nil, err
 		}
@@ -272,6 +336,17 @@ func (p *sysIL4Parser) parseBitsetDeclaration() (*bitsetDeclaration, error) {
 		next, err := p.nextSignificantToken()
 		if err != nil {
 			return nil, err
+		}
+
+		if next == keywordType {
+			valueType, err := p.parseTypeInstance()
+			if err != nil {
+				return nil, err
+			}
+
+			ret.valueType = valueType
+
+			continue
 		}
 
 		if next == specialCloseBlock {
@@ -351,8 +426,6 @@ func (p *sysIL4Parser) parse() (*file, error) {
 		} else if err != nil {
 			return nil, err
 		}
-
-		slog.Info("parsed declaration", "decl", decl)
 
 		ret.declarations = append(ret.declarations, decl)
 	}

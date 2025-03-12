@@ -36,7 +36,27 @@ func appMain() error {
 		return err
 	}
 
-	_ = ast
+	generator := newSysIL4Generator(*packageName)
+
+	if err := generator.generate(ast); err != nil {
+		return err
+	}
+
+	if *outputFilename == "" {
+		if err := generator.writeTo(os.Stdout); err != nil {
+			return fmt.Errorf("failed to write output: %w", err)
+		}
+	} else {
+		outFile, err := os.Create(*outputFilename)
+		if err != nil {
+			return fmt.Errorf("failed to open output file: %w", err)
+		}
+		defer outFile.Close()
+
+		if err := generator.writeTo(outFile); err != nil {
+			return fmt.Errorf("failed to write output: %w", err)
+		}
+	}
 
 	return nil
 }

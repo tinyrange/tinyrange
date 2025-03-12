@@ -28,6 +28,12 @@ type expression interface {
 	tagExpression()
 }
 
+type structMember interface {
+	node
+
+	tagStructMember()
+}
+
 type baseNode struct {
 }
 
@@ -57,6 +63,12 @@ type baseExpression struct {
 
 func (e *baseExpression) tagExpression() {}
 
+type baseStructMember struct {
+	baseNode
+}
+
+func (m *baseStructMember) tagStructMember() {}
+
 type file struct {
 	baseNode
 
@@ -85,17 +97,24 @@ type enumDeclaration struct {
 }
 
 type structOrUnionMember struct {
-	baseNode
+	baseStructMember
 
 	name      string
 	valueType typeInstance
+}
+
+type structConstMember struct {
+	baseStructMember
+
+	name  string
+	value expression
 }
 
 type structDeclaration struct {
 	baseDeclaredType
 
 	dynamic bool
-	members []*structOrUnionMember
+	members []structMember
 }
 
 type unionDeclaration struct {
@@ -107,7 +126,8 @@ type unionDeclaration struct {
 type bitsetDeclaration struct {
 	baseDeclaredType
 
-	members []string
+	valueType typeInstance
+	members   []string
 }
 
 type typeInstanceBuiltin string
@@ -117,6 +137,26 @@ func (t typeInstanceBuiltin) tagTypeInstance() {}
 
 const (
 	typeInstanceBuiltinUint8 typeInstanceBuiltin = "u8"
+
+	typeInstanceBuiltinUint16LE typeInstanceBuiltin = "u16_le"
+	typeInstanceBuiltinUint32LE typeInstanceBuiltin = "u32_le"
+	typeInstanceBuiltinUint64LE typeInstanceBuiltin = "u64_le"
+
+	typeInstanceBuiltinUint16BE typeInstanceBuiltin = "u16_be"
+	typeInstanceBuiltinUint32BE typeInstanceBuiltin = "u32_be"
+	typeInstanceBuiltinUint64BE typeInstanceBuiltin = "u64_be"
+
+	typeInstanceBuiltinInt8 typeInstanceBuiltin = "i8"
+
+	typeInstanceBuiltinInt16LE typeInstanceBuiltin = "i16_le"
+	typeInstanceBuiltinInt32LE typeInstanceBuiltin = "i32_le"
+	typeInstanceBuiltinInt64LE typeInstanceBuiltin = "i64_le"
+
+	typeInstanceBuiltinInt16BE typeInstanceBuiltin = "i16_be"
+	typeInstanceBuiltinInt32BE typeInstanceBuiltin = "i32_be"
+	typeInstanceBuiltinInt64BE typeInstanceBuiltin = "i64_be"
+
+	typeInstanceBuiltinChar typeInstanceBuiltin = "char"
 )
 
 type typeInstanceReference string
@@ -161,7 +201,8 @@ var (
 	_ declaration  = &typeDeclaration{}
 	_ node         = &enumMember{}
 	_ declaredType = &enumDeclaration{}
-	_ node         = &structOrUnionMember{}
+	_ structMember = &structOrUnionMember{}
+	_ structMember = &structConstMember{}
 	_ declaredType = &structDeclaration{}
 	_ declaredType = &unionDeclaration{}
 	_ typeInstance = typeInstanceBuiltin("")
