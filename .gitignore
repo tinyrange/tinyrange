@@ -26,7 +26,9 @@ scripts/local
 release
 benchmarks
 
+# Environment for python
 .venv/
+env/
 
 .DS_Store
 

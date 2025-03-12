@@ -3,6 +3,8 @@
 import os
 import hashlib
 import urllib.request
+import argparse
+import subprocess
 from email.message import EmailMessage
 from wheel.wheelfile import WheelFile, get_zipinfo_datetime
 from zipfile import ZipInfo, ZIP_DEFLATED
@@ -125,7 +127,7 @@ TINYRANGE_PATH = os.path.join(os.path.dirname(__file__), "{entry_name}")
     if not wrote_sys:
         raise ValueError("No tinyrange executable found in archive")
 
-    with open("README.pypi.md") as f:
+    with open("python/README.pypi.md") as f:
         description = f.read()
 
     return write_wheel(
@@ -152,27 +154,74 @@ TINYRANGE_PATH = os.path.join(os.path.dirname(__file__), "{entry_name}")
     )
 
 
-tinyrange_version = "0.2.7"
-epoch = "0"
-
-for tinyrange_platform, python_platform in {
-    "windows-amd64": "win_amd64",
-    "darwin-arm64": "macosx_12_0_arm64",
-    "linux-amd64": "manylinux_2_12_x86_64.manylinux2010_x86_64.musllinux_1_1_x86_64",
-    "linux-arm64": "manylinux_2_17_aarch64.manylinux2014_aarch64.musllinux_1_1_aarch64",
-}.items():
-    # https://github.com/tinyrange/tinyrange/releases/download/v0.2.6/tinyrange-darwin-arm64.zip
-
-    tinyrange_url = f"https://github.com/tinyrange/tinyrange/releases/download/v{tinyrange_version}/tinyrange-{tinyrange_platform}.zip"
-    with urllib.request.urlopen(tinyrange_url) as request:
-        tinyrange_archive = request.read()
-        print(f"{hashlib.sha256(tinyrange_archive).hexdigest()} {tinyrange_url}")
-
-    wheel_path = write_tinyrange_wheel(
-        "dist/",
-        version=tinyrange_version + ".post" + epoch,
-        platform=python_platform,
-        archive=tinyrange_archive,
+def main():
+    parser = argparse.ArgumentParser(description="Generate TinyRange wheels")
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Use local archive instead of downloading from GitHub",
     )
-    with open(wheel_path, "rb") as wheel:
-        print(f"  {hashlib.sha256(wheel.read()).hexdigest()} {wheel_path}")
+    parser.add_argument("--tag", help="Specify a custom tag version", required=True)
+    args = parser.parse_args()
+
+    os.makedirs("release/", exist_ok=True)
+
+    tinyrange_version = args.tag.removeprefix("v")
+    epoch = "0"
+
+    for tinyrange_platform, python_platform in {
+        "windows-amd64": "win_amd64",
+        "darwin-arm64": "macosx_12_0_arm64",
+        "linux-amd64": "manylinux_2_12_x86_64.manylinux2010_x86_64.musllinux_1_1_x86_64",
+        "linux-arm64": "manylinux_2_17_aarch64.manylinux2014_aarch64.musllinux_1_1_aarch64",
+    }.items():
+        tinyrange_archive = None
+
+        if args.local:
+            system, arch = tinyrange_platform.split("-")
+
+            print(f"Building tinyrange for {system}-{arch}")
+
+            subprocess.run(
+                [
+                    "go",
+                    "run",
+                    "./tools/build.go",
+                    "-os",
+                    system,
+                    "-arch",
+                    arch,
+                    "-release",
+                ],
+                check=True,
+            )
+
+            archive_path = f"release/tinyrange-{system}-{arch}.zip"
+
+            with open(archive_path, "rb") as f:
+                tinyrange_archive = f.read()
+                print(f"{hashlib.sha256(tinyrange_archive).hexdigest()} {archive_path}")
+        else:
+            tinyrange_url = f"https://github.com/tinyrange/tinyrange/releases/download/v{tinyrange_version}/tinyrange-{tinyrange_platform}.zip"
+            with urllib.request.urlopen(tinyrange_url) as request:
+                tinyrange_archive = request.read()
+                print(
+                    f"{hashlib.sha256(tinyrange_archive).hexdigest()} {tinyrange_url}"
+                )
+
+        wheel_path = write_tinyrange_wheel(
+            "release/",
+            version=(
+                tinyrange_version + ".post" + epoch
+                if epoch != "0"
+                else tinyrange_version
+            ),
+            platform=python_platform,
+            archive=tinyrange_archive,
+        )
+        with open(wheel_path, "rb") as wheel:
+            print(f"  {hashlib.sha256(wheel.read()).hexdigest()} {wheel_path}")
+
+
+if __name__ == "__main__":
+    main()
