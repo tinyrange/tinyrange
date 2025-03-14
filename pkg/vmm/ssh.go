@@ -249,9 +249,12 @@ func connectOverSsh(
 
 	go func() {
 		if err := session.Wait(); err != nil {
-			errorChan <- err
-		} else {
-			errorChan <- nil
+			if _, ok := err.(*ssh.ExitMissingError); ok {
+				// Ignore missing exit errors
+				slog.Debug("ignoring missing exit error", "err", err)
+			} else {
+				errorChan <- err
+			}
 		}
 
 		close <- closeExit

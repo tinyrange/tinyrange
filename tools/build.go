@@ -347,6 +347,9 @@ func executeOptions(options []string) ([]string, error) {
 			continue
 		}
 
+		// Remove any trailing \r characters and trim whitespace.
+		opt = strings.TrimSuffix(strings.TrimSpace(opt), "\r")
+
 		slog.Info("Executing option", "option", opt)
 
 		if strings.HasPrefix(opt, "%mkdir ") {
