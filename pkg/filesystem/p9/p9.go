@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common/binary"
@@ -113,7 +114,12 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 				kind = 0120000
 			}
 
-			retMsg.Mode = uint32(stat.Mode()&fs.ModePerm) | kind
+			if runtime.GOOS == "windows" {
+				// Windows doesn't have the executable bit.
+				retMsg.Mode = uint32(stat.Mode()&fs.ModePerm) | kind | 0o111
+			} else {
+				retMsg.Mode = uint32(stat.Mode()&fs.ModePerm) | kind
+			}
 
 			retMsg.Valid |= P9_GETATTR_MODE
 		}
