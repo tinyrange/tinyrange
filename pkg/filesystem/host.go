@@ -6,11 +6,14 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
+
+var ErrNotSupported = errors.New("operation not supported on this platform")
 
 type osStat struct {
 	fs.FileInfo
@@ -136,6 +139,10 @@ func (l *localMutableFile) Chmod(mode fs.FileMode) error {
 
 // Chown implements MutableFile.
 func (l *localMutableFile) Chown(uid int, gid int) error {
+	if runtime.GOOS == "windows" {
+		return ErrNotSupported
+	}
+
 	return os.Chown(l.filename, uid, gid)
 }
 
@@ -165,8 +172,18 @@ func (l *localMutableFile) OpenMut() (WritableFileHandle, error) {
 	return os.OpenFile(l.filename, os.O_RDWR, 0)
 }
 
+// Rename implements MutableRenameFile.
+func (l *localMutableFile) Rename(newDirectory MutableDirectory, newName string) error {
+	if mut, ok := newDirectory.(*localMutableDirectory); ok {
+		return os.Rename(l.filename, path.Native.Join(mut.filename, newName))
+	}
+
+	return fs.ErrInvalid
+}
+
 var (
-	_ MutableFile = &localMutableFile{}
+	_ MutableFile       = &localMutableFile{}
+	_ MutableRenameFile = &localMutableFile{}
 )
 
 func NewLocalMutableFile(filename string, source hash.SerializableValue) MutableFile {

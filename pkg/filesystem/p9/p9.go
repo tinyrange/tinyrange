@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common/binary"
@@ -113,7 +114,12 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 				kind = 0120000
 			}
 
-			retMsg.Mode = uint32(stat.Mode()&fs.ModePerm) | kind
+			if runtime.GOOS == "windows" {
+				// Windows doesn't have the executable bit.
+				retMsg.Mode = uint32(stat.Mode()&fs.ModePerm) | kind | 0o111
+			} else {
+				retMsg.Mode = uint32(stat.Mode()&fs.ModePerm) | kind
+			}
 
 			retMsg.Valid |= P9_GETATTR_MODE
 		}
@@ -460,7 +466,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 
 		dir, ok := fid.(filesystem.MutableDirectory)
 		if !ok {
-			return nil, fmt.Errorf("file is not a mutable directory")
+			return nil, fs.ErrPermission
 		}
 
 		f, err := dir.Create(body.Name, filesystem.NewMemoryFile(filesystem.TypeRegular))
@@ -470,7 +476,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 
 		memF, ok := f.(filesystem.MutableFile)
 		if !ok {
-			return nil, fmt.Errorf("file is not a mutable file")
+			return nil, fs.ErrPermission
 		}
 
 		err = memF.Chmod(fs.FileMode(body.Mode) & fs.ModePerm)
@@ -507,7 +513,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 
 		dir, ok := fid.(filesystem.MutableDirectory)
 		if !ok {
-			return nil, fmt.Errorf("file is not a mutable directory")
+			return nil, fs.ErrPermission
 		}
 
 		f, err := dir.Create(body.Name, filesystem.NewSymlink(body.Symtgt))
@@ -572,7 +578,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 		if body.Valid&P9_SETATTR_MODE != 0 {
 			mut, ok := fid.(filesystem.MutableFile)
 			if !ok {
-				return nil, fmt.Errorf("file is not mutable")
+				return nil, fs.ErrPermission
 			}
 
 			if err := mut.Chmod(fs.FileMode(body.Mode) & fs.ModePerm); err != nil {
@@ -582,27 +588,29 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 		if body.Valid&P9_SETATTR_UID != 0 {
 			mut, ok := fid.(filesystem.MutableFile)
 			if !ok {
-				return nil, fmt.Errorf("file is not mutable")
+				return nil, fs.ErrPermission
 			}
 
-			if err := mut.Chown(int(body.Uid), -1); err != nil {
+			// not supported errors are ignored
+			if err := mut.Chown(int(body.Uid), -1); err != nil && !errors.Is(err, filesystem.ErrNotSupported) {
 				return nil, err
 			}
 		}
 		if body.Valid&P9_SETATTR_GID != 0 {
 			mut, ok := fid.(filesystem.MutableFile)
 			if !ok {
-				return nil, fmt.Errorf("file is not mutable")
+				return nil, fs.ErrPermission
 			}
 
-			if err := mut.Chown(-1, int(body.Gid)); err != nil {
+			// not supported errors are ignored
+			if err := mut.Chown(-1, int(body.Gid)); err != nil && !errors.Is(err, filesystem.ErrNotSupported) {
 				return nil, err
 			}
 		}
 		if body.Valid&P9_SETATTR_SIZE != 0 {
 			mut, ok := fid.(filesystem.MutableFile)
 			if !ok {
-				return nil, fmt.Errorf("file is not mutable")
+				return nil, fs.ErrPermission
 			}
 
 			if err := mut.Truncate(int64(body.Size)); err != nil {
@@ -615,7 +623,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 		if body.Valid&P9_SETATTR_MTIME != 0 {
 			mut, ok := fid.(filesystem.MutableFile)
 			if !ok {
-				return nil, fmt.Errorf("file is not mutable")
+				return nil, fs.ErrPermission
 			}
 
 			if err := mut.Chtimes(time.Now()); err != nil {
@@ -625,11 +633,11 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 		if body.Valid&P9_SETATTR_CTIME != 0 {
 			mut, ok := fid.(filesystem.MutableFile)
 			if !ok {
-				return nil, fmt.Errorf("file is not mutable")
+				return nil, fs.ErrPermission
 			}
 
 			// Setting -1 should have the side effect of setting the current time.
-			if err := mut.Chown(-1, -1); err != nil {
+			if err := mut.Chown(-1, -1); err != nil && !errors.Is(err, filesystem.ErrNotSupported) {
 				return nil, err
 			}
 		}
@@ -686,7 +694,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 
 		dir, ok := fid.(filesystem.Directory)
 		if !ok {
-			return nil, fmt.Errorf("file is not a directory")
+			return nil, fs.ErrInvalid
 		}
 
 		ents, err := dir.Readdir()
@@ -797,7 +805,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 
 		mutDir, ok := fid.(filesystem.MutableDirectory)
 		if !ok {
-			return nil, fmt.Errorf("file is not a mutable directory")
+			return nil, fs.ErrPermission
 		}
 
 		child, err := mutDir.Mkdir(body.Name)
@@ -834,7 +842,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 
 		oldMutDir, ok := oldFid.(filesystem.MutableDirectory)
 		if !ok {
-			return nil, fmt.Errorf("file is not a mutable directory")
+			return nil, fs.ErrPermission
 		}
 
 		// Get the old file.
@@ -851,17 +859,24 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 
 		newMutDir, ok := newFid.(filesystem.MutableDirectory)
 		if !ok {
-			return nil, fmt.Errorf("file is not a mutable directory")
+			return nil, fs.ErrPermission
 		}
 
-		// Create the new file.
-		if _, err := newMutDir.Create(body.Newname, oldFile.File); err != nil {
-			return nil, err
-		}
+		// Check if we have an avalible fast path.
+		if mutRename, ok := oldFile.File.(filesystem.MutableRenameFile); ok {
+			if err := mutRename.Rename(newMutDir, body.Newname); err != nil {
+				return nil, err
+			}
+		} else {
+			// Create the new file.
+			if _, err := newMutDir.Create(body.Newname, oldFile.File); err != nil {
+				return nil, err
+			}
 
-		// Remove the old file.
-		if err := oldMutDir.Unlink(body.Oldname); err != nil {
-			return nil, err
+			// Remove the old file.
+			if err := oldMutDir.Unlink(body.Oldname); err != nil {
+				return nil, err
+			}
 		}
 
 		return ret.EncodeBody(MsgRrenameat, msg.Tag, &Rrenameat{})
@@ -883,7 +898,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 
 		mutDir, ok := fid.(filesystem.MutableDirectory)
 		if !ok {
-			return nil, fmt.Errorf("file is not a mutable directory")
+			return nil, fs.ErrPermission
 		}
 
 		err = mutDir.Unlink(body.Name)
@@ -918,6 +933,12 @@ func (s *Server) handleClient(client net.Conn) error {
 		if errors.Is(err, os.ErrNotExist) {
 			slog.Debug("9p: file not found", "kind", msg.Type, "error", err)
 			ret, err = msg.EncodeBody(MsgRlerror, msg.Tag, &Rlerror{Ecode: ENOENT})
+			if err != nil {
+				return fmt.Errorf("failed to encode response: %v", err)
+			}
+		} else if errors.Is(err, os.ErrPermission) {
+			slog.Debug("9p: permission denied", "kind", msg.Type, "error", err)
+			ret, err = msg.EncodeBody(MsgRlerror, msg.Tag, &Rlerror{Ecode: EPERM})
 			if err != nil {
 				return fmt.Errorf("failed to encode response: %v", err)
 			}

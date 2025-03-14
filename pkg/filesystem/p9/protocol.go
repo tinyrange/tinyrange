@@ -9,6 +9,7 @@ import (
 // From: //gvisor/pkg/p9/p9.go
 
 const (
+	EPERM  = 1
 	ENOENT = 2
 	ENOSYS = 38
 )

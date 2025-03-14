@@ -170,8 +170,8 @@ def main():
 
     if args.tag.startswith("v"):
         tinyrange_version = args.tag.removeprefix("v")
-    elif args.tag.startswith("ref/tags/v"):
-        tinyrange_version = args.tag.removeprefix("ref/tags/v")
+    elif args.tag.startswith("refs/tags/v"):
+        tinyrange_version = args.tag.removeprefix("refs/tags/v")
     else:
         raise ValueError("Invalid tag format")
 

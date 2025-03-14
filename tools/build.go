@@ -339,8 +339,72 @@ func copyFile(source string, target string) error {
 	return nil
 }
 
+func executeOptions(options []string) ([]string, error) {
+	var ret []string
+
+	for _, opt := range options {
+		// Remove any trailing \r characters and trim whitespace.
+		opt = strings.TrimSuffix(strings.TrimSpace(opt), "\r")
+
+		if len(opt) == 0 {
+			continue
+		}
+
+		slog.Info("Executing option", "option", opt)
+
+		if strings.HasPrefix(opt, "%mkdir ") {
+			dir := strings.TrimPrefix(opt, "%mkdir ")
+			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+				return nil, err
+			}
+		} else if strings.HasPrefix(opt, "%rmdir ") {
+			dir := strings.TrimPrefix(opt, "%rmdir ")
+			if err := os.RemoveAll(dir); err != nil {
+				return nil, err
+			}
+		} else if strings.HasPrefix(opt, "%writeFile ") {
+			parts := strings.SplitN(strings.TrimPrefix(opt, "%writeFile "), " ", 2)
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("invalid writeFile option: %s", opt)
+			}
+
+			if err := os.WriteFile(parts[0], []byte(parts[1]), os.ModePerm); err != nil {
+				return nil, err
+			}
+		} else {
+			ret = append(ret, opt)
+		}
+	}
+
+	return ret, nil
+}
+
 func runTest(filename string) error {
-	cmd := exec.Command("build/tinyrange", "login", "-c", filename)
+	args := []string{
+		"build/tinyrange",
+		"login",
+		"-c",
+		filename,
+	}
+
+	slog.Info("Running test", "filename", filename)
+
+	optsFile := filepath.Join(filepath.Dir(filename), "test.opts")
+	if exists, err := os.Stat(optsFile); err == nil && exists.Mode().IsRegular() {
+		optsContents, err := os.ReadFile(optsFile)
+		if err != nil {
+			return fmt.Errorf("failed to read options file: %w", err)
+		}
+
+		opts, err := executeOptions(strings.Split(string(optsContents), "\n"))
+		if err != nil {
+			return fmt.Errorf("failed to execute options: %w", err)
+		}
+
+		args = append(args, opts...)
+	}
+
+	cmd := exec.Command(args[0], args[1:]...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

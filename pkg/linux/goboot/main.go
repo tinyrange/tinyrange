@@ -203,9 +203,13 @@ func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, nonIntera
 		// Start proactively listening for process death, for those ptys that
 		// don't signal on EOF.
 		if shell.Process != nil {
-			if ps, err := shell.Process.Wait(); err != nil && ps != nil {
+			ps, err := shell.Process.Wait()
+			if err != nil && ps != nil {
 				slog.Warn("failed to exit shell", "error", err)
 			}
+
+			// Send the exit code to the client
+			connection.SendRequest("exit-status", false, binary.BigEndian.AppendUint32(nil, uint32(ps.ExitCode())))
 
 			// It appears that closing the pty is an idempotent operation
 			// therefore making this call ensures that the other two coroutines
@@ -273,11 +277,17 @@ func (s *sshServer) handleExec(conn ssh.Conn, ch ssh.Channel, req *ssh.Request, 
 	io.Copy(ch, stdout)
 	io.Copy(ch.Stderr(), stderr)
 
+	var code = 0
+
 	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("failed to wait for command: %s", err)
+		if err, ok := err.(*exec.ExitError); ok {
+			code = err.ExitCode()
+		} else {
+			return fmt.Errorf("failed to wait for command: %s", err)
+		}
 	}
 
-	ch.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+	ch.SendRequest("exit-status", false, binary.BigEndian.AppendUint32(nil, uint32(code)))
 
 	return nil
 }
@@ -1531,8 +1541,10 @@ func initMain() error {
 			return err
 		}
 
+		opts := &common.ExecOptions{}
+
 		for _, script := range scripts {
-			if err := common.RunCommand(script); err != nil {
+			if err := common.RunCommand(script, opts); err != nil {
 				return err
 			}
 		}

@@ -148,6 +148,13 @@ type MutableDirectory interface {
 	Unlink(name string) error
 }
 
+type MutableRenameFile interface {
+	MutableFile
+
+	// Rename renames a file or directory.
+	Rename(newDirectory MutableDirectory, newName string) error
+}
+
 // Archive is an interface that represents a list of entries.
 type Archive interface {
 	// Entries returns a list of entries in the archive.
