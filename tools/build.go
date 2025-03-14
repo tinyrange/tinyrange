@@ -343,12 +343,12 @@ func executeOptions(options []string) ([]string, error) {
 	var ret []string
 
 	for _, opt := range options {
+		// Remove any trailing \r characters and trim whitespace.
+		opt = strings.TrimSuffix(strings.TrimSpace(opt), "\r")
+
 		if len(opt) == 0 {
 			continue
 		}
-
-		// Remove any trailing \r characters and trim whitespace.
-		opt = strings.TrimSuffix(strings.TrimSpace(opt), "\r")
 
 		slog.Info("Executing option", "option", opt)
 
