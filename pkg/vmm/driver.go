@@ -1833,7 +1833,7 @@ func Entry(
 	}
 
 	if err := entryMain(prepare, create); err != nil {
-		slog.Error("fatal", "err", err)
+		slog.Error("driver fatal", "err", err)
 		os.Exit(1)
 	}
 }

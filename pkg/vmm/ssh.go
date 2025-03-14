@@ -230,6 +230,7 @@ func connectOverSsh(
 	}
 
 	close := make(chan closeType, 1)
+	errorChan := make(chan error, 1)
 
 	if nonInteractive {
 		reader := &waitReader{closed: make(chan bool)}
@@ -248,24 +249,27 @@ func connectOverSsh(
 
 	go func() {
 		if err := session.Wait(); err != nil {
-			if errors.Is(err, &ssh.ExitMissingError{}) {
-				slog.Debug("failed to wait", "error", err)
-			} else {
-				slog.Warn("failed to wait", "error", err)
-			}
+			errorChan <- err
+		} else {
+			errorChan <- nil
 		}
 
 		close <- closeExit
 	}()
 
-	switch <-close {
-	case closeExit:
-		return nil
-	case closeRestart:
-		return ErrRestart
+	select {
+	case err := <-errorChan:
+		return err
+	case val := <-close:
+		switch val {
+		case closeExit:
+			return nil
+		case closeRestart:
+			return ErrRestart
+		default:
+			return fmt.Errorf("unknown close type: %v", val)
+		}
 	}
-
-	return nil
 }
 
 type webSocketWriter struct {

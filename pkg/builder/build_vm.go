@@ -118,6 +118,7 @@ func (def *buildVmDefinition) ToStarlark(artifact common.BuildArtifact) (starlar
 // WriteTo implements common.BuildResult.
 func (def *buildVmDefinition) WriteResult(w io.Writer) error {
 	if err := def.cmd.Wait(); err != nil {
+		slog.Error("error waiting for VM", "err", err)
 		return err
 	}
 
@@ -125,9 +126,13 @@ func (def *buildVmDefinition) WriteResult(w io.Writer) error {
 		return fmt.Errorf("VM did not write any output")
 	}
 
-	def.server.Shutdown(context.Background())
+	if err := def.server.Shutdown(context.Background()); err != nil {
+		slog.Error("error shutting down server", "err", err)
+	}
 
-	def.out.Close()
+	if err := def.out.Close(); err != nil {
+		slog.Error("error closing output", "err", err)
+	}
 
 	return nil
 }
