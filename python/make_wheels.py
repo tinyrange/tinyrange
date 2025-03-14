@@ -166,7 +166,15 @@ def main():
 
     os.makedirs("release/", exist_ok=True)
 
-    tinyrange_version = args.tag.removeprefix("v")
+    tinyrange_version = ""
+
+    if args.tag.startswith("v"):
+        tinyrange_version = args.tag.removeprefix("v")
+    elif args.tag.startswith("ref/tags/v"):
+        tinyrange_version = args.tag.removeprefix("ref/tags/v")
+    else:
+        raise ValueError("Invalid tag format")
+
     epoch = "0"
 
     for tinyrange_platform, python_platform in {
