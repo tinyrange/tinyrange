@@ -14,16 +14,16 @@ ADD ./tools tools
 ADD ./LICENSE LICENSE
 ADD ./main.go main.go
 
-COPY pkg/buildinfo/commit.txt pkg/buildinfo/commit.txt
-
 RUN go run ./tools/build.go
 
 FROM alpine:3.20
 
 RUN apk add ca-certificates
 
-COPY --from=builder /src/tinyrange/build/qemu-system-x86_64 /tinyrange_qemu
-COPY --from=builder /src/tinyrange/build/tinyrange_qemu /tinyrange_qemu
+RUN mkdir /tinyqemu
+
+COPY --from=builder /src/tinyrange/build/qemu-system-x86_64 /tinyqemu/
+COPY --from=builder /src/tinyrange/build/tinyrange_qemu /tinyqemu/
 COPY --from=builder /src/tinyrange/build/tinyrange /tinyrange
 
 ENTRYPOINT ["/tinyrange"]
