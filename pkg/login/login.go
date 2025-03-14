@@ -1,8 +1,6 @@
 package login
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -29,26 +27,6 @@ func detectArchiveExtractor(base common.BuildDefinition, filename string) (commo
 	} else {
 		return nil, fmt.Errorf("no extractor for %s", filename)
 	}
-}
-
-func sha256HashFromReader(r io.Reader) (string, error) {
-	h := sha256.New()
-
-	if _, err := io.Copy(h, r); err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-func sha256HashFromFile(filename string) (string, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	return sha256HashFromReader(f)
 }
 
 func parseMount(mount string, writable bool, port int) (common.DirectiveMountHostDirectory, error) {
@@ -314,7 +292,7 @@ func (config *Config) addArchive(filename string) (common.Directive, error) {
 			return nil, err
 		}
 
-		hash, err := sha256HashFromFile(filePath)
+		hash, err := common.Sha256HashFromFile(filePath)
 		if err != nil {
 			return nil, err
 		}
@@ -344,7 +322,7 @@ func (config *Config) addOCIImage(image string, arch config.CPUArchitecture) (co
 			return nil, err
 		}
 
-		hash, err := sha256HashFromFile(filePath)
+		hash, err := common.Sha256HashFromFile(filePath)
 		if err != nil {
 			return nil, err
 		}

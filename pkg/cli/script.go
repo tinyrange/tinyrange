@@ -2,12 +2,16 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"runtime/pprof"
 
 	"github.com/spf13/cobra"
+	"github.com/tinyrange/tinyrange/pkg/builder"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 var (
@@ -38,6 +42,20 @@ var scriptCmd = &cobra.Command{
 		}
 
 		files := make(map[string]filesystem.File)
+
+		for _, file := range scriptFiles {
+			hash, err := common.Sha256HashFromFile(file)
+			if err != nil {
+				return err
+			}
+
+			def := builder.Factory.NewConstantHashDefinition(hash, func() (io.ReadCloser, error) {
+				return os.Open(file)
+			})
+
+			f := filesystem.NewLocalFile(file, def)
+			files[path.Native.Base(file)] = f
+		}
 
 		filename := args[0]
 

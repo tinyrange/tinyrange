@@ -1732,7 +1732,31 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 			if err != nil {
 				ctx.deferredFilesystem = append(ctx.deferredFilesystem, func() error {
 					if err := fs.Link(name, target); err != nil {
-						return fmt.Errorf("failed to make hard link: %w", err)
+						slog.Error("failed to link", "name", name, "target", target, "err", err)
+
+						// major hack to try and reorder things.
+						ctx.deferredFilesystem = append(ctx.deferredFilesystem, func() error {
+							if err := fs.Link(name, target); err != nil {
+								return fmt.Errorf("failed to link: %w", err)
+							}
+
+							if err := fs.Chmod(name, info.Mode()); err != nil {
+								return fmt.Errorf("failed to chmod: %w", err)
+							}
+
+							uid, gid, err := filesystem.GetUidAndGid(ent.File)
+							if err != nil {
+								return fmt.Errorf("failed to GetUidAndGid: %w", err)
+							}
+
+							if err := fs.Chown(name, uint16(uid), uint16(gid)); err != nil {
+								return fmt.Errorf("failed to chown: %w", err)
+							}
+
+							return nil
+						})
+
+						return nil
 					}
 
 					if err := fs.Chmod(name, info.Mode()); err != nil {
