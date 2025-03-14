@@ -27,9 +27,13 @@ jobs:
         run: |
           go run ./tools/build.go
 
-      - name: Run Test
+      - name: Run Basic Test
         run: |
           go run ./tools/build.go -test tests/basic
+
+      - name: Run Shared Filesystem Test
+        run: |
+          go run ./tools/build.go -test tests/sharedFilesystem
   build-linux-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
@@ -44,9 +48,13 @@ jobs:
         run: |
           go run ./tools/build.go
 
-      - name: Run Test
+      - name: Run Basic Test
         run: |
           go run ./tools/build.go -test tests/basic
+
+      - name: Run Shared Filesystem Test
+        run: |
+          go run ./tools/build.go -test tests/sharedFilesystem
   build-macos:
     runs-on: macos-latest
     steps:
@@ -61,9 +69,13 @@ jobs:
         run: |
           go run ./tools/build.go -cgo
 
-      - name: Run Test
+      - name: Run Basic Test
         run: |
           go run ./tools/build.go -test tests/basic
+
+      - name: Run Shared Filesystem Test
+        run: |
+          go run ./tools/build.go -test tests/sharedFilesystem
   build-windows:
     runs-on: windows-latest
     steps:
@@ -79,7 +91,12 @@ jobs:
         run: |
           go run ./tools/build.go
 
-      - name: Run Test
+      - name: Run Basic Test
         shell: pwsh
         run: |
           go run ./tools/build.go -test tests/basic
+
+      - name: Run Shared Filesystem Test
+        shell: pwsh
+        run: |
+          go run ./tools/build.go -test tests/sharedFilesystem
