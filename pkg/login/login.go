@@ -610,6 +610,13 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 	if len(mountDirectives) > 0 {
 		if feature.HasFeature(feature.Feature9P) {
+			// Check that all the directories are accessible.
+			for _, mount := range mountDirectives {
+				if _, err := os.Stat(mount.HostDirectory); err != nil {
+					return fmt.Errorf("mount %s is not accessible", mount.HostDirectory)
+				}
+			}
+
 			scriptLines := []string{
 				"def main():",
 			}

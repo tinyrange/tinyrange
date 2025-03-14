@@ -77,10 +77,10 @@ func (b *Builder) uploadFile(address string, filename string) error {
 	return nil
 }
 
-func (b *Builder) execCommand(args []string, env map[string]string) error {
+func (b *Builder) execCommand(args []string, env map[string]string, opts *common.ExecOptions) error {
 	start := time.Now()
 
-	if err := common.ExecCommand(args, env); err != nil {
+	if err := common.ExecCommand(args, env, opts); err != nil {
 		return fmt.Errorf("failed to run command: %s", err)
 	}
 
@@ -100,6 +100,8 @@ type BuilderScript struct {
 }
 
 func (b *Builder) runScript(script BuilderScript) error {
+	opts := &common.ExecOptions{}
+
 	switch script.Kind {
 	case "trigger_on":
 		start := time.Now()
@@ -125,6 +127,7 @@ func (b *Builder) runScript(script BuilderScript) error {
 		if err := b.execCommand(
 			append([]string{script.Exec}, args...),
 			script.Environment,
+			opts,
 		); err != nil {
 			return err
 		}
@@ -144,6 +147,7 @@ func (b *Builder) runScript(script BuilderScript) error {
 		if err := b.execCommand(
 			append([]string{script.Exec}, script.Arguments...),
 			script.Environment,
+			opts,
 		); err != nil {
 			return err
 		}
@@ -596,6 +600,8 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 		}
 	}
 
+	opts := &common.ExecOptions{}
+
 	// Run raw commands.
 	for _, cmd := range cfg.RawCommands {
 		slog.Info("running", "cmd", cmd)
@@ -605,7 +611,7 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 			return err
 		}
 
-		if err := common.ExecCommand(args, nil); err != nil {
+		if err := common.ExecCommand(args, nil, opts); err != nil {
 			return err
 		}
 	}
@@ -637,7 +643,7 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 			slog.Debug("time to interactive", "time", time.Since(realStart), "uptime", uptime)
 		}
 
-		if err := common.RunCommand(cmd); err != nil {
+		if err := common.RunCommand(cmd, opts); err != nil {
 			return err
 		}
 	}

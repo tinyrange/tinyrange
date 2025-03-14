@@ -1531,8 +1531,10 @@ func initMain() error {
 			return err
 		}
 
+		opts := &common.ExecOptions{}
+
 		for _, script := range scripts {
-			if err := common.RunCommand(script); err != nil {
+			if err := common.RunCommand(script, opts); err != nil {
 				return err
 			}
 		}

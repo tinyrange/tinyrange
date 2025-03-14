@@ -1,0 +1,7 @@
+%rmdir local/test
+%mkdir local/test
+%writeFile local/test/hello.txt hello world
+%mkdir local/test/hello
+
+--mount
+local/test:/test

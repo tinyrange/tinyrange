@@ -1,0 +1,40 @@
+version: 1
+builder: alpine@3.21
+commands:
+  - "%exit_on_failure,verbose"
+
+  # Successful tests
+  # Check that test/hello.txt contains "hello"
+  - cat /test/hello.txt | grep hello
+  # Check that listing the contents of /test returns "hello.txt"
+  - ls /test | grep hello.txt
+  # Check that we can create a directory
+  - mkdir /test/readwrite
+  # Check that we can create a file
+  - echo hello > /test/readwrite.txt
+  # Check that we can remove a file
+  - rm /test/readwrite.txt
+  # Check that we can remove a directory
+  - rmdir /test/readwrite
+  # Check that we can rename a file
+  - echo hello > /test/hello.txt
+  - mv /test/hello.txt /test/hello2.txt
+  # Check that we can rename a directory
+  - mkdir /test/newHello
+  - mv /test/newHello /test/newHello2
+  # Check that we can write a file into the new directory
+  - echo hello > /test/newHello2/hello.txt
+  # Check that we can change the permissions of a file
+  - echo hello > /test/hello.txt
+  - chmod 777 /test/hello.txt
+  # Check that we can touch a file
+  - touch /test/hello.txt
+  # Check that we can change the owner
+  - chown 1000:1000 /test/hello.txt
+  # Check that we can copy a file from our local filesystem to the shared filesystem
+  - echo hello > /tmp/hello.txt
+  - cp /tmp/hello.txt /test/hello.txt
+  - cat /test/hello.txt | grep hello
+  # Check that we can copy a file from the shared filesystem to our local filesystem
+  - cp /test/hello.txt /tmp/hello2.txt
+  - cat /tmp/hello2.txt | grep hello

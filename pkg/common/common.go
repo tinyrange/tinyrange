@@ -170,7 +170,39 @@ func GetDefaultBuildDir() string {
 	return path.Native.Join(cache, "tinyrange", "build")
 }
 
-func ExecCommand(args []string, environment map[string]string) error {
+type ExecOptions struct {
+	Verbose       bool
+	ExitOnFailure bool
+}
+
+func (o *ExecOptions) EvaluateOptions(opts string) error {
+	if !strings.HasPrefix(opts, "%") {
+		return fmt.Errorf("not an options specifier: %s", opts)
+	}
+
+	opts = strings.TrimPrefix(opts, "%")
+
+	tokens := strings.Split(opts, ",")
+
+	for _, token := range tokens {
+		switch token {
+		case "verbose":
+			o.Verbose = true
+		case "exit_on_failure":
+			o.ExitOnFailure = true
+		default:
+			return fmt.Errorf("unknown option: %s", token)
+		}
+	}
+
+	return nil
+}
+
+func NewExecOptions() *ExecOptions {
+	return &ExecOptions{}
+}
+
+func ExecCommand(args []string, environment map[string]string, options *ExecOptions) error {
 	if ok, _ := Exists(args[0]); !ok {
 		return fmt.Errorf("path %s does not exist", args[0])
 	}
@@ -186,11 +218,19 @@ func ExecCommand(args []string, environment map[string]string) error {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
+	if options.Verbose {
+		slog.Info("executing command", "args", args)
+	}
+
 	err := cmd.Run()
 	if exit, ok := err.(*exec.ExitError); ok {
 		if exit.ExitCode() == 255 {
 			slog.Warn("command returned exit 255", "args", args)
 			return nil
+		}
+
+		if options.ExitOnFailure {
+			return err
 		}
 	} else if err != nil {
 		return err
@@ -228,18 +268,20 @@ func SetDefaultInteractive(args []string) {
 	DefaultInteractiveCommand = args
 }
 
-func RunCommand(script string) error {
+func RunCommand(script string, options *ExecOptions) error {
 	if strings.HasPrefix(script, "/init") {
 		tokens, err := shlex.Split(script, true)
 		if err != nil {
 			return err
 		}
 
-		return ExecCommand(tokens, nil)
+		return ExecCommand(tokens, nil, options)
 	} else if script == "interactive" {
-		return ExecCommand(DefaultInteractiveCommand, nil)
+		return ExecCommand(DefaultInteractiveCommand, nil, options)
+	} else if strings.HasPrefix(script, "%") {
+		return options.EvaluateOptions(script)
 	} else {
-		return ExecCommand([]string{"/bin/sh", "-lc", script}, nil)
+		return ExecCommand([]string{"/bin/sh", "-lc", script}, nil, options)
 	}
 }
 
