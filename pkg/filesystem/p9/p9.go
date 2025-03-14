@@ -17,7 +17,7 @@ import (
 
 const (
 	IOUNIT_SIZE = 0
-	P9_DEBUG    = false
+	P9_DEBUG    = true
 )
 
 type Server struct {
@@ -406,7 +406,17 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 
 		slog.Debug("9p: message", "type", msg.Type, "body", body)
 
-		return nil, fmt.Errorf("9p: Tstatfs not implemented")
+		return ret.EncodeBody(MsgRstatfs, msg.Tag, &Rstatfs{
+			Type:    0,
+			Bsize:   4096,
+			Blocks:  1024 * 1024 * 1024,
+			Bfree:   512 * 1024 * 1024,
+			Bavail:  512 * 1024 * 1024,
+			Files:   1024 * 1024 * 1024,
+			Ffree:   512 * 1024 * 1024,
+			Fsid:    0xdeadbeef,
+			Namelen: 255,
+		})
 	case MsgTlopen:
 		var body Tlopen
 
