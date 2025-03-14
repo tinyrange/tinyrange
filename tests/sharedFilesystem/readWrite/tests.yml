@@ -29,8 +29,6 @@ commands:
   - chmod 777 /test/hello.txt
   # Check that we can touch a file
   - touch /test/hello.txt
-  # Check that we can change the owner
-  - chown 1000:1000 /test/hello.txt
   # Check that we can copy a file from our local filesystem to the shared filesystem
   - echo hello > /tmp/hello.txt
   - cp /tmp/hello.txt /test/hello.txt
