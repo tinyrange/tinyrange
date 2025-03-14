@@ -370,21 +370,52 @@ func (tr *driver) fatalError() {
 
 // GetOrSetCacheForHash implements filesystem.ExtendedRegionMethods.
 func (tr *driver) GetOrSetCacheForHash(hash string, setter func(w io.Writer) error) (io.ReaderAt, error) {
-	if tr.simpleCache == nil {
-		tr.simpleCache = make(map[string][]byte)
-	}
-
-	if _, ok := tr.simpleCache[hash]; !ok {
-		var buf bytes.Buffer
-
-		if err := setter(&buf); err != nil {
-			return nil, err
+	if tr.persistPath == "" {
+		if tr.simpleCache == nil {
+			tr.simpleCache = make(map[string][]byte)
 		}
 
-		tr.simpleCache[hash] = buf.Bytes()
-	}
+		if _, ok := tr.simpleCache[hash]; !ok {
+			var buf bytes.Buffer
 
-	return bytes.NewReader(tr.simpleCache[hash]), nil
+			if err := setter(&buf); err != nil {
+				return nil, err
+			}
+
+			tr.simpleCache[hash] = buf.Bytes()
+		}
+
+		return bytes.NewReader(tr.simpleCache[hash]), nil
+	} else {
+		if err := os.MkdirAll(path.Native.Join(tr.persistPath, "runtimeCache"), 0755); err != nil {
+			return nil, fmt.Errorf("failed to create cache directory: %w", err)
+		}
+
+		filename := path.Native.Join(tr.persistPath, "runtimeCache", hash)
+
+		if ok, _ := common.Exists(filename); !ok {
+			fh, err := os.Create(filename)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create file: %w", err)
+			}
+
+			if err := setter(fh); err != nil {
+				fh.Close()
+				return nil, fmt.Errorf("failed to set cache: %w", err)
+			}
+
+			if err := fh.Close(); err != nil {
+				return nil, fmt.Errorf("failed to close file: %w", err)
+			}
+		}
+
+		fh, err := os.Open(filename)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open file: %w", err)
+		}
+
+		return fh, nil
+	}
 }
 
 // HttpClient implements filesystem.ExtendedRegionMethods.
@@ -1712,25 +1743,29 @@ var (
 	_ filesystem.ExtendedRegionMethods = &driver{}
 )
 
+var DriverFlags = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+
 var (
-	doPrepare         = flag.Bool("prepare", false, "prepare the driver and check if it is runnable")
-	buildDir          = flag.String("build-dir", common.GetDefaultBuildDir(), "the build directory")
-	debug             = flag.Bool("debug", false, "enable debug mode")
-	verbose           = flag.Bool("verbose", false, "enable verbose mode")
-	secureSSH         = flag.String("secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
-	persistPath       = flag.String("persist-path", "", "Specify a path to save VM files to.")
-	exportFsPath      = flag.String("exportfs", "", "Export the filesystem to a file.")
-	dumpFsPath        = flag.String("dumpfs", "", "Dump the filename and offset of any reads from the filesystem to a CSV file.")
-	wireguardUrl      = flag.String("wireguard-url", "", "URL to fetch wireguard config from.")
-	nbdBlockSize      = flag.Int("nbd-block-size", 0, "Override the preferred and maximum block size for the NBD server. This can have major performance implications.")
-	packetCapturePath = flag.String("packet-capture", "", "Path to write packet capture in pcap format to.")
+	doPrepare         = DriverFlags.Bool("prepare", false, "prepare the driver and check if it is runnable")
+	buildDir          = DriverFlags.String("build-dir", common.GetDefaultBuildDir(), "the build directory")
+	debug             = DriverFlags.Bool("debug", false, "enable debug mode")
+	verbose           = DriverFlags.Bool("verbose", false, "enable verbose mode")
+	secureSSH         = DriverFlags.String("secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
+	persistPath       = DriverFlags.String("persist-path", "", "Specify a path to save VM files to.")
+	exportFsPath      = DriverFlags.String("exportfs", "", "Export the filesystem to a file.")
+	dumpFsPath        = DriverFlags.String("dumpfs", "", "Dump the filename and offset of any reads from the filesystem to a CSV file.")
+	wireguardUrl      = DriverFlags.String("wireguard-url", "", "URL to fetch wireguard config from.")
+	nbdBlockSize      = DriverFlags.Int("nbd-block-size", 0, "Override the preferred and maximum block size for the NBD server. This can have major performance implications.")
+	packetCapturePath = DriverFlags.String("packet-capture", "", "Path to write packet capture in pcap format to.")
 )
 
 func entryMain(
 	prepare func(vmm Driver) (PrepareResult, error),
 	create func(vmm Driver) (VirtualMachineMonitor, error),
 ) error {
-	flag.Parse()
+	if err := DriverFlags.Parse(os.Args[1:]); err != nil {
+		return err
+	}
 
 	if *verbose {
 		common.EnableVerbose()
@@ -1765,7 +1800,7 @@ func entryMain(
 		}
 	}
 
-	for _, arg := range flag.Args() {
+	for _, arg := range DriverFlags.Args() {
 		if err := driver.addConfig(arg); err != nil {
 			return err
 		}

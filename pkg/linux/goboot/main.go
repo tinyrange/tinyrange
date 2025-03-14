@@ -1425,22 +1425,24 @@ func runSSHServer() error {
 	return nil
 }
 
-var (
-	execShell             = flag.Bool("shell", false, "start the shell instead of running /init.sh")
-	runSshServer          = flag.String("ssh", "", "run a ssh server that executes the argument on connection")
-	runConfiguredSsh      = flag.Bool("ssh-configured", false, "run a ssh server with the machine config files")
-	downloadFile          = flag.String("download", "", "download a file from the specified server")
-	runScripts            = flag.String("run-scripts", "", "run a JSON file of scripts")
-	lockFile              = flag.String("lock-file", "", "don't run scripts if this file exists and create it if it doesn't exist")
-	runBasicScripts       = flag.String("run-basic-scripts", "", "run a JSON file containing an array of commands")
-	runConfig             = flag.String("run-config", "", "run a JSON file with a given builder config")
-	dumpFs                = flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
-	runStarlarkScriptFile = flag.String("star", "", "run a starlark script")
-	modprobe              = flag.String("modprobe", "", "load a kernel module")
-)
-
 func initMain() error {
-	flag.Parse()
+	flag := flag.NewFlagSet("init", flag.ExitOnError)
+
+	execShell := flag.Bool("shell", false, "start the shell instead of running /init.sh")
+	runSshServer := flag.String("ssh", "", "run a ssh server that executes the argument on connection")
+	runConfiguredSsh := flag.Bool("ssh-configured", false, "run a ssh server with the machine config files")
+	downloadFile := flag.String("download", "", "download a file from the specified server")
+	runScripts := flag.String("run-scripts", "", "run a JSON file of scripts")
+	lockFile := flag.String("lock-file", "", "don't run scripts if this file exists and create it if it doesn't exist")
+	runBasicScripts := flag.String("run-basic-scripts", "", "run a JSON file containing an array of commands")
+	runConfig := flag.String("run-config", "", "run a JSON file with a given builder config")
+	dumpFs := flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
+	runStarlarkScriptFile := flag.String("star", "", "run a starlark script")
+	modprobe := flag.String("modprobe", "", "load a kernel module")
+
+	if err := flag.Parse(os.Args[1:]); err != nil {
+		return err
+	}
 
 	if *execShell {
 		return shellMain()

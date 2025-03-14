@@ -2,7 +2,6 @@ package main
 
 import (
 	_ "embed"
-	"flag"
 	"fmt"
 	"log/slog"
 	"runtime"
@@ -39,11 +38,11 @@ func findQemu(driver vmm.Driver, name string) (string, error) {
 }
 
 var (
-	qemuPath     = flag.String("qemu", "", "path to qemu executable")
-	kernelPath   = flag.String("kernel", "", "path to linux kernel")
-	cdRomPath    = flag.String("cdrom", "", "path to cdrom image")
-	otherOs      = flag.Bool("other-os", false, "use other operating system (default is linux)")
-	appendKernel = flag.String("append-kernel", "", "append kernel command line")
+	qemuPath     = vmm.DriverFlags.String("qemu", "", "path to qemu executable")
+	kernelPath   = vmm.DriverFlags.String("kernel", "", "path to linux kernel")
+	cdRomPath    = vmm.DriverFlags.String("cdrom", "", "path to cdrom image")
+	otherOs      = vmm.DriverFlags.Bool("other-os", false, "use other operating system (default is linux)")
+	appendKernel = vmm.DriverFlags.String("append-kernel", "", "append kernel command line")
 )
 
 type OperatingSystem string
