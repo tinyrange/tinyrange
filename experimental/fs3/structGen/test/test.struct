@@ -1,0 +1,16 @@
+type Simple struct {
+    a u8
+    b u16_le
+    c u32_le
+    d i32_le
+}
+
+type Simple2 struct {
+    a Simple
+    b Simple
+}
+
+type SimpleUnion union {
+    a Simple
+    b Simple
+}

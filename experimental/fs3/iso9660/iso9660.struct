@@ -62,7 +62,7 @@ type DirectoryEntryFlags bitset {
     NotFinalRecordForFile
 }
 
-type DirectoryEntry dyn_struct {
+type BaseDirectoryEntry struct {
     size u8
     
     extendedAttributeRecordLength u8
@@ -77,6 +77,14 @@ type DirectoryEntry dyn_struct {
     volumeSequenceNumber int16_lsb_msb
 
     filenameLength u8
+}
+
+type RootDirectoryEntry struct {
+    base BaseDirectoryEntry
+}
+
+type DirectoryEntry dyn_struct {
+    base BaseDirectoryEntry
     filename [$filenameLength]char
 }
 
@@ -114,7 +122,7 @@ type PrimaryVolumeDescriptor struct {
     locationOfTypeMPathTable i32_be
     locationOfOptionalTypeMPathTable i32_be
 
-    rootDirectoryEntry DirectoryEntry
+    rootDirectoryEntry RootDirectoryEntry
 
     volumeSetIdentifier [128]char
     publisherIdentifier [128]char
@@ -137,6 +145,10 @@ type PrimaryVolumeDescriptor struct {
     applicationUsed [512]u8
 
     _ [653]u8
+}
+
+type VolumeDescriptorSetTerminator struct {
+
 }
 
 type VolumeDescriptorContent union {
