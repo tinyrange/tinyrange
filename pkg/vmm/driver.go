@@ -1750,6 +1750,7 @@ var (
 	buildDir          = DriverFlags.String("build-dir", common.GetDefaultBuildDir(), "the build directory")
 	debug             = DriverFlags.Bool("debug", false, "enable debug mode")
 	verbose           = DriverFlags.Bool("verbose", false, "enable verbose mode")
+	experimental      = DriverFlags.String("experimental", "", "enable comma separated experimental features")
 	secureSSH         = DriverFlags.String("secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
 	persistPath       = DriverFlags.String("persist-path", "", "Specify a path to save VM files to.")
 	exportFsPath      = DriverFlags.String("exportfs", "", "Export the filesystem to a file.")
@@ -1769,6 +1770,10 @@ func entryMain(
 
 	if *verbose {
 		common.EnableVerbose()
+	}
+
+	if err := common.SetExperimental(strings.Split(*experimental, ",")); err != nil {
+		return err
 	}
 
 	driver := &driver{

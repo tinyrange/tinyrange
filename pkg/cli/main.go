@@ -39,10 +39,8 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
-		if len(rootExperimentalFlags) > 0 {
-			if err := common.SetExperimental(rootExperimentalFlags); err != nil {
-				return err
-			}
+		if err := common.SetExperimental(rootExperimentalFlags); err != nil {
+			return err
 		}
 
 		return nil

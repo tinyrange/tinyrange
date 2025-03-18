@@ -34,6 +34,29 @@ var (
 	_ FileInfo = &osStat{}
 )
 
+type readOnlyFileHandle struct {
+	fh *os.File
+}
+
+// Close implements FileHandle.
+func (r *readOnlyFileHandle) Close() error {
+	return r.fh.Close()
+}
+
+// Read implements FileHandle.
+func (r *readOnlyFileHandle) Read(p []byte) (n int, err error) {
+	return r.fh.Read(p)
+}
+
+// ReadAt implements FileHandle.
+func (r *readOnlyFileHandle) ReadAt(p []byte, off int64) (n int, err error) {
+	return r.fh.ReadAt(p, off)
+}
+
+var (
+	_ FileHandle = &readOnlyFileHandle{}
+)
+
 type localFile struct {
 	filename string
 	source   hash.SerializableValue
@@ -41,7 +64,12 @@ type localFile struct {
 
 // Open implements File.
 func (l *localFile) Open() (FileHandle, error) {
-	return os.OpenFile(l.filename, os.O_RDONLY, 0)
+	fh, err := os.OpenFile(l.filename, os.O_RDONLY, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return &readOnlyFileHandle{fh: fh}, nil
 }
 
 // Stat implements File.
@@ -59,8 +87,24 @@ func (l *localFile) Filename() (string, error) {
 	return l.filename, nil
 }
 
+// Lstat implements Symlink.
+func (l *localFile) Lstat() (FileInfo, error) {
+	s, err := os.Lstat(l.filename)
+	if err != nil {
+		return nil, err
+	}
+
+	return &osStat{FileInfo: s}, nil
+}
+
+// Readlink implements Symlink.
+func (l *localFile) Readlink() (string, error) {
+	return os.Readlink(l.filename)
+}
+
 var (
 	_ File     = &localFile{}
+	_ Symlink  = &localFile{}
 	_ HostFile = &localFile{}
 )
 
@@ -164,7 +208,21 @@ func (l *localMutableFile) Truncate(size int64) error {
 // Open implements File.
 // This shadows the Open method of LocalFile.
 func (l *localMutableFile) Open() (FileHandle, error) {
-	return os.OpenFile(l.filename, os.O_RDWR, 0)
+	fh, err := os.OpenFile(l.filename, os.O_RDWR, 0)
+	if errors.Is(err, os.ErrPermission) {
+		// try to open the file in read-only mode.
+		fh, err = os.OpenFile(l.filename, os.O_RDONLY, 0)
+		if err != nil {
+			return nil, err
+		}
+
+		// if the file is read-only, then return a read-only file handle.
+		return &readOnlyFileHandle{fh: fh}, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	return fh, nil
 }
 
 // OpenMut implements MutableFile.

@@ -55,6 +55,11 @@ type File interface {
 	Stat() (FileInfo, error)
 }
 
+type Symlink interface {
+	Readlink() (string, error)
+	Lstat() (FileInfo, error)
+}
+
 type HostFile interface {
 	File
 

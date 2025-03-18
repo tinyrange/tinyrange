@@ -301,11 +301,24 @@ func RunService(script string) (*exec.Cmd, error) {
 }
 
 func SetExperimental(flags []string) error {
-	if err := os.Setenv("TINYRANGE_EXPERIMENTAL", strings.Join(flags, ",")); err != nil {
+	existingFlags, ok := os.LookupEnv("TINYRANGE_EXPERIMENTAL")
+	if ok {
+		flags = append(strings.Split(existingFlags, ","), flags...)
+	}
+
+	// remove all empty flags
+	var newFlags []string
+	for _, flag := range flags {
+		if flag != "" {
+			newFlags = append(newFlags, flag)
+		}
+	}
+
+	if err := os.Setenv("TINYRANGE_EXPERIMENTAL", strings.Join(newFlags, ",")); err != nil {
 		return err
 	}
 
-	feature.SetFeaturesFromExperimentalFlags(flags)
+	feature.SetFeaturesFromExperimentalFlags(newFlags)
 
 	return nil
 }

@@ -6,26 +6,105 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log/slog"
 	"net"
 	"os"
 	"runtime"
 	"time"
 
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/common/binary"
+	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 const (
 	IOUNIT_SIZE = 0
-	P9_DEBUG    = true
 )
+
+type serverFile struct {
+	s          *Server
+	file       filesystem.File
+	fileHandle filesystem.FileHandle
+}
+
+func (f *serverFile) readAt(p []byte, off int64) (int, error) {
+	if f.fileHandle != nil {
+		f.s.debug("9p: readAt using existing handle", "p", p, "off", off)
+		return f.fileHandle.ReadAt(p, off)
+	}
+
+	fh, err := f.file.Open()
+	if err != nil {
+		return -1, err
+	}
+	defer fh.Close()
+
+	return fh.ReadAt(p, off)
+}
+
+func (f *serverFile) writeAt(p []byte, off int64) (int, error) {
+	if f.fileHandle != nil {
+		if mut, ok := f.fileHandle.(filesystem.WritableFileHandle); ok {
+			f.s.debug("9p: writeAt using existing handle", "p", p, "off", off)
+			return mut.WriteAt(p, off)
+		}
+	}
+
+	mut, ok := f.file.(filesystem.MutableFile)
+	if !ok {
+		return -1, fs.ErrPermission
+	}
+
+	fh, err := mut.OpenMut()
+	if err != nil {
+		return -1, err
+	}
+
+	f.fileHandle = fh
+
+	return fh.WriteAt(p, off)
+}
+
+func (f *serverFile) truncate(size int64) error {
+	mut, ok := f.file.(filesystem.MutableFile)
+	if !ok {
+		return fs.ErrPermission
+	}
+
+	if err := mut.Truncate(size); err != nil {
+		return err
+	}
+
+	if f.fileHandle != nil {
+		if err := f.fileHandle.Close(); err != nil {
+			return err
+		}
+
+		f.fileHandle = nil
+	}
+
+	return nil
+}
+
+func (f *serverFile) clunk() error {
+	if f.fileHandle != nil {
+		if err := f.fileHandle.Close(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
 
 type Server struct {
 	dir filesystem.Directory
 
 	filePaths map[filesystem.FileInfo]uint64
-	fileIds   map[uint32]filesystem.File
+	fileIds   map[uint32]*serverFile
+
+	debugEnabled bool
+	warnEnabled  bool
 }
 
 // Close implements core.Component.
@@ -33,7 +112,23 @@ func (*Server) Close() error {
 	return nil
 }
 
-func (s *Server) getFid(id uint32) (filesystem.File, error) {
+func (s *Server) debug(message string, args ...any) {
+	if s.debugEnabled {
+		log.Debug(message, args...)
+	}
+}
+
+func (s *Server) warn(message string, args ...any) {
+	if s.warnEnabled {
+		log.Warn(message, args...)
+	}
+}
+
+func (s *Server) error(message string, args ...any) {
+	log.Error(message, args...)
+}
+
+func (s *Server) getFid(id uint32) (*serverFile, error) {
 	fid, ok := s.fileIds[id]
 	if !ok {
 		return nil, fmt.Errorf("fid %0X not found", id)
@@ -42,12 +137,30 @@ func (s *Server) getFid(id uint32) (filesystem.File, error) {
 	return fid, nil
 }
 
-func (s *Server) setFid(id uint32, file filesystem.File) error {
+func (s *Server) setFid(id uint32, file filesystem.File, handle filesystem.FileHandle) error {
 	if file == nil {
 		return fmt.Errorf("file is nil")
 	}
 
-	s.fileIds[id] = file
+	s.fileIds[id] = &serverFile{
+		s:          s,
+		file:       file,
+		fileHandle: handle,
+	}
+
+	return nil
+}
+
+func (s *Server) clunkFile(id uint32) error {
+	if _, ok := s.fileIds[id]; !ok {
+		return fmt.Errorf("fid %0X not found", id)
+	}
+
+	if err := s.fileIds[id].clunk(); err != nil {
+		return err
+	}
+
+	delete(s.fileIds, id)
 
 	return nil
 }
@@ -87,16 +200,14 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		fid, err := s.getFid(body.Fid)
 		if err != nil {
 			return nil, err
 		}
 
-		stat, err := fid.Stat()
+		stat, err := fid.file.Stat()
 		if err != nil {
 			return nil, err
 		}
@@ -133,7 +244,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 		}
 
 		if body.RequestMask&P9_GETATTR_UID != 0 {
-			uid, _, err := filesystem.GetUidAndGid(fid)
+			uid, _, err := filesystem.GetUidAndGid(fid.file)
 			if err != nil {
 				return nil, err
 			}
@@ -144,7 +255,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 		}
 
 		if body.RequestMask&P9_GETATTR_GID != 0 {
-			_, gid, err := filesystem.GetUidAndGid(fid)
+			_, gid, err := filesystem.GetUidAndGid(fid.file)
 			if err != nil {
 				return nil, err
 			}
@@ -196,9 +307,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			retMsg.Valid |= P9_GETATTR_BLOCKS
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: getattr", "retMsg", fmt.Sprintf("%+v", retMsg))
-		}
+		s.debug("9p: getattr", "retMsg", fmt.Sprintf("%+v", retMsg))
 
 		return ret.EncodeBody(MsgRgetattr, msg.Tag, &retMsg)
 	case MsgTversion:
@@ -208,9 +317,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		return ret.EncodeBody(MsgRversion, msg.Tag, &Rversion{
 			Msize:   body.Msize,
@@ -223,9 +330,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		return ret.EncodeBody(MsgRflush, msg.Tag, &Rflush{})
 	case MsgTattach:
@@ -235,11 +340,9 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
-		if err := s.setFid(body.Fid, s.dir); err != nil {
+		if err := s.setFid(body.Fid, s.dir, nil); err != nil {
 			return nil, fmt.Errorf("failed to set root fid: %v", err)
 		}
 
@@ -253,9 +356,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		fid, err := s.getFid(body.Fid)
 		if err != nil {
@@ -267,7 +368,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 		var newFile filesystem.File
 
 		if len(body.Nwname) > 0 {
-			newDir, ok := fid.(filesystem.Directory)
+			newDir, ok := fid.file.(filesystem.Directory)
 			if !ok {
 				return nil, fmt.Errorf("file is not a directory")
 			}
@@ -300,16 +401,14 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 				retMsg.Nwqid = append(retMsg.Nwqid, newQid)
 			}
 		} else {
-			newFile = fid
+			newFile = fid.file
 		}
 
-		if err := s.setFid(body.Newfid, newFile); err != nil {
+		if err := s.setFid(body.Newfid, newFile, nil); err != nil {
 			return nil, fmt.Errorf("failed to set new fid: %v", err)
 		}
 
-		if P9_DEBUG {
-			slog.Debug("", "Newfid", body.Newfid, "newInfo", newFile)
-		}
+		s.debug("", "Newfid", body.Newfid, "newInfo", newFile)
 
 		return ret.EncodeBody(MsgRwalk, msg.Tag, &retMsg)
 	case MsgTread:
@@ -319,9 +418,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		fid, err := s.getFid(body.Fid)
 		if err != nil {
@@ -330,13 +427,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 
 		buf := make([]byte, body.Count)
 
-		fh, err := fid.Open()
-		if err != nil {
-			return nil, err
-		}
-		defer fh.Close()
-
-		n, err := fh.ReadAt(buf, int64(body.Offset))
+		n, err := fid.readAt(buf, int64(body.Offset))
 		if err == io.EOF {
 			if n == 0 {
 				return ret.EncodeBody(MsgRread, msg.Tag, &Rread{Count: 0, Data: buf[:0]})
@@ -353,27 +444,14 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		fid, err := s.getFid(body.Fid)
 		if err != nil {
 			return nil, err
 		}
 
-		mut, ok := fid.(filesystem.MutableFile)
-		if !ok {
-			return nil, fmt.Errorf("file is not mutable")
-		}
-
-		fh, err := mut.OpenMut()
-		if err != nil {
-			return nil, err
-		}
-		defer fh.Close()
-
-		n, err := fh.WriteAt(body.Data, int64(body.Offset))
+		n, err := fid.writeAt(body.Data, int64(body.Offset))
 		if err != nil {
 			return nil, err
 		}
@@ -386,11 +464,11 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
-		delete(s.fileIds, body.Fid)
+		if err := s.clunkFile(body.Fid); err != nil {
+			return nil, err
+		}
 
 		return ret.EncodeBody(MsgRclunk, msg.Tag, &Rclunk{})
 	case MsgTremove:
@@ -400,7 +478,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		slog.Debug("9p: message", "type", msg.Type, "body", body)
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		return nil, fmt.Errorf("9p: Tremove not implemented")
 	case MsgTstatfs:
@@ -410,7 +488,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		slog.Debug("9p: message", "type", msg.Type, "body", body)
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		return ret.EncodeBody(MsgRstatfs, msg.Tag, &Rstatfs{
 			Type:    0,
@@ -430,16 +508,14 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		fid, err := s.getFid(body.Fid)
 		if err != nil {
 			return nil, err
 		}
 
-		stat, err := fid.Stat()
+		stat, err := fid.file.Stat()
 		if err != nil {
 			return nil, err
 		}
@@ -455,41 +531,53 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		fid, err := s.getFid(body.Fid)
 		if err != nil {
 			return nil, err
 		}
 
-		dir, ok := fid.(filesystem.MutableDirectory)
+		dir, ok := fid.file.(filesystem.MutableDirectory)
 		if !ok {
 			return nil, fs.ErrPermission
 		}
+
+		dirMode, err := dir.Stat()
+		if err != nil {
+			return nil, err
+		}
+
+		mode := fs.FileMode(body.Mode) & (^fs.FileMode(0666) | (dirMode.Mode() & 0666))
 
 		f, err := dir.Create(body.Name, filesystem.NewMemoryFile(filesystem.TypeRegular))
 		if err != nil {
 			return nil, err
 		}
 
-		memF, ok := f.(filesystem.MutableFile)
+		mutF, ok := f.(filesystem.MutableFile)
 		if !ok {
 			return nil, fs.ErrPermission
 		}
 
-		err = memF.Chmod(fs.FileMode(body.Mode) & fs.ModePerm)
+		mutFh, err := mutF.OpenMut()
 		if err != nil {
 			return nil, err
 		}
 
-		newInfo, err := memF.Stat()
+		s.debug("9p: message", "set mode", fs.FileMode(body.Mode)&fs.ModePerm)
+		err = mutF.Chmod(mode)
 		if err != nil {
 			return nil, err
 		}
 
-		if err := s.setFid(body.Fid, memF); err != nil {
+		newInfo, err := mutF.Stat()
+		if err != nil {
+			return nil, err
+		}
+
+		// Maintain the file handle for the file.
+		if err := s.setFid(body.Fid, mutF, mutFh); err != nil {
 			return nil, fmt.Errorf("failed to set create fid: %v", err)
 		}
 
@@ -504,14 +592,14 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		slog.Debug("9p: message", "type", msg.Type, "body", body)
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		fid, err := s.getFid(body.Fid)
 		if err != nil {
 			return nil, err
 		}
 
-		dir, ok := fid.(filesystem.MutableDirectory)
+		dir, ok := fid.file.(filesystem.MutableDirectory)
 		if !ok {
 			return nil, fs.ErrPermission
 		}
@@ -521,9 +609,15 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		newInfo, err := f.Stat()
+		fSym, ok := f.(filesystem.Symlink)
+		if !ok {
+			s.warn("9p: created symlink but it is not a symlink", "f", f)
+			return nil, fs.ErrInvalid
+		}
+
+		newInfo, err := fSym.Lstat()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to stat new symlink: %v", err)
 		}
 
 		return msg.EncodeBody(MsgRlcreate, msg.Tag, &Rsymlink{
@@ -536,7 +630,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		slog.Debug("9p: message", "type", msg.Type, "body", body)
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		return nil, fmt.Errorf("9p: Tmknod not implemented")
 	case MsgTrename:
@@ -546,7 +640,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		slog.Debug("9p: message", "type", msg.Type, "body", body)
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		return nil, fmt.Errorf("9p: Trename not implemented")
 	case MsgTreadlink:
@@ -556,7 +650,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		slog.Debug("9p: message", "type", msg.Type, "body", body)
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		return nil, fmt.Errorf("9p: Treadlink not implemented")
 	case MsgTsetattr:
@@ -566,9 +660,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		fid, err := s.getFid(body.Fid)
 		if err != nil {
@@ -576,7 +668,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 		}
 
 		if body.Valid&P9_SETATTR_MODE != 0 {
-			mut, ok := fid.(filesystem.MutableFile)
+			mut, ok := fid.file.(filesystem.MutableFile)
 			if !ok {
 				return nil, fs.ErrPermission
 			}
@@ -586,7 +678,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			}
 		}
 		if body.Valid&P9_SETATTR_UID != 0 {
-			mut, ok := fid.(filesystem.MutableFile)
+			mut, ok := fid.file.(filesystem.MutableFile)
 			if !ok {
 				return nil, fs.ErrPermission
 			}
@@ -597,7 +689,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			}
 		}
 		if body.Valid&P9_SETATTR_GID != 0 {
-			mut, ok := fid.(filesystem.MutableFile)
+			mut, ok := fid.file.(filesystem.MutableFile)
 			if !ok {
 				return nil, fs.ErrPermission
 			}
@@ -608,12 +700,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			}
 		}
 		if body.Valid&P9_SETATTR_SIZE != 0 {
-			mut, ok := fid.(filesystem.MutableFile)
-			if !ok {
-				return nil, fs.ErrPermission
-			}
-
-			if err := mut.Truncate(int64(body.Size)); err != nil {
+			if err := fid.truncate(int64(body.Size)); err != nil {
 				return nil, err
 			}
 		}
@@ -621,7 +708,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			// Ignored
 		}
 		if body.Valid&P9_SETATTR_MTIME != 0 {
-			mut, ok := fid.(filesystem.MutableFile)
+			mut, ok := fid.file.(filesystem.MutableFile)
 			if !ok {
 				return nil, fs.ErrPermission
 			}
@@ -631,7 +718,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			}
 		}
 		if body.Valid&P9_SETATTR_CTIME != 0 {
-			mut, ok := fid.(filesystem.MutableFile)
+			mut, ok := fid.file.(filesystem.MutableFile)
 			if !ok {
 				return nil, fs.ErrPermission
 			}
@@ -642,10 +729,10 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			}
 		}
 		if body.Valid&P9_SETATTR_ATIME_SET != 0 {
-			// slog.Warn("p9: unimplemented P9_SETATTR_ATIME_SET")
+			// log.Warn("p9: unimplemented P9_SETATTR_ATIME_SET")
 		}
 		if body.Valid&P9_SETATTR_MTIME_SET != 0 {
-			// slog.Warn("p9: unimplemented P9_SETATTR_MTIME_SET")
+			// log.Warn("p9: unimplemented P9_SETATTR_MTIME_SET")
 		}
 
 		_ = fid
@@ -658,9 +745,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		return msg.EncodeBody(MsgRxattrwalk, msg.Tag, &Rxattrwalk{})
 	case MsgTxattrcreate:
@@ -670,9 +755,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		// ignored
 		return msg.EncodeBody(MsgRxattrcreate, msg.Tag, &Rxattrcreate{})
@@ -683,16 +766,14 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		fid, err := s.getFid(body.Fid)
 		if err != nil {
 			return nil, err
 		}
 
-		dir, ok := fid.(filesystem.Directory)
+		dir, ok := fid.file.(filesystem.Directory)
 		if !ok {
 			return nil, fs.ErrInvalid
 		}
@@ -747,9 +828,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		fid, err := s.getFid(body.Fid)
 		if err != nil {
@@ -766,9 +845,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		// TOOD(joshua): This is a no-op for now.
 
@@ -782,9 +859,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		return nil, fmt.Errorf("9p: Tlink not implemented")
 	case MsgTmkdir:
@@ -794,16 +869,14 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		fid, err := s.getFid(body.Dfid)
 		if err != nil {
 			return nil, err
 		}
 
-		mutDir, ok := fid.(filesystem.MutableDirectory)
+		mutDir, ok := fid.file.(filesystem.MutableDirectory)
 		if !ok {
 			return nil, fs.ErrPermission
 		}
@@ -828,11 +901,9 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
-		// slog.Info("rename", "olddirfid", body.Olddirfid, "oldname", body.Oldname, "newdirfid", body.Newdirfid, "newname", body.Newname)
+		// log.Info("rename", "olddirfid", body.Olddirfid, "oldname", body.Oldname, "newdirfid", body.Newdirfid, "newname", body.Newname)
 
 		// Get the old directory.
 		oldFid, err := s.getFid(body.Olddirfid)
@@ -840,7 +911,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		oldMutDir, ok := oldFid.(filesystem.MutableDirectory)
+		oldMutDir, ok := oldFid.file.(filesystem.MutableDirectory)
 		if !ok {
 			return nil, fs.ErrPermission
 		}
@@ -857,7 +928,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		newMutDir, ok := newFid.(filesystem.MutableDirectory)
+		newMutDir, ok := newFid.file.(filesystem.MutableDirectory)
 		if !ok {
 			return nil, fs.ErrPermission
 		}
@@ -887,16 +958,14 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, err
 		}
 
-		if P9_DEBUG {
-			slog.Debug("9p: message", "type", msg.Type, "body", body)
-		}
+		s.debug("9p: message", "type", msg.Type, "body", body)
 
 		fid, err := s.getFid(body.Dirfd)
 		if err != nil {
 			return nil, err
 		}
 
-		mutDir, ok := fid.(filesystem.MutableDirectory)
+		mutDir, ok := fid.file.(filesystem.MutableDirectory)
 		if !ok {
 			return nil, fs.ErrPermission
 		}
@@ -912,73 +981,101 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 	}
 }
 
-func (s *Server) handleClient(client net.Conn) error {
-	defer client.Close()
-
-	slog.Debug("9p: got connection", "addr", client.RemoteAddr())
-
-	reader := binary.NewReader(client, binary.LittleEndian)
-
+func (s *Server) sendMessage(client net.Conn, msg *Message) error {
 	buf := new(bytes.Buffer)
 
-	for {
-		var msg Message
+	err := msg.Encode(binary.NewWriter(buf, binary.LittleEndian))
+	if err != nil {
+		return fmt.Errorf("failed to encode response: %v", err)
+	}
 
-		err := msg.Decode(reader)
-		if err != nil {
-			return fmt.Errorf("failed to decode message: %v", err)
+	if _, err := client.Write(buf.Bytes()); err != nil {
+		return fmt.Errorf("failed to send response: %v", err)
+	}
+
+	return nil
+}
+
+func (s *Server) readAndHandleMessage(client net.Conn, reader binary.BinaryReader) error {
+	var msg Message
+
+	defer func() {
+		if r := recover(); r != nil {
+			var msg Message
+
+			s.error("9p: recovered from panic", "error", r)
+
+			ret, err := msg.EncodeBody(MsgRlerror, msg.Tag, &Rlerror{Ecode: ENOSYS})
+			if err != nil {
+				s.error("9p: failed to encode response", "error", err)
+				return
+			}
+
+			if err := s.sendMessage(client, ret); err != nil {
+				s.error("9p: failed to send response", "error", err)
+				return
+			}
 		}
+	}()
 
-		ret, err := s.handleMessage(&msg)
-		if errors.Is(err, os.ErrNotExist) {
-			slog.Debug("9p: file not found", "kind", msg.Type, "error", err)
-			ret, err = msg.EncodeBody(MsgRlerror, msg.Tag, &Rlerror{Ecode: ENOENT})
-			if err != nil {
-				return fmt.Errorf("failed to encode response: %v", err)
-			}
-		} else if errors.Is(err, os.ErrPermission) {
-			slog.Debug("9p: permission denied", "kind", msg.Type, "error", err)
-			ret, err = msg.EncodeBody(MsgRlerror, msg.Tag, &Rlerror{Ecode: EPERM})
-			if err != nil {
-				return fmt.Errorf("failed to encode response: %v", err)
-			}
-		} else if err != nil {
-			slog.Warn("9p: error handling message", "kind", msg.Type, "error", err)
-			ret, err = msg.EncodeBody(MsgRlerror, msg.Tag, &Rlerror{Ecode: ENOSYS})
-			if err != nil {
-				return fmt.Errorf("failed to encode response: %v", err)
-			}
-		}
+	err := msg.Decode(reader)
+	if err != nil {
+		return fmt.Errorf("failed to decode message: %v", err)
+	}
 
-		buf.Reset()
-
-		err = ret.Encode(binary.NewWriter(buf, binary.LittleEndian))
+	ret, err := s.handleMessage(&msg)
+	if errors.Is(err, os.ErrNotExist) {
+		s.debug("9p: file not found", "kind", msg.Type, "error", err)
+		ret, err = msg.EncodeBody(MsgRlerror, msg.Tag, &Rlerror{Ecode: ENOENT})
 		if err != nil {
 			return fmt.Errorf("failed to encode response: %v", err)
 		}
-
-		_, err = client.Write(buf.Bytes())
+	} else if errors.Is(err, os.ErrPermission) {
+		s.warn("9p: permission denied", "kind", msg.Type, "error", err)
+		ret, err = msg.EncodeBody(MsgRlerror, msg.Tag, &Rlerror{Ecode: EPERM})
 		if err != nil {
-			return fmt.Errorf("failed to send response: %v", err)
+			return fmt.Errorf("failed to encode response: %v", err)
+		}
+	} else if err != nil {
+		s.error("9p: error handling message", "kind", msg.Type, "error", err)
+		ret, err = msg.EncodeBody(MsgRlerror, msg.Tag, &Rlerror{Ecode: ENOSYS})
+		if err != nil {
+			return fmt.Errorf("failed to encode response: %v", err)
+		}
+	}
+
+	return s.sendMessage(client, ret)
+}
+
+func (s *Server) handleClient(client net.Conn) error {
+	defer client.Close()
+
+	s.debug("9p: got connection", "addr", client.RemoteAddr())
+
+	reader := binary.NewReader(client, binary.LittleEndian)
+
+	for {
+		if err := s.readAndHandleMessage(client, reader); err != nil {
+			return err
 		}
 	}
 }
 
 // Execute implements core.Component.
 func (s *Server) Serve(listener net.Listener) error {
-	slog.Debug("starting 9p listener", "addr", listener.Addr())
+	s.debug("starting 9p listener", "addr", listener.Addr())
 
 	for {
 		client, err := listener.Accept()
 		if err != nil {
-			slog.Error("9p: failed to accept", "error", err)
+			log.Error("9p: failed to accept", "error", err)
 			return err
 		}
 
 		go func(client net.Conn) {
 			err := s.handleClient(client)
 			if err != nil {
-				slog.Error("9p: failed to handle client", "error", err)
+				log.Error("9p: failed to handle client", "error", err)
 				return
 			}
 		}(client)
@@ -989,6 +1086,9 @@ func NewServer(dir filesystem.Directory) *Server {
 	return &Server{
 		dir:       dir,
 		filePaths: make(map[filesystem.FileInfo]uint64),
-		fileIds:   make(map[uint32]filesystem.File),
+		fileIds:   make(map[uint32]*serverFile),
+
+		debugEnabled: feature.HasFeature(feature.Feature9PVerbose),
+		warnEnabled:  common.IsVerbose(),
 	}
 }

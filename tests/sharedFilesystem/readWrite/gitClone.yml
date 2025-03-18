@@ -1,0 +1,8 @@
+version: 1
+builder: alpine@3.21
+commands:
+    - "%exit_on_failure,verbose"
+
+    - cd /test && git clone https://github.com/tinyrange/tinyrange.py.git
+packages:
+    - git
