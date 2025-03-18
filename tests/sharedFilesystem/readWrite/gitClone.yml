@@ -4,5 +4,6 @@ commands:
     - "%exit_on_failure,verbose"
 
     - cd /test && git clone https://github.com/tinyrange/tinyrange.py.git
+    - cd /test/tinyrange.py && cat README.md | grep "TinyRange"
 packages:
     - git
