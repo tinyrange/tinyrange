@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -1037,7 +1038,13 @@ func (s *Server) readAndHandleMessage(client net.Conn, reader binary.BinaryReade
 			return fmt.Errorf("failed to encode response: %v", err)
 		}
 	} else if err != nil {
-		s.error("9p: error handling message", "kind", msg.Type, "error", err)
+		// This error message pops up on Windows when the path is invalid.
+		// We can safely ignore it and don't need to spam the logs.
+		if strings.Contains(err.Error(), "The filename, directory name, or volume label syntax is incorrect") {
+			s.warn("9p: invalid path", "kind", msg.Type, "error", err)
+		} else {
+			s.error("9p: error handling message", "kind", msg.Type, "error", err)
+		}
 		ret, err = msg.EncodeBody(MsgRlerror, msg.Tag, &Rlerror{Ecode: ENOSYS})
 		if err != nil {
 			return fmt.Errorf("failed to encode response: %v", err)
