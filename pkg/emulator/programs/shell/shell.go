@@ -5,12 +5,12 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log/slog"
 	"strconv"
 	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/emulator/shared"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -35,7 +35,7 @@ func (sh *shellProgram) runProgram(args []string, env shared.Environment) error 
 		return builtin(args)
 	}
 
-	// slog.Info("runProgram", "args", args)
+	// log.Info("runProgram", "args", args)
 
 	proc, err := sh.proc.Fork()
 	if err != nil {
@@ -242,7 +242,7 @@ func (sh *shellProgram) evalFile(f *syntax.File) error {
 
 func (sh *shellProgram) init() {
 	sh.builtIns["set"] = func(args []string) error {
-		slog.Info("set", "args", args)
+		log.Info("set", "args", args)
 
 		return nil
 	}
@@ -281,7 +281,7 @@ func (sh *shellProgram) init() {
 				return err
 			}
 
-			slog.Info("", "data", data)
+			log.Info("", "data", data)
 
 			tokens := strings.Split(string(data), args[2])
 
@@ -428,7 +428,7 @@ func (sh *shellProgram) Run(proc shared.Process, argv []string) error {
 		return fmt.Errorf("usage: shell <filename>")
 	}
 
-	// slog.Info("shell main", "argv", argv)
+	// log.Info("shell main", "argv", argv)
 
 	sh.init()
 

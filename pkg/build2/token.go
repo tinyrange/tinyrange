@@ -3,12 +3,12 @@ package build2
 import (
 	"errors"
 	"io"
-	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/feature"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 var (
@@ -54,12 +54,12 @@ func (t *token) Donate() {
 // Lock waits until it can acquire a token or receives a donation.
 func (t *token) Lock(reason string) io.Closer {
 	if t.locker.debug {
-		slog.Info("try lock", "reason", reason, "currentlyLocked", t.locker.currentlyLocked.Load())
+		log.Info("try lock", "reason", reason, "currentlyLocked", t.locker.currentlyLocked.Load())
 	}
 
 	if !t.mode.CompareAndSwap(modeFresh, modeWaiting) {
 		if t.locker.debug {
-			slog.Error("token already waiting", "currentlyLocked", t.locker.currentlyLocked.Load())
+			log.Error("token already waiting", "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
 
 		return nil
@@ -76,7 +76,7 @@ func (t *token) Lock(reason string) io.Closer {
 		t.lockReason = reason
 
 		if t.locker.debug {
-			slog.Info("acquire token", "reason", reason, "currentlyLocked", t.locker.currentlyLocked.Load())
+			log.Info("acquire token", "reason", reason, "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
 
 		t.locker.currentlyLocked.Add(1)
@@ -99,7 +99,7 @@ func (t *token) Close() error {
 
 	if t.closed {
 		if t.locker.debug {
-			slog.Error("token already closed", "currentlyLocked", t.locker.currentlyLocked.Load())
+			log.Error("token already closed", "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
 
 		return errors.New("token already closed")
@@ -110,7 +110,7 @@ func (t *token) Close() error {
 	switch t.mode.Load() {
 	case modeLocked:
 		if t.locker.debug {
-			slog.Info("release token", "reason", t.lockReason, "currentlyLocked", t.locker.currentlyLocked.Load())
+			log.Info("release token", "reason", t.lockReason, "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
 
 		t.mode.Store(modeReleased)
@@ -119,21 +119,21 @@ func (t *token) Close() error {
 		select {
 		case t.locker.c <- struct{}{}:
 			if t.locker.debug {
-				slog.Info("return token", "currentlyLocked", t.locker.currentlyLocked.Load())
+				log.Info("return token", "currentlyLocked", t.locker.currentlyLocked.Load())
 			}
 
 			t.locker.currentlyLocked.Add(-1)
 			return nil
 		default:
 			if t.locker.debug {
-				slog.Error("locker channel is full, cannot return token", "currentlyLocked", t.locker.currentlyLocked.Load())
+				log.Error("locker channel is full, cannot return token", "currentlyLocked", t.locker.currentlyLocked.Load())
 			}
 
 			return errors.New("locker channel is full, cannot return token")
 		}
 	case modeDonated:
 		if t.locker.debug {
-			slog.Info("donated token", "currentlyLocked", t.locker.currentlyLocked.Load())
+			log.Info("donated token", "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
 
 		t.mode.Store(modeReleased)
@@ -171,13 +171,13 @@ func newTokenLocker(size int) *tokenLocker {
 	}
 
 	if tl.debug {
-		slog.Info("token locker debug enabled", "size", size)
+		log.Info("token locker debug enabled", "size", size)
 		go func() {
 			for {
 				if tl.currentlyLocked.Load() < 0 {
-					slog.Error("currentlyLocked is less than 0", "value", tl.currentlyLocked.Load())
+					log.Error("currentlyLocked is less than 0", "value", tl.currentlyLocked.Load())
 				} else if tl.currentlyLocked.Load() > int32(size) {
-					slog.Error("currentlyLocked is greater than size", "value", tl.currentlyLocked.Load(), "size", size)
+					log.Error("currentlyLocked is greater than size", "value", tl.currentlyLocked.Load(), "size", size)
 				}
 
 				time.Sleep(1 * time.Second)

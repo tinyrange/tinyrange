@@ -3,10 +3,10 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type importData struct {
@@ -33,7 +33,7 @@ var importCmd = &cobra.Command{
 				return fmt.Errorf("failed to import definition: %w", err)
 			}
 
-			slog.Info("imported", "definition", buildDef)
+			log.Info("imported", "definition", buildDef)
 		}
 
 		return nil

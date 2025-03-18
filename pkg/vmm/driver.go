@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -41,6 +40,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/linux/goboot"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	_ "github.com/tinyrange/tinyrange/pkg/platform"
@@ -73,7 +73,7 @@ type fileBlockDevice struct {
 // // ReadAt implements BlockDevice.
 // // Subtle: this method shadows the method (*File).ReadAt of fileBlockDevice.File.
 // func (f *fileBlockDevice) ReadAt(p []byte, off int64) (n int, err error) {
-// 	slog.Debug("reading", "len", len(p), "off", off)
+// 	log.Debug("reading", "len", len(p), "off", off)
 // 	return f.File.ReadAt(p, off)
 // }
 
@@ -86,7 +86,7 @@ func (f *fileBlockDevice) Size() int64 {
 // // Subtle: this method shadows the method (*File).WriteAt of fileBlockDevice.File.
 // func (f *fileBlockDevice) WriteAt(p []byte, off int64) (n int, err error) {
 // 	n, err = f.File.WriteAt(p, off)
-// 	slog.Debug("writing", "len", len(p), "off", off, "err", err)
+// 	log.Debug("writing", "len", len(p), "off", off, "err", err)
 // 	return
 // }
 
@@ -108,7 +108,7 @@ func (vm *vmBackend) Close() error {
 func (vm *vmBackend) ReadAt(p []byte, off int64) (n int, err error) {
 	n, err = vm.vm.ReadAt(p, off)
 	if err != nil {
-		slog.Error("vmBackend readAt", "len", len(p), "off", off, "err", err)
+		log.Error("vmBackend readAt", "len", len(p), "off", off, "err", err)
 
 		// assume the VM will detect this as corruption and exit immediately.
 		vm.driver.fatalError()
@@ -123,7 +123,7 @@ func (vm *vmBackend) ReadAt(p []byte, off int64) (n int, err error) {
 func (vm *vmBackend) WriteAt(p []byte, off int64) (n int, err error) {
 	n, err = vm.vm.WriteAt(p, off)
 	if err != nil {
-		slog.Error("vmBackend writeAt", "len", len(p), "off", off, "err", err)
+		log.Error("vmBackend writeAt", "len", len(p), "off", off, "err", err)
 
 		// assume the VM will detect this as corruption and exit immediately.
 		vm.driver.fatalError()
@@ -225,7 +225,7 @@ type executable struct {
 func (exe *executable) Run(bindOutput bool) error {
 	exe.mtx.Lock()
 
-	slog.Debug("running hypervisor", "command", exe.name, "args", exe.args)
+	log.Debug("running hypervisor", "command", exe.name, "args", exe.args)
 
 	exe.cmd = exec.Command(exe.name, exe.args...)
 
@@ -241,7 +241,7 @@ func (exe *executable) Run(bindOutput bool) error {
 		return fmt.Errorf("failed to run virtual machine: %s", err)
 	}
 
-	slog.Warn("virtual machine exited")
+	log.Warn("virtual machine exited")
 
 	return nil
 }
@@ -563,7 +563,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 				dirname := path.Unix.Dir(name)
 
 				if !filesystem.Exists(dir, dirname) && path.Unix.Clean(name) != dirname {
-					// slog.Info("mkdir", "dirname", dirname)
+					// log.Info("mkdir", "dirname", dirname)
 					if _, err := filesystem.Mkdir(dir, dirname); err != nil {
 						return err
 					}
@@ -571,7 +571,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 
 				switch ent.Typeflag() {
 				case filesystem.TypeDirectory:
-					// slog.Info("directory", "name", name)
+					// log.Info("directory", "name", name)
 					name = strings.TrimSuffix(name, "/")
 
 					file, err = filesystem.Mkdir(dir, name)
@@ -579,7 +579,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 						return err
 					}
 				case filesystem.TypeSymlink:
-					// slog.Info("symlink", "name", name)
+					// log.Info("symlink", "name", name)
 					symlink := filesystem.NewSymlink(ent.Linkname())
 
 					file = symlink
@@ -588,7 +588,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 						return err
 					}
 				case filesystem.TypeLink:
-					// slog.Info("link", "name", name, "target", ent.Linkname())
+					// log.Info("link", "name", name, "target", ent.Linkname())
 					link, err := filesystem.NewHardLink(ent.Linkname())
 					if err != nil {
 						return err
@@ -600,7 +600,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 						return err
 					}
 				case filesystem.TypeRegular:
-					// slog.Info("reg", "name", name)
+					// log.Info("reg", "name", name)
 					file, err = filesystem.NewOverlayFile(ent)
 					if err != nil {
 						return err
@@ -682,7 +682,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 				dirname := path.Unix.Dir(name)
 
 				if !filesystem.Exists(dir, dirname) && path.Unix.Clean(name) != dirname {
-					// slog.Info("mkdir", "dirname", dirname)
+					// log.Info("mkdir", "dirname", dirname)
 					if _, err := filesystem.Mkdir(dir, dirname); err != nil {
 						return err
 					}
@@ -690,7 +690,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 
 				switch ent.Kind() {
 				case archive2.EntryKindDirectory:
-					// slog.Info("directory", "name", name)
+					// log.Info("directory", "name", name)
 					name = strings.TrimSuffix(name, "/")
 
 					file, err = filesystem.Mkdir(dir, name)
@@ -698,7 +698,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 						return err
 					}
 				case archive2.EntryKindSymlink:
-					// slog.Info("symlink", "name", name)
+					// log.Info("symlink", "name", name)
 					symlink := filesystem.NewSymlink(ent.Linkname())
 
 					file = symlink
@@ -707,7 +707,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 						return err
 					}
 				case archive2.EntryKindHardlink:
-					// slog.Info("link", "name", name, "target", ent.Linkname())
+					// log.Info("link", "name", name, "target", ent.Linkname())
 					link, err := filesystem.NewHardLink(ent.Linkname())
 					if err != nil {
 						return err
@@ -724,7 +724,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 						return fmt.Errorf("failed to get file: %w", err)
 					}
 
-					// slog.Info("reg", "name", name)
+					// log.Info("reg", "name", name)
 					file, err = filesystem.NewOverlayFile(f)
 					if err != nil {
 						return err
@@ -739,7 +739,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 						return fmt.Errorf("failed to get file: %w", err)
 					}
 
-					// slog.Info("reg", "name", name)
+					// log.Info("reg", "name", name)
 					file, err = filesystem.NewOverlayFile(f)
 					if err != nil {
 						return err
@@ -877,18 +877,18 @@ func (tr *driver) createNbdListener(tryUnix bool) (net.Addr, net.Listener, error
 
 		listener, err := net.Listen("unix", filename)
 		if err != nil {
-			slog.Warn("failed to listen on unix socket", "error", err)
+			log.Warn("failed to listen on unix socket", "error", err)
 			return tr.createNbdListener(false)
 		}
 
 		tr.onExit = append(tr.onExit, func() {
 			if err := listener.Close(); err != nil {
-				slog.Error("failed to close listener", "error", err)
+				log.Error("failed to close listener", "error", err)
 			}
 
 			if ok, _ := common.Exists(filename); ok {
 				if err := os.Remove(filename); err != nil {
-					slog.Error("failed to remove socket", "error", err)
+					log.Error("failed to remove socket", "error", err)
 				}
 			}
 		})
@@ -1006,7 +1006,7 @@ func (tr *driver) buildFilesystem(
 	if int64(float64(totalSize)*1.5) > int64(minSize)*1024*1024 {
 		targetSize := int64(float64(totalSize)*1.5) / 128 / 1024 / 1024
 
-		slog.Debug("resize filesystem", "new", fmt.Sprintf("%dmb", targetSize*128))
+		log.Debug("resize filesystem", "new", fmt.Sprintf("%dmb", targetSize*128))
 
 		fsSize = targetSize * 128 * 1024 * 1024
 	} else {
@@ -1018,7 +1018,7 @@ func (tr *driver) buildFilesystem(
 	vmem := vm.NewVirtualMemory(fsSize, 4096)
 	bd = vmem
 
-	slog.Debug("created virtual memory", "took", time.Since(start))
+	log.Debug("created virtual memory", "took", time.Since(start))
 
 	switch kind {
 	case config.FilesystemKindExt4:
@@ -1030,7 +1030,7 @@ func (tr *driver) buildFilesystem(
 		}
 		ext4Fs = fs
 
-		slog.Debug("created ext4 filesystem", "took", time.Since(start))
+		log.Debug("created ext4 filesystem", "took", time.Since(start))
 
 		start = time.Now()
 
@@ -1050,7 +1050,7 @@ func (tr *driver) buildFilesystem(
 			return nil, nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
 		}
 
-		slog.Debug("built filesystem", "took", time.Since(start))
+		log.Debug("built filesystem", "took", time.Since(start))
 	case config.FilesystemKindRaw:
 		// noop
 	default:
@@ -1069,7 +1069,7 @@ func (tr *driver) buildFilesystem(
 
 		fh, err := os.OpenFile(persistPath, os.O_RDWR, 0644)
 		if errors.Is(err, os.ErrNotExist) {
-			slog.Info("creating persistent filesystem", "size", fsSize, "path", persistPath)
+			log.Info("creating persistent filesystem", "size", fsSize, "path", persistPath)
 
 			fh, err = os.Create(persistPath)
 			if err != nil {
@@ -1084,7 +1084,7 @@ func (tr *driver) buildFilesystem(
 				return nil, nil, 0, fmt.Errorf("failed to copy memory to persistent filesystem: %w", err)
 			}
 		} else if err == nil {
-			slog.Info("opened persistent filesystem", "size", fsSize, "path", persistPath)
+			log.Info("opened persistent filesystem", "size", fsSize, "path", persistPath)
 
 			info, err := fh.Stat()
 			if err != nil {
@@ -1115,7 +1115,7 @@ func (tr *driver) nbdLoop(listener net.Listener, exports ...nbdExport) {
 		if errors.Is(err, net.ErrClosed) {
 			return
 		} else if err != nil {
-			slog.Error("nbd server failed to accept", "error", err)
+			log.Error("nbd server failed to accept", "error", err)
 			return
 		}
 
@@ -1138,7 +1138,7 @@ func (tr *driver) nbdLoop(listener net.Listener, exports ...nbdExport) {
 				})
 			}
 
-			// slog.Debug("got nbd connection", "remote", conn.RemoteAddr().String())
+			// log.Debug("got nbd connection", "remote", conn.RemoteAddr().String())
 			err = gonbd.Handle(conn, exportList, &gonbd.Options{
 				ReadOnly:           false,
 				MinimumBlockSize:   minBlockSize, // Fix for VZ on Darwin, it errors if the minimum is too large.
@@ -1146,7 +1146,7 @@ func (tr *driver) nbdLoop(listener net.Listener, exports ...nbdExport) {
 				MaximumBlockSize:   maximumBlockSize,
 			})
 			if err != nil {
-				slog.Warn("nbd server failed to handle", "error", err)
+				log.Warn("nbd server failed to handle", "error", err)
 			}
 		}(conn)
 	}
@@ -1161,7 +1161,7 @@ func (tr *driver) startDNSServer(ns *netstack.NetStack) error {
 				return "10.42.0.1", nil
 			}
 
-			slog.Debug("doing DNS lookup", "name", name)
+			log.Debug("doing DNS lookup", "name", name)
 
 			// Do a DNS lookup on the host.
 			addr, err := net.ResolveIPAddr("ip4", name)
@@ -1191,7 +1191,7 @@ func (tr *driver) startDNSServer(ns *netstack.NetStack) error {
 	go func() {
 		err := dnsServer.server.ActivateAndServe()
 		if err != nil {
-			slog.Error("dns: failed to start server", "error", err.Error())
+			log.Error("dns: failed to start server", "error", err.Error())
 		}
 	}()
 
@@ -1199,7 +1199,7 @@ func (tr *driver) startDNSServer(ns *netstack.NetStack) error {
 }
 
 func (tr *driver) exportPort(ns *netstack.NetStack, port int) error {
-	slog.Info("exporting port", "address", fmt.Sprintf("localhost:%d", port))
+	log.Info("exporting port", "address", fmt.Sprintf("localhost:%d", port))
 
 	portListen, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
@@ -1210,7 +1210,7 @@ func (tr *driver) exportPort(ns *netstack.NetStack, port int) error {
 		for {
 			conn, err := portListen.Accept()
 			if err != nil {
-				slog.Error("failed to accept", "err", err)
+				log.Error("failed to accept", "err", err)
 				return
 			}
 
@@ -1219,13 +1219,13 @@ func (tr *driver) exportPort(ns *netstack.NetStack, port int) error {
 
 				clientConn, err := ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("10.42.0.2:%d", port))
 				if err != nil {
-					slog.Error("failed to dial vm port", "err", err)
+					log.Error("failed to dial vm port", "err", err)
 					return
 				}
 				defer clientConn.Close()
 
 				if err := common.Proxy(clientConn, conn, 4096); err != nil {
-					slog.Error("failed to proxy connection", "err", err)
+					log.Error("failed to proxy connection", "err", err)
 					return
 				}
 			}()
@@ -1262,7 +1262,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 	}
 
 	if topConfig.Debug {
-		slog.Warn("enabling hypervisor debug mode")
+		log.Warn("enabling hypervisor debug mode")
 		d.debug = true
 	}
 
@@ -1291,7 +1291,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		return fmt.Errorf("failed to convert fragments to config: %w", err)
 	}
 
-	slog.Debug("built filesystem tree", "took", time.Since(start))
+	log.Debug("built filesystem tree", "took", time.Since(start))
 
 	secureSSH, err := d.configureSecureSSH(root)
 	if err != nil {
@@ -1342,7 +1342,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 			return fmt.Errorf("failed to copy export filesystem: %w", err)
 		}
 
-		slog.Debug("exported filesystem", "took", time.Since(start))
+		log.Debug("exported filesystem", "took", time.Since(start))
 
 		return nil
 	}
@@ -1534,7 +1534,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 			go func() {
 				if err := svr.Serve(listen); err != nil {
-					slog.Error("failed to run 9p server", "err", err)
+					log.Error("failed to run 9p server", "err", err)
 				}
 			}()
 		}
@@ -1558,7 +1558,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		}
 
 		if len(mountedHostDirectories) > 0 {
-			slog.Info("host directories avalible via SFTP on sftp://host.internal")
+			log.Info("host directories avalible via SFTP on sftp://host.internal")
 		}
 
 		svr := sftp.NewInternalServer(top, ":22")
@@ -1567,16 +1567,16 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 			if err := svr.Run(func(network, addr string) (net.Listener, error) {
 				return ns.ListenInternal("tcp", addr)
 			}); err != nil {
-				slog.Error("failed to run sftp server", "err", err)
+				log.Error("failed to run sftp server", "err", err)
 			}
 		}()
 	}
 
-	slog.Debug("starting virtual machine", "took", time.Since(start))
+	log.Debug("starting virtual machine", "took", time.Since(start))
 
 	d.onExit = append(d.onExit, func() {
 		if err := vmm.Shutdown(); err != nil {
-			slog.Error("failed to shutdown virtual machine", "err", err)
+			log.Error("failed to shutdown virtual machine", "err", err)
 		}
 	})
 
@@ -1586,7 +1586,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		}
 	}()
 
-	slog.Debug("running virtual machine", "initTime", time.Since(mainStart))
+	log.Debug("running virtual machine", "initTime", time.Since(mainStart))
 
 	switch d.Interaction() {
 	case config.InteractionSSH, config.InteractionVNC:
@@ -1594,7 +1594,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 		go func() {
 			if err := vmm.Run(d.debug); err != nil {
-				slog.Error("failed to run virtual machine", "err", err)
+				log.Error("failed to run virtual machine", "err", err)
 				os.Exit(1)
 			}
 
@@ -1626,7 +1626,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 	case config.InteractionWebSSH, config.InteractionWebSSHMinimal, config.InteractionWebSSHNoBrower:
 		go func() {
 			if err := vmm.Run(d.debug); err != nil {
-				slog.Error("failed to run virtual machine", "err", err)
+				log.Error("failed to run virtual machine", "err", err)
 				os.Exit(1)
 			}
 		}()
@@ -1727,7 +1727,7 @@ func (d *driver) EnsureFile(contents []byte) (File, error) {
 
 	path := path.Native.Join(d.buildDir, string(hash)+".bin")
 
-	slog.Debug("ensure file", "path", path, "length", len(contents))
+	log.Debug("ensure file", "path", path, "length", len(contents))
 
 	if ok, _ := common.Exists(path); !ok {
 		if err := os.WriteFile(path, contents, os.ModePerm); err != nil {
@@ -1786,7 +1786,7 @@ func entryMain(
 	if *doPrepare {
 		out, err := prepare(driver)
 		if err != nil {
-			slog.Error("fatal", "err", err)
+			log.Error("fatal", "err", err)
 			os.Exit(1)
 		}
 
@@ -1827,13 +1827,13 @@ func Entry(
 
 	if os.Getenv("TINYRANGE_VERBOSE") == "on" {
 		if err := common.EnableVerbose(); err != nil {
-			slog.Error("failed to enable verbose logging", "err", err)
+			log.Error("failed to enable verbose logging", "err", err)
 			os.Exit(1)
 		}
 	}
 
 	if err := entryMain(prepare, create); err != nil {
-		slog.Error("driver fatal", "err", err)
+		log.Error("driver fatal", "err", err)
 		os.Exit(1)
 	}
 }

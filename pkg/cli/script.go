@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"runtime/pprof"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
@@ -60,7 +60,7 @@ var scriptCmd = &cobra.Command{
 		filename := args[0]
 
 		if err := db.RunScript(filename, files, args[1:], scriptOutput); err != nil {
-			slog.Error("fatal", "err", err)
+			log.Error("fatal", "err", err)
 			os.Exit(1)
 		}
 

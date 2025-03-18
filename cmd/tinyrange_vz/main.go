@@ -5,7 +5,6 @@ package main
 import (
 	_ "embed"
 	"fmt"
-	"log/slog"
 	"os"
 	"strings"
 	"syscall"
@@ -14,6 +13,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/linux/kernel"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/vmm"
 
 	"github.com/Code-Hex/vz/v3"
@@ -102,7 +102,7 @@ func (vm *VZVirtualMachineMonitor) Run(bindOutput bool) error {
 	for {
 		select {
 		case newState := <-vm.vm.StateChangedNotify():
-			slog.Debug("state change", "state", newState)
+			log.Debug("state change", "state", newState)
 
 			if newState == vz.VirtualMachineStateStopped {
 				return nil
@@ -133,7 +133,7 @@ func main() {
 		)
 
 		if dri.RootArchitecture() == config.ArchX8664 || feature.HasFeature(feature.FeatureRosetta) {
-			slog.Debug("Enabling Rosetta 2")
+			log.Debug("Enabling Rosetta 2")
 
 			rosetta2 = true
 		}
@@ -236,9 +236,9 @@ func main() {
 					for {
 						select {
 						case <-attach.Connected():
-							slog.Debug("connected to NBD server", "url", url)
+							log.Debug("connected to NBD server", "url", url)
 						case err := <-attach.DidEncounterError():
-							slog.Error("NBD server error", "url", url, "error", err)
+							log.Error("NBD server error", "url", url, "error", err)
 						}
 					}
 				}()
@@ -271,9 +271,9 @@ func main() {
 					for {
 						select {
 						case <-attach.Connected():
-							slog.Debug("connected to NBD server", "url", url)
+							log.Debug("connected to NBD server", "url", url)
 						case err := <-attach.DidEncounterError():
-							slog.Error("NBD server error", "url", url, "error", err)
+							log.Error("NBD server error", "url", url, "error", err)
 						}
 					}
 				}()
@@ -327,7 +327,7 @@ func main() {
 			if availability == vz.LinuxRosettaAvailabilityNotSupported {
 				return nil, fmt.Errorf("error: Rosetta is not supported on this machine")
 			} else if availability == vz.LinuxRosettaAvailabilityNotInstalled {
-				slog.Info("Attempting to install Rosetta")
+				log.Info("Attempting to install Rosetta")
 				err := vz.LinuxRosettaDirectoryShareInstallRosetta()
 				if err != nil {
 					return nil, fmt.Errorf("failed to install rosetta: %s", err)

@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"log/slog"
 	"os"
 
 	"github.com/tinyrange/tinyrange/experimental/cvmfs"
@@ -10,6 +9,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 var (
@@ -55,7 +55,7 @@ func appMain() error {
 		}
 
 		for _, nestedCatalog := range nested {
-			slog.Info("nested catalog", "path", nestedCatalog.Path, "sha1", nestedCatalog.Sha1, "size", nestedCatalog.Size)
+			log.Info("nested catalog", "path", nestedCatalog.Path, "sha1", nestedCatalog.Sha1, "size", nestedCatalog.Size)
 
 			child, err := repo.GetCatalog(nestedCatalog)
 			if err != nil {
@@ -79,7 +79,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		slog.Error("fatal", "error", err)
+		log.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"os"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
@@ -77,7 +77,7 @@ func (s *stdinWrap) Read(p []byte) (n int, err error) {
 
 	// Look for the interrupt char (CTRL-B) and return an error if that's encountered.
 	if n := bytes.IndexByte(p[:n], 0x02); n != -1 {
-		slog.Info("activating emergency restart")
+		log.Info("activating emergency restart")
 		s.close <- closeRestart
 		return 0, ErrInterrupt
 	}
@@ -163,7 +163,7 @@ func connectOverSsh(
 		if err != nil {
 			if !errors.Is(err, context.DeadlineExceeded) {
 				if !strings.Contains(err.Error(), "connection was refused") {
-					slog.Debug("failed to connect", "err", err)
+					log.Debug("failed to connect", "err", err)
 				}
 			}
 			continue
@@ -173,7 +173,7 @@ func connectOverSsh(
 		if err != nil {
 			if !errors.Is(err, context.DeadlineExceeded) {
 				if !strings.Contains(err.Error(), "connection was refused") {
-					slog.Debug("failed to connect", "err", err)
+					log.Debug("failed to connect", "err", err)
 				}
 			}
 			continue
@@ -190,7 +190,7 @@ func connectOverSsh(
 	}
 	defer session.Close()
 
-	slog.Debug("connected over SSH", "took", time.Since(start))
+	log.Debug("connected over SSH", "took", time.Since(start))
 
 	width, height := 80, 40
 
@@ -207,7 +207,7 @@ func connectOverSsh(
 			width, height = w, h
 		}
 	} else {
-		slog.Debug("detected non-interactive session")
+		log.Debug("detected non-interactive session")
 
 		nonInteractive = true
 	}
@@ -251,7 +251,7 @@ func connectOverSsh(
 		if err := session.Wait(); err != nil {
 			if _, ok := err.(*ssh.ExitMissingError); ok {
 				// Ignore missing exit errors
-				slog.Debug("ignoring missing exit error", "err", err)
+				log.Debug("ignoring missing exit error", "err", err)
 			} else {
 				errorChan <- err
 			}
@@ -346,7 +346,7 @@ func newWebSocketSSH(ws *websocket.Conn, ns *netstack.NetStack, address string, 
 		conn, err = ns.DialInternalContext(ctx, "tcp", address)
 		if err != nil {
 			if !errors.Is(err, context.DeadlineExceeded) {
-				slog.Debug("failed to connect", "err", err)
+				log.Debug("failed to connect", "err", err)
 			}
 			continue
 		}
@@ -354,7 +354,7 @@ func newWebSocketSSH(ws *websocket.Conn, ns *netstack.NetStack, address string, 
 		c, chans, reqs, err = ssh.NewClientConn(conn, address, config)
 		if err != nil {
 			if !errors.Is(err, context.DeadlineExceeded) {
-				slog.Debug("failed to connect", "err", err)
+				log.Debug("failed to connect", "err", err)
 			}
 			continue
 		}
@@ -402,13 +402,13 @@ func newWebSocketSSH(ws *websocket.Conn, ns *netstack.NetStack, address string, 
 
 			n, err := stdout.Read(buf)
 			if err != nil {
-				slog.Warn("failed to read stdout", "error", err)
+				log.Warn("failed to read stdout", "error", err)
 				break
 			}
 
 			_, err = wsWriter.Write(buf[:n])
 			if err != nil {
-				slog.Warn("failed to write to socket", "error", err)
+				log.Warn("failed to write to socket", "error", err)
 				break
 			}
 		}
@@ -430,7 +430,7 @@ func newWebSocketSSH(ws *websocket.Conn, ns *netstack.NetStack, address string, 
 		if inputEv.Resize {
 			err := session.WindowChange(inputEv.Rows, inputEv.Cols)
 			if err != nil {
-				slog.Warn("failed to resize wsssh window", "error", err)
+				log.Warn("failed to resize wsssh window", "error", err)
 			}
 		} else {
 			_, err = stdin.Write([]byte(inputEv.Input))

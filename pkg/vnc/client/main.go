@@ -1,10 +1,10 @@
 package client
 
 import (
-	"log/slog"
 	"net"
 	"time"
 
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/vnc/client/rfb"
 	"github.com/tinyrange/tinyrange/pkg/vnc/client/window"
 )
@@ -34,7 +34,7 @@ func RunVNCClient(nConn net.Conn) error {
 			switch evt := evt.(type) {
 			case *rfb.ConnectedEvent:
 				// create a window.
-				slog.Info("connected", "width", evt.FrameBufferWidth, "height", evt.FrameBufferHeight, "name", evt.Name)
+				log.Info("connected", "width", evt.FrameBufferWidth, "height", evt.FrameBufferHeight, "name", evt.Name)
 
 				if err := win.Create(int(evt.FrameBufferWidth), int(evt.FrameBufferHeight), evt.Name); err != nil {
 					return err
@@ -52,7 +52,7 @@ func RunVNCClient(nConn net.Conn) error {
 					return err
 				}
 			default:
-				slog.Info("unrecognized", "event", evt)
+				log.Info("unrecognized", "event", evt)
 			}
 		case evt := <-win.Events():
 			switch evt := evt.(type) {
@@ -81,7 +81,7 @@ func RunVNCClient(nConn net.Conn) error {
 					return err
 				}
 			default:
-				slog.Info("unrecognized", "event", evt)
+				log.Info("unrecognized", "event", evt)
 			}
 		case <-updateTicks.C:
 			if connected {

@@ -3,7 +3,6 @@ package builder
 import (
 	"fmt"
 	"io"
-	"log/slog"
 	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -11,6 +10,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 )
 
@@ -212,7 +212,7 @@ func newDefinitionFromFile(f filesystem.File) (common.BuildDefinition, error) {
 	if source, err := filesystem.SourceFromFile(f); err == nil {
 		return definitionFromSource(source)
 	} else {
-		slog.Warn("failed to get source from file", "err", err)
+		log.Warn("failed to get source from file", "err", err)
 	}
 
 	return &fileDefinition{params: FileParameters{File: f}}, nil

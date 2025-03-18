@@ -5,7 +5,6 @@ package window
 import (
 	"fmt"
 	"image"
-	"log/slog"
 	"sync"
 
 	"github.com/jezek/xgb"
@@ -15,6 +14,7 @@ import (
 	"github.com/jezek/xgbutil/xevent"
 	"github.com/jezek/xgbutil/xgraphics"
 	"github.com/jezek/xgbutil/xwindow"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type windowImpl struct {
@@ -99,7 +99,7 @@ func (window *windowImpl) Create(width int, height int, title string) error {
 	window.X = X
 
 	xevent.ErrorHandlerSet(X, func(err xgb.Error) {
-		slog.Error("error", "err", err)
+		log.Error("error", "err", err)
 	})
 
 	window.canvas = xgraphics.New(X, image.Rect(0, 0, width, height))

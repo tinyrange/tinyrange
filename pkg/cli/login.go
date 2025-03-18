@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"log/slog"
 	"os"
 	"runtime/pprof"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/login"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"gopkg.in/yaml.v3"
@@ -140,7 +140,7 @@ func runConfig(configFilename string) {
 	loginLoadConfig = configFilename
 
 	if err := runLogin([]string{}); err != nil {
-		slog.Error("failed to run config", "error", err)
+		log.Error("failed to run config", "error", err)
 		os.Exit(1)
 	}
 }

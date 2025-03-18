@@ -7,9 +7,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"log/slog"
 	"net"
 
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/third_party/go-nbd/backend"
 	"github.com/tinyrange/tinyrange/third_party/go-nbd/protocol"
 )
@@ -109,7 +109,7 @@ n:
 			}
 
 			if export == nil {
-				slog.Warn("nbd client expected", "name", exportName)
+				log.Warn("nbd client expected", "name", exportName)
 
 				if length := int64(optionHeader.Length) - 4 - int64(exportNameLength); length > 0 { // Discard the option's data, minus the export name length and export name we've already read
 					_, err := io.CopyN(io.Discard, conn, length)
@@ -324,7 +324,7 @@ n:
 				return err
 			}
 		default:
-			slog.Debug("nbd sent unknown option", "header", optionHeader)
+			log.Debug("nbd sent unknown option", "header", optionHeader)
 			_, err := io.CopyN(io.Discard, conn, int64(optionHeader.Length)) // Discard the unknown option's data
 			if err != nil {
 				return err
@@ -364,7 +364,7 @@ n:
 			}
 
 			if len(b) <= int(requestHeader.Length) {
-				slog.Error("(read) invalid block size", "b", len(b), "requestHeader.Length", int(requestHeader.Length))
+				log.Error("(read) invalid block size", "b", len(b), "requestHeader.Length", int(requestHeader.Length))
 				return ErrInvalidBlocksize
 			}
 
@@ -395,7 +395,7 @@ n:
 			}
 
 			if len(b) <= int(requestHeader.Length) {
-				slog.Error("(write) invalid block size", "b", len(b), "requestHeader.Length", int(requestHeader.Length))
+				log.Error("(write) invalid block size", "b", len(b), "requestHeader.Length", int(requestHeader.Length))
 				return ErrInvalidBlocksize
 			}
 
@@ -424,7 +424,7 @@ n:
 
 			return nil
 		default:
-			slog.Debug("nbd got unknown command", "header", requestHeader)
+			log.Debug("nbd got unknown command", "header", requestHeader)
 			_, err := io.CopyN(io.Discard, conn, int64(requestHeader.Length)) // Discard the unknown command's data
 			if err != nil {
 				return err

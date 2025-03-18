@@ -3,9 +3,9 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
-	"log/slog"
 
 	"github.com/tinyrange/tinyrange/experimental/crumblecracker/kvm"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 // Based on: tinyemu-2019-12-21/pci.h and tinyemu-2019-12-21/pci.c
@@ -161,7 +161,7 @@ func (p *PciDevice) writeBar(addr uint32, val uint32) (bool, error) {
 		reg = uint8((addr - 0x10) >> 2)
 	}
 
-	slog.Info(
+	log.Info(
 		"pci write bar",
 		"name", p.name,
 		"addr", fmt.Sprintf("0x%02x", addr),
@@ -171,7 +171,7 @@ func (p *PciDevice) writeBar(addr uint32, val uint32) (bool, error) {
 
 	r := p.ioRegions[reg]
 	if r.size == 0 {
-		slog.Warn("pci write bar: region not registered", "reg", reg)
+		log.Warn("pci write bar: region not registered", "reg", reg)
 		return false, nil // don't handle the write
 	}
 	if reg == PCI_ROM_SLOT {
@@ -179,7 +179,7 @@ func (p *PciDevice) writeBar(addr uint32, val uint32) (bool, error) {
 	} else {
 		val = uint32(uint8(val & ^(r.size-1)) | r.typ)
 	}
-	slog.Info("pci write bar: setting bar", "reg", reg, "val", val)
+	log.Info("pci write bar: setting bar", "reg", reg, "val", val)
 	p.writeU32(addr, val)
 	return true, p.updateMappings()
 }
@@ -187,7 +187,7 @@ func (p *PciDevice) writeBar(addr uint32, val uint32) (bool, error) {
 func (p *PciDevice) ConfigIO(io *kvm.KVMIoEvent, addr uint32) error {
 	switch io.Direction {
 	case kvm.IoDirectionRead:
-		slog.Info("pci config io read",
+		log.Info("pci config io read",
 			"name", p.name,
 			"addr", fmt.Sprintf("0x%02x", addr),
 			"size", io.Size,
@@ -198,7 +198,7 @@ func (p *PciDevice) ConfigIO(io *kvm.KVMIoEvent, addr uint32) error {
 	case kvm.IoDirectionWrite:
 		data := io.Read()
 
-		slog.Info("pci config io write",
+		log.Info("pci config io write",
 			"name", p.name,
 			"addr", fmt.Sprintf("0x%02x", addr),
 			"size", io.Size,
@@ -293,7 +293,7 @@ func (p *PciBus) Ports() []uint16 {
 
 // IO implements IODevice.
 func (p *PciBus) IO(io *kvm.KVMIoEvent) error {
-	// slog.Warn("pci access",
+	// log.Warn("pci access",
 	// 	"port", fmt.Sprintf("0x%04x", io.Port),
 	// 	"count", io.Count,
 	// 	"size", io.Size,
@@ -332,7 +332,7 @@ func (p *PciBus) IO(io *kvm.KVMIoEvent) error {
 		devfn := uint8((addr >> 8) & 0xff)
 		dev, ok := p.devices[devfn]
 		if !ok {
-			slog.Info("pci device not found", "devfn", devfn)
+			log.Info("pci device not found", "devfn", devfn)
 			return p.valOnes(io)
 		}
 		config_addr := addr & 0xff

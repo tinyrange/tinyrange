@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log/slog"
 	"strings"
 
 	xj "github.com/basgys/goxml2json"
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
@@ -282,7 +282,7 @@ type StarArchive struct {
 func (f *StarArchive) Iterate() starlark.Iterator {
 	ents, err := f.Entries()
 	if err != nil {
-		slog.Error("could not get entries", "err", err)
+		log.Error("could not get entries", "err", err)
 		return nil
 	}
 

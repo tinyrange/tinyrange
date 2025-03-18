@@ -4,7 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log/slog"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type VirtIOKind string
@@ -56,7 +57,7 @@ func (v *virtIODevice) addPciCapability(
 }
 
 func (v *virtIODevice) barSet(index uint8, addr uint32, enabled bool) error {
-	slog.Info(
+	log.Info(
 		"barSet",
 		"index", index,
 		"addr", addr,

@@ -2,13 +2,13 @@ package planner
 
 import (
 	"fmt"
-	"log/slog"
 	"slices"
 	"time"
 
 	build "github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 )
 
@@ -39,7 +39,7 @@ func (builder *containerBuilder) EnsureLoaded(ctx common.MinimalBuildContext) er
 		if err := builder.load(ctx); err != nil {
 			return err
 		}
-		slog.Debug("loaded", "builder", builder.displayName, "arch", builder.architecture, "took", time.Since(start))
+		log.Debug("loaded", "builder", builder.displayName, "arch", builder.architecture, "took", time.Since(start))
 	}
 
 	return nil
@@ -202,7 +202,7 @@ func (builder *containerBuilder) Plan(
 	ret, err := ctx.Database().Call(builder.filename, builder.planCallbackName, builder, plan)
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
-			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+			log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
 		}
 		return nil, err
 	}

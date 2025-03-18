@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/exec"
 	"runtime"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/anmitsu/go-shlex"
 	"github.com/tinyrange/tinyrange/pkg/feature"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
@@ -27,7 +27,7 @@ var verboseEnabled = false
 func EnableVerbose() error {
 	verboseEnabled = true
 
-	slog.SetLogLoggerLevel(slog.LevelDebug)
+	log.SetVerbose()
 
 	if err := os.Setenv("TINYRANGE_VERBOSE", "on"); err != nil {
 		return err
@@ -152,7 +152,7 @@ func GetDefaultBuildDir() string {
 	// Look for the tinyrange.portable file first.
 	exeDir, err := getExeDirectory()
 	if err != nil {
-		slog.Warn("Could not get executable directory. Builds will default to the current directory under build.", "err", err)
+		log.Warn("Could not get executable directory. Builds will default to the current directory under build.", "err", err)
 		return "build"
 	}
 
@@ -164,7 +164,7 @@ func GetDefaultBuildDir() string {
 	// Otherwise find the user cache directory...
 	cache, err := os.UserCacheDir()
 	if err != nil {
-		slog.Warn("Could not get executable directory. Builds will default to the current directory under build.", "err", err)
+		log.Warn("Could not get executable directory. Builds will default to the current directory under build.", "err", err)
 		return "build"
 	}
 
@@ -221,13 +221,13 @@ func ExecCommand(args []string, environment map[string]string, options *ExecOpti
 	}
 
 	if options.Verbose {
-		slog.Info("executing command", "args", args)
+		log.Info("executing command", "args", args)
 	}
 
 	err := cmd.Run()
 	if exit, ok := err.(*exec.ExitError); ok {
 		if exit.ExitCode() == 255 {
-			slog.Warn("command returned exit 255", "args", args)
+			log.Warn("command returned exit 255", "args", args)
 			return nil
 		}
 

@@ -6,9 +6,10 @@ import (
 	"go/format"
 	goToken "go/token"
 	"io"
-	"log/slog"
 	"strconv"
 	"strings"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type TypeInfo interface {
@@ -269,7 +270,7 @@ type sysIL4Generator struct {
 }
 
 func (g *sysIL4Generator) declareType(name string, underlyingType ast.Expr, typ TypeInfo) {
-	slog.Info("declareType", "name", name, "type", typ)
+	log.Info("declareType", "name", name, "type", typ)
 
 	g.declarations = append(g.declarations, &ast.GenDecl{
 		Tok:   goToken.TYPE,

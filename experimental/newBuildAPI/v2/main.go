@@ -5,9 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 )
@@ -460,7 +460,7 @@ func (b *BuildVMDefinition) Build(ctx Context) (Artifact, error) {
 		frags = append(frags, f...)
 	}
 
-	slog.Info("build", "fragments", frags)
+	log.Info("build", "fragments", frags)
 
 	return nil, fmt.Errorf("unimplemented")
 }
@@ -807,7 +807,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		slog.Error("fatal", "error", err)
+		log.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

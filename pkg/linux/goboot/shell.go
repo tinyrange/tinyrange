@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"github.com/wader/readline"
 )
@@ -67,7 +67,7 @@ func (sh *shellInstance) processLine(line string) error {
 		err := recover()
 
 		if err != nil {
-			slog.Error("caught panic", "err", err)
+			log.Error("caught panic", "err", err)
 		}
 	}()
 
@@ -95,7 +95,7 @@ func (sh *shellInstance) processLine(line string) error {
 		}
 
 		for _, ent := range ents {
-			slog.Info("", "ent", ent)
+			log.Info("", "ent", ent)
 		}
 
 		return nil
@@ -160,7 +160,7 @@ func (sh *shellInstance) processLine(line string) error {
 		return nil
 	case strings.HasPrefix(line, "env"):
 		for _, env := range os.Environ() {
-			slog.Info("", "env", env)
+			log.Info("", "env", env)
 		}
 
 		return nil
@@ -227,7 +227,7 @@ func shellMain() error {
 		if err == ErrExit {
 			break
 		} else if err != nil {
-			slog.Info("", "error", err)
+			log.Info("", "error", err)
 		}
 
 		sh.updatePrompt()

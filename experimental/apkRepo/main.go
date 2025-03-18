@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -27,6 +26,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"go.starlark.net/starlark"
 )
@@ -178,7 +178,7 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (common.Buil
 	var defFile filesystem.File
 	defEnt, err := defDir.GetChild(hash.String() + ".definition")
 	if errors.Is(err, os.ErrNotExist) {
-		// slog.Info("creating definition file", "hash", hash)
+		// log.Info("creating definition file", "hash", hash)
 		defFile, err = defDir.Create(hash.String()+".definition", nil)
 		if err != nil {
 			return nil, err
@@ -186,7 +186,7 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (common.Buil
 	} else if err != nil {
 		return nil, err
 	} else {
-		// slog.Info("definition file exists", "hash", hash)
+		// log.Info("definition file exists", "hash", hash)
 		defFile = defEnt.File
 	}
 
@@ -198,7 +198,7 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (common.Buil
 	var receptFile filesystem.File
 	receptEnt, err := receptDir.GetChild(hash.String() + ".receipt")
 	if errors.Is(err, os.ErrNotExist) {
-		// slog.Info("creating receipt file", "hash", hash)
+		// log.Info("creating receipt file", "hash", hash)
 		receptFile, err = receptDir.Create(hash.String()+".receipt", nil)
 		if err != nil {
 			return nil, err
@@ -206,7 +206,7 @@ func (s *splitBuildFilesystem) CreateBuildDirectory(hash hash.Hash) (common.Buil
 	} else if err != nil {
 		return nil, err
 	} else {
-		// slog.Info("receipt file exists", "hash", hash)
+		// log.Info("receipt file exists", "hash", hash)
 		receptFile = receptEnt.File
 	}
 
@@ -268,49 +268,49 @@ func (s *splitBuildFilesystem) GetAllHashes() ([]hash.Hash, error) {
 func (s *splitBuildFilesystem) GetBuildDirectory(hash hash.Hash) (common.BuildCacheDirectory, error) {
 	defDir, err := s.definitionDirectory.GetChild(hash.String()[:2])
 	if err != nil {
-		// slog.Info("failed to get definition directory", "hash", hash, "err", err)
+		// log.Info("failed to get definition directory", "hash", hash, "err", err)
 		return nil, err
 	}
 
 	defEnt, ok := defDir.File.(filesystem.Directory)
 	if !ok {
-		// slog.Info("definition directory is not a directory", "hash", hash)
+		// log.Info("definition directory is not a directory", "hash", hash)
 		return nil, fmt.Errorf("definition directory is not a directory")
 	}
 
 	defFile, err := defEnt.GetChild(hash.String() + ".definition")
 	if err != nil {
-		// slog.Info("failed to get definition file", "hash", hash, "err", err)
+		// log.Info("failed to get definition file", "hash", hash, "err", err)
 		return nil, err
 	}
 
 	defFileMut, ok := defFile.File.(filesystem.MutableFile)
 	if !ok {
-		// slog.Info("definition file is not mutable", "hash", hash)
+		// log.Info("definition file is not mutable", "hash", hash)
 		return nil, fmt.Errorf("definition file is not mutable")
 	}
 
 	receptDir, err := s.receptDirectory.GetChild(hash.String()[:2])
 	if err != nil {
-		// slog.Info("failed to get receipt directory", "hash", hash, "err", err)
+		// log.Info("failed to get receipt directory", "hash", hash, "err", err)
 		return nil, err
 	}
 
 	receptEnt, ok := receptDir.File.(filesystem.Directory)
 	if !ok {
-		// slog.Info("receipt directory is not a directory", "hash", hash)
+		// log.Info("receipt directory is not a directory", "hash", hash)
 		return nil, fmt.Errorf("receipt directory is not a directory")
 	}
 
 	receptFile, err := receptEnt.GetChild(hash.String() + ".receipt")
 	if err != nil {
-		// slog.Info("failed to get receipt file", "hash", hash, "err", err)
+		// log.Info("failed to get receipt file", "hash", hash, "err", err)
 		return nil, err
 	}
 
 	receptFileMut, ok := receptFile.File.(filesystem.MutableFile)
 	if !ok {
-		// slog.Info("receipt file is not mutable", "hash", hash)
+		// log.Info("receipt file is not mutable", "hash", hash)
 		return nil, fmt.Errorf("receipt file is not mutable")
 	}
 
@@ -749,7 +749,7 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 			pb.Add(1)
 		}
 
-		slog.Info("built group", "index", i, "size", len(group))
+		log.Info("built group", "index", i, "size", len(group))
 	}
 
 	return nil
@@ -769,14 +769,14 @@ func migrateToSplitBuildCache(buildDir string, splitDefinitions string, splitRec
 	oldFs := build2.NewFilesystemBuildCache(buildDirEnt)
 	newFs := newSplitBuildDirectory(defsDirEnt, receiptsDirEnt, buildDirEnt)
 
-	slog.Info("migrating to split build cache")
+	log.Info("migrating to split build cache")
 
 	hashes, err := oldFs.GetAllHashes()
 	if err != nil {
 		return err
 	}
 
-	slog.Info("migrating", "count", len(hashes))
+	log.Info("migrating", "count", len(hashes))
 
 	pb := progressbar.Default(int64(len(hashes)))
 
@@ -888,9 +888,9 @@ func appMain() error {
 
 	if *pprofAddr != "" {
 		go func() {
-			slog.Info("serving pprof", "addr", *pprofAddr)
+			log.Info("serving pprof", "addr", *pprofAddr)
 			if err := http.ListenAndServe(*pprofAddr, nil); err != nil {
-				slog.Error("failed to serve pprof", "error", err)
+				log.Error("failed to serve pprof", "error", err)
 			}
 		}()
 	}
@@ -964,7 +964,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		slog.Error("fatal", "error", err)
+		log.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

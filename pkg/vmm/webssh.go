@@ -2,7 +2,6 @@ package vmm
 
 import (
 	"embed"
-	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/htm"
 	"github.com/tinyrange/tinyrange/pkg/htm/bootstrap"
 	"github.com/tinyrange/tinyrange/pkg/htm/html"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 )
 
@@ -109,12 +109,12 @@ func runWebSsh(ns *netstack.NetStack, address string, username string, secureSSH
 	mux.HandleFunc("/spawn", func(w http.ResponseWriter, r *http.Request) {
 		ws, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			slog.Warn("failed to upgrade SSH connection", "error", err)
+			log.Warn("failed to upgrade SSH connection", "error", err)
 			return
 		}
 
 		if err := newWebSocketSSH(ws, ns, address, username, secureSSH); err != nil {
-			slog.Warn("failed to create SSH connection", "error", err)
+			log.Warn("failed to create SSH connection", "error", err)
 			return
 		}
 	})
@@ -132,7 +132,7 @@ func runWebSsh(ns *netstack.NetStack, address string, username string, secureSSH
 		}
 	}
 
-	slog.Info("listening", "address", "http://"+listener.Addr().String())
+	log.Info("listening", "address", "http://"+listener.Addr().String())
 
 	return http.Serve(listener, mux)
 }

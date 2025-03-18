@@ -4,7 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"log/slog"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 // AST Nodes
@@ -591,7 +592,7 @@ func (p *parser) nextSignificant() token {
 			return e
 		}
 
-		slog.Debug("", "token", fmt.Sprintf("%T", tk), "value", tk)
+		log.Debug("", "token", fmt.Sprintf("%T", tk), "value", tk)
 
 		switch tk.(type) {
 		case tokenComment:

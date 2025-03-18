@@ -4,10 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 
 	"github.com/tinyrange/tinyrange/experimental/fs3"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type iso9660Node struct {
@@ -83,7 +83,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		slog.Error("fatal", "error", err)
+		log.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

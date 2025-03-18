@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"io"
-	"log/slog"
 
 	"github.com/tinyrange/tinyrange/experimental/crumblecracker/kvm"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 // Based on: https://github.com/copy/v86/blob/master/src/uart.js
@@ -240,7 +240,7 @@ func (s *SerialDevice) IO(io *kvm.KVMIoEvent) error {
 		}
 	}
 
-	slog.Info("unknown serial io", "port", fmt.Sprintf("0x%x", io.Port-s.Base), "direction", io.Direction, "size", io.Size)
+	log.Info("unknown serial io", "port", fmt.Sprintf("0x%x", io.Port-s.Base), "direction", io.Direction, "size", io.Size)
 	return nil
 }
 

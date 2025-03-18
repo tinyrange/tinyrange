@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -18,6 +17,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 )
 
@@ -74,7 +74,7 @@ func ParseOciImage(ociImage string) (registry string, image string, tag string, 
 		image = "library/" + image
 	}
 
-	slog.Debug("parsed OCI image", "registry", registry, "image", image, "tag", tag)
+	log.Debug("parsed OCI image", "registry", registry, "image", image, "tag", tag)
 
 	return
 }
@@ -152,7 +152,7 @@ func (ctx *ociRegistryContext) responseHandler(resp *http.Response) (bool, error
 			authenticate["service"],
 			authenticate["scope"])
 
-		slog.Debug("registry auth", "url", tokenUrl)
+		log.Debug("registry auth", "url", tokenUrl)
 
 		resp, err := http.Get(tokenUrl)
 		if err != nil {
@@ -231,7 +231,7 @@ func (r *registryRequestDefinition) Build(ctx common.BuildContext) error {
 			return err
 		}
 
-		slog.Debug("registry request failed", "url", r.ctx.registry+r.params.Url, "content", string(content))
+		log.Debug("registry request failed", "url", r.ctx.registry+r.params.Url, "content", string(content))
 
 		return r.Build(ctx)
 	}

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -23,6 +22,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"go.starlark.net/starlark"
 	"golang.org/x/sys/unix"
@@ -604,7 +604,7 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 
 	// Run raw commands.
 	for _, cmd := range cfg.RawCommands {
-		slog.Info("running", "cmd", cmd)
+		log.Info("running", "cmd", cmd)
 
 		args, err := shlex.Split(cmd, true)
 		if err != nil {
@@ -629,7 +629,7 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 			}
 		}
 
-		slog.Debug("running", "cmd", cmd)
+		log.Debug("running", "cmd", cmd)
 		if cmd == "interactive" {
 			realStart := START_TIME
 			realStartTime := os.Getenv("TINYRANGE_START_TIME")
@@ -640,7 +640,7 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 				}
 			}
 			uptime, _ := GetUptime()
-			slog.Debug("time to interactive", "time", time.Since(realStart), "uptime", uptime)
+			log.Debug("time to interactive", "time", time.Since(realStart), "uptime", uptime)
 		}
 
 		if err := common.RunCommand(cmd, opts); err != nil {
@@ -649,7 +649,7 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 	}
 
 	if cfg.ExecInit != "" {
-		slog.Debug("executing init", "cmd", cfg.ExecInit, "pid", os.Getpid())
+		log.Debug("executing init", "cmd", cfg.ExecInit, "pid", os.Getpid())
 		if os.Getpid() == 1 {
 			// Fork a server just running SSH.
 			if err := builder.forkSSHServer(); err != nil {

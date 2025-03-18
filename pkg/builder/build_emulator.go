@@ -2,7 +2,6 @@ package builder
 
 import (
 	"fmt"
-	"log/slog"
 
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -11,6 +10,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 )
 
@@ -112,7 +112,7 @@ func (def *buildEmulatorDefinition) Build(ctx common.BuildContext) error {
 
 	// Run each command in the emulator.
 	for _, command := range commands {
-		slog.Debug("emulator", "run", command)
+		log.Debug("emulator", "run", command)
 		if err := emu.RunShell(command); err != nil {
 			return fmt.Errorf("failed to run command in emulator [%+v]: %s", command, err)
 		}

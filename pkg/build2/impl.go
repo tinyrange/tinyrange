@@ -9,7 +9,6 @@ import (
 	cryptoHash "hash"
 	"io"
 	"io/fs"
-	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
@@ -23,6 +22,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"github.com/tinyrange/tinyrange/pkg/star"
 	"go.starlark.net/starlark"
@@ -133,7 +133,7 @@ func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, erro
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	slog.Debug("executing VMM", "args", cmd.Args)
+	log.Debug("executing VMM", "args", cmd.Args)
 
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -301,7 +301,7 @@ func (c *buildContext) build() error {
 	// Call the user builder function.
 	err = c.def.Build(c)
 	if errors.Is(err, common.ErrNonFatal{}) {
-		slog.Warn("non-fatal error building", "def", c.def.String(), "err", err)
+		log.Warn("non-fatal error building", "def", c.def.String(), "err", err)
 
 		attempts := 0
 
@@ -312,7 +312,7 @@ func (c *buildContext) build() error {
 				return fmt.Errorf("error building %s after %d: %w", c.def.String(), attempts, err)
 			}
 
-			slog.Warn("non-fatal error building", "def", c.def.String(), "err", err, "attempts", attempts)
+			log.Warn("non-fatal error building", "def", c.def.String(), "err", err, "attempts", attempts)
 
 			time.Sleep(1 * time.Second)
 
@@ -814,7 +814,7 @@ func (b *builder) GarbageCollect(olderThan time.Time) ([]hash.Hash, error) {
 	for _, hash := range hashes {
 		receipt, err := b.receiptFromHash(hash)
 		if err != nil {
-			slog.Warn("failed to load receipt", "err", err)
+			log.Warn("failed to load receipt", "err", err)
 			continue
 		}
 

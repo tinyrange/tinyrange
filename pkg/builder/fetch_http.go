@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 )
 
@@ -111,7 +111,7 @@ func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext) error {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			slog.Warn("failed to fetch", "url", url, "err", err)
+			log.Warn("failed to fetch", "url", url, "err", err)
 			onlyNotFound = false
 			continue
 		}
@@ -121,10 +121,10 @@ func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext) error {
 
 			return ctx.WriteDefault(f)
 		} else if resp.StatusCode == http.StatusNotFound {
-			slog.Warn("failed to fetch", "url", url, "err", ErrNotFound)
+			log.Warn("failed to fetch", "url", url, "err", ErrNotFound)
 			continue
 		} else {
-			slog.Warn("failed to fetch", "url", url, "err", fmt.Errorf("bad status: %s", resp.Status))
+			log.Warn("failed to fetch", "url", url, "err", fmt.Errorf("bad status: %s", resp.Status))
 			onlyNotFound = false
 			continue
 		}

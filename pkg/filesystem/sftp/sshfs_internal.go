@@ -5,10 +5,10 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"fmt"
-	"log/slog"
 	"net"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -18,7 +18,7 @@ type SSHFSInternalServer struct {
 }
 
 func (s *SSHFSInternalServer) handleConnection(sshConn *ssh.ServerConn, channels <-chan ssh.NewChannel) {
-	slog.Debug("sftp: got connection", "remote", sshConn.RemoteAddr().String())
+	log.Debug("sftp: got connection", "remote", sshConn.RemoteAddr().String())
 
 	for newChannel := range channels {
 		if t := newChannel.ChannelType(); t != "session" {
@@ -28,7 +28,7 @@ func (s *SSHFSInternalServer) handleConnection(sshConn *ssh.ServerConn, channels
 
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
-			slog.Warn("ssh: could not accept channel", "error", err)
+			log.Warn("ssh: could not accept channel", "error", err)
 			return
 		}
 
@@ -39,7 +39,7 @@ func (s *SSHFSInternalServer) handleConnection(sshConn *ssh.ServerConn, channels
 					defer channel.Close() // SSH_MSG_CHANNEL_CLOSE
 					err := s.ServeSftp(channel)
 					if err != nil {
-						slog.Warn("failed to serve sftp", "error", err)
+						log.Warn("failed to serve sftp", "error", err)
 						return
 					}
 				}()
@@ -47,7 +47,7 @@ func (s *SSHFSInternalServer) handleConnection(sshConn *ssh.ServerConn, channels
 			case req.Type == "shell":
 				req.Reply(false, nil)
 			default:
-				slog.Debug("ssh: unknown request", "type", req.Type, "reply", req.WantReply, "data", req.Payload)
+				log.Debug("ssh: unknown request", "type", req.Type, "reply", req.WantReply, "data", req.Payload)
 				if req.WantReply {
 					req.Reply(false, nil)
 				}
@@ -85,15 +85,15 @@ func (s *SSHFSInternalServer) Run(listen func(network, addr string) (net.Listene
 		for {
 			nConn, err := listener.Accept()
 			if err != nil {
-				slog.Debug("ssh: failed to accept", "error", err)
+				log.Debug("ssh: failed to accept", "error", err)
 				return
 			}
 
-			slog.Debug("got connection", "addr", nConn.RemoteAddr())
+			log.Debug("got connection", "addr", nConn.RemoteAddr())
 
 			sshConn, chans, reqs, err := ssh.NewServerConn(nConn, config)
 			if err != nil {
-				slog.Debug("ssh: failed to make connection", "error", err)
+				log.Debug("ssh: failed to make connection", "error", err)
 				continue
 			}
 

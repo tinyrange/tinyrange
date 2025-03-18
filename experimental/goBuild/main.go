@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"runtime"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"golang.org/x/mod/modfile"
 )
@@ -83,7 +83,7 @@ func formatPath(path string) string {
 func appMain() error {
 	flag.Parse()
 
-	slog.Info("creating database")
+	log.Info("creating database")
 
 	db, err := database.New(func(db common.PackageDatabase) (common.Builder, error) {
 		if err := common.Ensure(*buildPath, os.ModePerm); err != nil {
@@ -209,7 +209,7 @@ def main():
 
 func main() {
 	if err := appMain(); err != nil {
-		slog.Error("fatal", "error", err)
+		log.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 )
 
@@ -118,7 +118,7 @@ func (def *buildVmDefinition) ToStarlark(artifact common.BuildArtifact) (starlar
 // WriteTo implements common.BuildResult.
 func (def *buildVmDefinition) WriteResult(w io.Writer) error {
 	if err := def.cmd.Wait(); err != nil {
-		slog.Error("error waiting for VM", "err", err)
+		log.Error("error waiting for VM", "err", err)
 		return err
 	}
 
@@ -127,11 +127,11 @@ func (def *buildVmDefinition) WriteResult(w io.Writer) error {
 	}
 
 	if err := def.server.Shutdown(context.Background()); err != nil {
-		slog.Error("error shutting down server", "err", err)
+		log.Error("error shutting down server", "err", err)
 	}
 
 	if err := def.out.Close(); err != nil {
-		slog.Error("error closing output", "err", err)
+		log.Error("error closing output", "err", err)
 	}
 
 	return nil
@@ -353,7 +353,7 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 
 		_, err := io.Copy(def.out, r.Body)
 		if err != nil {
-			slog.Error("error writing output from VM", "err", err)
+			log.Error("error writing output from VM", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	goFs "io/fs"
-	"log/slog"
 	"math"
 	"os"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"golang.org/x/exp/constraints"
 )
@@ -284,7 +284,7 @@ func (d *LinearDirectory) increaseSize() error {
 		// Allocate more blocks.
 		// The block allocation goes 1,4,16,64 blocks.
 		if err = d.extentTree.AllocateBlocks(int64(len(d.blocks) * 4)); err != nil {
-			slog.Info("failed to allocate blocks", "blocks", int64(len(d.blocks)*2))
+			log.Info("failed to allocate blocks", "blocks", int64(len(d.blocks)*2))
 			return err
 		}
 
@@ -745,7 +745,7 @@ func newExtentTree(fs *Ext4Filesystem, i *InodeWrapper, blocks int64) (ExtentTre
 
 	requiredBlockGroups := roundUpDiv(blocks, blockGroupSize)
 
-	// slog.Info("", "requiredBlockGroups", requiredBlockGroups)
+	// log.Info("", "requiredBlockGroups", requiredBlockGroups)
 
 	if requiredBlockGroups <= 4 {
 		return newExtentTree2(fs, i, blocks)
@@ -851,7 +851,7 @@ func (i *InodeWrapper) allocateDirectory(parent *InodeWrapper) error {
 	// set the directory flag.
 	i.node.SetMode(i.node.Mode() | S_IFDIR)
 
-	// slog.Info("", "mode", fmt.Sprintf("%X", i.node.Mode()))
+	// log.Info("", "mode", fmt.Sprintf("%X", i.node.Mode()))
 
 	if !i.fs.deterministicTime.IsZero() {
 		i.node.SetCtime(uint32(i.fs.deterministicTime.Unix()))
@@ -981,7 +981,7 @@ func (i *InodeWrapper) chmod(mode goFs.FileMode) error {
 
 	i.node.SetMode(newMode)
 
-	// slog.Info("", "mode", fmt.Sprintf("%X", i.node.Mode()))
+	// log.Info("", "mode", fmt.Sprintf("%X", i.node.Mode()))
 
 	return nil
 }
@@ -1095,12 +1095,12 @@ func (bg *BlockGroup) allocateBlocks(blocks uint32) (*Extent, error) {
 		// Update the block count.
 		bg.desc.SetFreeBlocksCount(bg.desc.FreeBlocksCount() - uint32(blocks))
 
-		// slog.Info("allocated", "start", start, "blocks", blocks)
+		// log.Info("allocated", "start", start, "blocks", blocks)
 
 		// Return the extent.
 		ext, err := NewExtent(0, uint64(bg.firstBlock)+uint64(start), uint16(blocks))
 		if err != nil {
-			// slog.Info("",
+			// log.Info("",
 			// 	"firstBlock", bg.firstBlock,
 			// 	"start", start,
 			// 	"blocks", blocks,
@@ -1155,7 +1155,7 @@ func (bg *BlockGroup) allocateInode() (*InodeWrapper, error) {
 			return nil, err
 		}
 
-		// slog.Info("map inode", "off", inodeOffset, "num", inodeNumber)
+		// log.Info("map inode", "off", inodeOffset, "num", inodeNumber)
 		// Map the inode data.
 		if err := bg.fs.mapRegion(inode.node, int64(inodeOffset)); err != nil {
 			return nil, err
@@ -1217,7 +1217,7 @@ func (fs *Ext4Filesystem) allocateMultiExtentBlocks(blocks int64) ([]*Extent, er
 	}
 
 	// if len(ret) > 1 {
-	// 	slog.Info("multi extent",
+	// 	log.Info("multi extent",
 	// 		"totalBlockGroups", totalBlockGroups,
 	// 		"remainingBlocks", remainingBlocks,
 	// 		"ret", ret,
@@ -1384,7 +1384,7 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool, resol
 	tokens := strings.Split(filename, "/")
 
 	if debug {
-		slog.Debug("", "tokens", tokens)
+		log.Debug("", "tokens", tokens)
 	}
 
 	currentNode, err := fs.root()
@@ -1421,7 +1421,7 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool, resol
 		}
 
 		if debug {
-			slog.Debug("", "name", token, "child", child)
+			log.Debug("", "name", token, "child", child)
 		}
 
 		currentNode = child
@@ -1631,11 +1631,11 @@ func (fs *Ext4Filesystem) mapRawExtent(region vm.MemoryRegion, extent *Extent) e
 func (fs *Ext4Filesystem) DumpDebug(filename string) {
 	ent, err := fs.getNode(filename, true, false, false)
 	if err != nil {
-		slog.Error("file does not exist", "filename", filename)
+		log.Error("file does not exist", "filename", filename)
 		return
 	}
 
-	slog.Info("DumpDebug", "ent", ent)
+	log.Info("DumpDebug", "ent", ent)
 }
 
 func (fs *Ext4Filesystem) DumpInodeMap(out io.Writer) error {
@@ -1732,7 +1732,7 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 			if err != nil {
 				ctx.deferredFilesystem = append(ctx.deferredFilesystem, func() error {
 					if err := fs.Link(name, target); err != nil {
-						slog.Error("failed to link", "name", name, "target", target, "err", err)
+						log.Error("failed to link", "name", name, "target", target, "err", err)
 
 						// major hack to try and reorder things.
 						ctx.deferredFilesystem = append(ctx.deferredFilesystem, func() error {
@@ -1861,7 +1861,7 @@ func (fs *Ext4Filesystem) AddDirectory(
 }
 
 func (fs *Ext4Filesystem) PrintStats() {
-	slog.Info("ext4 stats",
+	log.Info("ext4 stats",
 		"totalMapRegion", float64(totalMapRegion)/1000/1000,
 		"totalAllocateInode", float64(totalAllocateInode)/1000/1000,
 		"totalAddContents", float64(totalAddContents)/1000/1000,
@@ -1889,7 +1889,7 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 	blockGroupCount := roundUpDiv(blockCount, int64(blocksPerGroup))
 	inodeCount := blockGroupCount * int64(inodesPerGroup)
 
-	slog.Debug("making exr4 filesystem", "vmPageSize", _vm.PageSize(), "blocks", blockCount, "inodes", inodeCount, "blockGroups", blockGroupCount)
+	log.Debug("making exr4 filesystem", "vmPageSize", _vm.PageSize(), "blocks", blockCount, "inodes", inodeCount, "blockGroups", blockGroupCount)
 
 	fs := &Ext4Filesystem{
 		vm:         _vm,
@@ -2041,7 +2041,7 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 		}
 		bg.desc.SetInodeTable(extent.StartBlock)
 
-		// slog.Info("", "block bitmap", bg.desc.blockBitmapBlock(), "inode bitmap", bg.desc.inodeBitmapBlock(), "inode table", bg.desc.inodeTableBlock())
+		// log.Info("", "block bitmap", bg.desc.blockBitmapBlock(), "inode bitmap", bg.desc.inodeBitmapBlock(), "inode table", bg.desc.inodeTableBlock())
 	}
 
 	// Create the set of default inodes and the root directory.

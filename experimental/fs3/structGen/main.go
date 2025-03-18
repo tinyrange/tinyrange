@@ -4,8 +4,9 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 var (
@@ -63,7 +64,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		slog.Error("fatal", "error", err)
+		log.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

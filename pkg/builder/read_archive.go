@@ -43,7 +43,7 @@ func (d *directoryToArchiveBuildResult) getEntry(
 
 	var typ filesystem.FileType
 
-	// slog.Info("info", "name", name, "mode", info.Mode(), "isDir", info.Mode().IsDir(), "size", info.Size())
+	// log.Info("info", "name", name, "mode", info.Mode(), "isDir", info.Mode().IsDir(), "size", info.Size())
 
 	var cacheEnt filesystem.Entry
 
@@ -83,7 +83,7 @@ func (d *directoryToArchiveBuildResult) getEntry(
 			Device(0, 0).Build()
 	}
 
-	// slog.Info("archive", "ent", cacheEnt.Name())
+	// log.Info("archive", "ent", cacheEnt.Name())
 
 	return cacheEnt, nil
 }

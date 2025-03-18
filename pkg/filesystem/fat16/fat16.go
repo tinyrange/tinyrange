@@ -3,9 +3,9 @@ package fat16
 import (
 	"encoding/binary"
 	"fmt"
-	"log/slog"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type fatType byte
@@ -134,7 +134,7 @@ func MapFat16Filesystem(_vm *vm.VirtualMemory, off int64) (*Fat16Filesystem, err
 		return nil, err
 	}
 
-	slog.Info("",
+	log.Info("",
 		"type", fs.fsType(),
 		"bpb", fs.bpb,
 		"firstRootDirectorySector", fs.firstRootDirectorySector(),
@@ -196,7 +196,7 @@ outer:
 	}
 
 	for _, ent := range fs.root.entries {
-		slog.Info("", "ent", ent, "filename", string(ent[0:8]), "ext", string(ent[8:11]))
+		log.Info("", "ent", ent, "filename", string(ent[0:8]), "ext", string(ent[8:11]))
 	}
 
 	return nil, fmt.Errorf("not implemented")

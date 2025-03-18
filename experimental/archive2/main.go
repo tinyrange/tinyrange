@@ -5,12 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"runtime/pprof"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/archive2"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 var (
@@ -105,7 +105,7 @@ func appMain() error {
 			}
 		}
 
-		slog.Info("elapsed", "time", time.Since(start))
+		log.Info("elapsed", "time", time.Since(start))
 
 		return nil
 	} else {
@@ -113,7 +113,7 @@ func appMain() error {
 			return fmt.Errorf("usage: %s -read <filename>", os.Args[0])
 		}
 
-		slog.Info("reading archive")
+		log.Info("reading archive")
 
 		filename := flag.Arg(0)
 
@@ -148,7 +148,7 @@ func appMain() error {
 
 			total += int(reader.Kind())
 
-			// slog.Info("entry",
+			// log.Info("entry",
 			// 	"kind", reader.Kind(),
 			// 	"name", reader.Name(),
 			// 	"size", reader.Size(),
@@ -160,7 +160,7 @@ func appMain() error {
 			// _ = ent
 		}
 
-		slog.Info("elapsed", "time", time.Since(start), "total", total)
+		log.Info("elapsed", "time", time.Since(start), "total", total)
 
 		return nil
 	}
@@ -168,7 +168,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		slog.Error("fatal", "error", err)
+		log.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

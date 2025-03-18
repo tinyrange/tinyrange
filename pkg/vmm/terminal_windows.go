@@ -6,9 +6,9 @@
 package vmm
 
 import (
-	"log/slog"
 	"time"
 
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/sys/windows"
 )
@@ -25,7 +25,7 @@ func getAndWatchSize(_ int, sess *ssh.Session) (int, int, error) {
 
 	go func() {
 		if err := watchWindowSize(fd, sess, width, height); err != nil {
-			slog.Debug("Error watching window size", "error", err)
+			log.Debug("Error watching window size", "error", err)
 		}
 	}()
 

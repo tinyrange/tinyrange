@@ -1,17 +1,18 @@
 package feature
 
-import "log/slog"
+import "github.com/tinyrange/tinyrange/pkg/log"
 
 // Simple Feature Flag system
 
 type Feature string
 
 const (
-	FeatureRosetta          Feature = "rosetta"   // (darwin only) Use Rosetta 2 for emulation
-	FeatureVz               Feature = "vz"        // (darwin only) Use VZ instead of QEMU
-	FeatureBuild1           Feature = "build1"    // Use build1 for building instead of build2
-	Feature9P               Feature = "9p"        // Use 9p for file sharing
-	FeatureBuildOci         Feature = "build_oci" // Enable the build-oci command
+	FeatureRosetta          Feature = "rosetta"    // (darwin only) Use Rosetta 2 for emulation
+	FeatureVz               Feature = "vz"         // (darwin only) Use VZ instead of QEMU
+	FeatureBuild1           Feature = "build1"     // Use build1 for building instead of build2
+	Feature9P               Feature = "9p"         // Use 9p for file sharing
+	Feature9PVerbose        Feature = "9p_verbose" // Enable verbose 9p logging of all messages
+	FeatureBuildOci         Feature = "build_oci"  // Enable the build-oci command
 	FeatureSlowBoot         Feature = "slow_boot"
 	FeatureTokenLockerDebug Feature = "token_locker_debug"
 )
@@ -23,6 +24,7 @@ func init() {
 	features[FeatureVz] = false
 	features[FeatureBuild1] = false
 	features[Feature9P] = true
+	features[Feature9PVerbose] = false
 	features[FeatureSlowBoot] = false
 	features[FeatureBuildOci] = false
 	features[FeatureTokenLockerDebug] = false
@@ -33,14 +35,14 @@ func SetFeaturesFromExperimentalFlags(flags []string) {
 		feat := Feature(flag)
 		val, ok := features[feat]
 		if !ok {
-			slog.Info("enabling unknown feature", "feature", feat)
+			log.Info("enabling unknown feature", "feature", feat)
 			features[feat] = true
 		} else {
 			if val {
-				slog.Info("disabling feature", "feature", feat)
+				log.Info("disabling feature", "feature", feat)
 				features[feat] = false
 			} else {
-				slog.Info("enabling feature", "feature", feat)
+				log.Info("enabling feature", "feature", feat)
 				features[feat] = true
 			}
 		}

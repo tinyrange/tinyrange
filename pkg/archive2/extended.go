@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
+	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 )
@@ -80,7 +82,15 @@ func (c *cvmfsChunk) ReadAt(p []byte, off int64) (n int, err error) {
 			}
 			defer zlibReader.Close()
 
-			if _, err := io.Copy(w, zlibReader); err != nil {
+			var writer = w
+			if common.IsVerbose() {
+				pb := progressbar.DefaultBytes(c.size, c.hash)
+				defer pb.Close()
+
+				w = io.MultiWriter(w, pb)
+			}
+
+			if _, err := io.Copy(writer, zlibReader); err != nil {
 				return fmt.Errorf("failed to copy: %w", err)
 			}
 

@@ -3,7 +3,8 @@ package vm
 import (
 	"fmt"
 	"io"
-	"log/slog"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 // regionFragment is effectively an extent.
@@ -58,13 +59,13 @@ func remapRegion(old *regionFragment, new *regionFragment) []*regionFragment {
 
 	// If old and end don't overlap at all then just return old.
 	if oldEnd <= newStart || newEnd <= oldStart {
-		// slog.Info("case 1", "old", old, "new", new)
+		// log.Info("case 1", "old", old, "new", new)
 		return []*regionFragment{old}
 	}
 
 	// If old and new completely overlap or new overwrites old then just return new.
 	if newStart == oldStart && newEnd >= oldEnd {
-		// slog.Info("case 2", "old", old, "new", new)
+		// log.Info("case 2", "old", old, "new", new)
 		return []*regionFragment{new}
 	}
 
@@ -74,7 +75,7 @@ func remapRegion(old *regionFragment, new *regionFragment) []*regionFragment {
 		// Find the overlap at the end.
 		endOverlap := new.size
 
-		// slog.Info("case 3", "old", old, "new", new, "endOverlap", endOverlap)
+		// log.Info("case 3", "old", old, "new", new, "endOverlap", endOverlap)
 
 		return []*regionFragment{
 			new,
@@ -90,7 +91,7 @@ func remapRegion(old *regionFragment, new *regionFragment) []*regionFragment {
 		// Find the overlap at the end.
 		endOverlap := old.size - (oldEnd - newEnd)
 
-		// slog.Info("case 4", "old", old, "new", new, "startOverlap", startOverlap, "endOverlap", endOverlap)
+		// log.Info("case 4", "old", old, "new", new, "startOverlap", startOverlap, "endOverlap", endOverlap)
 
 		return []*regionFragment{
 			old.cutAt(startOverlap),
@@ -104,7 +105,7 @@ func remapRegion(old *regionFragment, new *regionFragment) []*regionFragment {
 	if newStart > oldStart && newEnd >= oldEnd {
 		overlap := newStart - oldStart
 
-		// slog.Info("case 5", "old", old, "new", new, "overlap", overlap)
+		// log.Info("case 5", "old", old, "new", new, "overlap", overlap)
 
 		return []*regionFragment{
 			old.cutAt(overlap),
@@ -112,7 +113,7 @@ func remapRegion(old *regionFragment, new *regionFragment) []*regionFragment {
 		}
 	}
 
-	slog.Info("unimplemented", "oldStart", oldStart, "oldEnd", oldEnd, "newStart", newStart, "newEnd", newEnd)
+	log.Info("unimplemented", "oldStart", oldStart, "oldEnd", oldEnd, "newStart", newStart, "newEnd", newEnd)
 
 	panic("unimplemented")
 }
@@ -243,7 +244,7 @@ func (f *fragmentedRegion) mapFragment(frag MemoryRegion, off int64) error {
 				if frag.end() > last.end() {
 					overlap := frag.size - (frag.end() - last.end())
 
-					// slog.Info("case 6", "last", last, "frag", frag, "overlap", overlap, "overlap_part", (frag.end() - last.end()))
+					// log.Info("case 6", "last", last, "frag", frag, "overlap", overlap, "overlap_part", (frag.end() - last.end()))
 
 					newFrags = append(newFrags, frag.offsetAt(overlap))
 				}

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/url"
 	"os"
 	"runtime"
@@ -16,6 +15,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	cfg "github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
@@ -198,7 +198,7 @@ func (config *Config) writeRoot(db common.PackageDatabase, directives []common.D
 
 	art, err := db.Builder().Build(def, common.BuildOptions{})
 	if err != nil {
-		slog.Error("fatal", "err", err)
+		log.Error("fatal", "err", err)
 		os.Exit(1)
 	}
 
@@ -619,7 +619,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 					"echo 'password' | sshfs -o password_stdin host.internal:/ /share",
 				}, "\n")})
 			} else {
-				slog.Warn("mounts cannot be automatically configured for this builder")
+				log.Warn("mounts cannot be automatically configured for this builder")
 			}
 		}
 	}
@@ -742,7 +742,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 		art, err := db.Builder().Build(def, opts)
 		if err != nil {
-			slog.Error("fatal", "err", err)
+			log.Error("fatal", "err", err)
 			os.Exit(1)
 		}
 
@@ -773,7 +773,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 	if _, err := db.Builder().Build(def, common.BuildOptions{
 		AlwaysRebuild: true,
 	}); err != nil {
-		slog.Error("fatal", "err", err)
+		log.Error("fatal", "err", err)
 		os.Exit(1)
 	}
 

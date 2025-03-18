@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"log/slog"
 	"math"
 
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 )
 
@@ -474,7 +474,7 @@ func (r *record) ReadAt(p []byte, off int64) (n int, err error) {
 		return 0, err
 	}
 
-	// slog.Info("read rest", "off1", off, "len", len(r.data), "off2", int(off)-len(r.data))
+	// log.Info("read rest", "off1", off, "len", len(r.data), "off2", int(off)-len(r.data))
 
 	// The rest of the data comes from the data we pulled into memory in r.rest.
 	n += copy(p[n:], r.rest[int(off)-len(r.data):])
@@ -492,7 +492,7 @@ func (r *record) readU32(buf [5]byte, off int64) (uint32, error) {
 
 // (type, totalLength, error)
 func (r *record) readRecord(buf [5]byte, off int64) (recordType, uint32, error) {
-	// slog.Info("readRecord", "off", off)
+	// log.Info("readRecord", "off", off)
 	// get the header.
 
 	if _, err := r.ReadAt(buf[:5], off); err != nil {
@@ -606,13 +606,13 @@ func (r *recordListIterator) Next(p *starlark.Value) bool {
 
 	_, len, err := r.rec.readRecord(buf, r.off)
 	if err != nil {
-		slog.Warn("error iterating", "err", err)
+		log.Warn("error iterating", "err", err)
 		return false
 	}
 
 	val, err := r.rec.toStarlarkValue(r.off)
 	if err != nil {
-		slog.Warn("error iterating", "err", err)
+		log.Warn("error iterating", "err", err)
 		return false
 	}
 

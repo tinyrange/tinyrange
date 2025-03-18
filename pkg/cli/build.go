@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 var (
@@ -72,7 +72,7 @@ var buildCmd = &cobra.Command{
 				AlwaysRebuild: !buildUseCache,
 			})
 			if err != nil {
-				slog.Error("fatal", "err", err)
+				log.Error("fatal", "err", err)
 				os.Exit(1)
 			}
 

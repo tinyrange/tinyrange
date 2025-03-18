@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -18,6 +17,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"github.com/tinyrange/tinyrange/pkg/star"
 	"go.starlark.net/starlark"
@@ -59,7 +59,7 @@ func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, erro
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	slog.Debug("executing VMM", "args", cmd.Args)
+	log.Debug("executing VMM", "args", cmd.Args)
 
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -98,12 +98,12 @@ func (b *buildContext) CreateFile(name string) (io.WriteCloser, error) {
 
 // Describe implements common.BuildContext.
 func (b *buildContext) Describe(format string, args ...interface{}) {
-	slog.Info("describe", "hash", b.hash, "message", fmt.Sprintf(format, args...))
+	log.Info("describe", "hash", b.hash, "message", fmt.Sprintf(format, args...))
 }
 
 // Logf implements common.BuildContext.
 func (b *buildContext) Logf(format string, args ...interface{}) {
-	slog.Info("log", "hash", b.hash, "message", fmt.Sprintf(format, args...))
+	log.Info("log", "hash", b.hash, "message", fmt.Sprintf(format, args...))
 }
 
 // WriteDefault implements common.BuildContext.
@@ -517,7 +517,7 @@ func (db *builder1) build(c common.BuildContext, def common.BuildDefinition, opt
 				// Write the build status.
 				db.updateBuildStatus(def, status)
 
-				slog.Debug("cached", "Hash", hash.String(), "filename", filename)
+				log.Debug("cached", "Hash", hash.String(), "filename", filename)
 
 				return &tempArtifact{
 					hash:        hash,
@@ -525,12 +525,12 @@ func (db *builder1) build(c common.BuildContext, def common.BuildDefinition, opt
 				}, nil
 			}
 
-			slog.Debug("rebuild requested", "Hash", hash.String())
+			log.Debug("rebuild requested", "Hash", hash.String())
 		} else {
-			slog.Debug("building", "Hash", hash.String())
+			log.Debug("building", "Hash", hash.String())
 		}
 	} else {
-		slog.Debug("building", "Hash", hash.String())
+		log.Debug("building", "Hash", hash.String())
 	}
 
 	defValue, err := db.defDb.MarshalDefinition(def)

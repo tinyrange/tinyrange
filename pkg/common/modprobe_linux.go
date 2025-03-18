@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log/slog"
 	"os"
 	"slices"
 	"strings"
 	"syscall"
 
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"golang.org/x/sys/unix"
 )
@@ -62,7 +62,7 @@ func LoadModule(module string) error {
 		return fmt.Errorf("error reading module: %s", err)
 	}
 
-	slog.Debug("loading module", "name", module)
+	log.Debug("loading module", "name", module)
 	err = unix.InitModule(moduleContent, "")
 	if sErr, ok := err.(syscall.Errno); ok {
 		if !errors.Is(sErr, fs.ErrExist) {
@@ -96,7 +96,7 @@ func Modprobe(name string) error {
 
 	deps, err := parseDeps(path.Native.Join(kernelDir, "modules.dep"))
 	if err != nil {
-		slog.Warn("could not parse dependencies", "error", err)
+		log.Warn("could not parse dependencies", "error", err)
 		return nil
 	}
 

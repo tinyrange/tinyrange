@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log/slog"
 	"os"
 	"runtime/pprof"
 	"strings"
@@ -22,6 +21,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/cvmfs"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 const (
@@ -264,14 +264,14 @@ func appMain() error {
 		}
 	}
 
-	slog.Info("done", "duration", time.Since(start))
+	log.Info("done", "duration", time.Since(start))
 
 	return nil
 }
 
 func main() {
 	if err := appMain(); err != nil {
-		slog.Error("fatal", "error", err)
+		log.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

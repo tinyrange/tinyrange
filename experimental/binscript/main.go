@@ -5,9 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -394,7 +394,7 @@ func appMain() error {
 
 			if !equal {
 				if nonFatal {
-					slog.Error("assertion failed", "value", value, "expected", expected)
+					log.Error("assertion failed", "value", value, "expected", expected)
 				} else {
 					return starlark.None, fmt.Errorf("assertion failed: %s != %s", value, expected)
 				}
@@ -467,7 +467,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		slog.Error("fatal", "error", err)
+		log.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

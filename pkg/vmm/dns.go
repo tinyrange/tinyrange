@@ -2,9 +2,9 @@ package vmm
 
 import (
 	"fmt"
-	"log/slog"
 
 	"github.com/miekg/dns"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type dnsServer struct {
@@ -18,7 +18,7 @@ func (s *dnsServer) parseQuery(r *dns.Msg, m *dns.Msg) {
 		case dns.TypeA:
 			ip, err := s.dnsLookup(q.Name)
 			if err != nil {
-				slog.Error("error resolving dns", "name", q.Name, "err", err)
+				log.Error("error resolving dns", "name", q.Name, "err", err)
 				m.SetRcode(r, dns.RcodeServerFailure)
 				return
 			}
@@ -29,7 +29,7 @@ func (s *dnsServer) parseQuery(r *dns.Msg, m *dns.Msg) {
 					m.Answer = append(m.Answer, rr)
 				}
 			} else {
-				slog.Error("DNS Query for unknown name", "name", q.Name)
+				log.Error("DNS Query for unknown name", "name", q.Name)
 				m.SetRcode(r, dns.RcodeNameError)
 				return
 			}

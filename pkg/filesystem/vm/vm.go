@@ -4,7 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type VirtualMemory struct {
@@ -25,7 +26,7 @@ func (vm *VirtualMemory) PageSize() uint32 { return vm.pageSize }
 func (vm *VirtualMemory) mapFragment(region MemoryRegion, offset int64) error {
 	vm.totalMapFragments += 1
 
-	// slog.Info("mapFragment", "offset", offset)
+	// log.Info("mapFragment", "offset", offset)
 	// Get the region index.
 	regionIndex := offset / int64(vm.pageSize)
 	regionOffset := offset % int64(vm.pageSize)
@@ -40,7 +41,7 @@ func (vm *VirtualMemory) mapFragment(region MemoryRegion, offset int64) error {
 		} else {
 			// Otherwise it's something else.
 
-			// slog.Info("map existingRegion into fragmentRegion",
+			// log.Info("map existingRegion into fragmentRegion",
 			// 	"pageSize", vm.pageSize,
 			// 	"regionIndex", regionIndex,
 			// 	"existingRegion", existingRegion,
@@ -58,7 +59,7 @@ func (vm *VirtualMemory) mapFragment(region MemoryRegion, offset int64) error {
 				return errors.Join(fmt.Errorf("failed to map fragment"), err)
 			}
 
-			// slog.Info("", "newFrag", newFrag)
+			// log.Info("", "newFrag", newFrag)
 
 			vm.pages[uint64(regionIndex)] = newFrag
 
@@ -106,7 +107,7 @@ func (vm *VirtualMemory) Map(region MemoryRegion, offset int64) error {
 
 	vm.totalMaps += 1
 
-	// slog.Info("map", "region", region, "offset", offset)
+	// log.Info("map", "region", region, "offset", offset)
 
 	// Get the size of the region.
 	regionSize := region.Size()
@@ -324,7 +325,7 @@ func (vm *VirtualMemory) WriteAt(p []byte, off int64) (n int, err error) {
 			// If the region exists then forward the write to the region.
 			writeSize, err = region.WriteAt(p, regionOffset)
 			if err != nil {
-				slog.Error("VirtualMemory WriteAt Error", "len", len(p), "off", off, "regionOffset", regionOffset)
+				log.Error("VirtualMemory WriteAt Error", "len", len(p), "off", off, "regionOffset", regionOffset)
 				return 0, err
 			}
 		} else {
@@ -351,7 +352,7 @@ func (vm *VirtualMemory) Reset() error {
 }
 
 func (vm *VirtualMemory) DumpStats() {
-	slog.Info("vm stats",
+	log.Info("vm stats",
 		"totalMaps", vm.totalMaps,
 		"totalMapFragments", vm.totalMapFragments,
 		"totalMapRegions", vm.totalMapRegions,

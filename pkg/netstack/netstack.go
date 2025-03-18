@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/netip"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
@@ -92,13 +92,13 @@ func (nic *NetworkInterface) GetUDPSocketPair() (net.Addr, net.Addr, error) {
 		for {
 			n, _, err := send.ReadFromUDP(buf)
 			if err != nil {
-				slog.Error("failed to read send socket", "err", err)
+				log.Error("failed to read send socket", "err", err)
 				return
 			}
 
 			pkt := buf[:n]
 
-			// slog.Info("got packet from client", "data", pkt)
+			// log.Info("got packet from client", "data", pkt)
 
 			if nic.ns.packetDump != nil {
 				nic.ns.packetDump.WritePacket(gopacket.CaptureInfo{
@@ -148,7 +148,7 @@ func (nic *NetworkInterface) GetUDPSocketPair() (net.Addr, net.Addr, error) {
 				off += copy(pktBytes[off:], slice)
 			}
 
-			// slog.Info("got packet from host", "pktBytes", pktBytes)
+			// log.Info("got packet from host", "pktBytes", pktBytes)
 
 			if nic.ns.packetDump != nil {
 				nic.ns.packetDump.WritePacket(gopacket.CaptureInfo{
@@ -159,7 +159,7 @@ func (nic *NetworkInterface) GetUDPSocketPair() (net.Addr, net.Addr, error) {
 
 			_, err := nic.udpConn.Write(pktBytes)
 			if err != nil {
-				slog.Debug("failed to write packet to guest", "err", err)
+				log.Debug("failed to write packet to guest", "err", err)
 			}
 
 			pkt.DecRef()
@@ -177,13 +177,13 @@ func (nic *NetworkInterface) AttachFile(file *os.File) error {
 		for {
 			n, err := file.Read(buf)
 			if err != nil {
-				slog.Error("failed to read send socket", "err", err)
+				log.Error("failed to read send socket", "err", err)
 				return
 			}
 
 			pkt := buf[:n]
 
-			// slog.Info("got packet from client", "data", pkt)
+			// log.Info("got packet from client", "data", pkt)
 
 			if nic.ns.packetDump != nil {
 				nic.ns.packetDump.WritePacket(gopacket.CaptureInfo{
@@ -213,7 +213,7 @@ func (nic *NetworkInterface) AttachFile(file *os.File) error {
 				off += copy(pktBytes[off:], slice)
 			}
 
-			// slog.Info("got packet from host", "pktBytes", pktBytes)
+			// log.Info("got packet from host", "pktBytes", pktBytes)
 
 			if nic.ns.packetDump != nil {
 				nic.ns.packetDump.WritePacket(gopacket.CaptureInfo{
@@ -224,7 +224,7 @@ func (nic *NetworkInterface) AttachFile(file *os.File) error {
 
 			_, err := file.Write(pktBytes)
 			if err != nil {
-				slog.Debug("failed to write packet to guest", "err", err)
+				log.Debug("failed to write packet to guest", "err", err)
 			}
 
 			pkt.DecRef()
@@ -249,10 +249,10 @@ func (nic *NetworkInterface) onReceivePacket(pkt []byte) {
 	} else if etherType == uint16(ipv6.ProtocolNumber) {
 		proto = ipv6.ProtocolNumber
 	} else {
-		slog.Warn("nets: unknown protocol number", "proto", proto)
+		log.Warn("nets: unknown protocol number", "proto", proto)
 	}
 
-	// slog.Info("pkt", "dst", dstMac.String(), "src", srcMac.String(), "etherType", etherType, "payload", payload)
+	// log.Info("pkt", "dst", dstMac.String(), "src", srcMac.String(), "etherType", etherType, "payload", payload)
 
 	pktBuf := stack.NewPacketBuffer(stack.PacketBufferOptions{
 		Payload: buffer.MakeWithData(payload),
@@ -467,7 +467,7 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 
 	ep, ipErr := r.CreateEndpoint(&wq)
 	if ipErr != nil {
-		slog.Error("error creating endpoint", "err", ipErr)
+		log.Error("error creating endpoint", "err", ipErr)
 		r.Complete(true)
 		return
 	}
@@ -492,7 +492,7 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 			Port: int(id.LocalPort),
 		}
 
-		slog.Debug("dialing remote host", "addr", loc.String())
+		log.Debug("dialing remote host", "addr", loc.String())
 
 		var outbound net.Conn
 
@@ -518,7 +518,7 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 }
 
 // func (ns *NetStack) handleUdpForward(r *udp.ForwarderRequest) {
-// 	slog.Info("udp forwarding request", "req", r)
+// 	log.Info("udp forwarding request", "req", r)
 // }
 
 func New() *NetStack {

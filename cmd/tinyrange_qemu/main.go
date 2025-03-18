@@ -3,12 +3,12 @@ package main
 import (
 	_ "embed"
 	"fmt"
-	"log/slog"
 	"runtime"
 	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/linux/kernel"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/vmm"
 )
 
@@ -125,7 +125,7 @@ func main() {
 			}
 		} else {
 			// Print a warning since the serial console degrades performance.
-			slog.Warn("Using serial console")
+			log.Warn("Using serial console")
 
 			args = append(args, "-serial", "stdio")
 			if guestOs == OperatingSystemLinux {

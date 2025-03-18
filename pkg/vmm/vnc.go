@@ -3,10 +3,10 @@ package vmm
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net"
 	"time"
 
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"github.com/tinyrange/tinyrange/pkg/vnc/client"
 )
@@ -24,7 +24,7 @@ func runVncClient(ns *netstack.NetStack, address string) error {
 		conn, err = ns.DialInternalContext(ctx, "tcp", address)
 		if err != nil {
 			if !errors.Is(err, context.DeadlineExceeded) {
-				slog.Debug("failed to connect", "err", err)
+				log.Debug("failed to connect", "err", err)
 			}
 
 			time.Sleep(50 * time.Millisecond)
@@ -37,7 +37,7 @@ func runVncClient(ns *netstack.NetStack, address string) error {
 
 	err = client.RunVNCClient(conn)
 	if err != nil {
-		slog.Error("VNC client crashed", "err", err)
+		log.Error("VNC client crashed", "err", err)
 		return err
 	}
 

@@ -4,9 +4,9 @@ package netstack
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/wireguard"
 )
 
@@ -37,7 +37,7 @@ func (ns *NetStack) SetupWireguard(config string, mtu int) error {
 		for {
 			conn, err := listen.Accept()
 			if err != nil {
-				slog.Error("failed to accept connection", "err", err)
+				log.Error("failed to accept connection", "err", err)
 				return
 			}
 
@@ -46,13 +46,13 @@ func (ns *NetStack) SetupWireguard(config string, mtu int) error {
 
 				backend, err := ns.DialInternalContext(context.Background(), "tcp", conn.LocalAddr().String())
 				if err != nil {
-					slog.Error("failed to dial backend", "err", err)
+					log.Error("failed to dial backend", "err", err)
 					return
 				}
 				defer backend.Close()
 
 				if err := common.Proxy(backend, conn, 1400); err != nil {
-					slog.Error("proxy error", "err", err)
+					log.Error("proxy error", "err", err)
 				}
 			}()
 		}

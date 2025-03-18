@@ -6,9 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"reflect"
 	"sync"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type Hash string
@@ -365,7 +366,7 @@ func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.
 				defVal := reflect.ValueOf(def)
 
 				if !defVal.CanConvert(fieldType) {
-					slog.Info("", "kind", defVal.Kind())
+					log.Info("", "kind", defVal.Kind())
 					if defVal.Kind() != reflect.Pointer {
 						return fmt.Errorf("can not convert %s to %s", defVal.Type(), fieldType)
 					}

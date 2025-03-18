@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log/slog"
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
@@ -15,6 +14,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/emulator/shared"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"go.starlark.net/starlark"
 )
@@ -46,7 +46,7 @@ func (s *starProgram) Run(proc shared.Process, argv []string) error {
 	)
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
-			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+			log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
 		}
 		return err
 	}
@@ -135,7 +135,7 @@ func (proc *process) SetKey(k starlark.Value, v starlark.Value) error {
 
 // Chdir implements shared.Process.
 func (proc *process) Chdir(name string) error {
-	// slog.Info("chdir", "name", name)
+	// log.Info("chdir", "name", name)
 
 	proc.cwd = path.Unix.Join(proc.cwd, name)
 
@@ -272,7 +272,7 @@ func (p *process) Exec(args []string) error {
 		return err
 	}
 
-	// slog.Info("found executable", "name", name)
+	// log.Info("found executable", "name", name)
 
 	prog, extra, err := p.kernel.LookupExecutable(name)
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"runtime/pprof"
 	"strings"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/experimental/crumblecracker/kvm"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 	"golang.org/x/arch/x86/x86asm"
@@ -231,7 +231,7 @@ func (vm *VirtualMachine) loadLinux(imagePath string, initrdPath string, cmdline
 			return fmt.Errorf("failed to stat initrd: %w", err)
 		}
 
-		// slog.Info("", "kernel end", fmt.Sprintf("0x%x", KERNEL_LOAD_ADDR+imageStat.Size()-setupSize))
+		// log.Info("", "kernel end", fmt.Sprintf("0x%x", KERNEL_LOAD_ADDR+imageStat.Size()-setupSize))
 
 		// if KERNEL_INITRD_ADDR+uint64(initrdStat.Size()) > 0x100000 {
 		// 	return fmt.Errorf("initrd too large: 0x%x", initrdStat.Size())
@@ -612,12 +612,12 @@ func (cpu *VirtualCPU) Run() error {
 		for {
 			n, err := os.Stdin.Read(buf)
 			if err != nil {
-				slog.Error("failed to read from stdin", "error", err)
+				log.Error("failed to read from stdin", "error", err)
 				return
 			}
 
 			if _, err := serial.Write(buf[:n]); err != nil {
-				slog.Error("failed to write to serial", "error", err)
+				log.Error("failed to write to serial", "error", err)
 				return
 			}
 		}
@@ -636,7 +636,7 @@ func (cpu *VirtualCPU) Run() error {
 		}
 	}
 
-	slog.Info("running", "initTime", time.Since(START_TIME))
+	log.Info("running", "initTime", time.Since(START_TIME))
 
 	for {
 		if cpu.vm.shutdown.Load() || exit.Load() {
@@ -653,14 +653,14 @@ func (cpu *VirtualCPU) Run() error {
 			io := cpu.cpu.ExitIo()
 			device, ok := ioMap[io.Port]
 			if !ok {
-				slog.Info("unknown io", "port", fmt.Sprintf("0x%x", io.Port), "direction", io.Direction, "size", io.Size)
+				log.Info("unknown io", "port", fmt.Sprintf("0x%x", io.Port), "direction", io.Direction, "size", io.Size)
 				continue
 			}
 			if err := device.IO(io); err != nil {
 				return fmt.Errorf("failed to handle io: %w", err)
 			}
 		case kvm.ExitShutdown:
-			slog.Info("shutdown")
+			log.Info("shutdown")
 
 			if err := cpu.cpu.DumpRegisters(os.Stderr); err != nil {
 				return fmt.Errorf("failed to dump registers: %w", err)
@@ -858,7 +858,7 @@ func (c *CMOSDevice) IO(io *kvm.KVMIoEvent) error {
 		return nil
 	} else if port == 1 && io.Direction == kvm.IoDirectionWrite {
 		data := io.Read()[0]
-		slog.Info("CMOS write",
+		log.Info("CMOS write",
 			"addr", fmt.Sprintf("0x%02x", c.addr),
 			"data", fmt.Sprintf("0x%02x", data),
 		)
@@ -867,7 +867,7 @@ func (c *CMOSDevice) IO(io *kvm.KVMIoEvent) error {
 		if c.addr == 0x0f {
 			switch data {
 			case 0x00:
-				slog.Info("CMOS shutdown")
+				log.Info("CMOS shutdown")
 
 				return c.cpu.Shutdown()
 			}
@@ -875,7 +875,7 @@ func (c *CMOSDevice) IO(io *kvm.KVMIoEvent) error {
 
 		return nil
 	} else if port == 1 && io.Direction == kvm.IoDirectionRead {
-		slog.Info("CMOS read",
+		log.Info("CMOS read",
 			"addr", fmt.Sprintf("0x%02x", c.addr),
 			"data", fmt.Sprintf("0x%02x", c.Data[c.addr]),
 		)
@@ -892,21 +892,7 @@ var (
 	_ IODevice = (*CMOSDevice)(nil)
 )
 
-type newlineReplaceWriter struct {
-	w           io.Writer
-	replaceWith string
-}
-
-func (w *newlineReplaceWriter) Write(p []byte) (n int, err error) {
-	return w.w.Write(bytes.ReplaceAll(p, []byte("\n"), []byte(w.replaceWith)))
-}
-
 func appMain() error {
-	slog.SetDefault(slog.New(slog.NewTextHandler(&newlineReplaceWriter{
-		w:           os.Stderr,
-		replaceWith: "\r\n",
-	}, &slog.HandlerOptions{})))
-
 	args, err := parseCommandLine(os.Args[1:])
 	if err != nil {
 		return fmt.Errorf("failed to parse command line: %w", err)
@@ -970,7 +956,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		slog.Error("fatal", "error", err)
+		log.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

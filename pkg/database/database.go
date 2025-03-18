@@ -3,7 +3,6 @@ package database
 import (
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/macro"
 	"github.com/tinyrange/tinyrange/stdlib"
 	"go.starlark.net/starlark"
@@ -129,7 +129,7 @@ func (db *packageDatabase) newThread(filename string) *starlark.Thread {
 			ret, err := starlark.ExecFileOptions(db.getFileOptions(), newThread, module, contents, globals)
 			if err != nil {
 				if sErr, ok := err.(*starlark.EvalError); ok {
-					slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+					log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
 				}
 				return nil, err
 			}
@@ -259,7 +259,7 @@ func (db *packageDatabase) RunScript(filename string, files map[string]filesyste
 	_, err = starlark.Call(thread, mainFunc, starlark.Tuple{args}, []starlark.Tuple{})
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
-			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+			log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
 		}
 		return err
 	}
@@ -369,7 +369,7 @@ func (db *packageDatabase) GetMacroByDeclaredName(ctx common.MacroContext, name 
 	}
 
 	if _, ok := db.loadedFiles[filename]; !ok {
-		slog.Debug("load file for macro", "filename", filename)
+		log.Debug("load file for macro", "filename", filename)
 		if err := db.LoadFile(filename, allowLocal); err != nil {
 			return nil, err
 		}
@@ -460,7 +460,7 @@ func (db *packageDatabase) Call(filename string, builder string, args ...starlar
 	result, err := starlark.Call(db.newThread(filename), target, args, []starlark.Tuple{})
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
-			slog.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+			log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
 		}
 		return starlark.None, err
 	}

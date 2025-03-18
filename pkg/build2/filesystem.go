@@ -3,12 +3,12 @@ package build2
 import (
 	"fmt"
 	"io"
-	"log/slog"
 	"regexp"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 const (
@@ -224,7 +224,7 @@ func (f *filesystemBuildCache) GetAllHashes() ([]hash.Hash, error) {
 
 		childEnts, err := childDir.Readdir()
 		if err != nil {
-			slog.Warn("failed to read directory", "err", err)
+			log.Warn("failed to read directory", "err", err)
 			continue
 		}
 

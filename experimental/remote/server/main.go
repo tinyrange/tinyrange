@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tinyrange/tinyrange/experimental/remote"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 var (
@@ -93,7 +93,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		slog.Error("fatal", "error", err)
+		log.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

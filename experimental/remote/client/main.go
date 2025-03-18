@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tinyrange/tinyrange/experimental/remote"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"golang.org/x/crypto/ssh"
 )
@@ -83,7 +83,7 @@ func appMain() error {
 		return fmt.Errorf("failed to dial: %w", err)
 	}
 
-	slog.Info("connected")
+	log.Info("connected")
 
 	listen, err := conn.ListenTCP(&net.TCPAddr{
 		IP:   net.ParseIP("127.0.0.1"),
@@ -119,7 +119,7 @@ func appMain() error {
 			return
 		}
 
-		slog.Info("builder create", "addr", req.Addr, "apiKey", req.ApiKey)
+		log.Info("builder create", "addr", req.Addr, "apiKey", req.ApiKey)
 	})
 
 	go http.Serve(listen, &remote.ApiKeyHandler{
@@ -148,7 +148,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		slog.Error("fatal", "error", err)
+		log.Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

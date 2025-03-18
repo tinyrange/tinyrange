@@ -16,7 +16,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -37,6 +36,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -167,7 +167,7 @@ func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, nonIntera
 	close := func() {
 		if shell.Process != nil {
 			if ps, err := shell.Process.Wait(); err != nil && ps != nil {
-				slog.Warn("failed to exit shell", "error", err)
+				log.Warn("failed to exit shell", "error", err)
 			}
 		}
 
@@ -193,7 +193,7 @@ func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, nonIntera
 	go func() {
 		err := common.Proxy(shellf, connection, 4096)
 		if err != nil {
-			slog.Warn("proxy failed", "error", err)
+			log.Warn("proxy failed", "error", err)
 		}
 
 		close()
@@ -205,7 +205,7 @@ func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, nonIntera
 		if shell.Process != nil {
 			ps, err := shell.Process.Wait()
 			if err != nil && ps != nil {
-				slog.Warn("failed to exit shell", "error", err)
+				log.Warn("failed to exit shell", "error", err)
 			}
 
 			// Send the exit code to the client
@@ -235,7 +235,7 @@ func (s *sshServer) handleChannel(conn ssh.Conn, newChannel ssh.NewChannel) {
 
 	connection, requests, err := newChannel.Accept()
 	if err != nil {
-		slog.Warn("could not accept channel", "error", err)
+		log.Warn("could not accept channel", "error", err)
 		return
 	}
 
@@ -306,7 +306,7 @@ func (s *sshServer) handleRequests(conn ssh.Conn, connection ssh.Channel, reques
 	for req := range requests {
 		switch req.Type {
 		case "pty-req":
-			slog.Debug("pty-req", "payload", hex.EncodeToString(req.Payload))
+			log.Debug("pty-req", "payload", hex.EncodeToString(req.Payload))
 			termLen := req.Payload[3]
 
 			// Make sure we correctly forward the terminal from the host.
@@ -327,26 +327,26 @@ func (s *sshServer) handleRequests(conn ssh.Conn, connection ssh.Channel, reques
 			// Responding true (OK) here will let the client
 			// know we have attached the shell (pty) to the connection
 			if len(req.Payload) > 0 {
-				slog.Debug("shell command ignored", "payload", req.Payload)
+				log.Debug("shell command ignored", "payload", req.Payload)
 			}
 
 			err := s.attachShell(conn, connection, nonInteractive, env, resizes)
 			if err != nil {
-				slog.Warn("failed to attach shell", "error", err)
+				log.Warn("failed to attach shell", "error", err)
 			}
 
 			_ = req.Reply(err == nil, nil)
 		case "exec":
 			err := s.handleExec(conn, connection, req, env)
 			if err != nil {
-				slog.Warn("failed to handle exec", "error", err)
+				log.Warn("failed to handle exec", "error", err)
 			}
 
 			if err := connection.Close(); err != nil {
-				slog.Warn("failed to close connection", "error", err)
+				log.Warn("failed to close connection", "error", err)
 			}
 		default:
-			slog.Debug("unknown request", "type", req.Type, "reply", req.WantReply, "data", req.Payload)
+			log.Debug("unknown request", "type", req.Type, "reply", req.WantReply, "data", req.Payload)
 
 			if req.WantReply {
 				req.Reply(false, nil)
@@ -369,7 +369,7 @@ func (s *sshServer) handleClient(nConn net.Conn, config *ssh.ServerConfig) error
 		return err
 	}
 
-	slog.Debug("new SSH connection", "remote", sshConn.RemoteAddr(), "client_version", sshConn.ClientVersion())
+	log.Debug("new SSH connection", "remote", sshConn.RemoteAddr(), "client_version", sshConn.ClientVersion())
 
 	// Discard all global out-of-band Requests
 	go ssh.DiscardRequests(reqs)
@@ -426,7 +426,7 @@ func (s *sshServer) run(callable starlark.Callable) error {
 		go func() {
 			err := s.handleClient(nConn, config)
 			if err != nil {
-				slog.Debug("failed to handle ssh client", "err", err)
+				log.Debug("failed to handle ssh client", "err", err)
 			}
 		}()
 	}
@@ -633,7 +633,7 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 			return nil, fmt.Errorf("failed to configure interface: %v", err)
 		}
 
-		slog.Debug("configured networking statically", "routers", router)
+		log.Debug("configured networking statically", "routers", router)
 
 		return starlark.String(router), nil
 	})
@@ -1013,7 +1013,7 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 			return nil, err
 		}
 
-		slog.Debug("exec", "args", cmdArgs)
+		log.Debug("exec", "args", cmdArgs)
 
 		if err := unix.Exec(cmdArgs[0], cmdArgs, os.Environ()); err != nil {
 			return starlark.None, err
@@ -1324,14 +1324,14 @@ func runStarlarkServer(port int) error {
 
 		// run this in the background since it may disconnect us by invoking a new init.
 		go func() {
-			slog.Info("running starlark script", "contents", string(contents))
+			log.Info("running starlark script", "contents", string(contents))
 			if err := runStarlarkScript("script.star", string(contents)); err != nil {
-				slog.Error("failed to run starlark script", "err", err)
+				log.Error("failed to run starlark script", "err", err)
 			}
 		}()
 	})
 
-	slog.Info("starting starlark server", "port", port)
+	log.Info("starting starlark server", "port", port)
 
 	return http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 }
@@ -1426,7 +1426,7 @@ func runSSHServer() error {
 		command:  commandArgs,
 	}
 
-	slog.Info("starting ssh server")
+	log.Info("starting ssh server")
 
 	if err := server.run(nil); err != nil {
 		return fmt.Errorf("failed to start ssh server: %s", err)
@@ -1501,7 +1501,7 @@ func initMain() error {
 			if _, err := os.Stat(*lockFile + ".tmp"); err == nil {
 				for {
 					if _, err := os.Stat(*lockFile); err == nil {
-						slog.Info("waiting for lock file to be removed", "filename", *lockFile+".tmp")
+						log.Info("waiting for lock file to be removed", "filename", *lockFile+".tmp")
 						time.Sleep(100 * time.Millisecond)
 						continue
 					} else {
@@ -1616,7 +1616,7 @@ func initMain() error {
 	// we are the child/parent.
 	if _, hasReaper := os.LookupEnv("REAPER"); !hasReaper && needsReaper {
 		if os.Getpid() != 1 {
-			slog.Error("init must run as PID 1", "env", os.Environ())
+			log.Error("init must run as PID 1", "env", os.Environ())
 			return fmt.Errorf("/init must run as PID 1")
 		}
 
@@ -1684,7 +1684,7 @@ func initMain() error {
 func InitMain() {
 	if os.Getenv("TINYRANGE_VERBOSE") == "on" {
 		if err := common.EnableVerbose(); err != nil {
-			slog.Error("failed to enable verbose logging", "err", err)
+			log.Error("failed to enable verbose logging", "err", err)
 			os.Exit(1)
 		}
 	}
@@ -1695,10 +1695,10 @@ func InitMain() {
 		version = buildinfo.Main.Version
 	}
 
-	slog.Debug("TinyRange Init", "version", version, "pid", os.Getpid())
+	log.Debug("TinyRange Init", "version", version, "pid", os.Getpid())
 
 	if err := initMain(); err != nil {
-		slog.Error("fatal", "err", err)
+		log.Error("fatal", "err", err)
 		os.Exit(1)
 	}
 }

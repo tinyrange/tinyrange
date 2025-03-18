@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 func GetLinkName(ent File) (string, error) {
@@ -186,7 +186,7 @@ func (l *lazyRemoteFile) ReadAt(p []byte, off int64) (n int, err error) {
 	if l.region == nil {
 		resp, err := l.client.Get(l.url)
 		if err != nil {
-			slog.Error("failed to read", "err", err)
+			log.Error("failed to read", "err", err)
 			return -1, err
 		}
 		defer resp.Body.Close()
@@ -198,7 +198,7 @@ func (l *lazyRemoteFile) ReadAt(p []byte, off int64) (n int, err error) {
 		l.region = make(vm.RawRegion, l.expectedSize)
 
 		if _, err = io.ReadFull(resp.Body, l.region); err != nil {
-			slog.Error("failed to read", "err", err)
+			log.Error("failed to read", "err", err)
 			return -1, err
 		}
 	}
