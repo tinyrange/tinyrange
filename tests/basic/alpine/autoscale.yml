@@ -1,0 +1,6 @@
+version: 1
+builder: alpine@3.21
+commands:
+    - free -h
+    - cat /proc/cpuinfo
+auto_scale: true
