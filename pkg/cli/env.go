@@ -60,10 +60,27 @@ var getDefaultVMMCmd = &cobra.Command{
 	},
 }
 
+var getAutoScaleConfigCmd = &cobra.Command{
+	Use:   "get-auto-scale-config",
+	Short: "Print the auto scale configuration (CPU, RAM, Storage)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cpus, ram, err := common.GetCPUAndMemoryAutoScaleConfig()
+		if err != nil {
+			return err
+		}
+
+		fmt.Fprintf(os.Stdout, "CPUs: %d\n", cpus)
+		fmt.Fprintf(os.Stdout, "RAM: %d\n", ram)
+
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(envCmd)
 
 	envCmd.AddCommand(buildDirCmd)
 	envCmd.AddCommand(checkHardwareAccelerationCmd)
 	envCmd.AddCommand(getDefaultVMMCmd)
+	envCmd.AddCommand(getAutoScaleConfigCmd)
 }

@@ -347,6 +347,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					output        string
 					cpuCores      int
 					memoryMb      int
+					autoScale     bool
 					archString    string
 					storageSize   int
 					interaction   string
@@ -359,6 +360,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					"output?", &output,
 					"cpu_cores?", &cpuCores,
 					"memory_mb?", &memoryMb,
+					"auto_scale?", &autoScale,
 					"arch?", &archString,
 					"storage_size?", &storageSize,
 					"interaction", &interaction,
@@ -403,6 +405,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					output,
 					cpuCores,
 					memoryMb,
+					autoScale,
 					arch,
 					arch,
 					storageSize,

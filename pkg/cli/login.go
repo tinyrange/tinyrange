@@ -175,6 +175,7 @@ func init() {
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ForwardPorts, "forward", []string{}, "Forward a port from the guest to the host (syntax <port>).")
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.Volumes, "volume", []string{}, "Mount a volume of a given size into the VM (syntax <name>,<sizeMb>,<guestPath>,<persist?>).")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.OciImage, "oci", "", "Use an OCI image as the root filesystem.")
+	loginCmd.PersistentFlags().BoolVarP(&currentConfig.AutoScale, "auto-scale", "A", false, "Automatically scale the CPU and RAM to the limits of the host.")
 
 	// private flags (need to set on command line)
 	loginCmd.PersistentFlags().IntVar(&currentConfig.CpuCores, "cpu", 1, "The number of CPU cores to allocate to the virtual machine.")

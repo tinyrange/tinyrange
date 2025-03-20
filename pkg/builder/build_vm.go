@@ -203,6 +203,7 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 	vmCfg.KernelFilename = kernelFilename
 	vmCfg.CPUCores = def.params.CpuCores
 	vmCfg.MemoryMB = def.params.MemoryMB
+	vmCfg.AutoScale = def.params.AutoScale
 	vmCfg.Interaction = vmInteraction
 	vmCfg.Debug = def.params.Debug
 
@@ -422,6 +423,7 @@ func newBuildVmDefinition(
 	output string,
 	cpuCores int,
 	memoryMb int,
+	autoScale bool,
 	architecture config.CPUArchitecture,
 	rootArchitecture config.CPUArchitecture,
 	storageSize int,
@@ -445,6 +447,7 @@ func newBuildVmDefinition(
 			OutputFile:       output,
 			CpuCores:         cpuCores,
 			MemoryMB:         memoryMb,
+			AutoScale:        autoScale,
 			Architecture:     string(architecture),
 			RootArchitecture: string(rootArchitecture),
 			StorageSize:      storageSize,

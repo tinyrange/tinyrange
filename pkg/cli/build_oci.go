@@ -186,6 +186,7 @@ var buildOciCmd = &cobra.Command{
 					"/init/changed.archive", // output file
 					1,                       // cpu count
 					1024,                    // memory
+					true,                    // auto scale
 					config.HostArchitecture, // architecture
 					config.HostArchitecture, // target architecture
 					1024,                    // storage
@@ -255,6 +256,7 @@ var buildOciCmd = &cobra.Command{
 			"",                      // output file
 			1,                       // cpu count
 			1024,                    // memory
+			true,                    // auto scale
 			config.HostArchitecture, // architecture
 			config.HostArchitecture, // target architecture
 			1024,                    // storage

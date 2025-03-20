@@ -35,13 +35,23 @@ func (*definitionFactory) NewBuildVmDefinition(
 	output string,
 	cpuCores int,
 	memoryMb int,
+	autoScale bool,
 	architecture config.CPUArchitecture,
 	rootArchitecture config.CPUArchitecture,
 	storageSize int,
 	interaction string,
 	debug bool,
 ) common.BuildVmDefinition {
-	return newBuildVmDefinition(dir, kernel, initramfs, output, cpuCores, memoryMb, architecture, rootArchitecture, storageSize, interaction, debug)
+	return newBuildVmDefinition(dir,
+		kernel,
+		initramfs,
+		output,
+		cpuCores, memoryMb, autoScale,
+		architecture, rootArchitecture,
+		storageSize,
+		interaction,
+		debug,
+	)
 }
 
 func (*definitionFactory) NewDecompressFileBuildDefinition(

@@ -15,6 +15,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
+	"github.com/tinyrange/tinyrange/third_party/memory"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
@@ -363,4 +364,29 @@ func Sha256HashFromFile(filename string) (string, error) {
 	defer f.Close()
 
 	return Sha256HashFromReader(f)
+}
+
+func GetCPUAndMemoryAutoScaleConfig() (int, int, error) {
+	cpus := runtime.NumCPU()
+
+	totalMemory, err := memory.TotalMemory()
+	if err != nil {
+		return -1, -1, err
+	}
+
+	if cpus < 5 {
+		cpus = 1
+	} else {
+		cpus = min(cpus/2, 8)
+	}
+
+	ram := totalMemory / 1024 / 1024
+
+	if ram < 6*1024 {
+		ram = 1024
+	} else {
+		ram = min(ram/2, 64*1024)
+	}
+
+	return cpus, int(ram), nil
 }

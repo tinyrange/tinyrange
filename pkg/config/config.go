@@ -196,6 +196,8 @@ type TinyRangeConfig struct {
 	CPUCores int `json:"cpu_cores" yaml:"cpu_cores"`
 	// The amount of memory to allocate to the virtual machine.
 	MemoryMB int `json:"memory_mb" yaml:"memory_mb"`
+	// Automatically scale the CPU and RAM to the limits of the host.
+	AutoScale bool `json:"auto_scale" yaml:"auto_scale"`
 	// Redirect hypervisor input to the host. The VM will exit after it completes initialization.
 	Debug bool `json:"debug" yaml:"debug"`
 }

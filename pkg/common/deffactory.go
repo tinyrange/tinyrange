@@ -64,6 +64,7 @@ type DefinitionFactory interface {
 		output string,
 		cpuCores int,
 		memoryMb int,
+		autoScale bool,
 		architecture config.CPUArchitecture,
 		rootArchitecture config.CPUArchitecture,
 		storageSize int,

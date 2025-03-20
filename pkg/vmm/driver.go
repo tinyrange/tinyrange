@@ -47,6 +47,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/vmm/accelerate"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"github.com/tinyrange/tinyrange/third_party/go-nbd/backend"
+	"github.com/tinyrange/tinyrange/third_party/memory"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
@@ -346,6 +347,8 @@ type driver struct {
 	nbdBlockSize      int
 	wireguardUrl      string
 	packetCapturePath string
+	cpuCores          int
+	memoryMB          int
 
 	dumpWriter *csv.Writer
 
@@ -1261,6 +1264,33 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		return fmt.Errorf("invalid config")
 	}
 
+	if topConfig.CPUCores > runtime.NumCPU() {
+		return fmt.Errorf("invalid config, too many cores, got %d, max %d", topConfig.CPUCores, runtime.NumCPU())
+	}
+
+	totalMem, err := memory.TotalMemory()
+	if err == nil && totalMem < uint64(topConfig.MemoryMB)*1024*1024 {
+		return fmt.Errorf("not enough memory for VM, got %dmb, need %dmb", totalMem/1024/1024, topConfig.MemoryMB)
+	}
+
+	d.cpuCores = topConfig.CPUCores
+	d.memoryMB = topConfig.MemoryMB
+
+	if topConfig.AutoScale {
+		autoCpus, autoMem, err := common.GetCPUAndMemoryAutoScaleConfig()
+		if err != nil {
+			return fmt.Errorf("failed to get auto scale config: %w", err)
+		}
+
+		if d.cpuCores < autoCpus {
+			d.cpuCores = autoCpus
+		}
+
+		if d.memoryMB < autoMem {
+			d.memoryMB = autoMem
+		}
+	}
+
 	if topConfig.Debug {
 		log.Warn("enabling hypervisor debug mode")
 		d.debug = true
@@ -1704,8 +1734,6 @@ func (d *driver) Accelerated() bool {
 
 func (d *driver) HostOperatingSystem() string               { return runtime.GOOS }
 func (d *driver) GuestArchitecture() config.CPUArchitecture { return d.topConfig().Architecture }
-func (d *driver) CPUCores() int                             { return d.topConfig().CPUCores }
-func (d *driver) MemoryMB() int                             { return d.topConfig().MemoryMB }
 func (d *driver) DiskImages() []File                        { return d.diskImages }
 func (d *driver) InitRamFs() File                           { return d.initRamFs }
 func (d *driver) Verbose() bool                             { return common.IsVerbose() }
@@ -1713,6 +1741,8 @@ func (d *driver) Experimental() []string                    { return feature.Get
 func (d *driver) Interaction() config.InteractionKind       { return d.topConfig().Interaction }
 func (d *driver) NetworkInterface() NetworkInterface        { return d.networkInterface }
 func (d *driver) Kernel() File                              { return d.kernel }
+func (d *driver) CPUCores() int                             { return d.cpuCores }
+func (d *driver) MemoryMB() int                             { return d.memoryMB }
 
 func (d *driver) RootArchitecture() config.CPUArchitecture {
 	return d.topConfig().RootArchitecture

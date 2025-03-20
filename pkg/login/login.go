@@ -128,6 +128,7 @@ type Config struct {
 	Init             string   `json:"init,omitempty" yaml:"init,omitempty"`
 	ForwardPorts     []string `json:"forward_ports,omitempty" yaml:"forward_ports,omitempty"`
 	Volumes          []string `json:"volumes,omitempty" yaml:"volumes,omitempty"`
+	AutoScale        bool     `json:"auto_scale,omitempty" yaml:"auto_scale,omitempty"`
 	MinSpec          VMSpec   `json:"min_spec,omitempty" yaml:"min_spec,omitempty"`
 
 	// secure configs that have to be set on the command line.
@@ -425,7 +426,7 @@ func (config *Config) makeBuildVMDefinition(
 		directives,
 		kernel, initramfs,
 		outputName,
-		config.CpuCores, config.MemorySize,
+		config.CpuCores, config.MemorySize, config.AutoScale,
 		vmArch, arch,
 		config.StorageSize,
 		interaction, config.Debug,

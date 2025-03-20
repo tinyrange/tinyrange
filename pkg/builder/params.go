@@ -27,6 +27,7 @@ type BuildVmParameters struct {
 	InitRamFs   common.BuildDefinition // A build definition that creates the initial ram filesystem.
 	CpuCores    int                    // The number of CPU cores to allocate to the virtual machine.
 	MemoryMB    int                    // The amount of RAM in the virtual machine in megabytes.
+	AutoScale   bool                   // Automatically scale the CPU and RAM to the limits of the host.
 	StorageSize int                    // The amount of storage the root device will have in megabytes.
 	Interaction string                 // How will the virtual machine be interacted with (ssh, serial)
 	Debug       bool                   // Redirect hypervisor input to the host. The VM will exit after it completes initialization.
