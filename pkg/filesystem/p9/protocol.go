@@ -49,6 +49,8 @@ const (
 	MsgRfsync       MsgType = 51
 	MsgTlock        MsgType = 52
 	MsgRlock        MsgType = 53
+	MsgTgetlock     MsgType = 54
+	MsgRgetlock     MsgType = 55
 	MsgTlink        MsgType = 70
 	MsgRlink        MsgType = 71
 	MsgTmkdir       MsgType = 72

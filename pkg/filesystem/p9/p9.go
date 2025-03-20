@@ -853,6 +853,24 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 		return ret.EncodeBody(MsgRlock, msg.Tag, &Rlock{
 			Status: P9_LOCK_SUCCESS,
 		})
+	case MsgTgetlock:
+		var body Tgetlock
+
+		if err := msg.DecodeBody(&body); err != nil {
+			return nil, err
+		}
+
+		s.debug("9p: message", "type", msg.Type, "body", body)
+
+		// TOOD(joshua): This is a no-op for now.
+
+		return ret.EncodeBody(MsgRgetlock, msg.Tag, &Rgetlock{
+			Type:     P9_LOCK_SUCCESS,
+			Start:    0,
+			Length:   0,
+			ProcId:   0,
+			ClientId: "client",
+		})
 	case MsgTlink:
 		var body Tlink
 
