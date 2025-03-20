@@ -37,6 +37,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/log"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
@@ -1704,37 +1705,11 @@ func InitMain() {
 }
 
 func MaybeExecInit() bool {
-	if os.Getenv("TINYRANGE_INIT") != "" {
+	// Init is always called /init
+	if path.Native.Base(os.Args[0]) == "init" {
 		InitMain()
 		return true
+	} else {
+		return false
 	}
-
-	if os.Getpid() == 1 {
-		// Check if PID 1 exists. This makes sure /proc is a real filesystem not just a directory.
-		if ok, _ := common.Exists("/proc/1/status"); ok {
-			// Check if we are running inside a container.
-			// If we're inside docker/podman then PID 2 won't be kthreadd.
-			if contents, err := os.ReadFile("/proc/2/status"); err == nil {
-				if strings.HasPrefix(string(contents), "Name:\tkthreadd") {
-					// if PID 2 is kthreadd we're definitely not in a container.
-
-					InitMain()
-					return true
-				} else {
-					// if PID 2 is not kthreadd we're definitely in a container.
-					return false
-				}
-			} else {
-				// if PID 2 doesn't exist we're definitely in a container.
-				return false
-			}
-		} else {
-			// If /proc doesn't exist we're probably not in a container.
-
-			InitMain()
-			return true
-		}
-	}
-
-	return false
 }

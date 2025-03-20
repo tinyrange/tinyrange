@@ -118,8 +118,8 @@ func NewArchive(w io.Writer, prefix string) *ZipArchive {
 
 func buildInitForTarget(buildOs string, buildArch string) error {
 	if buildOs == "linux" {
-		// init is embedded inside the main TinyRange executable so make sure the file is empty.
-		return os.WriteFile(filepath.Join("pkg", "init", "init"), []byte{}, os.ModePerm)
+		// init is embedded inside the main TinyRange executable on Linux.
+		return nil
 	}
 
 	if buildArch == "wasm" {
