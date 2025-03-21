@@ -5,7 +5,7 @@ type VolumeDescriptorKind enum {
     Primary = 1
     Supplementary = 2
     Partition = 3
-    EndOfVolume = 255
+    Terminator = 255
 }
 
 type BootRecord struct {

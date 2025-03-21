@@ -1,0 +1,1 @@
+run experimental/fs3/structGen -input iso9660.struct -output iso9660_gen.go

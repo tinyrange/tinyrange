@@ -39,6 +39,21 @@ var (
 
 func OpenIso9660Image(reader io.ReaderAt) (fs3.FilesystemReader, error) {
 	// Parse each volume descriptor.
+	var off int64 = 0x8000
+	for {
+		var volumeDescriptor VolumeDescriptor
+		if _, err := reader.ReadAt(volumeDescriptor[:], off); err != nil {
+			return nil, fmt.Errorf("failed to read volume descriptor: %w", err)
+		}
+
+		switch volumeDescriptor.GetKind() {
+		default:
+			return nil, fmt.Errorf("unexpected volume descriptor kind: %v", volumeDescriptor.GetKind())
+		}
+
+		off += volumeDescriptor.Size()
+	}
+
 	return nil, fmt.Errorf("not implemented")
 }
 

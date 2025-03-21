@@ -2,7 +2,10 @@
 
 package main
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"io"
+)
 
 type VolumeDescriptorKind uint8
 
@@ -10,8 +13,24 @@ const VolumeDescriptorKindBootRecord VolumeDescriptorKind = 0
 const VolumeDescriptorKindPrimary VolumeDescriptorKind = 1
 const VolumeDescriptorKindSupplementary VolumeDescriptorKind = 2
 const VolumeDescriptorKindPartition VolumeDescriptorKind = 3
-const VolumeDescriptorKindEndOfVolume VolumeDescriptorKind = 255
+const VolumeDescriptorKindTerminator VolumeDescriptorKind = 255
 
+func (e VolumeDescriptorKind) String() string {
+	switch e {
+	case VolumeDescriptorKindBootRecord:
+		return "BootRecord"
+	case VolumeDescriptorKindPrimary:
+		return "Primary"
+	case VolumeDescriptorKindSupplementary:
+		return "Supplementary"
+	case VolumeDescriptorKindPartition:
+		return "Partition"
+	case VolumeDescriptorKindTerminator:
+		return "Terminator"
+	default:
+		return "unknown"
+	}
+}
 func (r BootRecord) BootSystemIdentifierSlice() [32]byte {
 	return [32]byte(r[0:32])
 }
@@ -42,11 +61,35 @@ func (r *BootRecord) SetBootSystemUse(value [1977]uint8) {
 func (r BootRecord) Size() int64 {
 	return 32 + 32 + 1977
 }
+func (r BootRecord) ReadAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(buf, r[off:]), nil
+}
+func (r *BootRecord) WriteAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(r[off:], buf), nil
+}
 
 type BootRecord [32 + 32 + 1977]byte
 
 func (r VolumeDescriptorSetEndOfVolume) Size() int64 {
 	return 0
+}
+func (r VolumeDescriptorSetEndOfVolume) ReadAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(buf, r[off:]), nil
+}
+func (r *VolumeDescriptorSetEndOfVolume) WriteAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(r[off:], buf), nil
 }
 
 type VolumeDescriptorSetEndOfVolume [0]byte
@@ -72,6 +115,18 @@ func (r *Int16LsbMsb) SetMsb(value int16) {
 func (r Int16LsbMsb) Size() int64 {
 	return 2 + 2
 }
+func (r Int16LsbMsb) ReadAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(buf, r[off:]), nil
+}
+func (r *Int16LsbMsb) WriteAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(r[off:], buf), nil
+}
 
 type Int16LsbMsb [2 + 2]byte
 
@@ -95,6 +150,18 @@ func (r *Int32LsbMsb) SetMsb(value int32) {
 }
 func (r Int32LsbMsb) Size() int64 {
 	return 4 + 4
+}
+func (r Int32LsbMsb) ReadAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(buf, r[off:]), nil
+}
+func (r *Int32LsbMsb) WriteAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(r[off:], buf), nil
 }
 
 type Int32LsbMsb [4 + 4]byte
@@ -174,6 +241,18 @@ func (r *DecDatetime) SetTimezoneOffset(value int8) {
 func (r DecDatetime) Size() int64 {
 	return 4 + 2 + 2 + 2 + 2 + 2 + 2 + 1
 }
+func (r DecDatetime) ReadAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(buf, r[off:]), nil
+}
+func (r *DecDatetime) WriteAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(r[off:], buf), nil
+}
 
 type DecDatetime [4 + 2 + 2 + 2 + 2 + 2 + 2 + 1]byte
 
@@ -242,6 +321,18 @@ func (r *DirDatetime) SetGmtOffset(value int8) {
 }
 func (r DirDatetime) Size() int64 {
 	return 1 + 1 + 1 + 1 + 1 + 1 + 1
+}
+func (r DirDatetime) ReadAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(buf, r[off:]), nil
+}
+func (r *DirDatetime) WriteAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(r[off:], buf), nil
 }
 
 type DirDatetime [1 + 1 + 1 + 1 + 1 + 1 + 1]byte
@@ -347,6 +438,18 @@ func (r *BaseDirectoryEntry) SetFilenameLength(value uint8) {
 func (r BaseDirectoryEntry) Size() int64 {
 	return 1 + 1 + 8 + 8 + 7 + 1 + 1 + 1 + 4 + 1
 }
+func (r BaseDirectoryEntry) ReadAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(buf, r[off:]), nil
+}
+func (r *BaseDirectoryEntry) WriteAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(r[off:], buf), nil
+}
 
 type BaseDirectoryEntry [1 + 1 + 8 + 8 + 7 + 1 + 1 + 1 + 4 + 1]byte
 
@@ -361,6 +464,18 @@ func (r *RootDirectoryEntry) SetBase(value BaseDirectoryEntry) {
 }
 func (r RootDirectoryEntry) Size() int64 {
 	return 33
+}
+func (r RootDirectoryEntry) ReadAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(buf, r[off:]), nil
+}
+func (r *RootDirectoryEntry) WriteAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(r[off:], buf), nil
 }
 
 type RootDirectoryEntry [33]byte
@@ -665,11 +780,35 @@ func (r *PrimaryVolumeDescriptor) SetApplicationUsed(value [512]uint8) {
 func (r PrimaryVolumeDescriptor) Size() int64 {
 	return 1 + 32 + 32 + 8 + 8 + 32 + 4 + 4 + 4 + 8 + 4 + 4 + 4 + 4 + 33 + 128 + 128 + 128 + 128 + 37 + 37 + 37 + 17 + 17 + 17 + 17 + 1 + 1 + 512 + 653
 }
+func (r PrimaryVolumeDescriptor) ReadAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(buf, r[off:]), nil
+}
+func (r *PrimaryVolumeDescriptor) WriteAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(r[off:], buf), nil
+}
 
 type PrimaryVolumeDescriptor [1 + 32 + 32 + 8 + 8 + 32 + 4 + 4 + 4 + 8 + 4 + 4 + 4 + 4 + 33 + 128 + 128 + 128 + 128 + 37 + 37 + 37 + 17 + 17 + 17 + 17 + 1 + 1 + 512 + 653]byte
 
 func (r VolumeDescriptorSetTerminator) Size() int64 {
 	return 0
+}
+func (r VolumeDescriptorSetTerminator) ReadAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(buf, r[off:]), nil
+}
+func (r *VolumeDescriptorSetTerminator) WriteAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(r[off:], buf), nil
 }
 
 type VolumeDescriptorSetTerminator [0]byte
@@ -713,6 +852,18 @@ func (r *VolumeDescriptor) SetContents(value VolumeDescriptorContent) {
 }
 func (r VolumeDescriptor) Size() int64 {
 	return 1 + 5 + 1 + 2041
+}
+func (r VolumeDescriptor) ReadAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(buf, r[off:]), nil
+}
+func (r *VolumeDescriptor) WriteAt(buf []byte, off int64) (int, error) {
+	if off > r.Size() {
+		return 0, io.EOF
+	}
+	return copy(r[off:], buf), nil
 }
 
 type VolumeDescriptor [1 + 5 + 1 + 2041]byte

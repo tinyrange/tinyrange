@@ -8,8 +8,6 @@ import (
 	"io"
 	"strconv"
 	"strings"
-
-	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type TypeInfo interface {
@@ -258,6 +256,17 @@ func pointerTo(typ ast.Expr) ast.Expr {
 	}
 }
 
+func dotExpr(expr ast.Expr, sel string) ast.Expr {
+	return &ast.SelectorExpr{
+		X:   expr,
+		Sel: ast.NewIdent(sel),
+	}
+}
+
+func newString(value string) ast.Expr {
+	return &ast.BasicLit{Kind: goToken.STRING, Value: strconv.Quote(value)}
+}
+
 var byteArray = &ast.ArrayType{
 	Elt: ast.NewIdent("byte"),
 }
@@ -270,7 +279,7 @@ type sysIL4Generator struct {
 }
 
 func (g *sysIL4Generator) declareType(name string, underlyingType ast.Expr, typ TypeInfo) {
-	log.Info("declareType", "name", name, "type", typ)
+	// log.Info("declareType", "name", name, "type", typ)
 
 	g.declarations = append(g.declarations, &ast.GenDecl{
 		Tok:   goToken.TYPE,
@@ -510,7 +519,37 @@ func (g *sysIL4Generator) generateEnumDeclaration(name string, decl *enumDeclara
 		g.declareConstant(enumName+exportName(member.name), enumTyp, value)
 	}
 
-	// TODO(joshua): Generate a String method for the enum type.
+	// generate a String method as a series of switch cases
+	var cases []ast.Stmt
+	for _, member := range decl.members {
+		cases = append(cases, &ast.CaseClause{
+			List: []ast.Expr{ast.NewIdent(enumName + exportName(member.name))},
+			Body: []ast.Stmt{
+				&ast.ReturnStmt{
+					Results: []ast.Expr{newString(member.name)},
+				},
+			},
+		})
+	}
+
+	g.declareMethod(enumTyp, ast.NewIdent("e"), "String", []*ast.Field{}, []*ast.Field{
+		{
+			Type: ast.NewIdent("string"),
+		},
+	}, []ast.Stmt{
+		&ast.SwitchStmt{
+			Tag: ast.NewIdent("e"),
+			Body: &ast.BlockStmt{
+				List: append(cases, &ast.CaseClause{
+					Body: []ast.Stmt{
+						&ast.ReturnStmt{
+							Results: []ast.Expr{newString("unknown")},
+						},
+					},
+				}),
+			},
+		},
+	})
 
 	return nil
 }
@@ -660,6 +699,116 @@ func (g *sysIL4Generator) generateStructDeclaration(name string, decl *structDec
 			},
 		})
 
+		// Generate a ReadAt method for the struct.
+		// func (t BlockGroupDescriptor) ReadAt(p []byte, off int64) (int, error) {
+		// 	if off > t.Size() {
+		// 		return 0, io.EOF
+		// 	}
+		// 	return copy(p, t[off:]), nil
+		// }
+		g.declareMethod(structType, binding, "ReadAt", []*ast.Field{
+			{
+				Names: []*ast.Ident{ast.NewIdent("buf")},
+				Type:  byteArray,
+			},
+			{
+				Names: []*ast.Ident{ast.NewIdent("off")},
+				Type:  ast.NewIdent("int64"),
+			},
+		}, []*ast.Field{
+			{
+				Type: ast.NewIdent("int"),
+			},
+			{
+				Type: ast.NewIdent("error"),
+			},
+		}, []ast.Stmt{
+			&ast.IfStmt{
+				Cond: &ast.BinaryExpr{
+					X:  ast.NewIdent("off"),
+					Op: goToken.GTR,
+					Y: &ast.CallExpr{
+						Fun:  dotExpr(binding, "Size"),
+						Args: []ast.Expr{},
+					},
+				},
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.ReturnStmt{
+							Results: []ast.Expr{
+								intValue(0),
+								dotExpr(ast.NewIdent("io"), "EOF"),
+							},
+						},
+					},
+				},
+			},
+			&ast.ReturnStmt{
+				Results: []ast.Expr{
+					&ast.CallExpr{
+						Fun:  ast.NewIdent("copy"),
+						Args: []ast.Expr{ast.NewIdent("buf"), sliceExpr(binding, ast.NewIdent("off"), nil)},
+					},
+					ast.NewIdent("nil"),
+				},
+			},
+		})
+
+		// Generate a WriteAt method for the struct.
+		// func (t *BlockGroupDescriptor) WriteAt(p []byte, off int64) (int, error) {
+		// 	if off > t.Size() {
+		// 		return 0, io.EOF
+		// 	}
+		// 	return copy(t[off:], p), nil
+		// }
+		g.declareMethod(pointerTo(structType), binding, "WriteAt", []*ast.Field{
+			{
+				Names: []*ast.Ident{ast.NewIdent("buf")},
+				Type:  byteArray,
+			},
+			{
+				Names: []*ast.Ident{ast.NewIdent("off")},
+				Type:  ast.NewIdent("int64"),
+			},
+		}, []*ast.Field{
+			{
+				Type: ast.NewIdent("int"),
+			},
+			{
+				Type: ast.NewIdent("error"),
+			},
+		}, []ast.Stmt{
+			&ast.IfStmt{
+				Cond: &ast.BinaryExpr{
+					X:  ast.NewIdent("off"),
+					Op: goToken.GTR,
+					Y: &ast.CallExpr{
+						Fun:  dotExpr(binding, "Size"),
+						Args: []ast.Expr{},
+					},
+				},
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.ReturnStmt{
+							Results: []ast.Expr{
+								intValue(0),
+								dotExpr(ast.NewIdent("io"), "EOF"),
+							},
+						},
+					},
+				},
+			},
+			&ast.ReturnStmt{
+				Results: []ast.Expr{
+					&ast.CallExpr{
+						Fun:  ast.NewIdent("copy"),
+						Args: []ast.Expr{sliceExpr(binding, ast.NewIdent("off"), nil), ast.NewIdent("buf")},
+					},
+					ast.NewIdent("nil"),
+				},
+			},
+		})
+
 		// use a fixed length byte array for the static struct
 		g.declareType(exportName(name), &ast.ArrayType{
 			Elt: ast.NewIdent("byte"),
@@ -785,6 +934,9 @@ func (g *sysIL4Generator) writeTo(w io.Writer) error {
 		Specs: []ast.Spec{
 			&ast.ImportSpec{
 				Path: &ast.BasicLit{Kind: goToken.STRING, Value: "\"encoding/binary\""},
+			},
+			&ast.ImportSpec{
+				Path: &ast.BasicLit{Kind: goToken.STRING, Value: "\"io\""},
 			},
 		},
 	}}, g.declarations...)

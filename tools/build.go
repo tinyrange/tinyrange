@@ -19,6 +19,8 @@ import (
 	"time"
 )
 
+const PACKAGE_NAME = "github.com/tinyrange/tinyrange"
+
 var QEMU_VERSION = "v9.2.1"
 var QEMU_REPO = "https://github.com/tinyrange/qemu_autobuild"
 
@@ -608,24 +610,102 @@ var vmmList = []VMMInfo{
 	},
 }
 
+func runExperimentalScripts(basePath string, exp string) error {
+	expPath := filepath.Join("experimental", exp)
+
+	buildFile, err := os.ReadFile(filepath.Join(basePath, expPath, "build"))
+	if err != nil {
+		return err
+	}
+
+	buildFileLines := strings.Split(string(buildFile), "\n")
+
+	for _, line := range buildFileLines {
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		tokens := strings.Split(line, " ")
+		if len(tokens) == 0 {
+			continue
+		}
+
+		if tokens[0] == "run" {
+			args := []string{"go", "run", PACKAGE_NAME + "/" + tokens[1]}
+
+			args = append(args, tokens[2:]...)
+
+			log.Printf("Running Experimental Script: %v", args)
+
+			cmd := exec.Command(args[0], args[1:]...)
+
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Dir = filepath.Join(basePath, expPath)
+
+			if err := cmd.Run(); err != nil {
+				return err
+			}
+		} else {
+			log.Printf("Unknown command: %s", tokens[0])
+		}
+	}
+
+	return nil
+}
+
+func getBasePath() (string, error) {
+	basePath, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	// check if go.mod exists and if not, go up one directory
+	for {
+		if _, err := os.Stat(filepath.Join(basePath, "go.mod")); err != nil {
+			if basePath == filepath.Dir(basePath) {
+				return "", fmt.Errorf("could not find go.mod")
+			}
+
+			basePath = filepath.Dir(basePath)
+		}
+
+		break
+	}
+
+	return basePath, nil
+}
+
 var (
-	buildOs   = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
-	buildArch = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
-	buildDir  = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
-	cross     = flag.String("cross", "", "Specify another init executable architecture to build (options x86_64 and aarch64).")
-	debug     = flag.Bool("debug", false, "Print executed commands.")
-	run       = flag.Bool("run", false, "Run TinyRange with the remaining arguments.")
-	test      = flag.String("test", "", "Run all .yml files in a subdirectory using TinyRange.")
-	release   = flag.Bool("release", false, "Build a release version of TinyRange.")
-	cgo       = flag.Bool("cgo", false, "Build VMMs that require CGO.")
-	exp       = flag.String("exp", "", "Run a experimental feature.")
+	buildOs       = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
+	buildArch     = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
+	buildDir      = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
+	cross         = flag.String("cross", "", "Specify another init executable architecture to build (options x86_64 and aarch64).")
+	debug         = flag.Bool("debug", false, "Print executed commands.")
+	run           = flag.Bool("run", false, "Run TinyRange with the remaining arguments.")
+	test          = flag.String("test", "", "Run all .yml files in a subdirectory using TinyRange.")
+	release       = flag.Bool("release", false, "Build a release version of TinyRange.")
+	cgo           = flag.Bool("cgo", false, "Build VMMs that require CGO.")
+	exp           = flag.String("exp", "", "Run a experimental feature.")
+	runExpScripts = flag.Bool("exp-scripts", false, "Run experimental scripts defined by a build file in the experimental path.")
 )
 
 func main() {
 	flag.Parse()
 
+	basePath, err := getBasePath()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	if *exp != "" {
-		args := []string{"go", "run", "github.com/tinyrange/tinyrange/experimental/" + *exp}
+		if _, err := os.Stat(filepath.Join(basePath, "experimental", *exp, "build")); err == nil && *runExpScripts {
+			if err := runExperimentalScripts(basePath, *exp); err != nil {
+				log.Fatal(err)
+			}
+		}
+
+		args := []string{"go", "run", PACKAGE_NAME + "/experimental/" + *exp}
 		args = append(args, flag.Args()...)
 		cmd := exec.Command(args[0], args[1:]...)
 
