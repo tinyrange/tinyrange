@@ -345,6 +345,9 @@ const DirectoryEntryFlagsHasExtendedAttributeRecord DirectoryEntryFlags = 8
 const DirectoryEntryFlagsHasOwnerAndGroup DirectoryEntryFlags = 16
 const DirectoryEntryFlagsNotFinalRecordForFile DirectoryEntryFlags = 128
 
+func (b DirectoryEntryFlags) Has(mask DirectoryEntryFlags) bool {
+	return b&mask != 0
+}
 func (r BaseDirectoryEntry) SizeSlice() [1]byte {
 	return [1]byte(r[0:1])
 }
@@ -426,17 +429,8 @@ func (r BaseDirectoryEntry) GetVolumeSequenceNumber() Int16LsbMsb {
 func (r *BaseDirectoryEntry) SetVolumeSequenceNumber(value Int16LsbMsb) {
 	copy(r[28:32], value[:])
 }
-func (r BaseDirectoryEntry) FilenameLengthSlice() [1]byte {
-	return [1]byte(r[32:33])
-}
-func (r BaseDirectoryEntry) GetFilenameLength() uint8 {
-	return uint8(r[32:33][0])
-}
-func (r *BaseDirectoryEntry) SetFilenameLength(value uint8) {
-	r[32:33][0] = byte(value)
-}
 func (r BaseDirectoryEntry) Size() int64 {
-	return 1 + 1 + 8 + 8 + 7 + 1 + 1 + 1 + 4 + 1
+	return 1 + 1 + 8 + 8 + 7 + 1 + 1 + 1 + 4
 }
 func (r BaseDirectoryEntry) ReadAt(buf []byte, off int64) (int, error) {
 	if off > r.Size() {
@@ -451,19 +445,28 @@ func (r *BaseDirectoryEntry) WriteAt(buf []byte, off int64) (int, error) {
 	return copy(r[off:], buf), nil
 }
 
-type BaseDirectoryEntry [1 + 1 + 8 + 8 + 7 + 1 + 1 + 1 + 4 + 1]byte
+type BaseDirectoryEntry [1 + 1 + 8 + 8 + 7 + 1 + 1 + 1 + 4]byte
 
-func (r RootDirectoryEntry) BaseSlice() [33]byte {
-	return [33]byte(r[0:33])
+func (r RootDirectoryEntry) BaseSlice() [32]byte {
+	return [32]byte(r[0:32])
 }
 func (r RootDirectoryEntry) GetBase() BaseDirectoryEntry {
-	return BaseDirectoryEntry(r[0:33])
+	return BaseDirectoryEntry(r[0:32])
 }
 func (r *RootDirectoryEntry) SetBase(value BaseDirectoryEntry) {
-	copy(r[0:33], value[:])
+	copy(r[0:32], value[:])
+}
+func (r RootDirectoryEntry) FilenameLengthSlice() [1]byte {
+	return [1]byte(r[32:33])
+}
+func (r RootDirectoryEntry) GetFilenameLength() uint8 {
+	return uint8(r[32:33][0])
+}
+func (r *RootDirectoryEntry) SetFilenameLength(value uint8) {
+	r[32:33][0] = byte(value)
 }
 func (r RootDirectoryEntry) Size() int64 {
-	return 33
+	return 32 + 1
 }
 func (r RootDirectoryEntry) ReadAt(buf []byte, off int64) (int, error) {
 	if off > r.Size() {
@@ -478,28 +481,37 @@ func (r *RootDirectoryEntry) WriteAt(buf []byte, off int64) (int, error) {
 	return copy(r[off:], buf), nil
 }
 
-type RootDirectoryEntry [33]byte
+type RootDirectoryEntry [32 + 1]byte
 
-func (r DirectoryEntry) BaseSlice() [33]byte {
-	return [33]byte(r[0:33])
+func (r DynDirectoryEntry) BaseSlice() [32]byte {
+	return [32]byte(r[0:32])
 }
-func (r DirectoryEntry) GetBase() BaseDirectoryEntry {
-	return BaseDirectoryEntry(r[0:33])
+func (r DynDirectoryEntry) GetBase() BaseDirectoryEntry {
+	return BaseDirectoryEntry(r[0:32])
 }
-func (r DirectoryEntry) SetBase(value BaseDirectoryEntry) {
-	copy(r[0:33], value[:])
+func (r DynDirectoryEntry) SetBase(value BaseDirectoryEntry) {
+	copy(r[0:32], value[:])
 }
-func (r DirectoryEntry) FilenameSlice() []byte {
+func (r DynDirectoryEntry) FilenameLengthSlice() [1]byte {
+	return [1]byte(r[32:33])
+}
+func (r DynDirectoryEntry) GetFilenameLength() uint8 {
+	return uint8(r[32:33][0])
+}
+func (r DynDirectoryEntry) SetFilenameLength(value uint8) {
+	r[32:33][0] = byte(value)
+}
+func (r DynDirectoryEntry) FilenameSlice() []byte {
 	return r[33:]
 }
-func (r DirectoryEntry) GetFilename() []byte {
+func (r DynDirectoryEntry) GetFilename() []byte {
 	return []byte(r[33:])
 }
-func (r DirectoryEntry) SetFilename(value []byte) {
+func (r DynDirectoryEntry) SetFilename(value []byte) {
 	copy(r[33:], value[:])
 }
 
-type DirectoryEntry []byte
+type DynDirectoryEntry []byte
 
 func (r PathTableEntry) SizeSlice() [1]byte {
 	return [1]byte(r[0:1])
@@ -812,6 +824,32 @@ func (r *VolumeDescriptorSetTerminator) WriteAt(buf []byte, off int64) (int, err
 }
 
 type VolumeDescriptorSetTerminator [0]byte
+
+func (u VolumeDescriptorContent) GetRawBytes() [2041]uint8 {
+	return [2041]uint8(u[:])
+}
+func (u VolumeDescriptorContent) SetRawBytes(value [2041]uint8) {
+	copy(u[:], value[:])
+}
+func (u VolumeDescriptorContent) GetBootRecord() BootRecord {
+	return BootRecord(u[:])
+}
+func (u VolumeDescriptorContent) SetBootRecord(value BootRecord) {
+	copy(u[:], value[:])
+}
+func (u VolumeDescriptorContent) GetPrimaryVolumeDescriptor() PrimaryVolumeDescriptor {
+	return PrimaryVolumeDescriptor(u[:])
+}
+func (u VolumeDescriptorContent) SetPrimaryVolumeDescriptor(value PrimaryVolumeDescriptor) {
+	copy(u[:], value[:])
+}
+func (u VolumeDescriptorContent) GetVolumeDescriptorSetTerminator() VolumeDescriptorSetTerminator {
+	return VolumeDescriptorSetTerminator(u[:])
+}
+func (u VolumeDescriptorContent) SetVolumeDescriptorSetTerminator(value VolumeDescriptorSetTerminator) {
+	copy(u[:], value[:])
+}
+
 type VolumeDescriptorContent [2041]byte
 
 func (r VolumeDescriptor) KindSlice() [1]byte {

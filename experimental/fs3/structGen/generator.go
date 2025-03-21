@@ -856,6 +856,32 @@ func (g *sysIL4Generator) generateBitsetDeclaration(name string, decl *bitsetDec
 		currentValue <<= 1
 	}
 
+	// Generate a Has method for the bitset.
+	g.declareMethod(bitsetType, ast.NewIdent("b"), "Has", []*ast.Field{
+		{
+			Names: []*ast.Ident{ast.NewIdent("mask")},
+			Type:  bitsetType,
+		},
+	}, []*ast.Field{
+		{
+			Type: ast.NewIdent("bool"),
+		},
+	}, []ast.Stmt{
+		&ast.ReturnStmt{
+			Results: []ast.Expr{
+				&ast.BinaryExpr{
+					X: &ast.BinaryExpr{
+						X:  ast.NewIdent("b"),
+						Op: goToken.AND,
+						Y:  ast.NewIdent("mask"),
+					},
+					Op: goToken.NEQ,
+					Y:  intValue(0),
+				},
+			},
+		},
+	})
+
 	return nil
 }
 
@@ -863,6 +889,8 @@ func (g *sysIL4Generator) generateUnionDeclaration(name string, decl *unionDecla
 	unionType := ast.NewIdent(exportName(name))
 
 	var maxSize int
+
+	binding := ast.NewIdent("u")
 
 	for _, member := range decl.members {
 		typ, err := g.typeExprFromInstance(member.valueType, nil)
@@ -879,6 +907,26 @@ func (g *sysIL4Generator) generateUnionDeclaration(name string, decl *unionDecla
 		}
 
 		// Generate a Get and Set method for the member.
+		g.declareMethod(unionType, binding, "Get"+asGoName(member.name), []*ast.Field{}, []*ast.Field{
+			{
+				Type: typ.GoType(),
+			},
+		}, []ast.Stmt{
+			&ast.ReturnStmt{
+				Results: []ast.Expr{
+					typ.CastFromBytes(sliceExpr(binding, nil, nil)),
+				},
+			},
+		})
+
+		g.declareMethod(unionType, binding, "Set"+asGoName(member.name), []*ast.Field{
+			{
+				Names: []*ast.Ident{ast.NewIdent("value")},
+				Type:  typ.GoType(),
+			},
+		}, []*ast.Field{}, []ast.Stmt{
+			typ.StoreToBytes(sliceExpr(binding, nil, nil), ast.NewIdent("value")),
+		})
 	}
 
 	// use a byte array with the maximum size for the union

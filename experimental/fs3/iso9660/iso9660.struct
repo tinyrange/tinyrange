@@ -75,16 +75,16 @@ type BaseDirectoryEntry struct {
     fileUnitSize u8
     interleaveGap u8
     volumeSequenceNumber int16_lsb_msb
-
-    filenameLength u8
 }
 
 type RootDirectoryEntry struct {
     base BaseDirectoryEntry
+    filenameLength u8
 }
 
-type DirectoryEntry dyn_struct {
+type DynDirectoryEntry dyn_struct {
     base BaseDirectoryEntry
+    filenameLength u8
     filename [$filenameLength]char
 }
 

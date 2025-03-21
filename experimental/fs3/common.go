@@ -3,13 +3,13 @@ package fs3
 import (
 	"io"
 	"io/fs"
+	"sync"
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 )
 
 type ReaderHandle interface {
-	io.Reader
 	io.ReaderAt
 }
 
@@ -20,6 +20,19 @@ const (
 	TypeRegular
 	TypeDirectory
 )
+
+func (n NodeKind) String() string {
+	switch n {
+	case TypeInvalid:
+		return "invalid"
+	case TypeRegular:
+		return "regular"
+	case TypeDirectory:
+		return "directory"
+	default:
+		return "unknown"
+	}
+}
 
 type Node interface {
 	// The kind of node.
@@ -61,34 +74,150 @@ type DirectoryEntry interface {
 	Name() string
 }
 
-type NodeIterator interface {
-	// Returns the next node in the filesystem or false if there are no more nodes.
-	// The order of nodes is not guaranteed.
-	// Next is guaranteed to return all nodes in the filesystem exactly once.
-	Next() (Node, bool)
-	// Returns an error if one occurred during iteration.
-	Error() error
+type NodeIteratorImpl interface {
+	// Emits a node to the iterator.
+	// The node won't be emitted if it has already been emitted (identified by the Id()).
+	// Returns true if the node was emitted, false otherwise.
+	MaybeEmit(Node) bool
 }
 
-type DirectoryEntryIterator interface {
-	// Returns the next directory entry in the directory or false if there are no more entries.
-	Next() (DirectoryEntry, bool)
+type NodeIterator interface {
+	// Returns a channel that emits nodes in the filesystem.
+	// The order of nodes is not guaranteed.
+	// Next is guaranteed to return all nodes in the filesystem exactly once.
+	Chan() <-chan Node
 	// Returns an error if one occurred during iteration.
-	Error() error
+	Err() error
+}
+
+type nodeIteratorImpl struct {
+	mtx          sync.Mutex
+	c            chan Node
+	err          error
+	emittedNodes map[int64]struct{}
+}
+
+func (n *nodeIteratorImpl) Chan() <-chan Node {
+	return n.c
+}
+
+func (n *nodeIteratorImpl) MaybeEmit(node Node) bool {
+	if _, ok := n.emittedNodes[node.ID()]; ok {
+		return false
+	}
+
+	n.emittedNodes[node.ID()] = struct{}{}
+	n.c <- node
+	return true
+}
+
+// Err implements NodeIterator.
+func (n *nodeIteratorImpl) Err() error {
+	return n.err
+}
+
+var (
+	_ NodeIteratorImpl = &nodeIteratorImpl{}
+	_ NodeIterator     = &nodeIteratorImpl{}
+)
+
+func NewNodeIterator(f func(NodeIteratorImpl) error) NodeIterator {
+	impl := &nodeIteratorImpl{
+		c:            make(chan Node),
+		emittedNodes: make(map[int64]struct{}),
+	}
+
+	go func() {
+		defer close(impl.c)
+
+		if err := f(impl); err != nil {
+			impl.err = err
+		}
+	}()
+
+	return impl
+}
+
+type DirectoryIteratorImpl interface {
+	// Emits a node to the iterator.
+	// The node won't be emitted if it has already been emitted (identified by the Id()).
+	// Returns true if the node was emitted, false otherwise.
+	MaybeEmit(DirectoryEntry) bool
+}
+
+type DirectoryIterator interface {
+	// Returns a channel that emits nodes in the filesystem.
+	// The order of nodes is not guaranteed.
+	// Next is guaranteed to return all nodes in the filesystem exactly once.
+	Chan() <-chan DirectoryEntry
+	// Returns an error if one occurred during iteration.
+	Err() error
+}
+
+type directoryIteratorImpl struct {
+	mtx          sync.Mutex
+	c            chan DirectoryEntry
+	err          error
+	emittedNodes map[int64]struct{}
+}
+
+func (n *directoryIteratorImpl) Chan() <-chan DirectoryEntry {
+	return n.c
+}
+
+func (n *directoryIteratorImpl) MaybeEmit(node DirectoryEntry) bool {
+	if _, ok := n.emittedNodes[node.ID()]; ok {
+		return false
+	}
+
+	n.emittedNodes[node.ID()] = struct{}{}
+	n.c <- node
+	return true
+}
+
+// Err implements NodeIterator.
+func (n *directoryIteratorImpl) Err() error {
+	return n.err
+}
+
+var (
+	_ DirectoryIteratorImpl = &directoryIteratorImpl{}
+	_ DirectoryIterator     = &directoryIteratorImpl{}
+)
+
+func NewDirectoryIterator(f func(DirectoryIteratorImpl) error) DirectoryIterator {
+	impl := &directoryIteratorImpl{
+		c:            make(chan DirectoryEntry),
+		emittedNodes: make(map[int64]struct{}),
+	}
+
+	go func() {
+		defer close(impl.c)
+
+		if err := f(impl); err != nil {
+			impl.err = err
+		}
+	}()
+
+	return impl
 }
 
 type FilesystemReader interface {
 	// Iterates through all nodes in the filesystem.
 	IterateNodes() NodeIterator
+	// Returns the root node of the filesystem.
+	RootNode() (Node, error)
 	// Returns a `io.Reader`+`io.ReaderAt` for a given inode.
-	ReadContents(node Node) (ReaderHandle, error)
+	OpenContents(node Node) (ReaderHandle, error)
 	// Returns a list of file entries in a directory.
-	ReadDirectory(node Node) (DirectoryEntryIterator, error)
+	IterateDirectory(node Node) (DirectoryIterator, error)
 }
 
 type FilesystemWriter interface {
 	// Allocate a new Inode on the filesystem. The node has metadata created at this time including modified time, permissions, ownership, etc...
 	AllocateNode(node Node) error
+	// Returns the root node of the filesystem.
+	RootNode() (Node, error)
 	// Set the contents of a file to a memory region.
 	WriteContents(node Node, region vm.MemoryRegion) error
 	// Write a list of pointers to a existing node turning that node into a directory.
