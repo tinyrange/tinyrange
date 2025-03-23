@@ -78,7 +78,7 @@ type NodeIteratorImpl interface {
 	// Emits a node to the iterator.
 	// The node won't be emitted if it has already been emitted (identified by the Id()).
 	// Returns true if the node was emitted, false otherwise.
-	MaybeEmit(Node) bool
+	MaybeEmit(Node) (bool, error)
 }
 
 type NodeIterator interface {
@@ -88,6 +88,8 @@ type NodeIterator interface {
 	Chan() <-chan Node
 	// Returns an error if one occurred during iteration.
 	Err() error
+	// Closes the iterator and releases resources.
+	Close() error
 }
 
 type nodeIteratorImpl struct {
@@ -101,14 +103,31 @@ func (n *nodeIteratorImpl) Chan() <-chan Node {
 	return n.c
 }
 
-func (n *nodeIteratorImpl) MaybeEmit(node Node) bool {
+func (n *nodeIteratorImpl) MaybeEmit(node Node) (bool, error) {
 	if _, ok := n.emittedNodes[node.ID()]; ok {
-		return false
+		return false, nil
 	}
 
 	n.emittedNodes[node.ID()] = struct{}{}
 	n.c <- node
-	return true
+	if n.err != nil {
+		return false, n.err
+	}
+
+	return true, nil
+}
+
+// Close implements NodeIterator.
+func (n *nodeIteratorImpl) Close() error {
+	n.mtx.Lock()
+	defer n.mtx.Unlock()
+
+	if n.err != nil {
+		return n.err
+	}
+
+	n.err = io.EOF
+	return nil
 }
 
 // Err implements NodeIterator.
@@ -130,7 +149,7 @@ func NewNodeIterator(f func(NodeIteratorImpl) error) NodeIterator {
 	go func() {
 		defer close(impl.c)
 
-		if err := f(impl); err != nil {
+		if err := f(impl); err != nil && impl.err != io.EOF {
 			impl.err = err
 		}
 	}()
@@ -142,7 +161,7 @@ type DirectoryIteratorImpl interface {
 	// Emits a node to the iterator.
 	// The node won't be emitted if it has already been emitted (identified by the Id()).
 	// Returns true if the node was emitted, false otherwise.
-	MaybeEmit(DirectoryEntry) bool
+	MaybeEmit(DirectoryEntry) (bool, error)
 }
 
 type DirectoryIterator interface {
@@ -152,6 +171,8 @@ type DirectoryIterator interface {
 	Chan() <-chan DirectoryEntry
 	// Returns an error if one occurred during iteration.
 	Err() error
+	// Closes the iterator and releases resources.
+	Close() error
 }
 
 type directoryIteratorImpl struct {
@@ -165,19 +186,36 @@ func (n *directoryIteratorImpl) Chan() <-chan DirectoryEntry {
 	return n.c
 }
 
-func (n *directoryIteratorImpl) MaybeEmit(node DirectoryEntry) bool {
+func (n *directoryIteratorImpl) MaybeEmit(node DirectoryEntry) (bool, error) {
 	if _, ok := n.emittedNodes[node.ID()]; ok {
-		return false
+		return false, nil
 	}
 
 	n.emittedNodes[node.ID()] = struct{}{}
 	n.c <- node
-	return true
+	if n.err != nil {
+		return false, n.err
+	}
+
+	return true, nil
 }
 
-// Err implements NodeIterator.
+// Err implements DirectoryIterator.
 func (n *directoryIteratorImpl) Err() error {
 	return n.err
+}
+
+// Close implements DirectoryIterator.
+func (n *directoryIteratorImpl) Close() error {
+	n.mtx.Lock()
+	defer n.mtx.Unlock()
+
+	if n.err != nil {
+		return n.err
+	}
+
+	n.err = io.EOF
+	return nil
 }
 
 var (

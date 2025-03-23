@@ -188,19 +188,23 @@ func (i *iso9660Reader) IterateNodes() fs3.NodeIterator {
 			}
 
 			if base.GetFlags().Has(DirectoryEntryFlagsDirectory) {
-				it.MaybeEmit(&iso9660Node{
+				if _, err := it.MaybeEmit(&iso9660Node{
 					id:  id,
 					ent: ent,
-				})
+				}); err != nil {
+					return fmt.Errorf("failed to emit node: %w", err)
+				}
 
 				if err := iterateDirectory(ent); err != nil {
 					return fmt.Errorf("failed to iterate directory: %w", err)
 				}
 			} else {
-				it.MaybeEmit(&iso9660Node{
+				if _, err := it.MaybeEmit(&iso9660Node{
 					id:  id,
 					ent: ent,
-				})
+				}); err != nil {
+					return fmt.Errorf("failed to emit node: %w", err)
+				}
 			}
 
 			return nil
@@ -294,13 +298,15 @@ func (i *iso9660Reader) IterateDirectory(node fs3.Node) (fs3.DirectoryIterator, 
 
 	return fs3.NewDirectoryIterator(func(it fs3.DirectoryIteratorImpl) error {
 		return i.readDirectory(isoNode.ent, func(id int64, ent DirectoryEntry) error {
-			it.MaybeEmit(&iso9660DirectoryEntry{
+			if _, err := it.MaybeEmit(&iso9660DirectoryEntry{
 				iso9660Node: &iso9660Node{
 					id:  id,
 					ent: ent,
 				},
 				name: ent.GetName(),
-			})
+			}); err != nil {
+				return fmt.Errorf("failed to emit directory entry: %w", err)
+			}
 
 			return nil
 		})
@@ -374,6 +380,7 @@ func appMain() error {
 	}
 
 	it := reader.IterateNodes()
+	defer it.Close()
 
 	for node := range it.Chan() {
 		switch node.Kind() {
@@ -399,6 +406,7 @@ func appMain() error {
 			if err != nil {
 				return fmt.Errorf("failed to read directory: %w", err)
 			}
+			defer dirIt.Close()
 
 			for dir := range dirIt.Chan() {
 				fmt.Printf("entry: %v\n", dir.Name())
