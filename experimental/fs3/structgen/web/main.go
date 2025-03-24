@@ -435,6 +435,14 @@ func starlarkValueFromType(name string, typ libstruct.TypeInstance, bytes *Binar
 		return starlarkValueFromType(string(typ), inner, bytes, ref)
 	case *libstruct.EnumDeclaration:
 		return starlarkValueFromType(name, typ.ValueType, bytes, ref)
+	case *libstruct.StructDeclaration:
+		s := &Struct{
+			Name: name,
+			Ast:  typ,
+			ref:  ref,
+		}
+
+		return s.InstanceWith(bytes)
 	case *libstruct.UnionDeclaration:
 		return &Union{
 			Name:  name,
@@ -455,6 +463,41 @@ type Union struct {
 	ref libstruct.ReferenceResolver
 }
 
+// Attr implements starlark.HasAttrs.
+func (s *Union) Attr(name string) (starlark.Value, error) {
+	for _, member := range s.Ast.Members {
+		switch member := member.(type) {
+		case *libstruct.StructOrUnionMember:
+			if member.Name == name {
+				size, err := libstruct.SizeOf(member.ValueType, s.ref)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get size of member: %w", err)
+				}
+
+				slice := s.Bytes.Slice(member.Name, member.ValueType.String(), size, 0)
+
+				return starlarkValueFromType(member.Name, member.ValueType, slice, s.ref)
+			}
+		}
+	}
+
+	return nil, nil
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (s *Union) AttrNames() []string {
+	var names []string
+
+	for _, member := range s.Ast.Members {
+		switch member := member.(type) {
+		case *libstruct.StructOrUnionMember:
+			names = append(names, member.Name)
+		}
+	}
+
+	return names
+}
+
 func (s *Union) String() string      { return s.Name }
 func (*Union) Type() string          { return "Union" }
 func (*Union) Hash() (uint32, error) { return 0, fmt.Errorf("Union is not hashable") }
@@ -462,7 +505,8 @@ func (*Union) Truth() starlark.Bool  { return starlark.True }
 func (*Union) Freeze()               {}
 
 var (
-	_ starlark.Value = (*Union)(nil)
+	_ starlark.Value    = (*Union)(nil)
+	_ starlark.HasAttrs = (*Union)(nil)
 )
 
 type Struct struct {
@@ -471,6 +515,27 @@ type Struct struct {
 	Fields map[string]starlark.Value
 
 	ref libstruct.ReferenceResolver
+}
+
+// Attr implements starlark.HasAttrs.
+func (s *Struct) Attr(name string) (starlark.Value, error) {
+	val, ok := s.Fields[name]
+	if !ok {
+		return nil, nil
+	}
+
+	return val, nil
+}
+
+// AttrNames implements starlark.HasAttrs.
+func (s *Struct) AttrNames() []string {
+	var names []string
+
+	for name := range s.Fields {
+		names = append(names, name)
+	}
+
+	return names
 }
 
 func (s *Struct) Size() (int64, error) {
@@ -521,7 +586,8 @@ func (*Struct) Truth() starlark.Bool  { return starlark.True }
 func (*Struct) Freeze()               {}
 
 var (
-	_ starlark.Value = (*Struct)(nil)
+	_ starlark.Value    = (*Struct)(nil)
+	_ starlark.HasAttrs = (*Struct)(nil)
 )
 
 type BinaryReader struct {
