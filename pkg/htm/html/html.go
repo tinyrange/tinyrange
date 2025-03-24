@@ -101,3 +101,11 @@ func HiddenFormField(id Id, name string, value string) htm.Fragment {
 		htm.Attr("value", value),
 	)
 }
+
+func StyleAttr(content string) htm.Fragment {
+	return htm.Attr("style", content)
+}
+
+func TitleAttr(content string) htm.Fragment {
+	return htm.Attr("title", content)
+}

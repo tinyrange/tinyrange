@@ -1,0 +1,1 @@
+bpb = reader.instance(struct.BiosParameterBlock, 0)

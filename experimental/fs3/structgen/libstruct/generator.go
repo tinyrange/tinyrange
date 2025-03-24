@@ -1,4 +1,4 @@
-package main
+package libstruct
 
 import (
 	"fmt"
@@ -169,24 +169,22 @@ func newBuiltinTypeInfo(goType string, size int, bigEndian, unsigned bool) *buil
 	}
 }
 
-var builtinToGoType = map[typeInstanceBuiltin]TypeInfo{
-	typeInstanceBuiltinUint8:    newBuiltinTypeInfo("uint8", 1, false, true),
-	typeInstanceBuiltinUint16LE: newBuiltinTypeInfo("uint16", 2, false, true),
-	typeInstanceBuiltinUint16BE: newBuiltinTypeInfo("uint16", 2, true, true),
-	typeInstanceBuiltinUint32LE: newBuiltinTypeInfo("uint32", 4, false, true),
-	typeInstanceBuiltinUint32BE: newBuiltinTypeInfo("uint32", 4, true, true),
-	typeInstanceBuiltinUint64LE: newBuiltinTypeInfo("uint64", 8, false, true),
-	typeInstanceBuiltinUint64BE: newBuiltinTypeInfo("uint64", 8, true, true),
-
-	typeInstanceBuiltinInt8:    newBuiltinTypeInfo("int8", 1, false, false),
-	typeInstanceBuiltinInt16LE: newBuiltinTypeInfo("int16", 2, false, false),
-	typeInstanceBuiltinInt16BE: newBuiltinTypeInfo("int16", 2, true, false),
-	typeInstanceBuiltinInt32LE: newBuiltinTypeInfo("int32", 4, false, false),
-	typeInstanceBuiltinInt32BE: newBuiltinTypeInfo("int32", 4, true, false),
-	typeInstanceBuiltinInt64LE: newBuiltinTypeInfo("int64", 8, false, false),
-	typeInstanceBuiltinInt64BE: newBuiltinTypeInfo("int64", 8, true, false),
-
-	typeInstanceBuiltinChar: newBuiltinTypeInfo("byte", 1, false, true),
+var builtinToGoType = map[TypeInstanceBuiltin]TypeInfo{
+	TypeInstanceBuiltinUint8:    newBuiltinTypeInfo("uint8", 1, false, true),
+	TypeInstanceBuiltinUint16LE: newBuiltinTypeInfo("uint16", 2, false, true),
+	TypeInstanceBuiltinUint16BE: newBuiltinTypeInfo("uint16", 2, true, true),
+	TypeInstanceBuiltinUint32LE: newBuiltinTypeInfo("uint32", 4, false, true),
+	TypeInstanceBuiltinUint32BE: newBuiltinTypeInfo("uint32", 4, true, true),
+	TypeInstanceBuiltinUint64LE: newBuiltinTypeInfo("uint64", 8, false, true),
+	TypeInstanceBuiltinUint64BE: newBuiltinTypeInfo("uint64", 8, true, true),
+	TypeInstanceBuiltinInt8:     newBuiltinTypeInfo("int8", 1, false, false),
+	TypeInstanceBuiltinInt16LE:  newBuiltinTypeInfo("int16", 2, false, false),
+	TypeInstanceBuiltinInt16BE:  newBuiltinTypeInfo("int16", 2, true, false),
+	TypeInstanceBuiltinInt32LE:  newBuiltinTypeInfo("int32", 4, false, false),
+	TypeInstanceBuiltinInt32BE:  newBuiltinTypeInfo("int32", 4, true, false),
+	TypeInstanceBuiltinInt64LE:  newBuiltinTypeInfo("int64", 8, false, false),
+	TypeInstanceBuiltinInt64BE:  newBuiltinTypeInfo("int64", 8, true, false),
+	TypeInstanceBuiltinChar:     newBuiltinTypeInfo("byte", 1, false, true),
 }
 
 func asGoName(s string) string {
@@ -271,14 +269,14 @@ var byteArray = &ast.ArrayType{
 	Elt: ast.NewIdent("byte"),
 }
 
-type sysIL4Generator struct {
+type SysIL4Generator struct {
 	packageName string
 
 	declarations  []ast.Decl
 	declaredTypes map[string]TypeInfo
 }
 
-func (g *sysIL4Generator) declareType(name string, underlyingType ast.Expr, typ TypeInfo) {
+func (g *SysIL4Generator) declareType(name string, underlyingType ast.Expr, typ TypeInfo) {
 	// log.Info("declareType", "name", name, "type", typ)
 
 	g.declarations = append(g.declarations, &ast.GenDecl{
@@ -289,7 +287,7 @@ func (g *sysIL4Generator) declareType(name string, underlyingType ast.Expr, typ 
 	g.declaredTypes[name] = typ
 }
 
-func (g *sysIL4Generator) declareConstant(name string, typ ast.Expr, value ast.Expr) {
+func (g *SysIL4Generator) declareConstant(name string, typ ast.Expr, value ast.Expr) {
 	g.declarations = append(g.declarations, &ast.GenDecl{
 		Tok: goToken.CONST,
 		Specs: []ast.Spec{&ast.ValueSpec{
@@ -300,7 +298,7 @@ func (g *sysIL4Generator) declareConstant(name string, typ ast.Expr, value ast.E
 	})
 }
 
-func (g *sysIL4Generator) declareMethod(receiver ast.Expr, bindingName *ast.Ident, name string, params []*ast.Field, results []*ast.Field, body []ast.Stmt) {
+func (g *SysIL4Generator) declareMethod(receiver ast.Expr, bindingName *ast.Ident, name string, params []*ast.Field, results []*ast.Field, body []ast.Stmt) {
 	g.declarations = append(g.declarations, &ast.FuncDecl{
 		Recv: &ast.FieldList{
 			List: []*ast.Field{
@@ -319,24 +317,24 @@ func (g *sysIL4Generator) declareMethod(receiver ast.Expr, bindingName *ast.Iden
 	})
 }
 
-func (g *sysIL4Generator) evaluateSizeExpression(expr expression) (int, error) {
+func (g *SysIL4Generator) evaluateSizeExpression(expr Expression) (int, error) {
 	switch expr := expr.(type) {
-	case numberLiteralExpression:
+	case NumberLiteralExpression:
 		val, err := strconv.ParseInt(string(expr), 0, 64)
 		if err != nil {
 			return 0, err
 		}
 
 		return int(val), nil
-	case variableReferenceExpression:
+	case VariableReferenceExpression:
 		return -1, nil
-	case *binaryExpression:
-		lhs, err := g.evaluateSizeExpression(expr.lhs)
+	case *BinaryExpression:
+		lhs, err := g.evaluateSizeExpression(expr.Lhs)
 		if err != nil {
 			return 0, err
 		}
 
-		rhs, err := g.evaluateSizeExpression(expr.rhs)
+		rhs, err := g.evaluateSizeExpression(expr.Rhs)
 		if err != nil {
 			return 0, err
 		}
@@ -345,18 +343,20 @@ func (g *sysIL4Generator) evaluateSizeExpression(expr expression) (int, error) {
 			return -1, nil
 		}
 
-		switch expr.op {
-		case binaryOpMinus:
+		switch expr.Op {
+		case BinaryOpPlus:
+			return lhs + rhs, nil
+		case BinaryOpMinus:
 			return lhs - rhs, nil
 		default:
-			return 0, fmt.Errorf("unexpected binary operator: %v", expr.op)
+			return 0, fmt.Errorf("unexpected binary operator: %v", expr.Op)
 		}
 	default:
 		return 0, fmt.Errorf("unexpected expression for evaluateSizeExpression: %T", expr)
 	}
 }
 
-func (g *sysIL4Generator) evaluateExpression(expr ast.Expr) (int, error) {
+func (g *SysIL4Generator) evaluateExpression(expr ast.Expr) (int, error) {
 	if expr == nil {
 		return 0, nil
 	}
@@ -398,16 +398,16 @@ func (g *sysIL4Generator) evaluateExpression(expr ast.Expr) (int, error) {
 	}
 }
 
-func (g *sysIL4Generator) typeExprFromInstance(inst typeInstance, currentSize ast.Expr) (TypeInfo, error) {
+func (g *SysIL4Generator) typeExprFromInstance(inst TypeInstance, currentSize ast.Expr) (TypeInfo, error) {
 	switch inst := inst.(type) {
-	case typeInstanceBuiltin:
+	case TypeInstanceBuiltin:
 		typ, ok := builtinToGoType[inst]
 		if !ok {
 			return nil, fmt.Errorf("unsupported builtin type: %v", inst)
 		}
 
 		return typ, nil
-	case typeInstanceReference:
+	case TypeInstanceReference:
 		exported := exportName(string(inst))
 
 		dec, ok := g.declaredTypes[exported]
@@ -416,18 +416,18 @@ func (g *sysIL4Generator) typeExprFromInstance(inst typeInstance, currentSize as
 		}
 
 		return dec, nil
-	case *typeInstanceArray:
-		elementType, err := g.typeExprFromInstance(inst.elementType, currentSize)
+	case *TypeInstanceArray:
+		elementType, err := g.typeExprFromInstance(inst.ElementType, currentSize)
 		if err != nil {
 			return nil, err
 		}
 
-		length, err := g.generateExpression(inst.size, currentSize)
+		length, err := g.generateExpression(inst.Size, currentSize)
 		if err != nil {
 			return nil, err
 		}
 
-		lengthInt, err := g.evaluateSizeExpression(inst.size)
+		lengthInt, err := g.evaluateExpression(length)
 		if err != nil {
 			return nil, err
 		}
@@ -453,11 +453,11 @@ func (g *sysIL4Generator) typeExprFromInstance(inst typeInstance, currentSize as
 	}
 }
 
-func (g *sysIL4Generator) generateExpression(expr expression, currentSize ast.Expr) (ast.Expr, error) {
+func (g *SysIL4Generator) generateExpression(expr Expression, currentSize ast.Expr) (ast.Expr, error) {
 	switch expr := expr.(type) {
-	case numberLiteralExpression:
+	case NumberLiteralExpression:
 		return &ast.BasicLit{Kind: goToken.INT, Value: string(expr)}, nil
-	case variableReferenceExpression:
+	case VariableReferenceExpression:
 		if expr == "_" {
 			if currentSize == nil {
 				return nil, fmt.Errorf("size expression required")
@@ -467,23 +467,25 @@ func (g *sysIL4Generator) generateExpression(expr expression, currentSize ast.Ex
 		}
 
 		return ast.NewIdent(string(expr)), nil
-	case *binaryExpression:
-		lhs, err := g.generateExpression(expr.lhs, currentSize)
+	case *BinaryExpression:
+		lhs, err := g.generateExpression(expr.Lhs, currentSize)
 		if err != nil {
 			return nil, err
 		}
 
-		rhs, err := g.generateExpression(expr.rhs, currentSize)
+		rhs, err := g.generateExpression(expr.Rhs, currentSize)
 		if err != nil {
 			return nil, err
 		}
 
 		var op goToken.Token
-		switch expr.op {
-		case binaryOpMinus:
+		switch expr.Op {
+		case BinaryOpPlus:
+			op = goToken.ADD
+		case BinaryOpMinus:
 			op = goToken.SUB
 		default:
-			return nil, fmt.Errorf("unexpected binary operator: %v", expr.op)
+			return nil, fmt.Errorf("unexpected binary operator: %v", expr.Op)
 		}
 
 		return &ast.BinaryExpr{
@@ -496,8 +498,8 @@ func (g *sysIL4Generator) generateExpression(expr expression, currentSize ast.Ex
 	}
 }
 
-func (g *sysIL4Generator) generateEnumDeclaration(name string, decl *enumDeclaration) error {
-	typ, err := g.typeExprFromInstance(decl.valueType, nil)
+func (g *SysIL4Generator) generateEnumDeclaration(name string, decl *EnumDeclaration) error {
+	typ, err := g.typeExprFromInstance(decl.ValueType, nil)
 	if err != nil {
 		return err
 	}
@@ -510,23 +512,23 @@ func (g *sysIL4Generator) generateEnumDeclaration(name string, decl *enumDeclara
 		size:   typ.Size(),
 	})
 
-	for _, member := range decl.members {
-		value, err := g.generateExpression(member.value, nil)
+	for _, member := range decl.Members {
+		value, err := g.generateExpression(member.Value, nil)
 		if err != nil {
 			return err
 		}
 
-		g.declareConstant(enumName+exportName(member.name), enumTyp, value)
+		g.declareConstant(enumName+exportName(member.Name), enumTyp, value)
 	}
 
 	// generate a String method as a series of switch cases
 	var cases []ast.Stmt
-	for _, member := range decl.members {
+	for _, member := range decl.Members {
 		cases = append(cases, &ast.CaseClause{
-			List: []ast.Expr{ast.NewIdent(enumName + exportName(member.name))},
+			List: []ast.Expr{ast.NewIdent(enumName + exportName(member.Name))},
 			Body: []ast.Stmt{
 				&ast.ReturnStmt{
-					Results: []ast.Expr{newString(member.name)},
+					Results: []ast.Expr{newString(member.Name)},
 				},
 			},
 		})
@@ -543,7 +545,15 @@ func (g *sysIL4Generator) generateEnumDeclaration(name string, decl *enumDeclara
 				List: append(cases, &ast.CaseClause{
 					Body: []ast.Stmt{
 						&ast.ReturnStmt{
-							Results: []ast.Expr{newString("unknown")},
+							Results: []ast.Expr{
+								&ast.CallExpr{
+									Fun: dotExpr(ast.NewIdent("fmt"), "Sprintf"),
+									Args: []ast.Expr{
+										newString("unknown <%d>"),
+										ast.NewIdent("e"),
+									},
+								},
+							},
 						},
 					},
 				}),
@@ -554,10 +564,10 @@ func (g *sysIL4Generator) generateEnumDeclaration(name string, decl *enumDeclara
 	return nil
 }
 
-func (g *sysIL4Generator) generateStructDeclaration(name string, decl *structDeclaration) error {
+func (g *SysIL4Generator) generateStructDeclaration(name string, decl *StructDeclaration) error {
 	structType := ast.NewIdent(exportName(name))
 
-	isDynamic := decl.dynamic
+	isDynamic := decl.Dynamic
 
 	_ = structType
 
@@ -565,19 +575,21 @@ func (g *sysIL4Generator) generateStructDeclaration(name string, decl *structDec
 
 	binding := ast.NewIdent("r")
 
-	for _, member := range decl.members {
+	var expectedSize int64 = -1
+
+	for _, member := range decl.Members {
 		switch member := member.(type) {
-		case *structOrUnionMember:
-			typ, err := g.typeExprFromInstance(member.valueType, currentLength)
+		case *StructOrUnionMember:
+			typ, err := g.typeExprFromInstance(member.ValueType, currentLength)
 			if err != nil {
 				return err
 			}
 
 			if typ.IsDynamic() && !isDynamic {
-				return fmt.Errorf("dynamic member (%s) in static struct (%s)", member.name, name)
+				return fmt.Errorf("dynamic member (%s) in static struct (%s)", member.Name, name)
 			}
 
-			if member.name != "_" {
+			if member.Name != "_" {
 				startInt, err := g.evaluateExpression(currentLength)
 				if err != nil {
 					return err
@@ -586,7 +598,7 @@ func (g *sysIL4Generator) generateStructDeclaration(name string, decl *structDec
 				endInt := startInt + typ.Size()
 
 				// TODO(joshua): Generate a slice method that returns the raw binary slice.
-				sliceMethod := ast.NewIdent(asGoName(member.name) + "Slice")
+				sliceMethod := ast.NewIdent(asGoName(member.Name) + "Slice")
 
 				sliceRet := &ast.ArrayType{
 					Elt: ast.NewIdent("byte"),
@@ -626,7 +638,7 @@ func (g *sysIL4Generator) generateStructDeclaration(name string, decl *structDec
 				}
 
 				// Get Method
-				g.declareMethod(structType, binding, "Get"+asGoName(member.name), []*ast.Field{}, []*ast.Field{
+				g.declareMethod(structType, binding, "Get"+asGoName(member.Name), []*ast.Field{}, []*ast.Field{
 					{
 						Type: typ.GoType(),
 					},
@@ -642,7 +654,7 @@ func (g *sysIL4Generator) generateStructDeclaration(name string, decl *structDec
 				if isDynamic {
 					setReceiver = structType
 				}
-				g.declareMethod(setReceiver, binding, "Set"+asGoName(member.name), []*ast.Field{
+				g.declareMethod(setReceiver, binding, "Set"+asGoName(member.Name), []*ast.Field{
 					{
 						Names: []*ast.Ident{ast.NewIdent("value")},
 						Type:  typ.GoType(),
@@ -653,23 +665,34 @@ func (g *sysIL4Generator) generateStructDeclaration(name string, decl *structDec
 			}
 
 			currentLength = addExpr(currentLength, intValue(typ.Size()))
-		case *structConstMember:
-			value, err := g.generateExpression(member.value, currentLength)
+		case *StructConstMember:
+			value, err := g.generateExpression(member.Value, currentLength)
 			if err != nil {
 				return err
 			}
 
 			g.declareConstant(
-				exportName(name)+exportName(member.name),
+				exportName(name)+exportName(member.Name),
 				nil,
 				value,
 			)
+		case *StructSizeMember:
+			if expectedSize != -1 {
+				return fmt.Errorf("multiple size members in struct")
+			}
+
+			size, err := g.evaluateSizeExpression(member.Size)
+			if err != nil {
+				return err
+			}
+
+			expectedSize = int64(size)
 		default:
 			return fmt.Errorf("unexpected member type: %T", member)
 		}
 	}
 
-	if decl.dynamic {
+	if decl.Dynamic {
 		// use a []byte for the dynamic struct
 		g.declareType(exportName(name), byteArray, &simpleTypeInfo{
 			goType: structType,
@@ -678,7 +701,10 @@ func (g *sysIL4Generator) generateStructDeclaration(name string, decl *structDec
 	} else {
 		var evaluatedSize int = 0
 
-		if currentLength == nil {
+		if expectedSize != -1 {
+			currentLength = &ast.BasicLit{Kind: goToken.INT, Value: strconv.FormatInt(expectedSize, 10)}
+			evaluatedSize = int(expectedSize)
+		} else if currentLength == nil {
 			currentLength = &ast.BasicLit{Kind: goToken.INT, Value: "0"}
 		} else {
 			var err error
@@ -824,8 +850,8 @@ func (g *sysIL4Generator) generateStructDeclaration(name string, decl *structDec
 	return nil
 }
 
-func (g *sysIL4Generator) generateBitsetDeclaration(name string, decl *bitsetDeclaration) error {
-	valueType, err := g.typeExprFromInstance(decl.valueType, nil)
+func (g *SysIL4Generator) generateBitsetDeclaration(name string, decl *BitsetDeclaration) error {
+	valueType, err := g.typeExprFromInstance(decl.ValueType, nil)
 	if err != nil {
 		return err
 	}
@@ -845,7 +871,7 @@ func (g *sysIL4Generator) generateBitsetDeclaration(name string, decl *bitsetDec
 		size:   valueType.Size(),
 	})
 
-	for i, member := range decl.members {
+	for i, member := range decl.Members {
 		if i >= valueBits {
 			return fmt.Errorf("too many bitset members")
 		}
@@ -885,48 +911,53 @@ func (g *sysIL4Generator) generateBitsetDeclaration(name string, decl *bitsetDec
 	return nil
 }
 
-func (g *sysIL4Generator) generateUnionDeclaration(name string, decl *unionDeclaration) error {
+func (g *SysIL4Generator) generateUnionDeclaration(name string, decl *UnionDeclaration) error {
 	unionType := ast.NewIdent(exportName(name))
 
 	var maxSize int
 
 	binding := ast.NewIdent("u")
 
-	for _, member := range decl.members {
-		typ, err := g.typeExprFromInstance(member.valueType, nil)
-		if err != nil {
-			return err
-		}
+	for _, member := range decl.Members {
+		switch member := member.(type) {
+		case *StructOrUnionMember:
+			typ, err := g.typeExprFromInstance(member.ValueType, nil)
+			if err != nil {
+				return err
+			}
 
-		if typ.IsDynamic() {
-			return fmt.Errorf("dynamic union member type is not supported")
-		}
+			if typ.IsDynamic() {
+				return fmt.Errorf("dynamic union member type is not supported")
+			}
 
-		if typ.Size() > maxSize {
-			maxSize = typ.Size()
-		}
+			if typ.Size() > maxSize {
+				maxSize = typ.Size()
+			}
 
-		// Generate a Get and Set method for the member.
-		g.declareMethod(unionType, binding, "Get"+asGoName(member.name), []*ast.Field{}, []*ast.Field{
-			{
-				Type: typ.GoType(),
-			},
-		}, []ast.Stmt{
-			&ast.ReturnStmt{
-				Results: []ast.Expr{
-					typ.CastFromBytes(sliceExpr(binding, nil, nil)),
+			// Generate a Get and Set method for the member.
+			g.declareMethod(unionType, binding, "Get"+asGoName(member.Name), []*ast.Field{}, []*ast.Field{
+				{
+					Type: typ.GoType(),
 				},
-			},
-		})
+			}, []ast.Stmt{
+				&ast.ReturnStmt{
+					Results: []ast.Expr{
+						typ.CastFromBytes(sliceExpr(binding, nil, nil)),
+					},
+				},
+			})
 
-		g.declareMethod(unionType, binding, "Set"+asGoName(member.name), []*ast.Field{
-			{
-				Names: []*ast.Ident{ast.NewIdent("value")},
-				Type:  typ.GoType(),
-			},
-		}, []*ast.Field{}, []ast.Stmt{
-			typ.StoreToBytes(sliceExpr(binding, nil, nil), ast.NewIdent("value")),
-		})
+			g.declareMethod(unionType, binding, "Set"+asGoName(member.Name), []*ast.Field{
+				{
+					Names: []*ast.Ident{ast.NewIdent("value")},
+					Type:  typ.GoType(),
+				},
+			}, []*ast.Field{}, []ast.Stmt{
+				typ.StoreToBytes(sliceExpr(binding, nil, nil), ast.NewIdent("value")),
+			})
+		default:
+			return fmt.Errorf("unexpected member type: %T", member)
+		}
 	}
 
 	// use a byte array with the maximum size for the union
@@ -941,25 +972,25 @@ func (g *sysIL4Generator) generateUnionDeclaration(name string, decl *unionDecla
 	return nil
 }
 
-func (g *sysIL4Generator) generateTypeDeclaration(decl *typeDeclaration) error {
-	switch inner := decl.innerType.(type) {
-	case *enumDeclaration:
-		return g.generateEnumDeclaration(decl.name, inner)
-	case *structDeclaration:
-		return g.generateStructDeclaration(decl.name, inner)
-	case *bitsetDeclaration:
-		return g.generateBitsetDeclaration(decl.name, inner)
-	case *unionDeclaration:
-		return g.generateUnionDeclaration(decl.name, inner)
+func (g *SysIL4Generator) generateTypeDeclaration(decl *TypeDeclaration) error {
+	switch inner := decl.InnerType.(type) {
+	case *EnumDeclaration:
+		return g.generateEnumDeclaration(decl.Name, inner)
+	case *StructDeclaration:
+		return g.generateStructDeclaration(decl.Name, inner)
+	case *BitsetDeclaration:
+		return g.generateBitsetDeclaration(decl.Name, inner)
+	case *UnionDeclaration:
+		return g.generateUnionDeclaration(decl.Name, inner)
 	default:
 		return fmt.Errorf("unexpected inner type: %T", inner)
 	}
 }
 
-func (g *sysIL4Generator) generate(ast *file) error {
-	for _, decl := range ast.declarations {
+func (g *SysIL4Generator) Generate(ast *File) error {
+	for _, decl := range ast.Declarations {
 		switch decl := decl.(type) {
-		case *typeDeclaration:
+		case *TypeDeclaration:
 			if err := g.generateTypeDeclaration(decl); err != nil {
 				return err
 			}
@@ -971,7 +1002,7 @@ func (g *sysIL4Generator) generate(ast *file) error {
 	return nil
 }
 
-func (g *sysIL4Generator) writeTo(w io.Writer) error {
+func (g *SysIL4Generator) WriteTo(w io.Writer) error {
 	if _, err := fmt.Fprintf(w, "// generated by structGen. DO NOT EDIT MANUALLY\n\n"); err != nil {
 		return err
 	}
@@ -986,6 +1017,9 @@ func (g *sysIL4Generator) writeTo(w io.Writer) error {
 			&ast.ImportSpec{
 				Path: &ast.BasicLit{Kind: goToken.STRING, Value: "\"io\""},
 			},
+			&ast.ImportSpec{
+				Path: &ast.BasicLit{Kind: goToken.STRING, Value: "\"fmt\""},
+			},
 		},
 	}}, g.declarations...)
 
@@ -995,8 +1029,8 @@ func (g *sysIL4Generator) writeTo(w io.Writer) error {
 	})
 }
 
-func newSysIL4Generator(packageName string) *sysIL4Generator {
-	ret := &sysIL4Generator{
+func NewSysIL4Generator(packageName string) *SysIL4Generator {
+	ret := &SysIL4Generator{
 		packageName:   packageName,
 		declaredTypes: make(map[string]TypeInfo),
 	}

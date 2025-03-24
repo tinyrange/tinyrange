@@ -1,4 +1,4 @@
-package main
+package libstruct
 
 import "fmt"
 
@@ -18,6 +18,7 @@ const (
 	keywordBitset        keywordToken = "bitset"
 	keywordDynamicStruct keywordToken = "dyn_struct"
 	keywordConst         keywordToken = "const"
+	keywordSize          keywordToken = "size"
 )
 
 type identifierToken string
@@ -40,6 +41,7 @@ const (
 	specialEquals             specialToken = "="
 	specialReference          specialToken = "$"
 	specialMinus              specialToken = "-"
+	specialPlus               specialToken = "+"
 )
 
 type numberLiteralToken string
@@ -111,6 +113,8 @@ func (p *sysIL4Parser) nextIdentifier(first rune) (token, error) {
 		return keywordDynamicStruct, nil
 	case string(keywordConst):
 		return keywordConst, nil
+	case string(keywordSize):
+		return keywordSize, nil
 	default:
 		return identifierToken(ret), nil
 	}
@@ -227,6 +231,8 @@ func (p *sysIL4Parser) nextToken() (token, error) {
 		return specialCloseSquareBracket, nil
 	case r == '-':
 		return specialMinus, nil
+	case r == '+':
+		return specialPlus, nil
 	case r == '$':
 		ident, err := p.nextIdentifier(' ')
 		if err != nil {

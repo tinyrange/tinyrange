@@ -1,4 +1,4 @@
-package main
+package libstruct
 
 import (
 	"bufio"
@@ -25,8 +25,8 @@ func (p *sysIL4Parser) parseIdentifier() (string, error) {
 	return string(tk.(identifierToken)), nil
 }
 
-func (p *sysIL4Parser) parseArrayTypeInstance() (typeInstance, error) {
-	ret := &typeInstanceArray{}
+func (p *sysIL4Parser) parseArrayTypeInstance() (TypeInstance, error) {
+	ret := &TypeInstanceArray{}
 
 	size, err := p.parseExpression()
 	if err != nil {
@@ -42,13 +42,13 @@ func (p *sysIL4Parser) parseArrayTypeInstance() (typeInstance, error) {
 		return nil, err
 	}
 
-	ret.size = size
-	ret.elementType = elementType
+	ret.Size = size
+	ret.ElementType = elementType
 
 	return ret, nil
 }
 
-func (p *sysIL4Parser) parseTypeInstance() (typeInstance, error) {
+func (p *sysIL4Parser) parseTypeInstance() (TypeInstance, error) {
 	tk, err := p.nextSignificantToken()
 	if err != nil {
 		return nil, err
@@ -57,38 +57,38 @@ func (p *sysIL4Parser) parseTypeInstance() (typeInstance, error) {
 	switch tk := tk.(type) {
 	case identifierToken:
 		switch tk {
-		case identifierToken(typeInstanceBuiltinUint8):
-			return typeInstanceBuiltinUint8, nil
-		case identifierToken(typeInstanceBuiltinUint16LE):
-			return typeInstanceBuiltinUint16LE, nil
-		case identifierToken(typeInstanceBuiltinUint32LE):
-			return typeInstanceBuiltinUint32LE, nil
-		case identifierToken(typeInstanceBuiltinUint64LE):
-			return typeInstanceBuiltinUint64LE, nil
-		case identifierToken(typeInstanceBuiltinUint16BE):
-			return typeInstanceBuiltinUint16BE, nil
-		case identifierToken(typeInstanceBuiltinUint32BE):
-			return typeInstanceBuiltinUint32BE, nil
-		case identifierToken(typeInstanceBuiltinUint64BE):
-			return typeInstanceBuiltinUint64BE, nil
-		case identifierToken(typeInstanceBuiltinInt8):
-			return typeInstanceBuiltinInt8, nil
-		case identifierToken(typeInstanceBuiltinInt16LE):
-			return typeInstanceBuiltinInt16LE, nil
-		case identifierToken(typeInstanceBuiltinInt32LE):
-			return typeInstanceBuiltinInt32LE, nil
-		case identifierToken(typeInstanceBuiltinInt64LE):
-			return typeInstanceBuiltinInt64LE, nil
-		case identifierToken(typeInstanceBuiltinInt16BE):
-			return typeInstanceBuiltinInt16BE, nil
-		case identifierToken(typeInstanceBuiltinInt32BE):
-			return typeInstanceBuiltinInt32BE, nil
-		case identifierToken(typeInstanceBuiltinInt64BE):
-			return typeInstanceBuiltinInt64BE, nil
-		case identifierToken(typeInstanceBuiltinChar):
-			return typeInstanceBuiltinChar, nil
+		case identifierToken(TypeInstanceBuiltinUint8):
+			return TypeInstanceBuiltinUint8, nil
+		case identifierToken(TypeInstanceBuiltinUint16LE):
+			return TypeInstanceBuiltinUint16LE, nil
+		case identifierToken(TypeInstanceBuiltinUint32LE):
+			return TypeInstanceBuiltinUint32LE, nil
+		case identifierToken(TypeInstanceBuiltinUint64LE):
+			return TypeInstanceBuiltinUint64LE, nil
+		case identifierToken(TypeInstanceBuiltinUint16BE):
+			return TypeInstanceBuiltinUint16BE, nil
+		case identifierToken(TypeInstanceBuiltinUint32BE):
+			return TypeInstanceBuiltinUint32BE, nil
+		case identifierToken(TypeInstanceBuiltinUint64BE):
+			return TypeInstanceBuiltinUint64BE, nil
+		case identifierToken(TypeInstanceBuiltinInt8):
+			return TypeInstanceBuiltinInt8, nil
+		case identifierToken(TypeInstanceBuiltinInt16LE):
+			return TypeInstanceBuiltinInt16LE, nil
+		case identifierToken(TypeInstanceBuiltinInt32LE):
+			return TypeInstanceBuiltinInt32LE, nil
+		case identifierToken(TypeInstanceBuiltinInt64LE):
+			return TypeInstanceBuiltinInt64LE, nil
+		case identifierToken(TypeInstanceBuiltinInt16BE):
+			return TypeInstanceBuiltinInt16BE, nil
+		case identifierToken(TypeInstanceBuiltinInt32BE):
+			return TypeInstanceBuiltinInt32BE, nil
+		case identifierToken(TypeInstanceBuiltinInt64BE):
+			return TypeInstanceBuiltinInt64BE, nil
+		case identifierToken(TypeInstanceBuiltinChar):
+			return TypeInstanceBuiltinChar, nil
 		default:
-			return typeInstanceReference(tk), nil
+			return TypeInstanceReference(tk), nil
 		}
 	case specialToken:
 		switch tk {
@@ -102,55 +102,78 @@ func (p *sysIL4Parser) parseTypeInstance() (typeInstance, error) {
 	}
 }
 
-func (p *sysIL4Parser) parseExpression() (expression, error) {
+func (p *sysIL4Parser) parseExpressionFragment() (Expression, error) {
 	tk, err := p.nextSignificantToken()
 	if err != nil {
 		return nil, err
 	}
 
-	var first expression
-
 	switch tk := tk.(type) {
 	case numberLiteralToken:
-		first = numberLiteralExpression(tk)
+		return NumberLiteralExpression(tk), nil
 	case referenceToken:
-		first = variableReferenceExpression(tk)
+		return VariableReferenceExpression(tk), nil
 	default:
 		return nil, fmt.Errorf("unimplemented, got %T", tk)
 	}
+}
 
-	// peak ahead to see if we have an operator
-	tk, err = p.nextSignificantToken()
+func (p *sysIL4Parser) parseExpression() (Expression, error) {
+	frag, err := p.parseExpressionFragment()
 	if err != nil {
 		return nil, err
 	}
 
-	switch tk {
-	case specialMinus:
-		second, err := p.parseExpression()
+	var ret Expression = frag
+
+outer:
+	for {
+		// peak ahead to see if we have an operator
+		tk, err := p.nextSignificantToken()
 		if err != nil {
 			return nil, err
 		}
 
-		return &binaryExpression{
-			op:  binaryOpMinus,
-			lhs: first,
-			rhs: second,
-		}, nil
-	default:
-		p.unreadToken(tk)
-		return first, nil
+		switch tk {
+		case specialMinus:
+			second, err := p.parseExpressionFragment()
+			if err != nil {
+				return nil, err
+			}
+
+			ret = &BinaryExpression{
+				Op:  BinaryOpMinus,
+				Lhs: ret,
+				Rhs: second,
+			}
+		case specialPlus:
+			second, err := p.parseExpressionFragment()
+			if err != nil {
+				return nil, err
+			}
+
+			ret = &BinaryExpression{
+				Op:  BinaryOpPlus,
+				Lhs: ret,
+				Rhs: second,
+			}
+		default:
+			p.unreadToken(tk)
+			break outer
+		}
 	}
+
+	return ret, nil
 }
 
-func (p *sysIL4Parser) parseEnumMember() (*enumMember, error) {
-	ret := &enumMember{}
+func (p *sysIL4Parser) parseEnumMember() (*EnumMember, error) {
+	ret := &EnumMember{}
 
 	name, err := p.parseIdentifier()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse identifier for enumMember: %w", err)
 	}
-	ret.name = name
+	ret.Name = name
 
 	if err := p.expectToken(specialEquals); err != nil {
 		return nil, fmt.Errorf("failed to parse equals for enumMember: %w", err)
@@ -160,13 +183,13 @@ func (p *sysIL4Parser) parseEnumMember() (*enumMember, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse expression for enumMember: %w", err)
 	}
-	ret.value = value
+	ret.Value = value
 
 	return ret, nil
 }
 
-func (p *sysIL4Parser) parseEnumDeclaration() (*enumDeclaration, error) {
-	ret := &enumDeclaration{}
+func (p *sysIL4Parser) parseEnumDeclaration() (*EnumDeclaration, error) {
+	ret := &EnumDeclaration{}
 
 	if err := p.expectToken(specialOpenBlock); err != nil {
 		return nil, err
@@ -183,7 +206,7 @@ func (p *sysIL4Parser) parseEnumDeclaration() (*enumDeclaration, error) {
 		}
 
 		if next == keywordType {
-			if ret.valueType != nil {
+			if ret.ValueType != nil {
 				return nil, fmt.Errorf("duplicate type declaration")
 			}
 
@@ -192,7 +215,7 @@ func (p *sysIL4Parser) parseEnumDeclaration() (*enumDeclaration, error) {
 				return nil, err
 			}
 
-			ret.valueType = instance
+			ret.ValueType = instance
 
 			continue
 		}
@@ -204,38 +227,58 @@ func (p *sysIL4Parser) parseEnumDeclaration() (*enumDeclaration, error) {
 			return nil, err
 		}
 
-		ret.members = append(ret.members, member)
+		ret.Members = append(ret.Members, member)
 	}
 
 	return ret, nil
 }
 
-func (p *sysIL4Parser) parseStructOrUnionMember() (*structOrUnionMember, error) {
-	ret := &structOrUnionMember{}
+func (p *sysIL4Parser) parseStructOrUnionMember() (StructMember, error) {
+	ret := &StructOrUnionMember{}
+
+	tk, err := p.nextSignificantToken()
+	if err != nil {
+		return nil, err
+	}
+
+	if tk == keywordSize {
+		if err := p.expectToken(specialEquals); err != nil {
+			return nil, fmt.Errorf("expected equals after size")
+		}
+
+		expr, err := p.parseExpression()
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse expression for size: %w", err)
+		}
+
+		return &StructSizeMember{Size: expr}, nil
+	} else {
+		p.unreadToken(tk)
+	}
 
 	name, err := p.parseIdentifier()
 	if err != nil {
 		return nil, err
 	}
-	ret.name = name
+	ret.Name = name
 
 	typeInstance, err := p.parseTypeInstance()
 	if err != nil {
 		return nil, err
 	}
-	ret.valueType = typeInstance
+	ret.ValueType = typeInstance
 
 	return ret, nil
 }
 
-func (p *sysIL4Parser) parseStructConstMember() (*structConstMember, error) {
-	ret := &structConstMember{}
+func (p *sysIL4Parser) parseStructConstMember() (*StructConstMember, error) {
+	ret := &StructConstMember{}
 
 	name, err := p.parseIdentifier()
 	if err != nil {
 		return nil, err
 	}
-	ret.name = name
+	ret.Name = name
 
 	if err := p.expectToken(specialEquals); err != nil {
 		return nil, err
@@ -245,12 +288,12 @@ func (p *sysIL4Parser) parseStructConstMember() (*structConstMember, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret.value = value
+	ret.Value = value
 
 	return ret, nil
 }
 
-func (p *sysIL4Parser) parseStructMember() (structMember, error) {
+func (p *sysIL4Parser) parseStructMember() (StructMember, error) {
 	tk, err := p.nextSignificantToken()
 	if err != nil {
 		return nil, err
@@ -265,8 +308,8 @@ func (p *sysIL4Parser) parseStructMember() (structMember, error) {
 	}
 }
 
-func (p *sysIL4Parser) parseStructDeclaration(dynamic bool) (*structDeclaration, error) {
-	ret := &structDeclaration{dynamic: dynamic}
+func (p *sysIL4Parser) parseStructDeclaration(dynamic bool) (*StructDeclaration, error) {
+	ret := &StructDeclaration{Dynamic: dynamic}
 
 	if err := p.expectToken(specialOpenBlock); err != nil {
 		return nil, err
@@ -289,14 +332,14 @@ func (p *sysIL4Parser) parseStructDeclaration(dynamic bool) (*structDeclaration,
 			return nil, err
 		}
 
-		ret.members = append(ret.members, member)
+		ret.Members = append(ret.Members, member)
 	}
 
 	return ret, nil
 }
 
-func (p *sysIL4Parser) parseUnionDeclaration() (*unionDeclaration, error) {
-	ret := &unionDeclaration{}
+func (p *sysIL4Parser) parseUnionDeclaration() (*UnionDeclaration, error) {
+	ret := &UnionDeclaration{}
 
 	if err := p.expectToken(specialOpenBlock); err != nil {
 		return nil, err
@@ -319,14 +362,14 @@ func (p *sysIL4Parser) parseUnionDeclaration() (*unionDeclaration, error) {
 			return nil, err
 		}
 
-		ret.members = append(ret.members, member)
+		ret.Members = append(ret.Members, member)
 	}
 
 	return ret, nil
 }
 
-func (p *sysIL4Parser) parseBitsetDeclaration() (*bitsetDeclaration, error) {
-	ret := &bitsetDeclaration{}
+func (p *sysIL4Parser) parseBitsetDeclaration() (*BitsetDeclaration, error) {
+	ret := &BitsetDeclaration{}
 
 	if err := p.expectToken(specialOpenBlock); err != nil {
 		return nil, err
@@ -344,7 +387,7 @@ func (p *sysIL4Parser) parseBitsetDeclaration() (*bitsetDeclaration, error) {
 				return nil, err
 			}
 
-			ret.valueType = valueType
+			ret.ValueType = valueType
 
 			continue
 		}
@@ -357,13 +400,13 @@ func (p *sysIL4Parser) parseBitsetDeclaration() (*bitsetDeclaration, error) {
 			return nil, fmt.Errorf("expected identifier, got %T", next)
 		}
 
-		ret.members = append(ret.members, string(next.(identifierToken)))
+		ret.Members = append(ret.Members, string(next.(identifierToken)))
 	}
 
 	return ret, nil
 }
 
-func (p *sysIL4Parser) parseDeclaredType() (declaredType, error) {
+func (p *sysIL4Parser) parseDeclaredType() (TypeInstance, error) {
 	tk, err := p.nextKeyword()
 	if err != nil {
 		return nil, err
@@ -385,7 +428,7 @@ func (p *sysIL4Parser) parseDeclaredType() (declaredType, error) {
 	}
 }
 
-func (p *sysIL4Parser) parseTypeDeclaration() (*typeDeclaration, error) {
+func (p *sysIL4Parser) parseTypeDeclaration() (*TypeDeclaration, error) {
 	name, err := p.parseIdentifier()
 	if err != nil {
 		return nil, err
@@ -396,13 +439,13 @@ func (p *sysIL4Parser) parseTypeDeclaration() (*typeDeclaration, error) {
 		return nil, err
 	}
 
-	return &typeDeclaration{
-		name:      name,
-		innerType: innerType,
+	return &TypeDeclaration{
+		Name:      name,
+		InnerType: innerType,
 	}, nil
 }
 
-func (p *sysIL4Parser) parseDeclaration() (declaration, error) {
+func (p *sysIL4Parser) parseDeclaration() (Declaration, error) {
 	tk, err := p.nextKeyword()
 	if err != nil {
 		return nil, err
@@ -416,8 +459,8 @@ func (p *sysIL4Parser) parseDeclaration() (declaration, error) {
 	}
 }
 
-func (p *sysIL4Parser) parse() (*file, error) {
-	ret := &file{}
+func (p *sysIL4Parser) parse() (*File, error) {
+	ret := &File{}
 
 	for {
 		decl, err := p.parseDeclaration()
@@ -427,8 +470,16 @@ func (p *sysIL4Parser) parse() (*file, error) {
 			return nil, err
 		}
 
-		ret.declarations = append(ret.declarations, decl)
+		ret.Declarations = append(ret.Declarations, decl)
 	}
 
 	return ret, nil
+}
+
+func Parse(r io.Reader) (*File, error) {
+	p := &sysIL4Parser{
+		in: bufio.NewReader(r),
+	}
+
+	return p.parse()
 }

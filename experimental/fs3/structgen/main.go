@@ -1,11 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"os"
 
+	"github.com/tinyrange/tinyrange/experimental/fs3/structgen/libstruct"
 	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
@@ -28,23 +28,19 @@ func appMain() error {
 	}
 	defer file.Close()
 
-	parser := &sysIL4Parser{
-		in: bufio.NewReader(file),
-	}
-
-	ast, err := parser.parse()
+	ast, err := libstruct.Parse(file)
 	if err != nil {
 		return err
 	}
 
-	generator := newSysIL4Generator(*packageName)
+	generator := libstruct.NewSysIL4Generator(*packageName)
 
-	if err := generator.generate(ast); err != nil {
+	if err := generator.Generate(ast); err != nil {
 		return err
 	}
 
 	if *outputFilename == "" {
-		if err := generator.writeTo(os.Stdout); err != nil {
+		if err := generator.WriteTo(os.Stdout); err != nil {
 			return fmt.Errorf("failed to write output: %w", err)
 		}
 	} else {
@@ -54,7 +50,7 @@ func appMain() error {
 		}
 		defer outFile.Close()
 
-		if err := generator.writeTo(outFile); err != nil {
+		if err := generator.WriteTo(outFile); err != nil {
 			return fmt.Errorf("failed to write output: %w", err)
 		}
 	}
