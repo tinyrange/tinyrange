@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"time"
 
+	"math/rand/v2"
+
 	"github.com/anmitsu/go-shlex"
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/builder"
@@ -22,7 +24,6 @@ import (
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
-	"golang.org/x/exp/rand"
 )
 
 var startTime = time.Now()
@@ -1013,7 +1014,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 		}
 
 		for i := range valueList {
-			j := rand.Intn(i + 1)
+			j := rand.IntN(i + 1)
 			valueList[i], valueList[j] = valueList[j], valueList[i]
 		}
 
