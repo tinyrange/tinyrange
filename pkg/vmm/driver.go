@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -1083,9 +1084,19 @@ func (tr *driver) buildFilesystem(
 				return nil, nil, 0, fmt.Errorf("failed to truncate persistent filesystem: %w", err)
 			}
 
-			if _, err := io.Copy(io.NewOffsetWriter(fh, 0), io.NewSectionReader(vmem, 0, fsSize)); err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to copy memory to persistent filesystem: %w", err)
+			start := time.Now()
+
+			if feature.HasFeature(feature.FeatureFastWritePersist) {
+				if _, err := vmem.WriteSparseTo(fh); err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to copy memory to persistent filesystem: %w", err)
+				}
+			} else {
+				if _, err := io.Copy(io.NewOffsetWriter(fh, 0), io.NewSectionReader(vmem, 0, fsSize)); err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to copy memory to persistent filesystem: %w", err)
+				}
 			}
+
+			slog.Debug("copied memory to persistent filesystem", "took", time.Since(start))
 		} else if err == nil {
 			log.Info("opened persistent filesystem", "size", fsSize, "path", persistPath)
 

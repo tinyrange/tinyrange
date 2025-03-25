@@ -344,6 +344,40 @@ func (vm *VirtualMemory) WriteAt(p []byte, off int64) (n int, err error) {
 	return
 }
 
+func (vm *VirtualMemory) WriteSparseTo(fh io.WriterAt) (int64, error) {
+	var written int64
+
+	buf := make([]byte, vm.pageSize)
+
+	for i := int64(0); i < vm.totalSize/int64(vm.pageSize); i += 1 {
+		region, regionOffset, err := vm.getRegion(i*int64(vm.pageSize), false)
+		if err != nil {
+			return 0, err
+		}
+
+		if region == nil {
+			// Skip empty regions.
+			continue
+		}
+
+		// Read the region into the buffer.
+		n, err := region.ReadAt(buf, regionOffset)
+		if err != nil {
+			return 0, err
+		}
+
+		// Write the region to the file.
+		n, err = fh.WriteAt(buf[:n], int64(i)*int64(vm.pageSize)+regionOffset)
+		if err != nil {
+			return 0, err
+		}
+
+		written += int64(n)
+	}
+
+	return written, nil
+}
+
 func (vm *VirtualMemory) Reset() error {
 	// Clear all the old pages and write pages.
 	vm.pages = make([]MemoryRegion, len(vm.pages))
