@@ -1240,13 +1240,14 @@ func (tr *driver) exportPort(ns *netstack.NetStack, port int) error {
 
 				clientConn, err := ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("10.42.0.2:%d", port))
 				if err != nil {
-					log.Error("failed to dial vm port", "err", err)
+					// silence these errors since they are exposed to the client anyway.
+					log.Debug("failed to dial vm port", "err", err)
 					return
 				}
 				defer clientConn.Close()
 
 				if err := common.Proxy(clientConn, conn, 4096); err != nil {
-					log.Error("failed to proxy connection", "err", err)
+					log.Debug("failed to proxy connection", "err", err)
 					return
 				}
 			}()
