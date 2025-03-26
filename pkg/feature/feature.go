@@ -16,6 +16,7 @@ const (
 	FeatureSlowBoot         Feature = "slow_boot"          // Disable boot caching
 	FeatureTokenLockerDebug Feature = "token_locker_debug" // Enable debug logging for the token locker
 	FeatureFastWritePersist Feature = "fast_write_persist" // Enable fast writes of persistent filesystems.
+	FeatureExt4Resize       Feature = "ext4_resize"        // Enable ext4 filesystem resizing
 )
 
 var features = make(map[Feature]bool)
@@ -30,6 +31,7 @@ func init() {
 	features[FeatureBuildOci] = false
 	features[FeatureTokenLockerDebug] = false
 	features[FeatureFastWritePersist] = true
+	features[FeatureExt4Resize] = false
 }
 
 func SetFeaturesFromExperimentalFlags(flags []string) {

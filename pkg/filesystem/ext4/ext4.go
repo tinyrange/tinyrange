@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 	"github.com/tinyrange/tinyrange/pkg/log"
@@ -1933,9 +1934,16 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 	fs.sb.WriteAt(uuid[:], 104)
 
 	// Set feature flags.
-	fs.sb.SetFeatureCompat(
-		uint32(Feature_compat_COMPAT_SPARSE_SUPER2),
-	)
+	if feature.HasFeature(feature.FeatureExt4Resize) {
+		fs.sb.SetFeatureCompat(
+			uint32(Feature_compat_COMPAT_RESIZE_INODE),
+		)
+	} else {
+		fs.sb.SetFeatureCompat(
+			uint32(Feature_compat_COMPAT_SPARSE_SUPER2),
+		)
+	}
+
 	fs.sb.SetFeatureIncompat(
 		uint32(Feature_incompat_INCOMPAT_64BIT) |
 			uint32(Feature_incompat_INCOMPAT_FILETYPE) |
@@ -2065,6 +2073,22 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 
 			if err := root.chmod(goFs.FileMode(0755)); err != nil {
 				return nil, err
+			}
+		} else if inode.num == 7 {
+			if feature.HasFeature(feature.FeatureExt4Resize) {
+				// resize inode
+				if err := inode.addContents(
+					vm.ZeroRegion(1024*blockGroupCount*BlockGroupDescriptor{}.Size()),
+					false,
+				); err != nil {
+					return nil, err
+				}
+
+				// mode should be 0o100600
+				inode.node.SetMode(0o100600)
+				inode.node.SetLinksCount(1)
+			} else {
+				inode.node.SetMode(0)
 			}
 		} else if inode.num == 11 {
 			// lost + found directory

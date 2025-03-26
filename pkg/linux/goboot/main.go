@@ -81,6 +81,74 @@ func ToStringList(it starlark.Iterable) ([]string, error) {
 	return ret, nil
 }
 
+const EXT4_IOC_RESIZE_FS = 0x40086610
+
+func tryResizeExt4(mountPoint string) error {
+	tmpFilename := "/init.d/resize"
+
+	// get the underlying block device for the mount point
+	stat, err := os.Stat(mountPoint)
+	if err != nil {
+		return err
+	}
+
+	sys := stat.Sys().(*syscall.Stat_t)
+
+	// make a node for the block device
+	if err := unix.Mknod(tmpFilename, unix.S_IFBLK|0600, int(sys.Dev)); err != nil {
+		return err
+	}
+	defer os.Remove(tmpFilename)
+
+	blockFd, err := os.OpenFile(tmpFilename, os.O_RDONLY, 0)
+	if err != nil {
+		return err
+	}
+	defer blockFd.Close()
+
+	// Get the size of the block device
+	var size uint64
+	if _, _, errno := unix.Syscall(
+		unix.SYS_IOCTL,
+		blockFd.Fd(),
+		uintptr(unix.BLKGETSIZE64),
+		uintptr(unsafe.Pointer(&size)),
+	); errno != 0 {
+		return fmt.Errorf("failed to get block device size: %v", errno)
+	}
+
+	// Get the size of the filesystem
+	var statfs unix.Statfs_t
+	if err := unix.Statfs(mountPoint, &statfs); err != nil {
+		return err
+	}
+	fsSize := statfs.Blocks * uint64(statfs.Bsize)
+
+	if fsSize < size {
+		newBlocks := size / uint64(statfs.Bsize)
+
+		// if the current size of the filesystem is less than the size of the block device, resize it using EXT4_IOC_RESIZE_FS
+		fsFd, err := os.OpenFile(mountPoint, os.O_RDONLY, 0)
+		if err != nil {
+			return err
+		}
+		defer fsFd.Close()
+
+		log.Info("resizing filesystem", "mountpoint", mountPoint, "size", newBlocks)
+
+		if _, _, errno := unix.Syscall(
+			unix.SYS_IOCTL,
+			fsFd.Fd(),
+			uintptr(EXT4_IOC_RESIZE_FS),
+			uintptr(unsafe.Pointer(&newBlocks)),
+		); errno != 0 {
+			return fmt.Errorf("failed to resize filesystem: %v", errno)
+		}
+	}
+
+	return nil
+}
+
 // parseDims extracts terminal dimensions (width x height) from the provided buffer.
 func parseDims(b []byte) (uint32, uint32) {
 	w := binary.BigEndian.Uint32(b)
@@ -1209,6 +1277,31 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 		}
 
 		return starlark.Bool(feature.HasFeature(feature.Feature(flag))), nil
+	})
+
+	globals["linux_ext4_try_resize"] = starlark.NewBuiltin("linux_ext4_try_resize", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		// linux_ext4_try_resize(mount_point)
+
+		var (
+			mountPoint string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"mount_point", &mountPoint,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		if err := tryResizeExt4(mountPoint); err != nil {
+			return starlark.None, err
+		}
+
+		return starlark.None, nil
 	})
 
 	globals["connect_nbd"] = starlark.NewBuiltin("connect_nbd", func(

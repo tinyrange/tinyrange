@@ -1105,7 +1105,14 @@ func (tr *driver) buildFilesystem(
 				return nil, nil, 0, fmt.Errorf("failed to stat persistent filesystem: %w", err)
 			}
 
-			if info.Size() != fsSize {
+			if info.Size() == fsSize {
+				// all good
+			} else if info.Size() < fsSize && feature.HasFeature(feature.FeatureExt4Resize) {
+				log.Warn("resizing persistent filesystem", "size", fsSize, "current", info.Size())
+				if err := fh.Truncate(fsSize); err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to truncate persistent filesystem: %w", err)
+				}
+			} else {
 				return nil, nil, 0, fmt.Errorf("persistent filesystem size mismatch: %d != %d", info.Size(), fsSize)
 			}
 		} else {
@@ -1376,11 +1383,22 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		}
 		defer out.Close()
 
-		pb := progressbar.DefaultBytes(fsSize, "exporting filesystem")
-		defer pb.Close()
+		if feature.HasFeature(feature.FeatureFastWritePersist) {
+			vmem, ok := vmem.(*vm.VirtualMemory)
+			if !ok {
+				return fmt.Errorf("failed to cast to virtual memory")
+			}
 
-		if _, err := io.Copy(io.MultiWriter(pb, out), io.NewSectionReader(vmem, 0, fsSize)); err != nil {
-			return fmt.Errorf("failed to copy export filesystem: %w", err)
+			if _, err := vmem.WriteSparseTo(out); err != nil {
+				return fmt.Errorf("failed to copy export filesystem: %w", err)
+			}
+		} else {
+			pb := progressbar.DefaultBytes(fsSize, "exporting filesystem")
+			defer pb.Close()
+
+			if _, err := io.Copy(io.MultiWriter(pb, out), io.NewSectionReader(vmem, 0, fsSize)); err != nil {
+				return fmt.Errorf("failed to copy export filesystem: %w", err)
+			}
 		}
 
 		log.Debug("exported filesystem", "took", time.Since(start))
@@ -1470,6 +1488,9 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 					"  mount(\"ext4\", \"/dev/%s\", \"%s\", ensure_path = True)\n",
 					mountNames[i], volume.GuestPath,
 				)
+				if feature.HasFeature(feature.FeatureExt4Resize) {
+					mountScript += fmt.Sprintf("  linux_ext4_try_resize(\"%s\")\n", volume.GuestPath)
+				}
 			}
 
 			if err := rootFilesystem.WriteFile("/init.d/mount.star", []byte(mountScript)); err != nil {
