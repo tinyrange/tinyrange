@@ -74,12 +74,40 @@ func parseMount(mount string, writable bool, port int) (common.DirectiveMountHos
 	}
 }
 
+func parseVolumeSize(token string) (uint64, error) {
+	multiplier := uint64(1)
+
+	token = strings.ToLower(token)
+
+	if strings.HasSuffix(token, "g") {
+		multiplier = 1024
+		token = strings.TrimSuffix(token, "g")
+	} else if strings.HasSuffix(token, "m") {
+		multiplier = 1
+		token = strings.TrimSuffix(token, "m")
+	} else if strings.HasSuffix(token, "t") {
+		multiplier = 1024 * 1024
+		token = strings.TrimSuffix(token, "t")
+	}
+
+	size, err := strconv.ParseUint(token, 0, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	if size < 0 {
+		return 0, fmt.Errorf("invalid size %s", token)
+	}
+
+	return size * multiplier, nil
+}
+
 func parseVolume(volume string) (common.DirectiveAddVolume, error) {
 	// name, size, guestPath split by ,
 	tokens := strings.Split(volume, ",")
 	if len(tokens) >= 3 {
 		name := tokens[0]
-		minSize, err := strconv.ParseUint(tokens[1], 0, 64)
+		minSize, err := parseVolumeSize(tokens[1])
 		if err != nil {
 			return common.DirectiveAddVolume{}, err
 		}

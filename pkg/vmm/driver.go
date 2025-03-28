@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -45,6 +44,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/netstack"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	_ "github.com/tinyrange/tinyrange/pkg/platform"
+	"github.com/tinyrange/tinyrange/pkg/trdf"
 	"github.com/tinyrange/tinyrange/pkg/vmm/accelerate"
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"github.com/tinyrange/tinyrange/third_party/go-nbd/backend"
@@ -62,9 +62,8 @@ type Filesystem interface {
 }
 
 type BlockDevice interface {
-	io.ReaderAt
-	io.WriterAt
-	Size() int64
+	vm.MemoryRegion
+	io.Closer
 }
 
 type fileBlockDevice struct {
@@ -72,28 +71,34 @@ type fileBlockDevice struct {
 	size int64
 }
 
-// // ReadAt implements BlockDevice.
-// // Subtle: this method shadows the method (*File).ReadAt of fileBlockDevice.File.
-// func (f *fileBlockDevice) ReadAt(p []byte, off int64) (n int, err error) {
-// 	log.Debug("reading", "len", len(p), "off", off)
-// 	return f.File.ReadAt(p, off)
-// }
-
 // Size implements BlockDevice.
 func (f *fileBlockDevice) Size() int64 {
 	return f.size
 }
 
-// // WriteAt implements BlockDevice.
-// // Subtle: this method shadows the method (*File).WriteAt of fileBlockDevice.File.
-// func (f *fileBlockDevice) WriteAt(p []byte, off int64) (n int, err error) {
-// 	n, err = f.File.WriteAt(p, off)
-// 	log.Debug("writing", "len", len(p), "off", off, "err", err)
-// 	return
-// }
-
 var (
 	_ BlockDevice = &fileBlockDevice{}
+)
+
+type diskBlockDevice struct {
+	*trdf.Disk
+}
+
+var (
+	_ BlockDevice = &diskBlockDevice{}
+)
+
+type virtualBlockDevice struct {
+	*vm.VirtualMemory
+}
+
+// Close implements BlockDevice.
+func (v *virtualBlockDevice) Close() error {
+	return nil
+}
+
+var (
+	_ BlockDevice = &virtualBlockDevice{}
 )
 
 type vmBackend struct {
@@ -997,16 +1002,18 @@ func (tr *driver) buildFilesystem(
 	root filesystem.Directory,
 	skipDirectories map[filesystem.Directory]struct{},
 ) (
-	bd BlockDevice,
-	ext4Fs *ext4.Ext4Filesystem,
-	fsSize int64,
-	err error,
+	BlockDevice,
+	*ext4.Ext4Filesystem,
+	int64,
+	error,
 ) {
+	// start by computing the size of the filesystem.
 	totalSize, err := filesystem.GetTotalSize(root)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("could not compute total size")
 	}
 
+	var fsSize int64
 	if int64(float64(totalSize)*1.5) > int64(minSize)*1024*1024 {
 		targetSize := int64(float64(totalSize)*1.5) / 128 / 1024 / 1024
 
@@ -1017,49 +1024,10 @@ func (tr *driver) buildFilesystem(
 		fsSize = int64(minSize) * 1024 * 1024
 	}
 
-	start := time.Now()
-
-	vmem := vm.NewVirtualMemory(fsSize, 4096)
-	bd = vmem
-
-	log.Debug("created virtual memory", "took", time.Since(start))
-
-	switch kind {
-	case config.FilesystemKindExt4:
-		start = time.Now()
-
-		fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
-		if err != nil {
-			return nil, nil, 0, fmt.Errorf("failed to create ext4 filesystem: %w", err)
-		}
-		ext4Fs = fs
-
-		log.Debug("created ext4 filesystem", "took", time.Since(start))
-
-		start = time.Now()
-
-		var regionWrapper ext4.RegionWrapperFunc
-
-		if tr.dumpWriter != nil {
-			regionWrapper = func(filename string, region vm.MemoryRegion) vm.MemoryRegion {
-				return &loggerRegion{
-					MemoryRegion: region,
-					filename:     filename,
-					write:        tr.dumpWriter.Write,
-				}
-			}
-		}
-
-		if err := fs.AddDirectory(tr, root, regionWrapper, skipDirectories); err != nil {
-			return nil, nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
-		}
-
-		log.Debug("built filesystem", "took", time.Since(start))
-	case config.FilesystemKindRaw:
-		// noop
-	default:
-		return nil, nil, 0, fmt.Errorf("unknown filesystem kind: %s", kind)
-	}
+	var (
+		final  BlockDevice = nil
+		create             = true
+	)
 
 	if persistPath != "" {
 		if tr.persistPath == "" {
@@ -1071,57 +1039,134 @@ func (tr *driver) buildFilesystem(
 
 		persistPath := path.Native.Join(tr.persistPath, path.Native.Join(persistDir, persistName))
 
-		fh, err := os.OpenFile(persistPath, os.O_RDWR, 0644)
-		if errors.Is(err, os.ErrNotExist) {
-			log.Info("creating persistent filesystem", "size", fsSize, "path", persistPath)
-
-			fh, err = os.Create(persistPath)
-			if err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to create persistent filesystem: %w", err)
-			}
-
-			if err := fh.Truncate(fsSize); err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to truncate persistent filesystem: %w", err)
-			}
-
-			start := time.Now()
-
-			if feature.HasFeature(feature.FeatureFastWritePersist) {
-				if _, err := vmem.WriteSparseTo(fh); err != nil {
-					return nil, nil, 0, fmt.Errorf("failed to copy memory to persistent filesystem: %w", err)
+		if feature.HasFeature(feature.FeatureNewDiskFormat) {
+			fh, err := os.OpenFile(persistPath, os.O_RDWR, 0644)
+			if errors.Is(err, os.ErrNotExist) {
+				fh, err = os.Create(persistPath)
+				if err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to create persistent disk: %w", err)
 				}
+			} else if err != nil {
+				return nil, nil, 0, fmt.Errorf("failed to open persistent disk: %w", err)
 			} else {
-				if _, err := io.Copy(io.NewOffsetWriter(fh, 0), io.NewSectionReader(vmem, 0, fsSize)); err != nil {
-					return nil, nil, 0, fmt.Errorf("failed to copy memory to persistent filesystem: %w", err)
-				}
+				// the file already exists.
+				create = false
 			}
 
-			slog.Debug("copied memory to persistent filesystem", "took", time.Since(start))
-		} else if err == nil {
-			log.Info("opened persistent filesystem", "size", fsSize, "path", persistPath)
-
-			info, err := fh.Stat()
+			disk, err := trdf.OpenDisk(fh, fsSize)
 			if err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to stat persistent filesystem: %w", err)
+				return nil, nil, 0, fmt.Errorf("failed to open persistent disk: %w", err)
 			}
 
-			if info.Size() == fsSize {
-				// all good
-			} else if info.Size() < fsSize && feature.HasFeature(feature.FeatureExt4Resize) {
-				log.Warn("resizing persistent filesystem", "size", fsSize, "current", info.Size())
+			final = &diskBlockDevice{Disk: disk}
+		} else {
+			fh, err := os.OpenFile(persistPath, os.O_RDWR, 0644)
+			if errors.Is(err, os.ErrNotExist) {
+				fh, err = os.Create(persistPath)
+				if err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to create persistent filesystem: %w", err)
+				}
+
 				if err := fh.Truncate(fsSize); err != nil {
 					return nil, nil, 0, fmt.Errorf("failed to truncate persistent filesystem: %w", err)
 				}
+			} else if err == nil {
+				info, err := fh.Stat()
+				if err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to stat persistent filesystem: %w", err)
+				}
+
+				if info.Size() == fsSize {
+					// all good
+				} else if info.Size() < fsSize && feature.HasFeature(feature.FeatureExt4Resize) {
+					log.Warn("resizing persistent filesystem", "size", fsSize, "current", info.Size())
+					if err := fh.Truncate(fsSize); err != nil {
+						return nil, nil, 0, fmt.Errorf("failed to truncate persistent filesystem: %w", err)
+					}
+				} else {
+					return nil, nil, 0, fmt.Errorf("persistent filesystem size mismatch: %d != %d", info.Size(), fsSize)
+				}
+
+				create = false
 			} else {
-				return nil, nil, 0, fmt.Errorf("persistent filesystem size mismatch: %d != %d", info.Size(), fsSize)
+				return nil, nil, 0, fmt.Errorf("failed to open persistent filesystem: %w", err)
 			}
-		} else {
-			return nil, nil, 0, fmt.Errorf("failed to open persistent filesystem: %w", err)
+
+			final = &fileBlockDevice{File: fh, size: fsSize}
+		}
+	}
+
+	// Only create the filesystem if it needs to be created.
+	if create {
+		if final != nil {
+			log.Info("creating persistent disk", "size", fsSize, "path", persistPath)
 		}
 
-		return &fileBlockDevice{File: fh, size: fsSize}, nil, fsSize, nil
+		start := time.Now()
+
+		vmem := vm.NewVirtualMemory(fsSize, 4096)
+		bd := &virtualBlockDevice{VirtualMemory: vmem}
+
+		log.Debug("created virtual memory", "took", time.Since(start))
+
+		var ext4Fs *ext4.Ext4Filesystem
+		switch kind {
+		case config.FilesystemKindExt4:
+			start = time.Now()
+
+			fs, err := ext4.CreateExt4Filesystem(vmem, 0, fsSize)
+			if err != nil {
+				return nil, nil, 0, fmt.Errorf("failed to create ext4 filesystem: %w", err)
+			}
+			ext4Fs = fs
+
+			log.Debug("created ext4 filesystem", "took", time.Since(start))
+
+			start = time.Now()
+
+			var regionWrapper ext4.RegionWrapperFunc
+
+			if tr.dumpWriter != nil {
+				regionWrapper = func(filename string, region vm.MemoryRegion) vm.MemoryRegion {
+					return &loggerRegion{
+						MemoryRegion: region,
+						filename:     filename,
+						write:        tr.dumpWriter.Write,
+					}
+				}
+			}
+
+			if err := fs.AddDirectory(tr, root, regionWrapper, skipDirectories); err != nil {
+				return nil, nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
+			}
+
+			log.Debug("built filesystem", "took", time.Since(start))
+		case config.FilesystemKindRaw:
+			// noop
+		default:
+			return nil, nil, 0, fmt.Errorf("unknown filesystem kind: %s", kind)
+		}
+
+		// If we have a final disk (a persistent disk), we need to copy the memory to it.
+		if final != nil {
+			if feature.HasFeature(feature.FeatureFastWritePersist) {
+				if _, err := vmem.WriteSparseTo(final); err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to copy memory to persistent filesystem: %w", err)
+				}
+			} else {
+				if _, err := io.Copy(io.NewOffsetWriter(final, 0), io.NewSectionReader(vmem, 0, fsSize)); err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to copy memory to persistent filesystem: %w", err)
+				}
+			}
+		} else {
+			final = bd
+		}
+
+		return final, ext4Fs, fsSize, nil
 	} else {
-		return
+		log.Info("opened persistent disk", "size", fsSize, "path", persistPath)
+
+		return final, nil, fsSize, nil
 	}
 }
 
@@ -1141,8 +1186,8 @@ func (tr *driver) nbdLoop(listener net.Listener, exports ...nbdExport) {
 		}
 
 		go func(conn net.Conn) {
-			minBlockSize := uint32(512)
-			preferredBlockSize := uint32(1024)
+			minBlockSize := uint32(4096)
+			preferredBlockSize := uint32(4096)
 			maximumBlockSize := uint32(32*1024*1024 - 1)
 			if tr.nbdBlockSize != 0 {
 				minBlockSize = min(512, uint32(tr.nbdBlockSize))
@@ -1385,7 +1430,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		defer out.Close()
 
 		if feature.HasFeature(feature.FeatureFastWritePersist) {
-			vmem, ok := vmem.(*vm.VirtualMemory)
+			vmem, ok := vmem.(*virtualBlockDevice)
 			if !ok {
 				return fmt.Errorf("failed to cast to virtual memory")
 			}
@@ -1449,6 +1494,11 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		if err != nil {
 			return fmt.Errorf("failed to build filesystem: %w", err)
 		}
+		d.onExit = append(d.onExit, func() {
+			if err := vmem.Close(); err != nil {
+				log.Error("failed to close virtual memory", "error", err)
+			}
+		})
 
 		nbdAddress := &nbdAddress{Addr: addr, Export: volume.VolumeName}
 
