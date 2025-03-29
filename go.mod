@@ -1,7 +1,6 @@
 module github.com/tinyrange/tinyrange
 
 go 1.24.0
-
 require (
 	github.com/Code-Hex/vz/v3 v3.6.0
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
@@ -34,7 +33,7 @@ require (
 	golang.org/x/crypto v0.36.0
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
 	golang.org/x/mod v0.24.0
-	golang.org/x/net v0.37.0
+	golang.org/x/net v0.38.0
 	golang.org/x/sys v0.31.0
 	golang.org/x/term v0.30.0
 	gopkg.in/yaml.v3 v3.0.1

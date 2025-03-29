@@ -57,6 +57,8 @@ func parseMount(mount string, writable bool, port int) (common.DirectiveMountHos
 			Port:           port,
 			Writable:       writable,
 		}, nil
+	} else if strings.Contains(mount, ",") {
+		return common.DirectiveMountHostDirectory{}, fmt.Errorf("invalid mount %s (syntax host:guest)", mount)
 	} else {
 		mountPath, err := path.Native.Abs(mount)
 		if err != nil {
@@ -620,7 +622,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 			// Check that all the directories are accessible.
 			for _, mount := range mountDirectives {
 				if _, err := os.Stat(mount.HostDirectory); err != nil {
-					return fmt.Errorf("mount %s is not accessible", mount.HostDirectory)
+					return fmt.Errorf("mount %s is not accessible: %w", mount.HostDirectory, err)
 				}
 			}
 
