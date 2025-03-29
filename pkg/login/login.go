@@ -21,7 +21,7 @@ import (
 
 func detectArchiveExtractor(base common.BuildDefinition, filename string) (common.BuildDefinition, error) {
 	if builder.ReadArchiveSupportsExtracting(filename) {
-		return builder.Factory.NewReadArchiveBuildDefinition(base, filename), nil
+		return builder.Factory.NewReadArchiveBuildDefinition(base, filename, 0), nil
 	} else if strings.HasSuffix(filename, ".archive") {
 		return base, nil
 	} else {
@@ -362,7 +362,7 @@ func (config *Config) addOCIImage(image string, arch config.CPUArchitecture) (co
 			return os.Open(filePath)
 		})
 
-		readArchiveDef := builder.Factory.NewReadArchiveBuildDefinition(def, filePath)
+		readArchiveDef := builder.Factory.NewReadArchiveBuildDefinition(def, filePath, 0)
 
 		ociDef := builder.Factory.NewReadOCIImageDefinition(readArchiveDef)
 

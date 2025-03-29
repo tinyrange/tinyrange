@@ -152,7 +152,7 @@ func (r *readOciImageDefinition) Build(ctx common.BuildContext) error {
 			return err
 		}
 
-		readArchiveDef := newReadArchiveBuildDefinition(layerDef, ".tar$oci.gz")
+		readArchiveDef := newReadArchiveBuildDefinition(layerDef, ".tar$oci.gz", 0)
 
 		layerArtifact, err := ctx.BuildChild(readArchiveDef)
 		if err != nil {

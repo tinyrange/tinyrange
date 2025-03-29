@@ -222,8 +222,23 @@ var (
 )
 
 type tarToArchiveBuildResult struct {
-	r   *tar.Reader
-	oci bool
+	r               *tar.Reader
+	oci             bool
+	stripComponents int
+}
+
+func stripComponents(name string, strip int) string {
+	if strip <= 0 {
+		return name
+	}
+
+	components := strings.Split(name, "/")
+
+	if len(components) <= strip {
+		return ""
+	}
+
+	return strings.Join(components[strip:], "/")
 }
 
 // WriteTo implements common.BuildResult.
@@ -247,6 +262,13 @@ func (r *tarToArchiveBuildResult) WriteResult(w io.Writer) error {
 			} else if strings.HasPrefix(path.Unix.Base(hdr.Name), ".wh.") {
 				deleted = true
 				hdr.Name = path.Unix.Join(path.Unix.Dir(hdr.Name), path.Unix.Base(hdr.Name)[4:])
+			}
+		}
+
+		if r.stripComponents > 0 {
+			hdr.Name = stripComponents(hdr.Name, r.stripComponents)
+			if hdr.Name == "" {
+				continue
 			}
 		}
 
@@ -497,6 +519,10 @@ func (r *readArchiveBuildDefinition) Build(ctx common.BuildContext) error {
 			return err
 		}
 
+		if r.params.StripComponents > 0 {
+			return fmt.Errorf("zip archives do not support stripping components")
+		}
+
 		return ctx.WriteDefault(&zipToArchiveBuildResult{r: reader})
 	} else {
 		kind := r.params.Kind
@@ -529,12 +555,20 @@ func (r *readArchiveBuildDefinition) Build(ctx common.BuildContext) error {
 		}
 
 		if strings.HasSuffix(kind, ".tar") {
-			return ctx.WriteDefault(&tarToArchiveBuildResult{r: tar.NewReader(reader)})
+			return ctx.WriteDefault(&tarToArchiveBuildResult{r: tar.NewReader(reader), stripComponents: r.params.StripComponents})
 		} else if strings.HasSuffix(kind, ".tar$oci") {
-			return ctx.WriteDefault(&tarToArchiveBuildResult{r: tar.NewReader(reader), oci: true})
+			return ctx.WriteDefault(&tarToArchiveBuildResult{r: tar.NewReader(reader), stripComponents: r.params.StripComponents, oci: true})
 		} else if strings.HasSuffix(kind, ".cpio") {
+			if r.params.StripComponents > 0 {
+				return fmt.Errorf("cpio archives do not support stripping components")
+			}
+
 			return ctx.WriteDefault(&cpioToArchiveBuildResult{r: cpio.NewReader(reader)})
 		} else if strings.HasSuffix(kind, ".ar") {
+			if r.params.StripComponents > 0 {
+				return fmt.Errorf("ar archives do not support stripping components")
+			}
+
 			return ctx.WriteDefault(&arToArchiveBuildResult{r: ar.NewReader(reader)})
 		} else {
 			return fmt.Errorf("ReadArchive with unknown kind: %s", r.params.Kind)
@@ -556,6 +590,6 @@ var (
 	_ common.Directive       = &readArchiveBuildDefinition{}
 )
 
-func newReadArchiveBuildDefinition(base common.BuildDefinition, kind string) common.ReadArchiveDefinition {
-	return &readArchiveBuildDefinition{params: ReadArchiveParameters{Base: base, Kind: kind}}
+func newReadArchiveBuildDefinition(base common.BuildDefinition, kind string, stripComponents int) common.ReadArchiveDefinition {
+	return &readArchiveBuildDefinition{params: ReadArchiveParameters{Base: base, Kind: kind, StripComponents: stripComponents}}
 }

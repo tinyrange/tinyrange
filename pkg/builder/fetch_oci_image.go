@@ -402,7 +402,7 @@ func (def *fetchOciImageDefinition) buildFromV1Index(ctx common.BuildContext, re
 				params: RegistryRequestParameters{
 					Url: fmt.Sprintf("/%s/blobs/%s", def.params.Image, layer.BlobSum),
 				},
-			}, ".tar.gz"),
+			}, ".tar.gz", 0),
 		)
 		if err != nil {
 			return err
@@ -440,7 +440,7 @@ func (def *fetchOciImageDefinition) buildFromManifest(
 				params: RegistryRequestParameters{
 					Url: fmt.Sprintf("/%s/blobs/%s", def.params.Image, layer.Digest),
 				},
-			}, ".tar$oci.gz"),
+			}, ".tar$oci.gz", 0),
 		)
 		if err != nil {
 			return err

@@ -19,6 +19,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/path"
 	"github.com/tinyrange/tinyrange/pkg/planner"
 	"github.com/tinyrange/tinyrange/third_party/regexp"
 	starlarkjson "go.starlark.net/lib/json"
@@ -265,26 +266,28 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 				kwargs []starlark.Tuple,
 			) (starlark.Value, error) {
 				var (
-					val  starlark.Value
-					kind string
+					val             starlark.Value
+					kind            string
+					stripComponents int
 				)
 
 				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 					"def", &val,
 					"kind", &kind,
+					"strip_components?", &stripComponents,
 				); err != nil {
 					return starlark.None, err
 				}
 
 				if def, ok := val.(common.BuildDefinition); ok {
-					return builder.Factory.NewReadArchiveBuildDefinition(def, kind), nil
+					return builder.Factory.NewReadArchiveBuildDefinition(def, kind, stripComponents), nil
 				} else if file, ok := val.(filesystem.File); ok {
 					fileDef, err := builder.Factory.NewDefinitionFromFile(file)
 					if err != nil {
 						return starlark.None, err
 					}
 
-					return builder.Factory.NewReadArchiveBuildDefinition(fileDef, kind), nil
+					return builder.Factory.NewReadArchiveBuildDefinition(fileDef, kind, stripComponents), nil
 				} else {
 					return starlark.None, fmt.Errorf("expected BuildDefinition got %s", val.Type())
 				}
@@ -845,6 +848,59 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 				return &common.StarDirective{Directive: common.DirectiveAddInitScript{
 					GuestFilename: guestFilename,
 				}}, nil
+			}),
+			"add_volume": starlark.NewBuiltin("directive.add_volume", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					name    string
+					path    string
+					size    uint64
+					persist bool
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"name", &name,
+					"path", &path,
+					"size", &size,
+					"persist?", &persist,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				return &common.StarDirective{Directive: common.DirectiveAddVolume{
+					VolumeName:    name,
+					GuestPath:     path,
+					MinimumSizeMB: size,
+					Persist:       persist,
+				}}, nil
+			}),
+		},
+	}
+
+	ret["path"] = &starlarkstruct.Module{
+		Name: "path",
+		Members: starlark.StringDict{
+			"base": starlark.NewBuiltin("path.base", func(
+				thread *starlark.Thread,
+				fn *starlark.Builtin,
+				args starlark.Tuple,
+				kwargs []starlark.Tuple,
+			) (starlark.Value, error) {
+				var (
+					pathname string
+				)
+
+				if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+					"pathname", &pathname,
+				); err != nil {
+					return starlark.None, err
+				}
+
+				return starlark.String(path.Unix.Base(pathname)), nil
 			}),
 		},
 	}

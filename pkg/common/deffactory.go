@@ -106,6 +106,7 @@ type DefinitionFactory interface {
 	NewReadArchiveBuildDefinition(
 		base BuildDefinition,
 		kind string,
+		stripComponents int,
 	) ReadArchiveDefinition
 	NewReadOCIImageDefinition(
 		base BuildDefinition,

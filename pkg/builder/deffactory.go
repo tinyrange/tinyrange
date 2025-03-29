@@ -113,8 +113,9 @@ func (*definitionFactory) NewPlanDefinition(
 func (*definitionFactory) NewReadArchiveBuildDefinition(
 	base common.BuildDefinition,
 	kind string,
+	stripComponents int,
 ) common.ReadArchiveDefinition {
-	return newReadArchiveBuildDefinition(base, kind)
+	return newReadArchiveBuildDefinition(base, kind, stripComponents)
 }
 
 func (*definitionFactory) NewReadOCIImageDefinition(

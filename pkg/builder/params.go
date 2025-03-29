@@ -119,7 +119,8 @@ type ReadArchiveParameters struct {
 	Base common.BuildDefinition // The definition used as a base.
 	// The compression kind of the input file (supports .gz, .zst, and .xz compression
 	// and .tar, .cpio, and .ar archive formats)
-	Kind string
+	Kind            string
+	StripComponents int // The number of components to strip from the path.
 }
 
 // Execute a builder defined in Starlark.
