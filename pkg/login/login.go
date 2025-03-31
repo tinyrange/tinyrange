@@ -270,7 +270,7 @@ func (config *Config) addFile(filename string) (common.Directive, error) {
 
 		return common.DirectiveAddFile{
 			Definition: builder.Factory.NewFetchHttpBuildDefinition(filename, 0, nil),
-			Filename:   path.Native.Join("/root", base),
+			Filename:   path.Unix.Join("/root", base),
 		}, nil
 	} else {
 		if !config.localConfig {
