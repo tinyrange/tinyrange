@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/anmitsu/go-shlex"
 	"github.com/tinyrange/tinyrange/pkg/log"
@@ -95,7 +96,12 @@ func (sh *shellInstance) processLine(line string) error {
 		}
 
 		for _, ent := range ents {
-			log.Info("", "ent", ent)
+			info, err := os.Stat(path.Native.Join(directory, ent.Name()))
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("%s % 6d %s %s\n", info.Mode(), info.Size(), info.ModTime().Format(time.Stamp), ent.Name())
 		}
 
 		return nil
