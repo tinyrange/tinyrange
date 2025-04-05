@@ -18,6 +18,7 @@ const (
 	FeatureFastWritePersist Feature = "fast_write_persist" // Enable fast writes of persistent filesystems.
 	FeatureExt4Resize       Feature = "ext4_resize"        // Enable ext4 filesystem resizing
 	FeatureNewDiskFormat    Feature = "new_disk_format"    // Enable the new disk format
+	FeatureNoAccelerate     Feature = "no_accelerate"      // Disable hardware virtualization acceleration
 )
 
 var features = make(map[Feature]bool)
@@ -34,6 +35,7 @@ func init() {
 	features[FeatureFastWritePersist] = true
 	features[FeatureExt4Resize] = false
 	features[FeatureNewDiskFormat] = true
+	features[FeatureNoAccelerate] = false
 }
 
 func SetFeaturesFromExperimentalFlags(flags []string) {

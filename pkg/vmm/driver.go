@@ -1812,6 +1812,10 @@ func (d *driver) Accelerated() bool {
 		return false
 	}
 
+	if feature.HasFeature(feature.FeatureNoAccelerate) {
+		return false
+	}
+
 	return accelerate.SupportsAcceleration()
 }
 
