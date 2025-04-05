@@ -691,6 +691,7 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 	indexFile := builder.Factory.NewReadArchiveBuildDefinition(
 		builder.Factory.NewFetchHttpBuildDefinition(fmt.Sprintf("%s/%s/APKINDEX.tar.gz", params.Repo, params.Architecture), 2*time.Hour, nil),
 		".tar.gz",
+		0,
 	)
 
 	index, err := filesystemFromArchiveDefinition(ctx, indexFile)
