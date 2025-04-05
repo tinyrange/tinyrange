@@ -7,11 +7,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tinyrange/tinyrange/pkg/build1"
 	"github.com/tinyrange/tinyrange/pkg/build2"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
-	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
@@ -83,10 +81,6 @@ func newDb() (common.PackageDatabase, error) {
 		buildFs := build2.NewFilesystemBuildCache(buildDirMut)
 
 		return build2.New(buildFs, db, rootBuildJobs, logger.Group("builder")), nil
-	}
-
-	if feature.HasFeature(feature.FeatureBuild1) {
-		builderFactory = build1.NewBuilder(buildDir)
 	}
 
 	db, err := database.New(builderFactory)
