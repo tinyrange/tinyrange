@@ -60,7 +60,7 @@ func (r *readOciImageDefinition) AsFragments(ctx common.BuildContext, special co
 		return nil, err
 	}
 
-	var def fetchOciImageDefinition
+	var def ociFetcher
 
 	if err := ParseJsonFromFile(res, &def); err != nil {
 		return nil, err
@@ -144,7 +144,7 @@ func (r *readOciImageDefinition) Build(ctx common.BuildContext) error {
 		return err
 	}
 
-	out := &fetchOciImageDefinition{}
+	out := &ociFetcher{}
 
 	for _, layer := range mainManifest.Layers {
 		layerDef, err := newDefinitionFromFile(filenames[layer])

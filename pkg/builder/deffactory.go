@@ -5,6 +5,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 )
@@ -79,7 +80,11 @@ func (*definitionFactory) NewFetchHttpBuildDefinition(
 func (*definitionFactory) NewFetchOCIImageDefinition(
 	registry, image, tag, architecture string,
 ) common.FetchOciImageDefinition {
-	return newFetchOCIImageDefinition(registry, image, tag, architecture)
+	if feature.HasFeature(feature.FeatureOCIArchive2) {
+		return newFetchOCIImageV2Definition(registry, image, tag, architecture)
+	} else {
+		return newFetchOCIImageDefinition(registry, image, tag, architecture)
+	}
 }
 
 func (d *definitionFactory) NewFetchCvmfsDefinition(

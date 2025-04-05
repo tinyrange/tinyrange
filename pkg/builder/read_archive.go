@@ -13,6 +13,7 @@ import (
 	"github.com/cavaliergopher/cpio"
 	"github.com/klauspost/compress/zstd"
 	"github.com/tinyrange/tinyrange/pkg/archive"
+	"github.com/tinyrange/tinyrange/pkg/archive2"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -25,6 +26,13 @@ import (
 
 func init() {
 	hash.RegisterType(&readArchiveBuildDefinition{})
+	hash.RegisterType(&readArchive2BuildDefinition{})
+}
+
+type archiveConverter interface {
+	common.BuildResult
+
+	WriteArchive2(w *archive2.ArchiveWriter) error
 }
 
 type directoryToArchiveBuildResult struct {
@@ -160,6 +168,11 @@ func (d *directoryToArchiveBuildResult) WriteResult(w io.Writer) error {
 	return d.writeDirTo(d.dir, "")
 }
 
+// WriteArchive2 implements archiveConverter.
+func (d *directoryToArchiveBuildResult) WriteArchive2(w *archive2.ArchiveWriter) error {
+	return fmt.Errorf("archive2 unimplemented for directoryToArchive")
+}
+
 func (*directoryToArchiveBuildResult) String() string { return "directoryToArchiveBuildResult" }
 func (*directoryToArchiveBuildResult) Type() string   { return "directoryToArchiveBuildResult" }
 func (*directoryToArchiveBuildResult) Hash() (uint32, error) {
@@ -169,8 +182,8 @@ func (*directoryToArchiveBuildResult) Truth() starlark.Bool { return starlark.Tr
 func (*directoryToArchiveBuildResult) Freeze()              {}
 
 var (
-	_ starlark.Value     = &directoryToArchiveBuildResult{}
-	_ common.BuildResult = &directoryToArchiveBuildResult{}
+	_ starlark.Value   = &directoryToArchiveBuildResult{}
+	_ archiveConverter = &directoryToArchiveBuildResult{}
 )
 
 type StarBuildResult interface {
@@ -217,8 +230,13 @@ func (z *zipToArchiveBuildResult) WriteResult(w io.Writer) error {
 	return nil
 }
 
+// WriteArchive2 implements archiveConverter.
+func (z *zipToArchiveBuildResult) WriteArchive2(w *archive2.ArchiveWriter) error {
+	return fmt.Errorf("archive2 unimplemented for zip")
+}
+
 var (
-	_ common.BuildResult = &zipToArchiveBuildResult{}
+	_ archiveConverter = &zipToArchiveBuildResult{}
 )
 
 type tarToArchiveBuildResult struct {
@@ -317,8 +335,83 @@ func (r *tarToArchiveBuildResult) WriteResult(w io.Writer) error {
 	return nil
 }
 
+// WriteArchive2 implements archiveConverter.
+func (r *tarToArchiveBuildResult) WriteArchive2(w *archive2.ArchiveWriter) error {
+	for {
+		hdr, err := r.r.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+
+		deleted := false
+
+		if r.oci {
+			if path.Unix.Base(hdr.Name) == ".wh..wh..opq" {
+				deleted = true
+				hdr.Name = path.Unix.Dir(hdr.Name)
+			} else if strings.HasPrefix(path.Unix.Base(hdr.Name), ".wh.") {
+				deleted = true
+				hdr.Name = path.Unix.Join(path.Unix.Dir(hdr.Name), path.Unix.Base(hdr.Name)[4:])
+			}
+		}
+
+		if r.stripComponents > 0 {
+			hdr.Name = stripComponents(hdr.Name, r.stripComponents)
+			if hdr.Name == "" {
+				continue
+			}
+		}
+
+		info := hdr.FileInfo()
+
+		var typeFlag archive2.EntryKind
+
+		switch hdr.Typeflag {
+		case tar.TypeReg:
+			typeFlag = archive2.EntryKindRegular
+		case tar.TypeDir:
+			typeFlag = archive2.EntryKindDirectory
+		case tar.TypeChar:
+			// TODO(joshua): Handle character devices.
+			continue
+		case tar.TypeBlock:
+			// TODO(joshua): Handle block devices.
+			continue
+		case tar.TypeSymlink:
+			typeFlag = archive2.EntryKindSymlink
+		case tar.TypeLink:
+			typeFlag = archive2.EntryKindHardlink
+		case tar.TypeXGlobalHeader:
+			continue
+		default:
+			return fmt.Errorf("unknown type flag: %d", hdr.Typeflag)
+		}
+
+		if deleted {
+			typeFlag = archive2.EntryKindDeleted
+		}
+
+		var fact archive2.EntryFactory
+
+		if err := w.WriteEntry(fact.
+			Kind(typeFlag).
+			Name(hdr.Name).
+			Linkname(hdr.Linkname).
+			Size(hdr.Size).
+			Mode(info.Mode()).
+			Owner(hdr.Uid, hdr.Gid).
+			ModTime(hdr.ModTime), r.r); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 var (
-	_ common.BuildResult = &tarToArchiveBuildResult{}
+	_ archiveConverter = &tarToArchiveBuildResult{}
 )
 
 type cpioToArchiveBuildResult struct {
@@ -369,8 +462,13 @@ func (c *cpioToArchiveBuildResult) WriteResult(w io.Writer) error {
 	return nil
 }
 
+// WriteArchive2 implements archiveConverter.
+func (c *cpioToArchiveBuildResult) WriteArchive2(w *archive2.ArchiveWriter) error {
+	return fmt.Errorf("archive2 unimplemented for cpio")
+}
+
 var (
-	_ common.BuildResult = &cpioToArchiveBuildResult{}
+	_ archiveConverter = &cpioToArchiveBuildResult{}
 )
 
 type arToArchiveBuildResult struct {
@@ -405,8 +503,13 @@ func (c *arToArchiveBuildResult) WriteResult(w io.Writer) error {
 	return nil
 }
 
+// WriteArchive2 implements archiveConverter.
+func (c *arToArchiveBuildResult) WriteArchive2(w *archive2.ArchiveWriter) error {
+	panic("unimplemented")
+}
+
 var (
-	_ common.BuildResult = &arToArchiveBuildResult{}
+	_ archiveConverter = &arToArchiveBuildResult{}
 )
 
 func ReadArchiveSupportsExtracting(kind string) bool {
@@ -430,6 +533,78 @@ func ReadArchiveSupportsExtracting(kind string) bool {
 		return true
 	} else {
 		return false
+	}
+}
+
+func getConverterForFile(file filesystem.File, kind string, stripComponents int) (archiveConverter, error) {
+	fh, err := file.Open()
+	if err != nil {
+		return nil, err
+	}
+
+	if strings.HasSuffix(kind, ".zip") {
+		info, err := file.Stat()
+		if err != nil {
+			return nil, err
+		}
+
+		reader, err := zip.NewReader(fh, info.Size())
+		if err != nil {
+			return nil, err
+		}
+
+		if stripComponents > 0 {
+			return nil, fmt.Errorf("zip archives do not support stripping components")
+		}
+
+		return &zipToArchiveBuildResult{r: reader}, nil
+	} else {
+		var reader io.Reader
+
+		if strings.HasSuffix(kind, ".gz") {
+			reader, err = gzip.NewReader(fh)
+			if err != nil {
+				return nil, err
+			}
+
+			kind = strings.TrimSuffix(kind, ".gz")
+		} else if strings.HasSuffix(kind, ".zst") {
+			reader, err = zstd.NewReader(fh)
+			if err != nil {
+				return nil, err
+			}
+
+			kind = strings.TrimSuffix(kind, ".zst")
+		} else if strings.HasSuffix(kind, ".xz") {
+			reader, err = xz.NewReader(fh, xz.DefaultDictMax)
+			if err != nil {
+				return nil, err
+			}
+
+			kind = strings.TrimSuffix(kind, ".xz")
+		} else {
+			reader = fh
+		}
+
+		if strings.HasSuffix(kind, ".tar") {
+			return &tarToArchiveBuildResult{r: tar.NewReader(reader), stripComponents: stripComponents}, nil
+		} else if strings.HasSuffix(kind, ".tar$oci") {
+			return &tarToArchiveBuildResult{r: tar.NewReader(reader), stripComponents: stripComponents, oci: true}, nil
+		} else if strings.HasSuffix(kind, ".cpio") {
+			if stripComponents > 0 {
+				return nil, fmt.Errorf("cpio archives do not support stripping components")
+			}
+
+			return &cpioToArchiveBuildResult{r: cpio.NewReader(reader)}, nil
+		} else if strings.HasSuffix(kind, ".ar") {
+			if stripComponents > 0 {
+				return nil, fmt.Errorf("ar archives do not support stripping components")
+			}
+
+			return &arToArchiveBuildResult{r: ar.NewReader(reader)}, nil
+		} else {
+			return nil, fmt.Errorf("ReadArchive with unknown kind: %s", kind)
+		}
 	}
 }
 
@@ -503,77 +678,12 @@ func (r *readArchiveBuildDefinition) Build(ctx common.BuildContext) error {
 		return err
 	}
 
-	fh, err := res.Open()
+	converter, err := getConverterForFile(res, r.params.Kind, r.params.StripComponents)
 	if err != nil {
 		return err
 	}
 
-	if strings.HasSuffix(r.params.Kind, ".zip") {
-		info, err := res.Stat()
-		if err != nil {
-			return err
-		}
-
-		reader, err := zip.NewReader(fh, info.Size())
-		if err != nil {
-			return err
-		}
-
-		if r.params.StripComponents > 0 {
-			return fmt.Errorf("zip archives do not support stripping components")
-		}
-
-		return ctx.WriteDefault(&zipToArchiveBuildResult{r: reader})
-	} else {
-		kind := r.params.Kind
-
-		var reader io.Reader
-
-		if strings.HasSuffix(kind, ".gz") {
-			reader, err = gzip.NewReader(fh)
-			if err != nil {
-				return err
-			}
-
-			kind = strings.TrimSuffix(kind, ".gz")
-		} else if strings.HasSuffix(kind, ".zst") {
-			reader, err = zstd.NewReader(fh)
-			if err != nil {
-				return err
-			}
-
-			kind = strings.TrimSuffix(kind, ".zst")
-		} else if strings.HasSuffix(kind, ".xz") {
-			reader, err = xz.NewReader(fh, xz.DefaultDictMax)
-			if err != nil {
-				return err
-			}
-
-			kind = strings.TrimSuffix(kind, ".xz")
-		} else {
-			reader = fh
-		}
-
-		if strings.HasSuffix(kind, ".tar") {
-			return ctx.WriteDefault(&tarToArchiveBuildResult{r: tar.NewReader(reader), stripComponents: r.params.StripComponents})
-		} else if strings.HasSuffix(kind, ".tar$oci") {
-			return ctx.WriteDefault(&tarToArchiveBuildResult{r: tar.NewReader(reader), stripComponents: r.params.StripComponents, oci: true})
-		} else if strings.HasSuffix(kind, ".cpio") {
-			if r.params.StripComponents > 0 {
-				return fmt.Errorf("cpio archives do not support stripping components")
-			}
-
-			return ctx.WriteDefault(&cpioToArchiveBuildResult{r: cpio.NewReader(reader)})
-		} else if strings.HasSuffix(kind, ".ar") {
-			if r.params.StripComponents > 0 {
-				return fmt.Errorf("ar archives do not support stripping components")
-			}
-
-			return ctx.WriteDefault(&arToArchiveBuildResult{r: ar.NewReader(reader)})
-		} else {
-			return fmt.Errorf("ReadArchive with unknown kind: %s", r.params.Kind)
-		}
-	}
+	return ctx.WriteDefault(converter)
 }
 
 func (def *readArchiveBuildDefinition) String() string { return "ReadArchive" }
@@ -585,11 +695,127 @@ func (*readArchiveBuildDefinition) Truth() starlark.Bool { return starlark.True 
 func (*readArchiveBuildDefinition) Freeze()              {}
 
 var (
-	_ starlark.Value         = &readArchiveBuildDefinition{}
-	_ common.BuildDefinition = &readArchiveBuildDefinition{}
-	_ common.Directive       = &readArchiveBuildDefinition{}
+	_ common.ReadArchiveDefinition = &readArchiveBuildDefinition{}
 )
 
 func newReadArchiveBuildDefinition(base common.BuildDefinition, kind string, stripComponents int) common.ReadArchiveDefinition {
 	return &readArchiveBuildDefinition{params: ReadArchiveParameters{Base: base, Kind: kind, StripComponents: stripComponents}}
+}
+
+type readArchive2BuildDefinition struct {
+	params ReadArchiveParameters
+}
+
+// Dependencies implements common.BuildDefinition.
+func (def *readArchive2BuildDefinition) Dependencies() ([]common.BuildDefinition, error) {
+	return []common.BuildDefinition{def.params.Base}, nil
+}
+
+// implements common.BuildDefinition.
+func (def *readArchive2BuildDefinition) Params() hash.SerializableValue { return def.params }
+func (def *readArchive2BuildDefinition) SerializableType() string {
+	return "ReadArchive2BuildDefinition"
+}
+func (def *readArchive2BuildDefinition) Create(params hash.SerializableValue) hash.Definition {
+	return &readArchive2BuildDefinition{params: params.(ReadArchiveParameters)}
+}
+
+// AsFragments implements common.Directive.
+func (r *readArchive2BuildDefinition) AsFragments(ctx common.BuildContext, special common.SpecialDirectiveHandlers) ([]config.Fragment, error) {
+	art, err := ctx.BuildChild(r)
+	if err != nil {
+		return nil, err
+	}
+
+	index, err := art.File("index")
+	if err != nil {
+		return nil, err
+	}
+
+	contents, err := art.File("contents")
+	if err != nil {
+		return nil, err
+	}
+
+	indexFilename, err := ctx.HostFilenameFromFile(index)
+	if err != nil {
+		return nil, err
+	}
+
+	contentsFilename, err := ctx.HostFilenameFromFile(contents)
+	if err != nil {
+		return nil, err
+	}
+
+	return []config.Fragment{
+		{Archive2: &config.Archive2Fragment{
+			IndexHostFilename:    indexFilename,
+			ContentsHostFilename: contentsFilename,
+		}},
+	}, nil
+}
+
+// ToStarlark implements common.BuildDefinition.
+func (r *readArchive2BuildDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
+	return nil, fmt.Errorf("ToStarlark unimplemented for readArchive2")
+}
+
+// NeedsBuild implements BuildDefinition.
+func (r *readArchive2BuildDefinition) NeedsBuild(ctx common.BuildContext) (bool, error) {
+	return false, nil
+}
+
+// Build implements BuildDefinition.
+func (r *readArchive2BuildDefinition) Build(ctx common.BuildContext) error {
+	art, err := ctx.BuildChild(r.params.Base)
+	if err != nil {
+		return err
+	}
+
+	res, err := art.Default()
+	if err != nil {
+		return err
+	}
+
+	converter, err := getConverterForFile(res, r.params.Kind, r.params.StripComponents)
+	if err != nil {
+		return err
+	}
+
+	index, err := ctx.CreateFile("index")
+	if err != nil {
+		return err
+	}
+
+	contents, err := ctx.CreateFile("contents")
+	if err != nil {
+		return err
+	}
+
+	ark, err := archive2.NewArchiveWriter(index, contents)
+	if err != nil {
+		return err
+	}
+
+	if err := converter.WriteArchive2(ark); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (def *readArchive2BuildDefinition) String() string { return "ReadArchive2" }
+func (*readArchive2BuildDefinition) Type() string       { return "ReadArchive2BuildDefinition" }
+func (*readArchive2BuildDefinition) Hash() (uint32, error) {
+	return 0, fmt.Errorf("ReadArchive2BuildDefinition is not hashable")
+}
+func (*readArchive2BuildDefinition) Truth() starlark.Bool { return starlark.True }
+func (*readArchive2BuildDefinition) Freeze()              {}
+
+var (
+	_ common.ReadArchiveDefinition = &readArchive2BuildDefinition{}
+)
+
+func newReadArchive2BuildDefinition(base common.BuildDefinition, kind string, stripComponents int) common.ReadArchiveDefinition {
+	return &readArchive2BuildDefinition{params: ReadArchiveParameters{Base: base, Kind: kind, StripComponents: stripComponents}}
 }

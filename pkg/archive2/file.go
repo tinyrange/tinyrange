@@ -25,10 +25,23 @@ type archiveFile struct {
 	contentsReader io.ReaderAt
 	offset         int64
 
-	modTime time.Time
-	mode    fs.FileMode
-	size    int64
-	name    string
+	modTime  time.Time
+	mode     fs.FileMode
+	size     int64
+	name     string
+	linkname string
+	uid      int
+	gid      int
+}
+
+// UidAndGid implements filesystem.HasUidAndGid.
+func (a *archiveFile) UidAndGid() (int, int, error) {
+	return a.uid, a.gid, nil
+}
+
+// LinkName implements filesystem.HasLinkName.
+func (a *archiveFile) LinkName() (string, error) {
+	return a.linkname, nil
 }
 
 // implements filesystem.FileInfo.
@@ -50,12 +63,14 @@ func (a *archiveFile) Open() (filesystem.FileHandle, error) {
 
 // Stat implements filesystem.File.
 func (a *archiveFile) Stat() (filesystem.FileInfo, error) {
-	return &archiveFile{}, nil
+	return a, nil
 }
 
 var (
-	_ filesystem.File     = &archiveFile{}
-	_ filesystem.FileInfo = &archiveFile{}
+	_ filesystem.File         = &archiveFile{}
+	_ filesystem.HasLinkName  = &archiveFile{}
+	_ filesystem.HasUidAndGid = &archiveFile{}
+	_ filesystem.FileInfo     = &archiveFile{}
 )
 
 func (ar *ArchiveReader) File() (filesystem.File, error) {
@@ -72,6 +87,8 @@ func (ar *ArchiveReader) File() (filesystem.File, error) {
 		return nil, err
 	}
 
+	uid, gid := ar.Owner()
+
 	return &archiveFile{
 		contentsReader: ar.contentsReader,
 		offset:         offset,
@@ -79,5 +96,8 @@ func (ar *ArchiveReader) File() (filesystem.File, error) {
 		mode:           ar.Mode(),
 		size:           ar.Size(),
 		name:           ar.Name(),
+		linkname:       ar.Linkname(),
+		uid:            uid,
+		gid:            gid,
 	}, nil
 }

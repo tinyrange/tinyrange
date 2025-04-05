@@ -126,6 +126,7 @@ const (
 	EntryKindSymlink             // Symbolic link to another file
 	EntryKindHardlink            // Hard link to another file
 	EntryKindExtended            // Extended file with metadata
+	EntryKindDeleted             // Deleted file
 )
 
 type EntryFactory struct {

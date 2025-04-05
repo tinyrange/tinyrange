@@ -18,6 +18,7 @@ const (
 	FeatureExt4Resize       Feature = "ext4_resize"        // Enable ext4 filesystem resizing
 	FeatureNewDiskFormat    Feature = "new_disk_format"    // Enable the new disk format
 	FeatureNoAccelerate     Feature = "no_accelerate"      // Disable hardware virtualization acceleration
+	FeatureOCIArchive2      Feature = "oci_ark2"           // Enable OCI archive2 support
 )
 
 var features = make(map[Feature]bool)

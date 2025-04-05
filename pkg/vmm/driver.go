@@ -733,12 +733,6 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 						return fmt.Errorf("failed to get file: %w", err)
 					}
 
-					// log.Info("reg", "name", name)
-					file, err = filesystem.NewOverlayFile(f)
-					if err != nil {
-						return err
-					}
-
 					if _, err := filesystem.CreateChild(dir, name, f); err != nil {
 						return err
 					}
@@ -746,12 +740,6 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 					f, err := ent.File()
 					if err != nil {
 						return fmt.Errorf("failed to get file: %w", err)
-					}
-
-					// log.Info("reg", "name", name)
-					file, err = filesystem.NewOverlayFile(f)
-					if err != nil {
-						return err
 					}
 
 					if _, err := filesystem.CreateChild(dir, name, f); err != nil {
@@ -764,14 +752,16 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 				file = dir
 			}
 
-			uid, gid := ent.Owner()
+			if file != nil {
+				uid, gid := ent.Owner()
 
-			if err := file.Chown(uid, gid); err != nil {
-				return fmt.Errorf("failed to chown in guest: %w", err)
-			}
+				if err := file.Chown(uid, gid); err != nil {
+					return fmt.Errorf("failed to chown in guest: %w", err)
+				}
 
-			if err := file.Chmod(fs.FileMode(ent.Mode())); err != nil {
-				return fmt.Errorf("failed to chmod in guest: %w", err)
+				if err := file.Chmod(fs.FileMode(ent.Mode())); err != nil {
+					return fmt.Errorf("failed to chmod in guest: %w", err)
+				}
 			}
 		}
 
