@@ -8,7 +8,7 @@ require (
 	github.com/basgys/goxml2json v1.1.0
 	github.com/blakesmith/ar v0.0.0-20190502131153-809d4375e1fb
 	github.com/cavaliergopher/cpio v1.0.1
-	github.com/cavaliergopher/rpm v1.2.0
+	github.com/cavaliergopher/rpm v1.3.0
 	github.com/creack/pty v1.1.24
 	github.com/fatih/color v1.18.0
 	github.com/google/gopacket v1.1.19
