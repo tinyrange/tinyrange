@@ -501,6 +501,28 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 		}
 
 		return nil
+	} else if databaseFile := frag.DatabaseFile; databaseFile != nil {
+		file, err := tr.ResolveReference(databaseFile.DatabaseReference)
+		if err != nil {
+			return fmt.Errorf("failed to resolve host filename: %w", err)
+		}
+
+		overlay, err := filesystem.NewOverlayFile(file)
+		if err != nil {
+			return err
+		}
+
+		if databaseFile.Executable {
+			if err := overlay.Chmod(fs.FileMode(0755)); err != nil {
+				return err
+			}
+		}
+
+		if _, err := filesystem.CreateChild(dir, databaseFile.GuestFilename, overlay); err != nil {
+			return err
+		}
+
+		return nil
 	} else if fileContents := frag.FileContents; fileContents != nil {
 		file := filesystem.NewMemoryFile(filesystem.TypeRegular)
 
