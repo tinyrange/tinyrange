@@ -640,6 +640,10 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 			if err := file.Chmod(fs.FileMode(ent.Mode())); err != nil {
 				return fmt.Errorf("failed to chmod in guest: %w", err)
 			}
+
+			if err := file.Chtimes(ent.ModTime()); err != nil {
+				return fmt.Errorf("failed to set modtime in guest: %w", err)
+			}
 		}
 
 		return nil
@@ -761,6 +765,10 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 
 				if err := file.Chmod(fs.FileMode(ent.Mode())); err != nil {
 					return fmt.Errorf("failed to chmod in guest: %w", err)
+				}
+
+				if err := file.Chtimes(ent.ModTime()); err != nil {
+					return fmt.Errorf("failed to set modtime in guest: %w", err)
 				}
 			}
 		}

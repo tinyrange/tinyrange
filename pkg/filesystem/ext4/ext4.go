@@ -1830,6 +1830,10 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 			if err := node.chown(uint16(uid), uint16(gid)); err != nil {
 				return fmt.Errorf("failed to chown: %w", err)
 			}
+
+			if err := node.chtime(info.ModTime()); err != nil {
+				return fmt.Errorf("failed to chtime: %w", err)
+			}
 		}
 	}
 

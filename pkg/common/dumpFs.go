@@ -1,14 +1,16 @@
 package common
 
 import (
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"runtime"
 	"strings"
-	"time"
+	"syscall"
 
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
@@ -24,7 +26,9 @@ type fileInfo struct {
 	fullName string
 	mode     fs.FileMode
 	size     uint64
-	modTime  time.Time
+	uid      uint32
+	gid      uint32
+	hash     string
 }
 
 func getKind(mode fs.FileMode) string {
@@ -59,7 +63,7 @@ func getKind(mode fs.FileMode) string {
 
 func (f fileInfo) encode() []string {
 	kindString := getKind(f.mode)
-	return []string{f.fullName, kindString, f.mode.String(), fmt.Sprintf("%d", f.size), f.modTime.String()}
+	return []string{f.fullName, kindString, f.mode.String(), fmt.Sprintf("%d", f.size), fmt.Sprintf("%d", f.uid), fmt.Sprintf("%d", f.gid), f.hash}
 }
 
 func GetMounts() ([]MountInfo, error) {
@@ -93,8 +97,27 @@ func GetMounts() ([]MountInfo, error) {
 	return ret, nil
 }
 
+func getFileHash(filename string) (string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+
+	if _, err = io.Copy(hash, file); err != nil {
+		return "", err
+	}
+
+	hashBytes := hash.Sum(nil)
+
+	return hex.EncodeToString(hashBytes), nil
+}
+
 type fsWalker struct {
-	mounts map[string]MountInfo
+	mounts    map[string]MountInfo
+	hashFiles bool
 
 	records []fileInfo
 }
@@ -116,12 +139,29 @@ func (w *fsWalker) walk(filename string) error {
 		return err
 	}
 
-	w.records = append(w.records, fileInfo{
+	statSys := stat.Sys().(*syscall.Stat_t)
+
+	record := fileInfo{
 		fullName: filename,
 		mode:     stat.Mode(),
 		size:     uint64(stat.Size()),
-		// modTime:  stat.ModTime(),
-	})
+		uid:      statSys.Uid,
+		gid:      statSys.Gid,
+	}
+
+	if w.hashFiles && stat.Mode().IsRegular() {
+		hash, err := getFileHash(filename)
+		if err != nil {
+			return err
+		}
+
+		record.hash = hash
+
+		s := strings.Join(record.encode(), ",")
+		fmt.Fprintf(os.Stderr, "%s\n", s)
+	}
+
+	w.records = append(w.records, record)
 
 	if stat.Mode().IsDir() {
 		children, err := os.ReadDir(filename)
@@ -155,13 +195,16 @@ func (w *fsWalker) writeCsv(wr io.Writer) error {
 	return csvWriter.Error()
 }
 
-func DumpFs(outputFilename string) error {
+func DumpFs(outputFilename string, hashFiles bool) error {
 	mountList, err := GetMounts()
 	if err != nil {
 		return err
 	}
 
-	fsWalker := &fsWalker{mounts: make(map[string]MountInfo)}
+	fsWalker := &fsWalker{
+		mounts:    make(map[string]MountInfo),
+		hashFiles: hashFiles,
+	}
 
 	for _, mount := range mountList {
 		fsWalker.mounts[mount.Target] = mount

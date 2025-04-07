@@ -1541,6 +1541,7 @@ func initMain() error {
 	runBasicScripts := flag.String("run-basic-scripts", "", "run a JSON file containing an array of commands")
 	runConfig := flag.String("run-config", "", "run a JSON file with a given builder config")
 	dumpFs := flag.String("dump-fs", "", "dump all filesystem metadata to a CSV file")
+	dumpFsHash := flag.Bool("dump-fs-hash", false, "include file hashes when dumping")
 	runStarlarkScriptFile := flag.String("star", "", "run a starlark script")
 	modprobe := flag.String("modprobe", "", "load a kernel module")
 
@@ -1587,7 +1588,7 @@ func initMain() error {
 	}
 
 	if *dumpFs != "" {
-		return common.DumpFs(*dumpFs)
+		return common.DumpFs(*dumpFs, *dumpFsHash)
 	}
 
 	if *runScripts != "" {
