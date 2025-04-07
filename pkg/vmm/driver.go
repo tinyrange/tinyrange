@@ -29,6 +29,7 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/archive2"
+	"github.com/tinyrange/tinyrange/pkg/build2"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
@@ -344,6 +345,7 @@ func (r *loggerRegion) ReadAt(p []byte, off int64) (n int, err error) {
 
 type driver struct {
 	configs           []config.TinyRangeConfig
+	configFilenames   []string
 	buildDir          string
 	debug             bool
 	secureSSH         string
@@ -355,6 +357,8 @@ type driver struct {
 	packetCapturePath string
 	cpuCores          int
 	memoryMB          int
+
+	dbBuildDir common.BuildCacheFilesystem
 
 	dumpWriter *csv.Writer
 
@@ -375,6 +379,50 @@ func (tr *driver) fatalError() {
 	}
 
 	os.Exit(1)
+}
+
+func (tr *driver) loadBuildDatabase() error {
+	topConfig := tr.topConfig()
+
+	if len(topConfig.BuildDatabaseConfig) == 0 {
+		return fmt.Errorf("no build database config")
+	}
+
+	topConfigFilename := tr.configFilenames[0]
+
+	if len(topConfig.BuildDatabaseConfig) > 1 {
+		return fmt.Errorf("multiple build database configs not supported")
+	}
+
+	dbConfig := topConfig.BuildDatabaseConfig[0]
+
+	if dbConfig.RelativeHostBuildDirectory != nil {
+		if topConfigFilename == "" || topConfigFilename == "<stdin>" {
+			return fmt.Errorf("no build database config filename")
+		}
+
+		buildDir := path.Native.Join(path.Native.Dir(topConfigFilename), dbConfig.RelativeHostBuildDirectory.RelativePath)
+
+		if ok, _ := common.Exists(buildDir); !ok {
+			return fmt.Errorf("build directory does not exist: %s", buildDir)
+		}
+
+		mutBuildDir := filesystem.NewLocalMutableDirectory(buildDir)
+
+		tr.dbBuildDir = build2.NewFilesystemBuildCache(mutBuildDir)
+
+		return nil
+	} else {
+		return fmt.Errorf("no relative host build directory")
+	}
+}
+
+func (tr *driver) ResolveReference(ref config.DatabaseReference) (filesystem.File, error) {
+	if tr.dbBuildDir == nil {
+		return nil, fmt.Errorf("no build filesystem set")
+	}
+
+	return tr.dbBuildDir.FileFromReference(ref)
 }
 
 // GetOrSetCacheForHash implements filesystem.ExtendedRegionMethods.
@@ -434,7 +482,8 @@ func (tr *driver) HttpClient() *http.Client {
 
 func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
 	if localFile := frag.LocalFile; localFile != nil {
-		file := filesystem.NewLocalFile(cfg.Resolve(localFile.HostFilename), nil)
+		// The local file is a path to a file on the host. It is guaranteed to be absolute.
+		file := filesystem.NewLocalFile(localFile.HostFilename, nil)
 
 		overlay, err := filesystem.NewOverlayFile(file)
 		if err != nil {
@@ -541,9 +590,12 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 		// 		return fmt.Errorf("failed to download archive: %w", err)
 		// 	}
 		// } else {
-		f := filesystem.NewLocalFile(cfg.Resolve(ark.HostFilename), nil)
+		archiveFile, err := tr.ResolveReference(ark.DatabaseReference)
+		if err != nil {
+			return fmt.Errorf("failed to resolve host filename: %w", err)
+		}
 
-		fsark, err = archive.ReadArchiveFromFile(f)
+		fsark, err = archive.ReadArchiveFromFile(archiveFile)
 		if err != nil {
 			return fmt.Errorf("failed to read archive: %w", err)
 		}
@@ -648,8 +700,14 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 
 		return nil
 	} else if ark2 := frag.Archive2; ark2 != nil {
-		index := filesystem.NewLocalFile(cfg.Resolve(ark2.IndexHostFilename), nil)
-		contents := filesystem.NewLocalFile(cfg.Resolve(ark2.ContentsHostFilename), nil)
+		index, err := tr.ResolveReference(ark2.IndexReference)
+		if err != nil {
+			return fmt.Errorf("failed to resolve index host filename: %w", err)
+		}
+		contents, err := tr.ResolveReference(ark2.ContentsReference)
+		if err != nil {
+			return fmt.Errorf("failed to resolve contents host filename: %w", err)
+		}
 
 		indexFh, err := index.Open()
 		if err != nil {
@@ -931,7 +989,7 @@ func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []int, [
 				exportedPorts = append(exportedPorts, port.Port)
 			} else if mount := frag.MountHostDirectory; mount != nil {
 				mountedHostDirectories = append(mountedHostDirectories, mountInfo{
-					HostDirectory: config.Resolve(mount.HostDirectory),
+					HostDirectory: mount.HostDirectory, // the host directory is guaranteed to be absolute
 					Port:          mount.Port,
 					Writable:      mount.Writable,
 				})
@@ -1320,6 +1378,10 @@ type volumeInfo struct {
 func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) error {
 	mainStart := time.Now()
 
+	if err := d.loadBuildDatabase(); err != nil {
+		return fmt.Errorf("failed to load build database: %w", err)
+	}
+
 	topConfig := d.topConfig()
 
 	if topConfig.CPUCores == 0 || topConfig.MemoryMB == 0 {
@@ -1607,16 +1669,38 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 	}
 
 	// Set the kernel.
-	if topConfig.KernelFilename != "" {
+	if topConfig.Kernel != nil {
+		kernelFile, err := d.ResolveReference(*topConfig.Kernel)
+		if err != nil {
+			return fmt.Errorf("failed to resolve kernel file: %w", err)
+		}
+
+		kernelFilename, err := filesystem.GetHostFilename(kernelFile)
+		if err != nil {
+			return fmt.Errorf("failed to get host filename: %w", err)
+		}
+
 		d.kernel = &localFile{
 			driver:   d,
-			filename: topConfig.Resolve(topConfig.KernelFilename),
+			filename: kernelFilename,
 		}
 	}
-	if topConfig.InitFilesystemFilename != "" {
+
+	// Set the initrd.
+	if topConfig.InitFilesystem != nil {
+		initFsFile, err := d.ResolveReference(*topConfig.InitFilesystem)
+		if err != nil {
+			return fmt.Errorf("failed to resolve init filesystem file: %w", err)
+		}
+
+		initFsFilename, err := filesystem.GetHostFilename(initFsFile)
+		if err != nil {
+			return fmt.Errorf("failed to get host filename: %w", err)
+		}
+
 		d.initRamFs = &localFile{
 			driver:   d,
-			filename: topConfig.Resolve(topConfig.InitFilesystemFilename),
+			filename: initFsFilename,
 		}
 	}
 
@@ -1749,16 +1833,27 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 }
 
 func (d *driver) addConfig(p string) error {
-	var cfg config.TinyRangeConfig
+	var (
+		cfg     config.TinyRangeConfig
+		absPath string
+	)
 
 	if p == "-" {
 		if err := json.NewDecoder(os.Stdin).Decode(&cfg); err != nil {
 			return fmt.Errorf("failed to decode config from stdin: %w", err)
 		}
+
+		absPath = "<stdin>"
 	} else {
 		f, err := os.Open(p)
 		if err != nil {
 			return fmt.Errorf("failed to open config file: %w", err)
+		}
+		defer f.Close()
+
+		absPath, err = path.Native.Abs(p)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute path: %w", err)
 		}
 
 		if path.Native.Ext(p) == ".json" {
@@ -1779,6 +1874,7 @@ func (d *driver) addConfig(p string) error {
 	}
 
 	d.configs = append(d.configs, cfg)
+	d.configFilenames = append(d.configFilenames, absPath)
 
 	return nil
 }

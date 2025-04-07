@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -44,18 +43,13 @@ func (def *buildVmDefinition) AsFragments(ctx common.BuildContext, special commo
 			return nil, err
 		}
 
-		res, err := art.Default()
-		if err != nil {
-			return nil, err
-		}
-
-		filename, err := ctx.HostFilenameFromFile(res)
+		res, err := art.ReferenceForDefault()
 		if err != nil {
 			return nil, err
 		}
 
 		return []config.Fragment{
-			{Archive: &config.ArchiveFragment{HostFilename: filename}},
+			{Archive: &config.ArchiveFragment{DatabaseReference: res}},
 		}, nil
 	} else {
 		return nil, fmt.Errorf("unknown output file: %s", def.params.OutputFile)
@@ -164,13 +158,6 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		Version: config.CURRENT_CONFIG_VERSION,
 	}
 
-	wd, err := os.Getwd()
-	if err != nil {
-		return config.TinyRangeConfig{}, err
-	}
-
-	var kernelFilename string
-
 	kernelDef := def.params.Kernel
 	if kernelDef != nil {
 		kernel, err := ctx.BuildChild(kernelDef)
@@ -178,15 +165,16 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 			return config.TinyRangeConfig{}, err
 		}
 
-		kernelFile, err := kernel.Default()
+		kernelRef, err := kernel.ReferenceForDefault()
 		if err != nil {
 			return config.TinyRangeConfig{}, err
 		}
 
-		kernelFilename, err = ctx.HostFilenameFromFile(kernelFile)
-		if err != nil {
-			return config.TinyRangeConfig{}, err
+		if err := kernelRef.Validate(); err != nil {
+			return config.TinyRangeConfig{}, fmt.Errorf("invalid kernel reference: %w", err)
 		}
+
+		vmCfg.Kernel = &kernelRef
 	}
 
 	interaction := def.params.Interaction
@@ -199,10 +187,15 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		vmInteraction = config.InteractionKind(interaction)
 	}
 
-	vmCfg.BaseDirectory = wd
+	// get the build directory from the context.
+	dbConfig, err := ctx.DatabaseConfig()
+	if err != nil {
+		return config.TinyRangeConfig{}, fmt.Errorf("failed to get database config: %w", err)
+	}
+
+	vmCfg.BuildDatabaseConfig = dbConfig
 	vmCfg.Architecture = arch
 	vmCfg.RootArchitecture = rootArch
-	vmCfg.KernelFilename = kernelFilename
 	vmCfg.CPUCores = def.params.CpuCores
 	vmCfg.MemoryMB = def.params.MemoryMB
 	vmCfg.AutoScale = def.params.AutoScale
@@ -218,17 +211,12 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 			return config.TinyRangeConfig{}, err
 		}
 
-		initRamFsFile, err := initRamFs.Default()
+		initRamFsFile, err := initRamFs.ReferenceForDefault()
 		if err != nil {
 			return config.TinyRangeConfig{}, err
 		}
 
-		initRamFsFilename, err := ctx.HostFilenameFromFile(initRamFsFile)
-		if err != nil {
-			return config.TinyRangeConfig{}, err
-		}
-
-		vmCfg.InitFilesystemFilename = initRamFsFilename
+		vmCfg.InitFilesystem = &initRamFsFile
 	}
 
 	initJson := struct {
@@ -239,7 +227,7 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 
 	initJsonBytes, err := json.Marshal(&initJson)
 	if err != nil {
-		return config.TinyRangeConfig{}, err
+		return config.TinyRangeConfig{}, fmt.Errorf("failed to marshal init.json: %w", err)
 	}
 
 	var rootFsFragments []config.Fragment
@@ -264,7 +252,7 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 			},
 		})
 		if err != nil {
-			return config.TinyRangeConfig{}, err
+			return config.TinyRangeConfig{}, fmt.Errorf("failed to get fragments for %T: %w", directive, err)
 		}
 
 		for _, frag := range frags {
@@ -290,7 +278,7 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 
 	buildConfig, err := json.Marshal(&builderCfg)
 	if err != nil {
-		return config.TinyRangeConfig{}, err
+		return config.TinyRangeConfig{}, fmt.Errorf("failed to marshal builder config: %w", err)
 	}
 
 	rootFsFragments = append(rootFsFragments,
@@ -309,7 +297,7 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 	}
 
 	if err := vmCfg.Validate(); err != nil {
-		return config.TinyRangeConfig{}, err
+		return config.TinyRangeConfig{}, fmt.Errorf("invalid VM config: %w", err)
 	}
 
 	return vmCfg, nil
@@ -320,12 +308,12 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 	if def.buildTemplateOutput {
 		vmCfg, err := def.BuildTemplate(ctx, "")
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to build VM template: %w", err)
 		}
 
 		_, err = ctx.RunVMM("", vmCfg)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to run VM: %w", err)
 		} else {
 			return fmt.Errorf("expected error")
 		}
@@ -340,7 +328,7 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 
 	vmCfg, err := def.BuildTemplate(ctx, hostAddress)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to build VM template: %w", err)
 	}
 
 	def.mux = http.NewServeMux()
@@ -372,14 +360,14 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 	if feature.HasFeature(feature.FeatureVz) {
 		cmd, err := ctx.RunVMM("vz", vmCfg)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to run vz: %w", err)
 		}
 
 		def.cmd = cmd
 	} else {
 		cmd, err := ctx.RunVMM("qemu", vmCfg)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to run qemu: %w", err)
 		}
 
 		def.cmd = cmd

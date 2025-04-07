@@ -1,5 +1,5 @@
 def get_scripts(ctx, plan):
-    fs, _ = plan.filesystem()
+    fs, _ = plan.filesystem(ctx)
     out = filesystem()
     out[".pkg"] = fs[".pkg"]
 

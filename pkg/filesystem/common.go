@@ -35,11 +35,6 @@ type FileInfo interface {
 	Kind() FileType
 }
 
-// FileDigest is a savable digest that identifies a file.
-type FileDigest struct {
-	Hash string
-}
-
 type ExtendedRegionMethods interface {
 	HttpClient() *http.Client
 	GetOrSetCacheForHash(hash string, setter func(w io.Writer) error) (io.ReaderAt, error)

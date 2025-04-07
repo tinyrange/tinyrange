@@ -6,6 +6,7 @@ import (
 	"regexp"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/log"
@@ -147,6 +148,32 @@ var (
 
 type filesystemBuildCache struct {
 	dir filesystem.MutableDirectory
+}
+
+// FileFromReference implements common.BuildCacheFilesystem.
+func (f *filesystemBuildCache) FileFromReference(ref config.DatabaseReference) (filesystem.File, error) {
+	buildDir, err := f.GetBuildDirectory(hash.Hash(ref.Hash))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get build directory: %w", err)
+	}
+
+	file, err := buildDir.GetOutputFile(ref.Filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get output file: %w", err)
+	}
+
+	return file, nil
+}
+
+// DatabaseConfig implements common.BuildCacheFilesystem.
+func (f *filesystemBuildCache) DatabaseConfig() ([]config.BuildDatabaseConfig, error) {
+	return []config.BuildDatabaseConfig{
+		{
+			RelativeHostBuildDirectory: &config.RelativeHostBuildDirectory{
+				RelativePath: "../..",
+			},
+		},
+	}, nil
 }
 
 // GetHostFilename implements BuildCacheFilesystem.

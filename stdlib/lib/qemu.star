@@ -20,7 +20,7 @@ def qemu_download(ctx, arch):
 
     pkg = ctx.build(pkg_def)
 
-    pkg_fs, _ = pkg.filesystem()
+    pkg_fs, _ = pkg.filesystem(ctx)
 
     ret = filesystem()
 

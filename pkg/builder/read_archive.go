@@ -631,18 +631,13 @@ func (r *readArchiveBuildDefinition) AsFragments(ctx common.BuildContext, specia
 		return nil, err
 	}
 
-	res, err := art.Default()
-	if err != nil {
-		return nil, err
-	}
-
-	filename, err := ctx.HostFilenameFromFile(res)
+	res, err := art.ReferenceForDefault()
 	if err != nil {
 		return nil, err
 	}
 
 	return []config.Fragment{
-		{Archive: &config.ArchiveFragment{HostFilename: filename}},
+		{Archive: &config.ArchiveFragment{DatabaseReference: res}},
 	}, nil
 }
 
@@ -727,30 +722,20 @@ func (r *readArchive2BuildDefinition) AsFragments(ctx common.BuildContext, speci
 		return nil, err
 	}
 
-	index, err := art.File("index")
+	index, err := art.ReferenceForFile("index")
 	if err != nil {
 		return nil, err
 	}
 
-	contents, err := art.File("contents")
-	if err != nil {
-		return nil, err
-	}
-
-	indexFilename, err := ctx.HostFilenameFromFile(index)
-	if err != nil {
-		return nil, err
-	}
-
-	contentsFilename, err := ctx.HostFilenameFromFile(contents)
+	contents, err := art.ReferenceForFile("contents")
 	if err != nil {
 		return nil, err
 	}
 
 	return []config.Fragment{
 		{Archive2: &config.Archive2Fragment{
-			IndexHostFilename:    indexFilename,
-			ContentsHostFilename: contentsFilename,
+			IndexReference:    index,
+			ContentsReference: contents,
 		}},
 	}, nil
 }

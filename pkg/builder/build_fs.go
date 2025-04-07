@@ -40,6 +40,7 @@ func toTarTypeFlag(flag filesystem.FileType) byte {
 }
 
 type initRamFsBuilderResult struct {
+	ctx   common.BuildContext
 	frags []config.Fragment
 }
 
@@ -49,7 +50,10 @@ func (i *initRamFsBuilderResult) WriteResult(w io.Writer) error {
 
 	for _, frag := range i.frags {
 		if frag.Archive != nil {
-			f := filesystem.NewLocalFile(frag.Archive.HostFilename, nil)
+			f, err := i.ctx.Database().Builder().FileFromReference(frag.Archive.DatabaseReference)
+			if err != nil {
+				return err
+			}
 
 			ark, err := archive.ReadArchiveFromFile(f)
 			if err != nil {
@@ -127,6 +131,7 @@ var (
 )
 
 type tarBuilderResult struct {
+	ctx   common.BuildContext
 	frags []config.Fragment
 }
 
@@ -140,7 +145,10 @@ func (i *tarBuilderResult) WriteResult(w io.Writer) error {
 
 	for _, frag := range i.frags {
 		if frag.Archive != nil {
-			f := filesystem.NewLocalFile(frag.Archive.HostFilename, nil)
+			f, err := i.ctx.Database().Builder().FileFromReference(frag.Archive.DatabaseReference)
+			if err != nil {
+				return err
+			}
 
 			ark, err := archive.ReadArchiveFromFile(f)
 			if err != nil {
@@ -281,6 +289,7 @@ var (
 )
 
 type fragmentsToArchiveResult struct {
+	ctx   common.BuildContext
 	frags []config.Fragment
 }
 
@@ -290,7 +299,10 @@ func (i *fragmentsToArchiveResult) WriteResult(w io.Writer) error {
 
 	for _, frag := range i.frags {
 		if frag.Archive != nil {
-			f := filesystem.NewLocalFile(frag.Archive.HostFilename, nil)
+			f, err := i.ctx.Database().Builder().FileFromReference(frag.Archive.DatabaseReference)
+			if err != nil {
+				return err
+			}
 
 			ark2, err := archive.ReadArchiveFromFile(f)
 			if err != nil {
@@ -339,18 +351,13 @@ func (def *buildFsDefinition) AsFragments(ctx common.BuildContext, special commo
 			return nil, err
 		}
 
-		res, err := art.Default()
-		if err != nil {
-			return nil, err
-		}
-
-		filename, err := ctx.HostFilenameFromFile(res)
+		res, err := art.ReferenceForDefault()
 		if err != nil {
 			return nil, err
 		}
 
 		return []config.Fragment{
-			{Archive: &config.ArchiveFragment{HostFilename: filename}},
+			{Archive: &config.ArchiveFragment{DatabaseReference: res}},
 		}, nil
 	} else {
 		return nil, fmt.Errorf("unimplemented kind: %s", def.params.Kind)
@@ -403,11 +410,11 @@ func (def *buildFsDefinition) Build(ctx common.BuildContext) error {
 	}
 
 	if def.params.Kind == "initramfs" {
-		return ctx.WriteDefault(&initRamFsBuilderResult{frags: def.frags})
+		return ctx.WriteDefault(&initRamFsBuilderResult{ctx: ctx, frags: def.frags})
 	} else if def.params.Kind == "tar" {
-		return ctx.WriteDefault(&tarBuilderResult{frags: def.frags})
+		return ctx.WriteDefault(&tarBuilderResult{ctx: ctx, frags: def.frags})
 	} else if def.params.Kind == "archive" {
-		return ctx.WriteDefault(&fragmentsToArchiveResult{frags: def.frags})
+		return ctx.WriteDefault(&fragmentsToArchiveResult{ctx: ctx, frags: def.frags})
 	} else {
 		return fmt.Errorf("kind not implemented: %s", def.params.Kind)
 	}

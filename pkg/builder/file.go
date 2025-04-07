@@ -62,12 +62,7 @@ func (def *fileDefinition) AsFragments(ctx common.BuildContext, special common.S
 		return nil, err
 	}
 
-	res, err := art.Default()
-	if err != nil {
-		return nil, err
-	}
-
-	filename, err := ctx.HostFilenameFromFile(res)
+	res, err := art.ReferenceForDefault()
 	if err != nil {
 		return nil, err
 	}
@@ -78,10 +73,10 @@ func (def *fileDefinition) AsFragments(ctx common.BuildContext, special common.S
 	}
 
 	return []config.Fragment{
-		{LocalFile: &config.LocalFileFragment{
-			HostFilename:  filename,
-			GuestFilename: stat.Name(),
-			Executable:    stat.Mode().Perm()&0111 != 0,
+		{DatabaseFile: &config.DatabaseFileFragment{
+			DatabaseReference: res,
+			GuestFilename:     stat.Name(),
+			Executable:        stat.Mode().Perm()&0111 != 0,
 		}},
 	}, nil
 }

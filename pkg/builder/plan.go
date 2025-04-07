@@ -33,7 +33,7 @@ func (def *planDefinition) Dependencies() ([]common.BuildDefinition, error) {
 
 // implements common.BuildDefinition.
 func (def *planDefinition) Params() hash.SerializableValue { return def.params }
-func (def *planDefinition) SerializableType() string       { return "PlanDefinition" }
+func (def *planDefinition) SerializableType() string       { return "PlanDefinition_v2" }
 func (def *planDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &planDefinition{params: params.(PlanParameters)}
 }
@@ -101,15 +101,31 @@ func (def *planDefinition) Attr(name string) (starlark.Value, error) {
 			args starlark.Tuple,
 			kwargs []starlark.Tuple,
 		) (starlark.Value, error) {
+			var ctxRaw starlark.Value
+
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+				"ctx", &ctxRaw,
+			); err != nil {
+				return starlark.None, err
+			}
+
+			ctx, ok := ctxRaw.(common.BuildContext)
+			if !ok {
+				return starlark.None, fmt.Errorf("could not convert %s to BuildContext", ctxRaw.Type())
+			}
+
 			var commands []starlark.Value
 
 			dir := filesystem.NewMemoryDirectory()
 
 			for _, frag := range def.Fragments {
 				if frag.Archive != nil {
-					ark, err := archive.ReadArchiveFromFile(
-						filesystem.NewLocalFile(frag.Archive.HostFilename, nil),
-					)
+					file, err := ctx.Database().Builder().FileFromReference(frag.Archive.DatabaseReference)
+					if err != nil {
+						return starlark.None, err
+					}
+
+					ark, err := archive.ReadArchiveFromFile(file)
 					if err != nil {
 						return starlark.None, err
 					}
@@ -253,7 +269,7 @@ func (def *planDefinition) Attr(name string) (starlark.Value, error) {
 
 // AttrNames implements starlark.HasAttrs.
 func (def *planDefinition) AttrNames() []string {
-	return []string{"filesystem", "add_packages"}
+	return []string{"filesystem", "add_packages", "with_packages", "set_tags"}
 }
 
 // WriteTo implements common.BuildResult.

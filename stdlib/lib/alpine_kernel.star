@@ -22,7 +22,7 @@ def main():
 """
 
 def get_kernel(ctx, plan):
-    fs, _ = plan.filesystem()
+    fs, _ = plan.filesystem(ctx)
 
     for ent in fs["boot"]:
         if ent.base.startswith("vmlinuz-"):
@@ -31,7 +31,7 @@ def get_kernel(ctx, plan):
     return error("kernel not found")
 
 def get_modules_archive(ctx, plan):
-    fs, _ = plan.filesystem()
+    fs, _ = plan.filesystem(ctx)
 
     out = filesystem()
 
@@ -72,7 +72,7 @@ def get_essential_modules(lst, deps):
     return [i for i in set(ret)]
 
 def get_inital_modules(ctx, plan):
-    fs, _ = plan.filesystem()
+    fs, _ = plan.filesystem(ctx)
 
     module_dir = [f for f in fs["lib/modules"]][0]
 

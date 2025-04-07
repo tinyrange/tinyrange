@@ -82,9 +82,12 @@ func (def *buildEmulatorDefinition) Build(ctx common.BuildContext) error {
 
 	for _, frag := range def.frags {
 		if frag.Archive != nil {
-			ark, err := archive.ReadArchiveFromFile(
-				filesystem.NewLocalFile(frag.Archive.HostFilename, nil),
-			)
+			file, err := ctx.Database().Builder().FileFromReference(frag.Archive.DatabaseReference)
+			if err != nil {
+				return fmt.Errorf("failed to get file from reference: %s", err)
+			}
+
+			ark, err := archive.ReadArchiveFromFile(file)
 			if err != nil {
 				return err
 			}

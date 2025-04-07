@@ -129,21 +129,16 @@ func (d DirectiveAddFile) AsFragments(ctx BuildContext, special SpecialDirective
 			return nil, err
 		}
 
-		res, err := art.Default()
-		if err != nil {
-			return nil, err
-		}
-
-		filename, err := ctx.HostFilenameFromFile(res)
+		res, err := art.ReferenceForDefault()
 		if err != nil {
 			return nil, err
 		}
 
 		return []config.Fragment{
-			{LocalFile: &config.LocalFileFragment{
-				GuestFilename: d.Filename,
-				HostFilename:  filename,
-				Executable:    d.Executable,
+			{DatabaseFile: &config.DatabaseFileFragment{
+				DatabaseReference: res,
+				GuestFilename:     d.Filename,
+				Executable:        d.Executable,
 			}},
 		}, nil
 	} else {
@@ -205,48 +200,33 @@ func (d DirectiveArchive) AsFragments(ctx BuildContext, special SpecialDirective
 	}
 
 	if d.Archive2 {
-		index, err := art.File("index")
+		index, err := art.ReferenceForFile("index")
 		if err != nil {
 			return nil, err
 		}
 
-		indexFilename, err := ctx.HostFilenameFromFile(index)
-		if err != nil {
-			return nil, err
-		}
-
-		contents, err := art.File("contents")
-		if err != nil {
-			return nil, err
-		}
-
-		contentsFilename, err := ctx.HostFilenameFromFile(contents)
+		contents, err := art.ReferenceForFile("contents")
 		if err != nil {
 			return nil, err
 		}
 
 		return []config.Fragment{
 			{Archive2: &config.Archive2Fragment{
-				IndexHostFilename:    indexFilename,
-				ContentsHostFilename: contentsFilename,
-				Target:               d.Target,
+				IndexReference:    index,
+				ContentsReference: contents,
+				Target:            d.Target,
 			}},
 		}, nil
 	} else {
-		res, err := art.Default()
-		if err != nil {
-			return nil, err
-		}
-
-		filename, err := ctx.HostFilenameFromFile(res)
+		res, err := art.ReferenceForDefault()
 		if err != nil {
 			return nil, err
 		}
 
 		return []config.Fragment{
 			{Archive: &config.ArchiveFragment{
-				HostFilename: filename,
-				Target:       d.Target,
+				DatabaseReference: res,
+				Target:            d.Target,
 			}},
 		}, nil
 	}
@@ -462,8 +442,8 @@ type DirectiveKernel struct {
 // AsFragments implements Directive.
 func (d DirectiveKernel) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	var (
-		kernelFilename    string
-		initramfsFilename string
+		kernelRes    config.DatabaseReference
+		initramfsRes config.DatabaseReference
 	)
 
 	if d.Kernel != nil {
@@ -472,12 +452,7 @@ func (d DirectiveKernel) AsFragments(ctx BuildContext, special SpecialDirectiveH
 			return nil, err
 		}
 
-		kernelRes, err := kernelArt.Default()
-		if err != nil {
-			return nil, err
-		}
-
-		kernelFilename, err = ctx.HostFilenameFromFile(kernelRes)
+		kernelRes, err = kernelArt.ReferenceForDefault()
 		if err != nil {
 			return nil, err
 		}
@@ -489,12 +464,7 @@ func (d DirectiveKernel) AsFragments(ctx BuildContext, special SpecialDirectiveH
 			return nil, err
 		}
 
-		initramfsRes, err := initramfsArt.Default()
-		if err != nil {
-			return nil, err
-		}
-
-		initramfsFilename, err = ctx.HostFilenameFromFile(initramfsRes)
+		initramfsRes, err = initramfsArt.ReferenceForDefault()
 		if err != nil {
 			return nil, err
 		}
@@ -502,8 +472,8 @@ func (d DirectiveKernel) AsFragments(ctx BuildContext, special SpecialDirectiveH
 
 	return []config.Fragment{
 		{Kernel: &config.KernelFragment{
-			KernelFilename:    kernelFilename,
-			InitramfsFilename: initramfsFilename,
+			KernelReference:    &kernelRes,
+			InitramfsReference: &initramfsRes,
 		}},
 	}, nil
 }

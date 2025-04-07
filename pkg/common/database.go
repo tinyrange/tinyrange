@@ -41,6 +41,8 @@ type BuildCacheDirectory interface {
 }
 
 type BuildCacheFilesystem interface {
+	config.BuildCacheFilesystem
+
 	// GetHostFilename returns the host filename of the build cache directory.
 	GetHostFilename() (string, error)
 
@@ -52,6 +54,9 @@ type BuildCacheFilesystem interface {
 
 	// GetAllHashes returns all the hashes in the build cache.
 	GetAllHashes() ([]hash.Hash, error)
+
+	// DatabaseConfig returns the configuration for the build database.
+	DatabaseConfig() ([]config.BuildDatabaseConfig, error)
 }
 
 type ErrNonFatal struct {
@@ -141,18 +146,10 @@ type BuildReceipt struct {
 	Files        map[string]string `json:"files"` // map of filename to sha256 hash
 }
 
-type DigestHandler interface {
-	// DigestFromFile returns a file digest from a file.
-	DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error)
-	// FileFromDigest returns a file from a file digest.
-	FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error)
-	// HostFilenameFromFile returns a filename from a file.
-	HostFilenameFromFile(file filesystem.File) (string, error)
-}
-
 // BuildArtifact is the result of a build.
 type BuildArtifact interface {
-	DigestHandler
+	// Database returns the package database.
+	Database() PackageDatabase
 
 	// Hash returns the hash of the definition.
 	DefinitionHash() hash.Hash
@@ -164,6 +161,11 @@ type BuildArtifact interface {
 	File(name string) (filesystem.File, error)
 	// OpenFile opens a file in the artifact.
 	OpenFile(name string) (filesystem.FileHandle, error)
+
+	// ReferenceForFile returns a database reference for the given file.
+	ReferenceForFile(name string) (config.DatabaseReference, error)
+	// ReferenceForDefault returns a database reference for the default file.
+	ReferenceForDefault() (config.DatabaseReference, error)
 }
 
 type MinimalBuildContext interface {
@@ -179,7 +181,9 @@ type MinimalBuildContext interface {
 type BuildContext interface {
 	starlark.Value
 	MinimalBuildContext
-	DigestHandler
+
+	// DatabaseConfig returns the configuration for the build database.
+	DatabaseConfig() ([]config.BuildDatabaseConfig, error)
 
 	// PrenotifyChildren starts builds in the background for a list of children.
 	PrenotifyChildren(children []BuildDefinition) error
@@ -316,6 +320,8 @@ type Builder interface {
 	MinimalContext() MinimalBuildContext
 	// GetDefinitionByHash returns a definition by hash.
 	GetDefinitionByHash(hash hash.Hash) (BuildDefinition, error)
+	// FileFromReference returns a file from a database reference.
+	FileFromReference(ref config.DatabaseReference) (filesystem.File, error)
 	// ImportAndValidate imports and validates a definition adding it to the build cache in an unbuilt state.
 	ImportAndValidate(def []byte) (BuildDefinition, error)
 }

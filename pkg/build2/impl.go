@@ -36,6 +36,23 @@ type buildArtifact struct {
 	*buildContext
 }
 
+// ReferenceForDefault implements common.BuildArtifact.
+func (a *buildArtifact) ReferenceForDefault() (config.DatabaseReference, error) {
+	return a.ReferenceForFile(defaultSuffix)
+}
+
+// ReferenceForFile implements common.BuildArtifact.
+func (a *buildArtifact) ReferenceForFile(name string) (config.DatabaseReference, error) {
+	if a.hash.String() == "" {
+		return config.DatabaseReference{}, fmt.Errorf("hash is not set")
+	}
+
+	return config.DatabaseReference{
+		Hash:     a.hash.String(),
+		Filename: name,
+	}, nil
+}
+
 // File implements common.BuildArtifact.
 func (a *buildArtifact) File(name string) (filesystem.File, error) {
 	if _, ok := a.recept.Files[name]; !ok {
@@ -159,6 +176,11 @@ type buildContext struct {
 	files        map[string]*contextFile
 }
 
+// DatabaseConfig implements common.BuildContext.
+func (b *buildContext) DatabaseConfig() ([]config.BuildDatabaseConfig, error) {
+	return b.builder.buildDir.DatabaseConfig()
+}
+
 // Factory implements common.BuildContext.
 func (b *buildContext) Factory() common.DefinitionFactory {
 	return builderFactory.Factory
@@ -171,25 +193,6 @@ func (c *buildContext) PrenotifyChildren(children []common.BuildDefinition) erro
 	}
 
 	return nil
-}
-
-// DigestFromFile implements common.BuildContext.
-func (c *buildContext) DigestFromFile(file filesystem.File) (*filesystem.FileDigest, error) {
-	filename, err := filesystem.GetHostFilename(file)
-	if err != nil {
-		return nil, err
-	}
-
-	return &filesystem.FileDigest{Hash: filename}, nil
-}
-
-// FileFromDigest implements common.BuildContext.
-func (c *buildContext) FileFromDigest(digest *filesystem.FileDigest) (filesystem.File, error) {
-	if digest.Hash != "" {
-		return filesystem.NewLocalFile(digest.Hash, nil), nil
-	}
-
-	return nil, fmt.Errorf("could not convert digest to hash")
 }
 
 // HostFilenameFromFile implements common.BuildContext.
@@ -612,6 +615,16 @@ type builder struct {
 	logger                 Logger
 	tokenLocker            *tokenLocker
 	rebuildUserDefinitions bool
+}
+
+// FileFromReference implements common.Builder.
+func (b *builder) FileFromReference(ref config.DatabaseReference) (filesystem.File, error) {
+	f, err := b.buildDir.FileFromReference(ref)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file from reference: %w", err)
+	}
+
+	return filesystem.NewSourceWrapper(f, nil), nil
 }
 
 // ImportAndValidate implements common.Builder.

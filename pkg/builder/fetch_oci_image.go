@@ -274,7 +274,7 @@ type ociFetcher struct {
 
 	UseArchive2   bool
 	LayerHashes   []hash.Hash
-	LayerArchives []*filesystem.FileDigest
+	LayerArchives []config.DatabaseReference
 	Config        oci.ImageConfig
 }
 
@@ -319,19 +319,12 @@ func (def *ociFetcher) buildFromV1Index(index oci.ImageIndexV1) error {
 				return err
 			}
 
-			layerArchive, err := layerArtifact.Default()
+			layerArchive, err := layerArtifact.ReferenceForDefault()
 			if err != nil {
 				return err
 			}
 
-			// Only persist the file digests.
-			// These can be used to reopen the file without requiring the entire def to be rebuilt.
-			layerDigest, err := def.ctx.DigestFromFile(layerArchive)
-			if layerDigest == nil {
-				return fmt.Errorf("%T does not support digests", layerArchive)
-			}
-
-			def.LayerArchives = append(def.LayerArchives, layerDigest)
+			def.LayerArchives = append(def.LayerArchives, layerArchive)
 		}
 	}
 
@@ -368,19 +361,12 @@ func (def *ociFetcher) buildFromManifest(manifest oci.ImageManifest, config oci.
 				return err
 			}
 
-			layerArchive, err := layerArtifact.Default()
+			layerArchive, err := layerArtifact.ReferenceForDefault()
 			if err != nil {
 				return err
 			}
 
-			// Only persist the file digests.
-			// These can be used to reopen the file without requiring the entire def to be rebuilt.
-			layerDigest, err := def.ctx.DigestFromFile(layerArchive)
-			if layerDigest == nil {
-				return fmt.Errorf("%T does not support digests", layerArchive)
-			}
-
-			def.LayerArchives = append(def.LayerArchives, layerDigest)
+			def.LayerArchives = append(def.LayerArchives, layerArchive)
 		}
 	}
 
@@ -520,7 +506,7 @@ func (def *ociFetcher) toStarlark(artifact common.BuildArtifact) (starlark.Value
 	fs := filesystem.NewMemoryDirectory()
 
 	for _, layer := range def.LayerArchives {
-		layerFile, err := artifact.FileFromDigest(layer)
+		layerFile, err := artifact.Database().Builder().FileFromReference(layer)
 		if err != nil {
 			return nil, err
 		}
@@ -566,17 +552,7 @@ func (def *ociFetcher) asFragments(ctx common.BuildContext) ([]config.Fragment, 
 		}
 	} else {
 		for _, archive := range def.LayerArchives {
-			file, err := ctx.FileFromDigest(archive)
-			if err != nil {
-				return nil, err
-			}
-
-			filename, err := ctx.HostFilenameFromFile(file)
-			if err != nil {
-				return nil, err
-			}
-
-			ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+			ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{DatabaseReference: archive}})
 		}
 	}
 

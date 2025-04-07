@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
@@ -48,6 +49,23 @@ func getHostArchitecture() CPUArchitecture {
 	}
 }
 
+type DatabaseReference struct {
+	Hash     string `json:"hash" yaml:"hash"`
+	Filename string `json:"filename" yaml:"filename"`
+}
+
+func (db DatabaseReference) Validate() error {
+	if db.Hash == "" {
+		return fmt.Errorf("hash is required")
+	}
+
+	if db.Filename == "" {
+		return fmt.Errorf("filename is required")
+	}
+
+	return nil
+}
+
 type LocalFileFragment struct {
 	HostFilename  string `json:"host_filename" yaml:"host_filename"`
 	GuestFilename string `json:"guest_filename" yaml:"guest_filename"`
@@ -62,6 +80,24 @@ func (f LocalFileFragment) Validate() error {
 	// the host filename has to be absolute
 	if !path.Native.IsAbs(f.HostFilename) {
 		return fmt.Errorf("host_filename must be absolute: %s", f.HostFilename)
+	}
+
+	if f.GuestFilename == "" {
+		return fmt.Errorf("guest_filename is required")
+	}
+
+	return nil
+}
+
+type DatabaseFileFragment struct {
+	DatabaseReference DatabaseReference `json:"host_filename" yaml:"host_filename"`
+	GuestFilename     string            `json:"guest_filename" yaml:"guest_filename"`
+	Executable        bool              `json:"executable" yaml:"executable"`
+}
+
+func (f DatabaseFileFragment) Validate() error {
+	if err := f.DatabaseReference.Validate(); err != nil {
+		return fmt.Errorf("invalid host_filename: %w", err)
 	}
 
 	if f.GuestFilename == "" {
@@ -91,31 +127,31 @@ func (f FileContentsFragment) Validate() error {
 }
 
 type ArchiveFragment struct {
-	HostFilename string `json:"host_filename" yaml:"host_filename"`
-	Target       string `json:"target" yaml:"target"`
+	DatabaseReference DatabaseReference `json:"host_filename" yaml:"host_filename"`
+	Target            string            `json:"target" yaml:"target"`
 }
 
 func (f ArchiveFragment) Validate() error {
-	if f.HostFilename == "" {
-		return fmt.Errorf("host_filename is required")
+	if err := f.DatabaseReference.Validate(); err != nil {
+		return fmt.Errorf("invalid host_filename: %w", err)
 	}
 
 	return nil
 }
 
 type Archive2Fragment struct {
-	IndexHostFilename    string `json:"index_host_filename" yaml:"index_host_filename"`
-	ContentsHostFilename string `json:"contents_host_filename" yaml:"contents_host_filename"`
-	Target               string `json:"target" yaml:"target"`
+	IndexReference    DatabaseReference `json:"index_host_filename" yaml:"index_host_filename"`
+	ContentsReference DatabaseReference `json:"contents_host_filename" yaml:"contents_host_filename"`
+	Target            string            `json:"target" yaml:"target"`
 }
 
 func (f Archive2Fragment) Validate() error {
-	if f.IndexHostFilename == "" {
-		return fmt.Errorf("index_host_filename is required")
+	if err := f.IndexReference.Validate(); err != nil {
+		return fmt.Errorf("invalid index host_filename: %w", err)
 	}
 
-	if f.ContentsHostFilename == "" {
-		return fmt.Errorf("contents_host_filename is required")
+	if err := f.ContentsReference.Validate(); err != nil {
+		return fmt.Errorf("invalid contents host_filename: %w", err)
 	}
 
 	return nil
@@ -240,21 +276,30 @@ func (f MountHostDirectoryFragment) Validate() error {
 		return fmt.Errorf("host_directory is required")
 	}
 
+	// the host directory has to be absolute
+	if !path.Native.IsAbs(f.HostDirectory) {
+		return fmt.Errorf("host_directory must be absolute: %s", f.HostDirectory)
+	}
+
 	return nil
 }
 
 type KernelFragment struct {
-	KernelFilename    string `json:"kernel_filename" yaml:"kernel_filename"`
-	InitramfsFilename string `json:"initramfs_filename" yaml:"initramfs_filename"`
+	KernelReference    *DatabaseReference `json:"kernel_filename" yaml:"kernel_filename"`
+	InitramfsReference *DatabaseReference `json:"initramfs_filename" yaml:"initramfs_filename"`
 }
 
 func (f KernelFragment) Validate() error {
-	if f.KernelFilename == "" {
-		return fmt.Errorf("kernel_filename is required")
+	if f.KernelReference != nil {
+		if err := f.KernelReference.Validate(); err != nil {
+			return fmt.Errorf("invalid kernel_filename: %w", err)
+		}
 	}
 
-	if f.InitramfsFilename == "" {
-		return fmt.Errorf("initramfs_filename is required")
+	if f.InitramfsReference != nil {
+		if err := f.InitramfsReference.Validate(); err != nil {
+			return fmt.Errorf("invalid initramfs_filename: %w", err)
+		}
 	}
 
 	return nil
@@ -294,6 +339,7 @@ type Fragment struct {
 	// Supported Directly
 	DefaultInteractive *DefaultInteractiveFragment `json:"interactive,omitempty" yaml:"interactive"`
 	LocalFile          *LocalFileFragment          `json:"local_file,omitempty" yaml:"local_file"`
+	DatabaseFile       *DatabaseFileFragment       `json:"database_file,omitempty" yaml:"database_file"`
 	FileContents       *FileContentsFragment       `json:"file_contents,omitempty" yaml:"file_contents"`
 	Archive            *ArchiveFragment            `json:"archive,omitempty" yaml:"archive"`
 	Archive2           *Archive2Fragment           `json:"archive2,omitempty" yaml:"archive2"`
@@ -319,6 +365,8 @@ func (frag Fragment) Validate() error {
 		return frag.DefaultInteractive.Validate()
 	} else if frag.LocalFile != nil {
 		return frag.LocalFile.Validate()
+	} else if frag.DatabaseFile != nil {
+		return frag.DatabaseFile.Validate()
 	} else if frag.FileContents != nil {
 		return frag.FileContents.Validate()
 	} else if frag.Archive != nil {
@@ -388,8 +436,37 @@ const (
 )
 
 const (
-	CURRENT_CONFIG_VERSION = 1
+	CURRENT_CONFIG_VERSION = 2
 )
+
+type RelativeHostBuildDirectory struct {
+	RelativePath string `json:"relative_path" yaml:"relative_path"`
+}
+
+func (cfg RelativeHostBuildDirectory) Validate() error {
+	if cfg.RelativePath == "" {
+		return fmt.Errorf("relative_path is required")
+	}
+
+	// the relative path mustn't be absolute
+	if path.Native.IsAbs(cfg.RelativePath) {
+		return fmt.Errorf("relative_path must be relative: %s", cfg.RelativePath)
+	}
+
+	return nil
+}
+
+type BuildDatabaseConfig struct {
+	RelativeHostBuildDirectory *RelativeHostBuildDirectory `json:"relative_host_build_directory" yaml:"relative_host_build_directory"`
+}
+
+func (cfg BuildDatabaseConfig) Validate() error {
+	if cfg.RelativeHostBuildDirectory != nil {
+		return cfg.RelativeHostBuildDirectory.Validate()
+	} else {
+		return fmt.Errorf("invalid build database config: %v", cfg)
+	}
+}
 
 // A config file that can be passed to TinyRange to configure and execute a virtual machine.
 type TinyRangeConfig struct {
@@ -397,16 +474,15 @@ type TinyRangeConfig struct {
 	// compatible with the current version of TinyRange.
 	Version int `json:"version" yaml:"version"`
 
-	// The base directory all other filenames resolve from.
-	BaseDirectory string `json:"base_directory" yaml:"base_directory"`
+	BuildDatabaseConfig []BuildDatabaseConfig `json:"build_database" yaml:"build_database"`
 	// The CPU Architecture of the guest.
 	Architecture CPUArchitecture `json:"architecture" yaml:"architecture"`
 	// The Architecture of the root filesystem. This is a hint to enable vmm-specific optimizations.
 	RootArchitecture CPUArchitecture `json:"root_architecture" yaml:"root_architecture"`
 	// The kernel to boot.
-	KernelFilename string `json:"kernel_filename" yaml:"kernel_filename"`
-	// A initramfs to pass to the kernel or "" to disable passing a initramfs.
-	InitFilesystemFilename string `json:"init_filesystem_filename" yaml:"init_filesystem_filename"`
+	Kernel *DatabaseReference `json:"kernel" yaml:"kernel"`
+	// A initramfs to pass to the kernel or nil to disable passing a initramfs.
+	InitFilesystem *DatabaseReference `json:"initramfs" yaml:"initramfs"`
 	// A list of filesystems to create.
 	Filesystems map[string]Filesystem `json:"filesystems" yaml:"filesystems"`
 	// The way the user will interact with the virtual machine (options: [ssh, serial], default: ssh).
@@ -438,24 +514,38 @@ func (cfg TinyRangeConfig) Validate() error {
 		return fmt.Errorf("interaction is required")
 	}
 
+	if len(cfg.BuildDatabaseConfig) == 0 {
+		return fmt.Errorf("build_database is required")
+	}
+
+	for _, db := range cfg.BuildDatabaseConfig {
+		if err := db.Validate(); err != nil {
+			return fmt.Errorf("invalid build database config: %w", err)
+		}
+	}
+
 	for _, fs := range cfg.Filesystems {
 		if err := fs.Validate(); err != nil {
 			return fmt.Errorf("invalid filesystem: %w", err)
 		}
 	}
 
+	if cfg.Kernel != nil {
+		if err := cfg.Kernel.Validate(); err != nil {
+			return fmt.Errorf("invalid kernel: %w", err)
+		}
+	}
+
+	if cfg.InitFilesystem != nil {
+		if err := cfg.InitFilesystem.Validate(); err != nil {
+			return fmt.Errorf("invalid initramfs: %w", err)
+		}
+	}
+
 	return nil
 }
 
-func (cfg TinyRangeConfig) Resolve(filename string) string {
-	if filename == "" {
-		return ""
-	}
-
-	// If the filename is already absolute then just use it.
-	if path.Native.IsAbs(filename) {
-		return filename
-	}
-
-	return path.Native.Join(cfg.BaseDirectory, filename)
+type BuildCacheFilesystem interface {
+	// FileFromReference returns a file from a database reference.
+	FileFromReference(ref DatabaseReference) (filesystem.File, error)
 }

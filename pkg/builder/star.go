@@ -204,18 +204,13 @@ func (def *starBuildDefinition) AsFragments(ctx common.BuildContext, special com
 		return nil, err
 	}
 
-	res, err := art.Default()
-	if err != nil {
-		return nil, err
-	}
-
-	filename, err := ctx.HostFilenameFromFile(res)
+	res, err := art.ReferenceForDefault()
 	if err != nil {
 		return nil, err
 	}
 
 	return []config.Fragment{
-		{Archive: &config.ArchiveFragment{HostFilename: filename}},
+		{Archive: &config.ArchiveFragment{DatabaseReference: res}},
 	}, nil
 }
 

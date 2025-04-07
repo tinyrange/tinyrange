@@ -69,17 +69,7 @@ func (r *readOciImageDefinition) AsFragments(ctx common.BuildContext, special co
 	var ret []config.Fragment
 
 	for _, archive := range def.LayerArchives {
-		file, err := ctx.FileFromDigest(archive)
-		if err != nil {
-			return nil, err
-		}
-
-		filename, err := ctx.HostFilenameFromFile(file)
-		if err != nil {
-			return nil, err
-		}
-
-		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{HostFilename: filename}})
+		ret = append(ret, config.Fragment{Archive: &config.ArchiveFragment{DatabaseReference: archive}})
 	}
 
 	slices.Reverse(ret)
@@ -159,17 +149,12 @@ func (r *readOciImageDefinition) Build(ctx common.BuildContext) error {
 			return err
 		}
 
-		layerFile, err := layerArtifact.Default()
+		layerFile, err := layerArtifact.ReferenceForDefault()
 		if err != nil {
 			return err
 		}
 
-		layerFileDigest, err := ctx.DigestFromFile(layerFile)
-		if err != nil {
-			return err
-		}
-
-		out.LayerArchives = append(out.LayerArchives, layerFileDigest)
+		out.LayerArchives = append(out.LayerArchives, layerFile)
 	}
 
 	out.Config = config
