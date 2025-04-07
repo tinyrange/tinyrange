@@ -160,7 +160,9 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 
 	builderCfg.HostAddress = hostAddress
 
-	vmCfg := config.TinyRangeConfig{}
+	vmCfg := config.TinyRangeConfig{
+		Version: config.CURRENT_CONFIG_VERSION,
+	}
 
 	wd, err := os.Getwd()
 	if err != nil {
@@ -304,6 +306,10 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		Kind:        config.FilesystemKindExt4,
 		Fragments:   rootFsFragments,
 		StorageSize: def.params.StorageSize,
+	}
+
+	if err := vmCfg.Validate(); err != nil {
+		return config.TinyRangeConfig{}, err
 	}
 
 	return vmCfg, nil

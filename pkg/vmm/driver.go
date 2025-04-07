@@ -1774,6 +1774,10 @@ func (d *driver) addConfig(p string) error {
 		}
 	}
 
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("failed to validate config: %w", err)
+	}
+
 	d.configs = append(d.configs, cfg)
 
 	return nil
