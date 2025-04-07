@@ -34,8 +34,8 @@ require (
 	golang.org/x/crypto v0.36.0
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
 	golang.org/x/net v0.38.0
-	golang.org/x/sys v0.31.0
-	golang.org/x/term v0.30.0
+	golang.org/x/sys v0.32.0
+	golang.org/x/term v0.31.0
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20241113022301-6fd8b69821a4
 	mvdan.cc/sh/v3 v3.11.0
