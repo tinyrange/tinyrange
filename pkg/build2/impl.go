@@ -177,7 +177,7 @@ type buildContext struct {
 }
 
 // DatabaseConfig implements common.BuildContext.
-func (b *buildContext) DatabaseConfig() ([]config.BuildDatabaseConfig, error) {
+func (b *buildContext) DatabaseConfig() ([]filesystem.BuildDatabaseConfig, error) {
 	return b.builder.buildDir.DatabaseConfig()
 }
 
@@ -268,7 +268,7 @@ func (c *buildContext) ShouldRebuildUserDefinitions() bool {
 }
 
 // Precondition: The definition has to be rebuilt.
-func (c *buildContext) build() error {
+func (c *buildContext) build(writable common.WritableBuildCacheDirectory) error {
 	// c.logger.Describe(ColorYellow, "%s : waiting for token", c.def.String())
 	defer c.logger.Close()
 
@@ -281,7 +281,7 @@ func (c *buildContext) build() error {
 	if err != nil {
 		return err
 	}
-	if err := c.buildDir.WriteDefinition(def); err != nil {
+	if err := writable.WriteDefinition(def); err != nil {
 		return err
 	}
 
@@ -357,7 +357,7 @@ func (c *buildContext) build() error {
 	if err != nil {
 		return err
 	}
-	if err := c.buildDir.WriteReceipt(recept); err != nil {
+	if err := writable.WriteReceipt(recept); err != nil {
 		return err
 	}
 
@@ -403,66 +403,93 @@ func (c *buildContext) ensureUpToDate() error {
 	}
 
 	if c.buildDir == nil {
-		c.buildDir, err = c.builder.buildDir.CreateBuildDirectory(c.hash)
-		if err != nil {
-			return fmt.Errorf("failed to create build directory: %w", err)
+		c.buildDir, err = c.builder.buildDir.GetBuildDirectory(c.hash)
+		if errors.Is(err, fs.ErrNotExist) {
+			c.buildDir, err = c.builder.buildDir.CreateBuildDirectory(c.hash)
+			if err != nil {
+				return fmt.Errorf("failed to create build directory: %w", err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("failed to get build directory: %w", err)
 		}
 	}
 
+	writable, isWritable := c.buildDir.(common.WritableBuildCacheDirectory)
+
 	if c.options.AlwaysRebuild {
+		if !isWritable {
+			c.buildDir, err = c.builder.buildDir.CreateBuildDirectory(c.hash)
+			if err != nil {
+				return fmt.Errorf("failed to create build directory: %w", err)
+			}
+
+			writable = c.buildDir.(common.WritableBuildCacheDirectory)
+		}
+
 		// force a rebuild
 		defer c.token.Lock("forced rebuild").Close()
 
-		return c.build()
+		return c.build(writable)
 	}
 
 	if c.recept == nil {
 		// load the recept
 		c.recept, err = c.loadRecept()
 		if errors.Is(err, fs.ErrNotExist) || err == io.EOF {
+			if !isWritable {
+				c.buildDir, err = c.builder.buildDir.CreateBuildDirectory(c.hash)
+				if err != nil {
+					return fmt.Errorf("failed to create build directory: %w", err)
+				}
+
+				writable = c.buildDir.(common.WritableBuildCacheDirectory)
+			}
+
 			defer c.token.Lock("fresh build").Close()
 
-			return c.build()
+			return c.build(writable)
 		} else if err != nil {
 			return fmt.Errorf("failed to load recept: %w", err)
 		}
 	}
 
-	needsBuild, err := c.def.NeedsBuild(c)
-	if err != nil {
-		return fmt.Errorf("failed to check if build is needed: %w", err)
-	}
-	if needsBuild {
-		c.logger.Describe(ColorYellow, "rebuilding due to user NeedsBuild")
-
-		defer c.token.Lock("user needs build").Close()
-
-		return c.build()
-	}
-
-	// Lock a token since we might be triggering rebuilds of children so we need to ensure we have a token.
-	defer c.token.Lock("child rebuild").Close()
-
-	// Check all requirements in parallel.
-	for _, req := range c.recept.Requirements {
-		child, err := c.builder.contextForHash(c, req, common.BuildOptions{})
+	if isWritable {
+		needsBuild, err := c.def.NeedsBuild(c)
 		if err != nil {
-			return fmt.Errorf("failed to load requirement: %w", err)
+			return fmt.Errorf("failed to check if build is needed: %w", err)
+		}
+		if needsBuild {
+			c.logger.Describe(ColorYellow, "rebuilding due to user NeedsBuild")
+
+			defer c.token.Lock("user needs build").Close()
+
+			return c.build(writable)
 		}
 
-		// Ensure the child has a token.
-		if state := atomic.LoadUint32((*uint32)(&child.state)); state == uint32(buildContextStateNew) {
-			child.token.Donate()
-		}
+		// Lock a token since we might be triggering rebuilds of children so we need to ensure we have a token.
+		defer c.token.Lock("child rebuild").Close()
 
-		art, err := child.getArtifact()
-		if err != nil {
-			return fmt.Errorf("failed to get requirement artifact: %w", err)
-		}
+		// Check all requirements in parallel.
+		for _, req := range c.recept.Requirements {
+			child, err := c.builder.contextForHash(c, req, common.BuildOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to load requirement: %w", err)
+			}
 
-		if art.freshlyBuilt() {
-			c.logger.Describe(ColorYellow, "rebuilding due to requirement %s", child.def.String())
-			return c.build()
+			// Ensure the child has a token.
+			if state := atomic.LoadUint32((*uint32)(&child.state)); state == uint32(buildContextStateNew) {
+				child.token.Donate()
+			}
+
+			art, err := child.getArtifact()
+			if err != nil {
+				return fmt.Errorf("failed to get requirement artifact: %w", err)
+			}
+
+			if art.freshlyBuilt() {
+				c.logger.Describe(ColorYellow, "rebuilding due to requirement %s", child.def.String())
+				return c.build(writable)
+			}
 		}
 	}
 
@@ -542,13 +569,18 @@ func (c *buildContext) CreateFile(name string) (io.WriteCloser, error) {
 		return nil, fmt.Errorf("invalid filename: %s", name)
 	}
 
+	writable, ok := c.buildDir.(common.WritableBuildCacheDirectory)
+	if !ok {
+		return nil, fmt.Errorf("build directory is not writable")
+	}
+
 	// Check if the file already exists.
 	if _, ok := c.files[name]; ok {
 		return nil, fmt.Errorf("file %s already exists", name)
 	}
 
 	// Create the file.
-	mutHandle, err := c.buildDir.CreateOutputFile(name)
+	mutHandle, err := writable.CreateOutputFile(name)
 	if err != nil {
 		return nil, err
 	}
@@ -617,6 +649,11 @@ type builder struct {
 	rebuildUserDefinitions bool
 }
 
+// Filesystem implements common.Builder.
+func (b *builder) Filesystem() common.BuildCacheFilesystem {
+	return b.buildDir
+}
+
 // FileFromReference implements common.Builder.
 func (b *builder) FileFromReference(ref config.DatabaseReference) (filesystem.File, error) {
 	f, err := b.buildDir.FileFromReference(ref)
@@ -649,7 +686,12 @@ func (b *builder) ImportAndValidate(def []byte) (common.BuildDefinition, error) 
 		return nil, err
 	}
 
-	if err := defDir.WriteDefinition(def); err != nil {
+	writable, ok := defDir.(common.WritableBuildCacheDirectory)
+	if !ok {
+		return nil, fmt.Errorf("build directory is not writable")
+	}
+
+	if err := writable.WriteDefinition(def); err != nil {
 		return nil, err
 	}
 

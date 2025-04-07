@@ -17,4 +17,6 @@ type Path interface {
 	IsAbs(path string) bool
 	// Split splits path immediately following the final slash.
 	Split(path string) (dir, file string)
+	// Rel returns a relative path from the base to the target.
+	Rel(base, target string) (string, error)
 }

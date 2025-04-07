@@ -1,6 +1,7 @@
 package path
 
 import (
+	"errors"
 	"os"
 	"strings"
 )
@@ -198,6 +199,85 @@ func (u *unixPathImplementation) Split(path string) (dir, file string) {
 	// From: golang.org/toolchain@v0.0.1-go1.23.4.linux-amd64/src/path/path.go
 	i := lastIndexByteString(path, '/')
 	return path[:i+1], path[i+1:]
+}
+
+func countString(s string, c byte) int {
+	n := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			n++
+		}
+	}
+	return n
+}
+
+const separator = '/'
+
+// Rel implements Path.
+func (u *unixPathImplementation) Rel(basepath, targpath string) (string, error) {
+	// From: golang.org/toolchain@v0.0.1-go1.23.4.linux-amd64/src/path/filepath/path.go
+	base := u.Clean(basepath)
+	targ := u.Clean(targpath)
+	if targ == base {
+		return ".", nil
+	}
+	if base == "." {
+		base = ""
+	}
+
+	// Can't use IsAbs - `\a` and `a` are both relative in Windows.
+	baseSlashed := len(base) > 0 && base[0] == separator
+	targSlashed := len(targ) > 0 && targ[0] == separator
+	if baseSlashed != targSlashed {
+		return "", errors.New("Rel: can't make " + targpath + " relative to " + basepath)
+	}
+	// Position base[b0:bi] and targ[t0:ti] at the first differing elements.
+	bl := len(base)
+	tl := len(targ)
+	var b0, bi, t0, ti int
+	for {
+		for bi < bl && base[bi] != separator {
+			bi++
+		}
+		for ti < tl && targ[ti] != separator {
+			ti++
+		}
+		if targ[t0:ti] != base[b0:bi] {
+			break
+		}
+		if bi < bl {
+			bi++
+		}
+		if ti < tl {
+			ti++
+		}
+		b0 = bi
+		t0 = ti
+	}
+	if base[b0:bi] == ".." {
+		return "", errors.New("Rel: can't make " + targpath + " relative to " + basepath)
+	}
+	if b0 != bl {
+		// Base elements left. Must go up before going down.
+		seps := countString(base[b0:bl], separator)
+		size := 2 + seps*3
+		if tl != t0 {
+			size += 1 + tl - t0
+		}
+		buf := make([]byte, size)
+		n := copy(buf, "..")
+		for i := 0; i < seps; i++ {
+			buf[n] = separator
+			copy(buf[n+1:], "..")
+			n += 3
+		}
+		if t0 != tl {
+			buf[n] = separator
+			copy(buf[n+1:], targ[t0:])
+		}
+		return string(buf), nil
+	}
+	return targ[t0:], nil
 }
 
 var (

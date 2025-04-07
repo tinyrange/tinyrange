@@ -358,7 +358,7 @@ type driver struct {
 	cpuCores          int
 	memoryMB          int
 
-	dbBuildDir common.BuildCacheFilesystem
+	dbBuildDir build2.BuildCacheFilesystem
 
 	dumpWriter *csv.Writer
 
@@ -390,10 +390,6 @@ func (tr *driver) loadBuildDatabase() error {
 
 	topConfigFilename := tr.configFilenames[0]
 
-	if len(topConfig.BuildDatabaseConfig) > 1 {
-		return fmt.Errorf("multiple build database configs not supported")
-	}
-
 	dbConfig := topConfig.BuildDatabaseConfig[0]
 
 	if dbConfig.RelativeHostBuildDirectory != nil {
@@ -410,11 +406,31 @@ func (tr *driver) loadBuildDatabase() error {
 		mutBuildDir := filesystem.NewLocalMutableDirectory(buildDir)
 
 		tr.dbBuildDir = build2.NewFilesystemBuildCache(mutBuildDir)
-
-		return nil
 	} else {
-		return fmt.Errorf("no relative host build directory")
+		return fmt.Errorf("top config build database config is not a relative host build directory")
 	}
+
+	for _, cfg := range topConfig.BuildDatabaseConfig[1:] {
+		if cfg.RelativeHostBuildDirectory != nil {
+			return fmt.Errorf("relative host build directory not supported for additional build database config")
+		} else if cfg.AbsoluteHostBuildDirectory != nil {
+			buildDir := cfg.AbsoluteHostBuildDirectory.AbsolutePath
+
+			if ok, _ := common.Exists(buildDir); !ok {
+				return fmt.Errorf("build directory does not exist: %s", buildDir)
+			}
+
+			readOnlyBuildDir := filesystem.NewLocalDirectory(buildDir)
+
+			if err := tr.dbBuildDir.AddCacheDirectory(readOnlyBuildDir); err != nil {
+				return fmt.Errorf("failed to add build directory: %w", err)
+			}
+		} else {
+			return fmt.Errorf("unknown build database config: %v", cfg)
+		}
+	}
+
+	return nil
 }
 
 func (tr *driver) ResolveReference(ref config.DatabaseReference) (filesystem.File, error) {

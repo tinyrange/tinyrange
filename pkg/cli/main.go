@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -16,6 +17,7 @@ import (
 
 var (
 	rootBuildDir          string
+	rootBuildCache        []string
 	rootRebuild           bool
 	rootCpuProfile        string
 	rootVerbose           bool
@@ -55,6 +57,29 @@ func getBuildDir() (string, error) {
 	return buildDir, nil
 }
 
+func parseCacheToDirectory(db common.PackageDatabase, cache string) (filesystem.Directory, error) {
+	url, err := url.Parse(cache)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse cache URL: %w", err)
+	}
+
+	if url.Scheme == "file" {
+		absPath, err := path.Native.Abs(url.Host + url.Path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get absolute path: %w", err)
+		}
+
+		dir := filesystem.NewLocalDirectory(absPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create local directory: %w", err)
+		}
+
+		return dir, nil
+	} else {
+		return nil, fmt.Errorf("unsupported cache type: %s", url.Scheme)
+	}
+}
+
 func newDb() (common.PackageDatabase, error) {
 	buildDir, err := getBuildDir()
 	if err != nil {
@@ -88,6 +113,19 @@ func newDb() (common.PackageDatabase, error) {
 		return nil, err
 	}
 
+	buildFs := db.Builder().Filesystem().(build2.BuildCacheFilesystem)
+
+	for _, cache := range rootBuildCache {
+		cacheDir, err := parseCacheToDirectory(db, cache)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := buildFs.AddCacheDirectory(cacheDir); err != nil {
+			return nil, err
+		}
+	}
+
 	db.Builder().SetRebuildUserDefinitions(rootRebuild)
 
 	for _, mirror := range rootMirrors {
@@ -96,7 +134,9 @@ func newDb() (common.PackageDatabase, error) {
 			return nil, fmt.Errorf("invalid mirror syntax (name=url)")
 		}
 
-		db.AddMirror(name, []string{url})
+		if err := db.AddMirror(name, []string{url}); err != nil {
+			return nil, err
+		}
 	}
 
 	return db, nil
@@ -111,6 +151,7 @@ Complete documentation is available at https://github.com/tinyrange/tinyrange`, 
 	}
 
 	rootCmd.PersistentFlags().StringVar(&rootBuildDir, "buildDir", common.GetDefaultBuildDir(), "specify the directory for built definitions and temporary files")
+	rootCmd.PersistentFlags().StringArrayVar(&rootBuildCache, "buildCache", []string{}, "specify a series of read-only directories to use as build caches, format file://<path>")
 	rootCmd.PersistentFlags().BoolVar(&rootRebuild, "rebuild", false, "should user package definitions be rebuilt even if we already have built them previously")
 	rootCmd.PersistentFlags().StringVar(&rootCpuProfile, "cpuprofile", "", "write cpu profile to file")
 	rootCmd.PersistentFlags().BoolVar(&rootVerbose, "verbose", false, "enable debugging output")

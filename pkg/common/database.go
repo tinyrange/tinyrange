@@ -29,6 +29,10 @@ type BuildCacheDirectory interface {
 
 	// GetOutputFile opens a output file in the build directory.
 	GetOutputFile(name string) (filesystem.File, error)
+}
+
+type WritableBuildCacheDirectory interface {
+	BuildCacheDirectory
 
 	// WriteDefinition writes the build definition.
 	WriteDefinition(def []byte) error
@@ -56,7 +60,7 @@ type BuildCacheFilesystem interface {
 	GetAllHashes() ([]hash.Hash, error)
 
 	// DatabaseConfig returns the configuration for the build database.
-	DatabaseConfig() ([]config.BuildDatabaseConfig, error)
+	DatabaseConfig() ([]filesystem.BuildDatabaseConfig, error)
 }
 
 type ErrNonFatal struct {
@@ -183,7 +187,7 @@ type BuildContext interface {
 	MinimalBuildContext
 
 	// DatabaseConfig returns the configuration for the build database.
-	DatabaseConfig() ([]config.BuildDatabaseConfig, error)
+	DatabaseConfig() ([]filesystem.BuildDatabaseConfig, error)
 
 	// PrenotifyChildren starts builds in the background for a list of children.
 	PrenotifyChildren(children []BuildDefinition) error
@@ -310,6 +314,8 @@ type RequestManager interface {
 
 // Builder is the root object used to build definitions.
 type Builder interface {
+	// Filesystem returns the filesystem used to store build artifacts.
+	Filesystem() BuildCacheFilesystem
 	// Build builds a definition.
 	Build(def BuildDefinition, opts BuildOptions) (BuildArtifact, error)
 	// SetRebuildUserDefinitions sets whether user definitions should be rebuilt.

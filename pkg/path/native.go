@@ -44,6 +44,11 @@ func (n *nativePathImplementation) Split(path string) (dir, file string) {
 	return filepath.Split(path)
 }
 
+// Rel implements Path.
+func (n *nativePathImplementation) Rel(base, target string) (string, error) {
+	return filepath.Rel(base, target)
+}
+
 var (
 	_ Path = &nativePathImplementation{}
 )

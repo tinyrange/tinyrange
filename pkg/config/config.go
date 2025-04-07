@@ -439,42 +439,13 @@ const (
 	CURRENT_CONFIG_VERSION = 2
 )
 
-type RelativeHostBuildDirectory struct {
-	RelativePath string `json:"relative_path" yaml:"relative_path"`
-}
-
-func (cfg RelativeHostBuildDirectory) Validate() error {
-	if cfg.RelativePath == "" {
-		return fmt.Errorf("relative_path is required")
-	}
-
-	// the relative path mustn't be absolute
-	if path.Native.IsAbs(cfg.RelativePath) {
-		return fmt.Errorf("relative_path must be relative: %s", cfg.RelativePath)
-	}
-
-	return nil
-}
-
-type BuildDatabaseConfig struct {
-	RelativeHostBuildDirectory *RelativeHostBuildDirectory `json:"relative_host_build_directory" yaml:"relative_host_build_directory"`
-}
-
-func (cfg BuildDatabaseConfig) Validate() error {
-	if cfg.RelativeHostBuildDirectory != nil {
-		return cfg.RelativeHostBuildDirectory.Validate()
-	} else {
-		return fmt.Errorf("invalid build database config: %v", cfg)
-	}
-}
-
 // A config file that can be passed to TinyRange to configure and execute a virtual machine.
 type TinyRangeConfig struct {
 	// The version of the config file. This is used to determine if the config file is
 	// compatible with the current version of TinyRange.
 	Version int `json:"version" yaml:"version"`
 
-	BuildDatabaseConfig []BuildDatabaseConfig `json:"build_database" yaml:"build_database"`
+	BuildDatabaseConfig []filesystem.BuildDatabaseConfig `json:"build_database" yaml:"build_database"`
 	// The CPU Architecture of the guest.
 	Architecture CPUArchitecture `json:"architecture" yaml:"architecture"`
 	// The Architecture of the root filesystem. This is a hint to enable vmm-specific optimizations.

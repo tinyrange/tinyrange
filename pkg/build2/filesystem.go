@@ -1,8 +1,10 @@
 package build2
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"regexp"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -33,12 +35,12 @@ var (
 	_ common.OutputFileHandle = &filesystemOutputFileHandle{}
 )
 
-type filesystemBuildDirectory struct {
-	dir filesystem.MutableDirectory
+type readOnlyFilesystemBuildDirectory struct {
+	dir filesystem.Directory
 }
 
 // ReadDefinition implements BuildCacheDirectory.
-func (f *filesystemBuildDirectory) ReadDefinition() ([]byte, error) {
+func (f *readOnlyFilesystemBuildDirectory) ReadDefinition() ([]byte, error) {
 	dh, err := f.dir.GetChild(definitionFileName)
 	if err != nil {
 		// This error could not not-exist so we propagate it.
@@ -60,7 +62,7 @@ func (f *filesystemBuildDirectory) ReadDefinition() ([]byte, error) {
 }
 
 // OpenOutputFile implements BuildCacheDirectory.
-func (f *filesystemBuildDirectory) GetOutputFile(name string) (filesystem.File, error) {
+func (f *readOnlyFilesystemBuildDirectory) GetOutputFile(name string) (filesystem.File, error) {
 	file, err := f.dir.GetChild(outputPrefix + name)
 	if err != nil {
 		return nil, err
@@ -70,7 +72,7 @@ func (f *filesystemBuildDirectory) GetOutputFile(name string) (filesystem.File, 
 }
 
 // ReadReceipt implements BuildCacheDirectory.
-func (f *filesystemBuildDirectory) ReadReceipt() ([]byte, error) {
+func (f *readOnlyFilesystemBuildDirectory) ReadReceipt() ([]byte, error) {
 	dh, err := f.dir.GetChild(receiptFileName)
 	if err != nil {
 		// This error could not not-exist so we propagate it.
@@ -89,6 +91,16 @@ func (f *filesystemBuildDirectory) ReadReceipt() ([]byte, error) {
 	}
 
 	return recept, nil
+}
+
+var (
+	_ common.BuildCacheDirectory = &readOnlyFilesystemBuildDirectory{}
+)
+
+type filesystemBuildDirectory struct {
+	*readOnlyFilesystemBuildDirectory
+
+	dir filesystem.MutableDirectory
 }
 
 // CreateOutputFile implements BuildCacheDirectory.
@@ -143,11 +155,34 @@ func (f *filesystemBuildDirectory) WriteReceipt(recept []byte) error {
 }
 
 var (
-	_ common.BuildCacheDirectory = &filesystemBuildDirectory{}
+	_ common.WritableBuildCacheDirectory = &filesystemBuildDirectory{}
 )
+
+type BuildCacheFilesystem interface {
+	common.BuildCacheFilesystem
+
+	AddCacheDirectory(dir filesystem.Directory) error
+}
 
 type filesystemBuildCache struct {
 	dir filesystem.MutableDirectory
+
+	cacheDirectories []filesystem.Directory
+}
+
+// AddCacheDirectory implements BuildCacheFilesystem.
+func (f *filesystemBuildCache) AddCacheDirectory(dir filesystem.Directory) error {
+	if dir == nil {
+		return fmt.Errorf("directory is nil")
+	}
+
+	if _, err := dir.Stat(); err != nil {
+		return fmt.Errorf("failed to access cache directory: %w", err)
+	}
+
+	f.cacheDirectories = append(f.cacheDirectories, dir)
+
+	return nil
 }
 
 // FileFromReference implements common.BuildCacheFilesystem.
@@ -166,14 +201,26 @@ func (f *filesystemBuildCache) FileFromReference(ref config.DatabaseReference) (
 }
 
 // DatabaseConfig implements common.BuildCacheFilesystem.
-func (f *filesystemBuildCache) DatabaseConfig() ([]config.BuildDatabaseConfig, error) {
-	return []config.BuildDatabaseConfig{
-		{
-			RelativeHostBuildDirectory: &config.RelativeHostBuildDirectory{
-				RelativePath: "../..",
-			},
-		},
-	}, nil
+func (f *filesystemBuildCache) DatabaseConfig() ([]filesystem.BuildDatabaseConfig, error) {
+	var ret []filesystem.BuildDatabaseConfig
+
+	mutableConfig, err := filesystem.GetDatabaseConfigForDirectory(f.dir, f.dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get config for cache: %w", err)
+	}
+
+	ret = append(ret, mutableConfig)
+
+	for _, cacheDir := range f.cacheDirectories {
+		config, err := filesystem.GetDatabaseConfigForDirectory(f.dir, cacheDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get config for cache: %w", err)
+		}
+
+		ret = append(ret, config)
+	}
+
+	return ret, nil
 }
 
 // GetHostFilename implements BuildCacheFilesystem.
@@ -181,7 +228,7 @@ func (f *filesystemBuildCache) GetHostFilename() (string, error) {
 	return filesystem.GetHostFilename(f.dir)
 }
 
-// CreateBuildDirectory implements BuildCacheFilesystem.
+// CreateOrGetBuildDirectory implements BuildCacheFilesystem.
 func (f *filesystemBuildCache) CreateBuildDirectory(hash hash.Hash) (common.BuildCacheDirectory, error) {
 	// take the first byte of the hash as the directory name
 	buildDirTop, err := f.dir.Mkdir(hash.String()[:2])
@@ -196,11 +243,39 @@ func (f *filesystemBuildCache) CreateBuildDirectory(hash hash.Hash) (common.Buil
 		return nil, fmt.Errorf("failed to create build directory: %w", err)
 	}
 
-	return &filesystemBuildDirectory{dir: buildDir}, nil
+	return &filesystemBuildDirectory{
+		readOnlyFilesystemBuildDirectory: &readOnlyFilesystemBuildDirectory{
+			dir: buildDir,
+		},
+		dir: buildDir,
+	}, nil
 }
 
-// GetBuildDirectory implements BuildCacheFilesystem.
-func (f *filesystemBuildCache) GetBuildDirectory(hash hash.Hash) (common.BuildCacheDirectory, error) {
+func (f *filesystemBuildCache) getBuildDirectoryFromCache(top filesystem.Directory, hash hash.Hash) (common.BuildCacheDirectory, error) {
+	buildEntTop, err := top.GetChild(hash.String()[:2])
+	if err != nil {
+		return nil, fmt.Errorf("failed to get top build directory: %w", err)
+	}
+
+	buildDirTop, ok := buildEntTop.File.(filesystem.Directory)
+	if !ok {
+		return nil, fmt.Errorf("top build directory is not a directory")
+	}
+
+	buildEnt, err := buildDirTop.GetChild(hash.String()[2:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to get build directory: %w", err)
+	}
+
+	buildDir, ok := buildEnt.File.(filesystem.Directory)
+	if !ok {
+		return nil, fmt.Errorf("build directory is not a directory")
+	}
+
+	return &readOnlyFilesystemBuildDirectory{dir: buildDir}, nil
+}
+
+func (f *filesystemBuildCache) getBuildDirectory(hash hash.Hash) (common.BuildCacheDirectory, error) {
 	buildEntTop, err := f.dir.GetChild(hash.String()[:2])
 	if err != nil {
 		return nil, fmt.Errorf("failed to get top build directory: %w", err)
@@ -221,7 +296,33 @@ func (f *filesystemBuildCache) GetBuildDirectory(hash hash.Hash) (common.BuildCa
 		return nil, fmt.Errorf("build directory is not a mutable directory")
 	}
 
-	return &filesystemBuildDirectory{dir: buildDir}, nil
+	return &filesystemBuildDirectory{
+		readOnlyFilesystemBuildDirectory: &readOnlyFilesystemBuildDirectory{
+			dir: buildDir,
+		},
+		dir: buildDir,
+	}, nil
+}
+
+// GetBuildDirectory implements BuildCacheFilesystem.
+func (f *filesystemBuildCache) GetBuildDirectory(hash hash.Hash) (common.BuildCacheDirectory, error) {
+	// try the top directory first
+	top, topErr := f.getBuildDirectory(hash)
+	if topErr == nil {
+		return top, nil
+	} else if errors.Is(topErr, fs.ErrNotExist) {
+		// try cache directories
+		for _, cacheDir := range f.cacheDirectories {
+			buildDir, err := f.getBuildDirectoryFromCache(cacheDir, hash)
+			if err == nil {
+				return buildDir, nil
+			} else if !errors.Is(err, fs.ErrNotExist) {
+				return nil, fmt.Errorf("failed to get build directory from cache: %w", err)
+			}
+		}
+	}
+
+	return nil, topErr
 }
 
 var (
@@ -268,9 +369,9 @@ func (f *filesystemBuildCache) GetAllHashes() ([]hash.Hash, error) {
 }
 
 var (
-	_ common.BuildCacheFilesystem = &filesystemBuildCache{}
+	_ BuildCacheFilesystem = &filesystemBuildCache{}
 )
 
-func NewFilesystemBuildCache(dir filesystem.MutableDirectory) common.BuildCacheFilesystem {
+func NewFilesystemBuildCache(dir filesystem.MutableDirectory) BuildCacheFilesystem {
 	return &filesystemBuildCache{dir: dir}
 }
