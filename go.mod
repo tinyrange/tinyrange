@@ -1,6 +1,7 @@
 module github.com/tinyrange/tinyrange
 
 go 1.24.0
+
 require (
 	github.com/Code-Hex/vz/v3 v3.6.0
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
@@ -19,7 +20,7 @@ require (
 	github.com/jezek/xgbutil v0.0.0-20240804174445-e2e9464b6e01
 	github.com/jsimonetti/rtnetlink v1.4.2
 	github.com/klauspost/compress v1.18.0
-	github.com/miekg/dns v1.1.64
+	github.com/miekg/dns v1.1.65
 	github.com/moby/buildkit v0.20.2
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/ramr/go-reaper v0.2.3
@@ -32,7 +33,6 @@ require (
 	golang.org/x/arch v0.15.0
 	golang.org/x/crypto v0.36.0
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
-	golang.org/x/mod v0.24.0
 	golang.org/x/net v0.38.0
 	golang.org/x/sys v0.31.0
 	golang.org/x/term v0.30.0
@@ -64,6 +64,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923 // indirect
+	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/time v0.7.0 // indirect
