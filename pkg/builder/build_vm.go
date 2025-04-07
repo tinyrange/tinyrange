@@ -183,8 +183,10 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 	if strings.HasPrefix(interaction, "init,") {
 		builderCfg.ExecInit = strings.TrimPrefix(interaction, "init,")
 		vmInteraction = config.InteractionSerial
-	} else {
+	} else if interaction != "" {
 		vmInteraction = config.InteractionKind(interaction)
+	} else {
+		vmInteraction = config.InteractionSSH
 	}
 
 	// get the build directory from the context.
