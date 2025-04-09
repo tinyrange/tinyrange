@@ -577,7 +577,7 @@ func (def *fetchOciImageDefinition) Dependencies() ([]common.BuildDefinition, er
 // implements common.BuildDefinition.
 func (def *fetchOciImageDefinition) Params() hash.SerializableValue { return def.params }
 func (def *fetchOciImageDefinition) SerializableType() string {
-	return "FetchOciImageDefinition"
+	return "FetchOciImageDefinition_v0"
 }
 func (def *fetchOciImageDefinition) Create(params hash.SerializableValue) hash.Definition {
 	return &fetchOciImageDefinition{params: params.(FetchOciImageParameters)}

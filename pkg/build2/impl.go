@@ -47,6 +47,10 @@ func (a *buildArtifact) ReferenceForFile(name string) (config.DatabaseReference,
 		return config.DatabaseReference{}, fmt.Errorf("hash is not set")
 	}
 
+	if name == "" {
+		return config.DatabaseReference{}, fmt.Errorf("filename is empty")
+	}
+
 	return config.DatabaseReference{
 		Hash:     a.hash.String(),
 		Filename: name,
@@ -472,7 +476,10 @@ func (c *buildContext) ensureUpToDate() error {
 		// Check all requirements in parallel.
 		for _, req := range c.recept.Requirements {
 			child, err := c.builder.contextForHash(c, req, common.BuildOptions{})
-			if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				c.logger.Describe(ColorYellow, "rebuilding due to missing requirement %s", req.String())
+				return c.build(writable)
+			} else if err != nil {
 				return fmt.Errorf("failed to load requirement: %w", err)
 			}
 

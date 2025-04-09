@@ -110,15 +110,35 @@ func parseCacheToDirectory(db common.PackageDatabase, cache string) (filesystem.
 					return nil, filesystem.BuildDatabaseConfig{}, err
 				}
 
+				var buildDirTop filesystem.Directory
 				top := filesystem.NewMemoryDirectory()
 
 				if err := fsutil.ExtractArchive2ToFilesystem(archive, "", top); err != nil {
 					return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("failed to extract archive: %w", err)
 				}
 
-				return top, filesystem.BuildDatabaseConfig{
+				pathString := url.Query().Get("path")
+
+				if pathString != "" {
+					topEnt, err := filesystem.OpenPath(top, pathString)
+					if err != nil {
+						return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("failed to open path in archive: %w", err)
+					}
+
+					dir, ok := topEnt.File.(filesystem.Directory)
+					if !ok {
+						return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("path in archive is not a directory: %s", pathString)
+					}
+
+					buildDirTop = dir
+				} else {
+					buildDirTop = top
+				}
+
+				return buildDirTop, filesystem.BuildDatabaseConfig{
 					Archive2BuildArtifact: &filesystem.Archive2BuildArtifact{
 						Hash: art.DefinitionHash().String(),
+						Path: pathString,
 					},
 				}, nil
 			} else {

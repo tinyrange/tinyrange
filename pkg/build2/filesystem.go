@@ -248,12 +248,12 @@ func (f *filesystemBuildCache) CreateBuildDirectory(hash hash.Hash) (common.Buil
 func (f *filesystemBuildCache) getBuildDirectoryFromCache(top filesystem.Directory, hash hash.Hash) (common.BuildCacheDirectory, error) {
 	buildEntTop, err := top.GetChild(hash.String()[:2])
 	if err != nil {
-		return nil, fmt.Errorf("failed to get top build directory: %w", err)
+		return nil, fmt.Errorf("failed to get cache build directory: %w", err)
 	}
 
 	buildDirTop, ok := buildEntTop.File.(filesystem.Directory)
 	if !ok {
-		return nil, fmt.Errorf("top build directory is not a directory")
+		return nil, fmt.Errorf("cache build directory is not a directory")
 	}
 
 	buildEnt, err := buildDirTop.GetChild(hash.String()[2:])

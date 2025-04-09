@@ -43,6 +43,7 @@ func (cfg AbsoluteHostBuildDirectory) Validate() error {
 type Archive2BuildArtifact struct {
 	// Assumes that the archive exists in a already mounted filesystem.
 	Hash string `json:"hash" yaml:"hash"`
+	Path string `json:"path" yaml:"path"`
 }
 
 func (cfg Archive2BuildArtifact) Validate() error {

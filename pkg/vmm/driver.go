@@ -445,8 +445,24 @@ func (tr *driver) loadBuildDatabase() error {
 				return fmt.Errorf("failed to extract archive: %w", err)
 			}
 
-			if err := tr.dbBuildDir.AddCacheDirectory(dir, cfg); err != nil {
-				return fmt.Errorf("failed to add build directory: %w", err)
+			if cfg.Archive2BuildArtifact.Path != "" {
+				pathEnt, err := filesystem.OpenPath(dir, cfg.Archive2BuildArtifact.Path)
+				if err != nil {
+					return fmt.Errorf("failed to open path in archive: %w", err)
+				}
+
+				dir, ok := pathEnt.File.(filesystem.Directory)
+				if !ok {
+					return fmt.Errorf("path in archive is not a directory: %s", cfg.Archive2BuildArtifact.Path)
+				}
+
+				if err := tr.dbBuildDir.AddCacheDirectory(dir, cfg); err != nil {
+					return fmt.Errorf("failed to add build directory: %w", err)
+				}
+			} else {
+				if err := tr.dbBuildDir.AddCacheDirectory(dir, cfg); err != nil {
+					return fmt.Errorf("failed to add build directory: %w", err)
+				}
 			}
 		} else {
 			return fmt.Errorf("unknown build database config: %v", cfg)

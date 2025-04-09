@@ -97,7 +97,7 @@ type DatabaseFileFragment struct {
 
 func (f DatabaseFileFragment) Validate() error {
 	if err := f.DatabaseReference.Validate(); err != nil {
-		return fmt.Errorf("invalid host_filename: %w", err)
+		return fmt.Errorf("invalid DatabaseReference: %w", err)
 	}
 
 	if f.GuestFilename == "" {
@@ -133,7 +133,7 @@ type ArchiveFragment struct {
 
 func (f ArchiveFragment) Validate() error {
 	if err := f.DatabaseReference.Validate(); err != nil {
-		return fmt.Errorf("invalid host_filename: %w", err)
+		return fmt.Errorf("invalid DatabaseReference: %w", err)
 	}
 
 	return nil
