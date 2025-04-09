@@ -312,7 +312,7 @@ type MacroManager interface {
 
 // RequestManager is responsible for creating http clients.
 type RequestManager interface {
-	// GetHttpClient returns an http client.
+	// HttpClient returns an http client.
 	HttpClient() (*http.Client, error)
 }
 
@@ -343,6 +343,9 @@ type PackageDatabase interface {
 	MacroManager
 	RequestManager
 	Builder() Builder
+
+	// Get a set of extended file methods to return a HTTPClient and handle simple caching.
+	FileMethods() filesystem.ExtendedFileMethods
 
 	// Call calls a starlark function declared in a file.
 	Call(filename string, builder string, args ...starlark.Value) (starlark.Value, error)

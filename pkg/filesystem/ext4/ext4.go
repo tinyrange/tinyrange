@@ -1681,7 +1681,7 @@ func (fs *Ext4Filesystem) MakeDeterministic(fsUuid uuid.UUID, createTime time.Ti
 type RegionWrapperFunc func(string, vm.MemoryRegion) vm.MemoryRegion
 
 type filesystemCreationContext struct {
-	extendedRegionMethods filesystem.ExtendedRegionMethods
+	extendedRegionMethods filesystem.ExtendedFileMethods
 	deferredFilesystem    []func() error
 	regionWrapper         RegionWrapperFunc
 	skipDirectories       map[filesystem.Directory]struct{}
@@ -1792,7 +1792,7 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 			var region vm.MemoryRegion
 
 			if openRegion, ok := ent.File.(filesystem.HasOpenRegion); ok {
-				region, err = openRegion.OpenRegion(ctx.extendedRegionMethods)
+				region, err = openRegion.OpenRegion()
 				if err != nil {
 					return fmt.Errorf("failed to open region for guest: %T %w", ent.File, err)
 				}
@@ -1841,7 +1841,7 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 }
 
 func (fs *Ext4Filesystem) AddDirectory(
-	extendedRegionMethods filesystem.ExtendedRegionMethods,
+	extendedRegionMethods filesystem.ExtendedFileMethods,
 	dir filesystem.Directory,
 	wrapper RegionWrapperFunc,
 	skipDirectories map[filesystem.Directory]struct{},

@@ -15,6 +15,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/fsutil"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
@@ -60,6 +61,50 @@ func getBuildDir() (string, error) {
 	return buildDir, nil
 }
 
+func defToFilesystemAndConfig(db common.PackageDatabase, ark common.BuildDefinition, pathString string) (filesystem.Directory, filesystem.BuildDatabaseConfig, error) {
+	art, err := db.Builder().Build(ark, common.BuildOptions{})
+	if err != nil {
+		return nil, filesystem.BuildDatabaseConfig{}, err
+	}
+
+	log.Debug("adding archive to builder cache", "hash", art.DefinitionHash().String())
+
+	archive, err := builder.Archive2FromArtifact(art)
+	if err != nil {
+		return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("failed to get archive from artifact %s: %w", art.DefinitionHash().String(), err)
+	}
+
+	var buildDirTop filesystem.Directory
+	top := filesystem.NewMemoryDirectory()
+
+	if err := fsutil.ExtractArchive2ToFilesystem(archive, db.FileMethods(), "", top); err != nil {
+		return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("failed to extract archive: %w", err)
+	}
+
+	if pathString != "" {
+		topEnt, err := filesystem.OpenPath(top, pathString)
+		if err != nil {
+			return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("failed to open path in archive: %w", err)
+		}
+
+		dir, ok := topEnt.File.(filesystem.Directory)
+		if !ok {
+			return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("path in archive is not a directory: %s", pathString)
+		}
+
+		buildDirTop = dir
+	} else {
+		buildDirTop = top
+	}
+
+	return buildDirTop, filesystem.BuildDatabaseConfig{
+		Archive2BuildArtifact: &filesystem.Archive2BuildArtifact{
+			Hash: art.DefinitionHash().String(),
+			Path: pathString,
+		},
+	}, nil
+}
+
 func parseCacheToDirectory(db common.PackageDatabase, cache string) (filesystem.Directory, filesystem.BuildDatabaseConfig, error) {
 	url, err := url.Parse(cache)
 	if err != nil {
@@ -100,51 +145,28 @@ func parseCacheToDirectory(db common.PackageDatabase, cache string) (filesystem.
 				})
 				ark := builder.Factory.NewReadArchive2BuildDefinition(def, kind, 0)
 
-				art, err := db.Builder().Build(ark, common.BuildOptions{})
-				if err != nil {
-					return nil, filesystem.BuildDatabaseConfig{}, err
-				}
-
-				archive, err := builder.Archive2FromArtifact(art)
-				if err != nil {
-					return nil, filesystem.BuildDatabaseConfig{}, err
-				}
-
-				var buildDirTop filesystem.Directory
-				top := filesystem.NewMemoryDirectory()
-
-				if err := fsutil.ExtractArchive2ToFilesystem(archive, "", top); err != nil {
-					return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("failed to extract archive: %w", err)
-				}
-
-				pathString := url.Query().Get("path")
-
-				if pathString != "" {
-					topEnt, err := filesystem.OpenPath(top, pathString)
-					if err != nil {
-						return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("failed to open path in archive: %w", err)
-					}
-
-					dir, ok := topEnt.File.(filesystem.Directory)
-					if !ok {
-						return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("path in archive is not a directory: %s", pathString)
-					}
-
-					buildDirTop = dir
-				} else {
-					buildDirTop = top
-				}
-
-				return buildDirTop, filesystem.BuildDatabaseConfig{
-					Archive2BuildArtifact: &filesystem.Archive2BuildArtifact{
-						Hash: art.DefinitionHash().String(),
-						Path: pathString,
-					},
-				}, nil
+				return defToFilesystemAndConfig(db, ark, url.Query().Get("path"))
 			} else {
 				return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("cache is not a directory or archive: %s", absPath)
 			}
 		}
+	} else if url.Scheme == "http+cvmfs" {
+		// assume it's CVMFS
+		pathString := url.Query().Get("path")
+
+		path := url.Path
+		host := url.Host
+
+		if !strings.HasPrefix(path, "/cvmfs") {
+			return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("cvmfs path must start with /cvmfs: %s", path)
+		}
+
+		mirror := "http://" + host + "/cvmfs"
+		repo := strings.TrimPrefix(path, "/cvmfs/")
+
+		def := builder.Factory.NewFetchCvmfsDefinition(mirror, repo, pathString)
+
+		return defToFilesystemAndConfig(db, def, "")
 	} else {
 		return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("unsupported cache type: %s", url.Scheme)
 	}

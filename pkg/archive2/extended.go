@@ -50,7 +50,7 @@ func (m CVMFSArchiveMetadata) Size() int64 {
 }
 
 type cvmfsChunk struct {
-	ctx  filesystem.ExtendedRegionMethods
+	ctx  filesystem.ExtendedFileMethods
 	hash string
 	url  string
 	size int64
@@ -62,7 +62,10 @@ type cvmfsChunk struct {
 func (c *cvmfsChunk) ReadAt(p []byte, off int64) (n int, err error) {
 	if c.handle == nil {
 		handle, err := c.ctx.GetOrSetCacheForHash(c.hash, func(w io.Writer) error {
-			client := c.ctx.HttpClient()
+			client, err := c.ctx.HttpClient()
+			if err != nil {
+				return fmt.Errorf("failed to get http client: %w", err)
+			}
 
 			// Fetch the chunk from the CVMFS server.
 			resp, err := client.Get(c.url)
@@ -87,7 +90,7 @@ func (c *cvmfsChunk) ReadAt(p []byte, off int64) (n int, err error) {
 				pb := progressbar.DefaultBytes(c.size, c.hash)
 				defer pb.Close()
 
-				w = io.MultiWriter(w, pb)
+				writer = io.MultiWriter(w, pb)
 			}
 
 			if _, err := io.Copy(writer, zlibReader); err != nil {
@@ -125,10 +128,24 @@ var (
 	_ vm.MemoryRegion = &cvmfsChunk{}
 )
 
+type simpleCvmfsHandle struct {
+	vm.MemoryRegion
+	io.Reader
+}
+
+// Close implements filesystem.FileHandle.
+func (s *simpleCvmfsHandle) Close() error {
+	return nil
+}
+
+var (
+	_ filesystem.FileHandle = &simpleCvmfsHandle{}
+)
+
 type cvmfsFile struct {
 	metadata CVMFSArchiveMetadata
 
-	ctx    filesystem.ExtendedRegionMethods
+	ctx    filesystem.ExtendedFileMethods
 	region vm.MemoryRegion
 
 	modTime time.Time
@@ -171,8 +188,11 @@ func (c *cvmfsFile) WriteAt(p []byte, off int64) (n int, err error) {
 }
 
 // OpenRegion implements filesystem.HasOpenRegion.
-func (c *cvmfsFile) OpenRegion(ctx filesystem.ExtendedRegionMethods) (vm.MemoryRegion, error) {
-	c.ctx = ctx
+func (c *cvmfsFile) OpenRegion() (vm.MemoryRegion, error) {
+	if c.ctx == nil {
+		return nil, fmt.Errorf("cvmfsFile has no context")
+	}
+
 	return c, nil
 }
 
@@ -183,7 +203,15 @@ func (c *cvmfsFile) UidAndGid() (int, int, error) {
 
 // Open implements filesystem.File.
 func (c *cvmfsFile) Open() (filesystem.FileHandle, error) {
-	return nil, fmt.Errorf("Open on cvmfsFile not implemented")
+	region, err := c.OpenRegion()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open region: %w", err)
+	}
+
+	return &simpleCvmfsHandle{
+		MemoryRegion: region,
+		Reader:       io.NewSectionReader(region, 0, region.Size()),
+	}, nil
 }
 
 // Stat implements filesystem.File.
@@ -211,7 +239,7 @@ type ExtendedHeader struct {
 	Kind string
 }
 
-func fileFromExtendedEntry(ar *ArchiveReader) (filesystem.File, error) {
+func fileFromExtendedEntry(ar *ArchiveReader, methods filesystem.ExtendedFileMethods) (filesystem.File, error) {
 	fh, err := ar.Open()
 	if err != nil {
 		return nil, err
@@ -230,7 +258,9 @@ func fileFromExtendedEntry(ar *ArchiveReader) (filesystem.File, error) {
 
 	switch hdr.Kind {
 	case CVMFS_ARCHIVE_METADATA_KIND:
-		f := &cvmfsFile{}
+		f := &cvmfsFile{
+			ctx: methods,
+		}
 
 		uid, gid := ar.Owner()
 		f.uid = uid

@@ -1,6 +1,7 @@
 package database
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -73,6 +74,27 @@ type packageDatabase struct {
 	builders map[string]starlark.Callable
 
 	builder common.Builder
+
+	simpleCache map[string][]byte
+}
+
+// GetOrSetCacheForHash implements filesystem.ExtendedFileMethods.
+func (db *packageDatabase) GetOrSetCacheForHash(hash string, setter func(w io.Writer) error) (io.ReaderAt, error) {
+	if db.simpleCache == nil {
+		db.simpleCache = make(map[string][]byte)
+	}
+
+	if _, ok := db.simpleCache[hash]; !ok {
+		var buf bytes.Buffer
+
+		if err := setter(&buf); err != nil {
+			return nil, err
+		}
+
+		db.simpleCache[hash] = buf.Bytes()
+	}
+
+	return bytes.NewReader(db.simpleCache[hash]), nil
 }
 
 func (db *packageDatabase) getFileContents(name string, allowLocal bool) (string, error) {
@@ -470,6 +492,11 @@ func (db *packageDatabase) Call(filename string, builder string, args ...starlar
 
 func (db *packageDatabase) Builder() common.Builder {
 	return db.builder
+}
+
+// FileMethods implements common.PackageDatabase.
+func (db *packageDatabase) FileMethods() filesystem.ExtendedFileMethods {
+	return db
 }
 
 var (

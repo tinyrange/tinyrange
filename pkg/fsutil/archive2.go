@@ -11,7 +11,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
-func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, target string, dir filesystem.MutableDirectory) error {
+func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.ExtendedFileMethods, target string, dir filesystem.MutableDirectory) error {
 	for {
 		err := ark.NextEntry()
 		if err == io.EOF {
@@ -72,7 +72,7 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, target string, dir
 					return err
 				}
 			case archive2.EntryKindRegular:
-				f, err := ent.File()
+				f, err := ent.File(ext)
 				if err != nil {
 					return fmt.Errorf("failed to get file: %w", err)
 				}
@@ -81,7 +81,7 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, target string, dir
 					return err
 				}
 			case archive2.EntryKindExtended:
-				f, err := ent.File()
+				f, err := ent.File(ext)
 				if err != nil {
 					return fmt.Errorf("failed to get file: %w", err)
 				}

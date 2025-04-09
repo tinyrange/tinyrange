@@ -56,6 +56,7 @@ type CVMFSEntry struct {
 	Size      int64
 	Mode      int64
 	Mtime     int64
+	MtimeNS   int64
 	Flags     int64
 	Name      string
 	Symlink   string
@@ -109,30 +110,83 @@ func (catalog *CVMFSCatalog) Entries() ([]CVMFSEntry, error) {
 	var ret []CVMFSEntry
 
 	if err := tbl.Read(func(row []any) error {
-		ent := CVMFSEntry{
-			Catalog: catalog,
+		var ent CVMFSEntry
 
-			Md5Path1:  row[0].(int64),
-			Md5Path2:  row[1].(int64),
-			Parent1:   row[2].(int64),
-			Parent2:   row[3].(int64),
-			Hardlinks: row[4].(int64),
-			Size:      row[6].(int64),
-			Mode:      row[7].(int64),
-			Mtime:     row[8].(int64),
-			Flags:     row[9].(int64),
-			Name:      row[10].(string),
-			Symlink:   row[11].(string),
-			Uid:       row[12].(int64),
-			Gid:       row[13].(int64),
-		}
+		if len(row) == 15 {
+			ent = CVMFSEntry{
+				Catalog: catalog,
 
-		if row[5] != nil {
-			ent.Hash = row[5].([]byte)
-		}
+				Md5Path1:  row[0].(int64),
+				Md5Path2:  row[1].(int64),
+				Parent1:   row[2].(int64),
+				Parent2:   row[3].(int64),
+				Hardlinks: row[4].(int64),
+				Size:      row[6].(int64),
+				Mode:      row[7].(int64),
+				Mtime:     row[8].(int64),
+				Flags:     row[9].(int64),
+				Name:      row[10].(string),
+				Symlink:   row[11].(string),
+				Uid:       row[12].(int64),
+				Gid:       row[13].(int64),
+			}
 
-		if row[14] != nil {
-			ent.Xattr = row[14].([]byte)
+			if row[5] != nil {
+				ent.Hash = row[5].([]byte)
+			}
+
+			if row[14] != nil {
+				ent.Xattr = row[14].([]byte)
+			}
+		} else if len(row) == 16 {
+			// 0 md5path_1 INTEGER
+			// 1 md5path_2 INTEGER
+			// 2 parent_1 INTEGER
+			// 3 parent_2 INTEGER
+			// 4 hardlinks INTEGER
+			// 5 hash BLOB
+			// 6 size INTEGER
+			// 7 mode INTEGER
+			// 8 mtime INTEGER
+			// 9 mtimens INTEGER
+			// 10 flags INTEGER
+			// 11 name TEXT
+			// 12 symlink TEXT
+			// 13 uid INTEGER
+			// 14 gid INTEGER
+			// 15 xattr BLOB
+
+			ent = CVMFSEntry{
+				Catalog: catalog,
+
+				Md5Path1:  row[0].(int64),
+				Md5Path2:  row[1].(int64),
+				Parent1:   row[2].(int64),
+				Parent2:   row[3].(int64),
+				Hardlinks: row[4].(int64),
+				Size:      row[6].(int64),
+				Mode:      row[7].(int64),
+				Mtime:     row[8].(int64),
+				Flags:     row[10].(int64),
+				Name:      row[11].(string),
+				Symlink:   row[12].(string),
+				Uid:       row[13].(int64),
+				Gid:       row[14].(int64),
+			}
+
+			if row[5] != nil {
+				ent.Hash = row[5].([]byte)
+			}
+
+			if row[9] != nil {
+				ent.MtimeNS = row[9].(int64)
+			}
+
+			if row[15] != nil {
+				ent.Xattr = row[15].([]byte)
+			}
+		} else {
+			return fmt.Errorf("unexpected number of columns: %d", len(row))
 		}
 
 		if ent.IsChunked() {

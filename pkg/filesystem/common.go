@@ -35,13 +35,16 @@ type FileInfo interface {
 	Kind() FileType
 }
 
-type ExtendedRegionMethods interface {
-	HttpClient() *http.Client
+type ExtendedFileMethods interface {
+	// HttpClient returns an http client.
+	HttpClient() (*http.Client, error)
+
+	// GetOrSetCacheForHash returns a cached file for the given hash.
 	GetOrSetCacheForHash(hash string, setter func(w io.Writer) error) (io.ReaderAt, error)
 }
 
 type HasOpenRegion interface {
-	OpenRegion(ctx ExtendedRegionMethods) (vm.MemoryRegion, error)
+	OpenRegion() (vm.MemoryRegion, error)
 }
 
 // File is an interface that represents a file.

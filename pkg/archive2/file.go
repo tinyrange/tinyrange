@@ -73,9 +73,9 @@ var (
 	_ filesystem.FileInfo     = &archiveFile{}
 )
 
-func (ar *ArchiveReader) File() (filesystem.File, error) {
+func (ar *ArchiveReader) File(ext filesystem.ExtendedFileMethods) (filesystem.File, error) {
 	if ar.Kind() == EntryKindExtended {
-		return fileFromExtendedEntry(ar)
+		return fileFromExtendedEntry(ar, ext)
 	}
 
 	if ar.Kind() != EntryKindRegular {

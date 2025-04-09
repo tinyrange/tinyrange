@@ -441,7 +441,7 @@ func (tr *driver) loadBuildDatabase() error {
 
 			dir := filesystem.NewMemoryDirectory()
 
-			if err := fsutil.ExtractArchive2ToFilesystem(ark, "", dir); err != nil {
+			if err := fsutil.ExtractArchive2ToFilesystem(ark, tr, "", dir); err != nil {
 				return fmt.Errorf("failed to extract archive: %w", err)
 			}
 
@@ -531,8 +531,8 @@ func (tr *driver) GetOrSetCacheForHash(hash string, setter func(w io.Writer) err
 }
 
 // HttpClient implements filesystem.ExtendedRegionMethods.
-func (tr *driver) HttpClient() *http.Client {
-	return http.DefaultClient
+func (tr *driver) HttpClient() (*http.Client, error) {
+	return http.DefaultClient, nil
 }
 
 func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
@@ -803,7 +803,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 		}
 		defer ark.Close()
 
-		if err := fsutil.ExtractArchive2ToFilesystem(ark, ark2.Target, dir); err != nil {
+		if err := fsutil.ExtractArchive2ToFilesystem(ark, tr, ark2.Target, dir); err != nil {
 			return fmt.Errorf("failed to extract archive: %w", err)
 		}
 
@@ -1930,8 +1930,8 @@ func (d *driver) EnsureFile(contents []byte) (File, error) {
 }
 
 var (
-	_ Driver                           = &driver{}
-	_ filesystem.ExtendedRegionMethods = &driver{}
+	_ Driver                         = &driver{}
+	_ filesystem.ExtendedFileMethods = &driver{}
 )
 
 var DriverFlags = flag.NewFlagSet(os.Args[0], flag.ExitOnError)

@@ -67,14 +67,14 @@ func (def *fetchCvmfsDefinition) Build(ctx common.BuildContext) error {
 				Size(0).
 				Mode(fs.FileMode(file.Mode)).
 				Owner(int(file.Uid), int(file.Gid)).
-				ModTime(time.Unix(file.Mtime, 0))
+				ModTime(time.Unix(file.Mtime, file.MtimeNS))
 		case filesystem.TypeSymlink:
 			fac = *fac.Kind(archive2.EntryKindSymlink).
 				Name(file.FullPath).
 				Size(0).
 				Mode(fs.FileMode(file.Mode)).
 				Owner(int(file.Uid), int(file.Gid)).
-				ModTime(time.Unix(file.Mtime, 0)).
+				ModTime(time.Unix(file.Mtime, file.MtimeNS)).
 				Linkname(file.Symlink)
 		case filesystem.TypeRegular:
 			var metadata archive2.CVMFSArchiveMetadata
@@ -114,7 +114,7 @@ func (def *fetchCvmfsDefinition) Build(ctx common.BuildContext) error {
 				Size(int64(len(metadataMarshaled))).
 				Mode(fs.FileMode(file.Mode)).
 				Owner(int(file.Uid), int(file.Gid)).
-				ModTime(time.Unix(file.Mtime, 0))
+				ModTime(time.Unix(file.Mtime, file.MtimeNS))
 
 			reader = bytes.NewReader(metadataMarshaled)
 		default:
