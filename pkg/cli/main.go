@@ -195,7 +195,10 @@ func newDb() (common.PackageDatabase, error) {
 
 		buildDirMut := filesystem.NewLocalMutableDirectory(buildDir)
 
-		buildFs := build2.NewFilesystemBuildCache(buildDirMut, build2.DEFAULT_DATABASE_CONFIG)
+		buildFs, err := build2.OpenFilesystemBuildCache(buildDirMut, build2.DEFAULT_DATABASE_CONFIG)
+		if err != nil {
+			return nil, err
+		}
 
 		return build2.New(buildFs, db, rootBuildJobs, logger.Group("builder")), nil
 	}

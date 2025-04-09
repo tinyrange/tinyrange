@@ -384,6 +384,8 @@ func (tr *driver) fatalError() {
 }
 
 func (tr *driver) loadBuildDatabase() error {
+	var err error
+
 	topConfig := tr.topConfig()
 
 	if len(topConfig.BuildDatabaseConfig) == 0 {
@@ -407,7 +409,10 @@ func (tr *driver) loadBuildDatabase() error {
 
 		mutBuildDir := filesystem.NewLocalMutableDirectory(buildDir)
 
-		tr.dbBuildDir = build2.NewFilesystemBuildCache(mutBuildDir, build2.DEFAULT_DATABASE_CONFIG)
+		tr.dbBuildDir, err = build2.OpenFilesystemBuildCache(mutBuildDir, build2.DEFAULT_DATABASE_CONFIG)
+		if err != nil {
+			return fmt.Errorf("failed to open build database: %w", err)
+		}
 	} else {
 		return fmt.Errorf("top config build database config is not a relative host build directory")
 	}

@@ -1,6 +1,7 @@
 package build2
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -18,7 +19,40 @@ const (
 	definitionFileName = "definition.json"
 	receiptFileName    = "receipt.json"
 	outputPrefix       = "output."
+
+	MARKER_FILENAME = "tinyrange-build.json"
+	MARKET_VERSION  = 1
 )
+
+type MarkerHeader struct {
+	Version int `json:"version"`
+}
+
+func checkMarkerFile(dir filesystem.Directory) error {
+	// check for the presence of a marker file.
+	marker, err := dir.GetChild(MARKER_FILENAME)
+	if err != nil {
+		return fmt.Errorf("failed to get marker file: %w", err)
+	}
+
+	// Open the marker and check the version
+	markerFile, err := marker.Open()
+	if err != nil {
+		return fmt.Errorf("failed to open marker file: %w", err)
+	}
+	defer markerFile.Close()
+
+	var markerHeader MarkerHeader
+	if err := json.NewDecoder(markerFile).Decode(&markerHeader); err != nil {
+		return fmt.Errorf("failed to decode marker file: %w", err)
+	}
+
+	if markerHeader.Version > MARKET_VERSION {
+		return fmt.Errorf("marker file is newer than the current version: %d > %d", markerHeader.Version, MARKET_VERSION)
+	}
+
+	return nil
+}
 
 type filesystemOutputFileHandle struct {
 	filesystem.WritableFileHandle
@@ -185,6 +219,10 @@ func (f *filesystemBuildCache) AddCacheDirectory(dir filesystem.Directory, confi
 
 	if _, err := dir.Stat(); err != nil {
 		return fmt.Errorf("failed to access cache directory: %w", err)
+	}
+
+	if err := checkMarkerFile(dir); err != nil {
+		return fmt.Errorf("failed to check marker file in cache directory: %w", err)
 	}
 
 	f.cacheDirectories = append(f.cacheDirectories, dir)
@@ -366,9 +404,37 @@ var (
 	_ BuildCacheFilesystem = &filesystemBuildCache{}
 )
 
-func NewFilesystemBuildCache(dir filesystem.MutableDirectory, config filesystem.BuildDatabaseConfig) BuildCacheFilesystem {
-	return &filesystemBuildCache{
+func OpenFilesystemBuildCache(dir filesystem.MutableDirectory, config filesystem.BuildDatabaseConfig) (BuildCacheFilesystem, error) {
+	ret := &filesystemBuildCache{
 		dir:    dir,
 		config: []filesystem.BuildDatabaseConfig{config},
 	}
+
+	if err := checkMarkerFile(dir); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("failed to check marker file: %w", err)
+	}
+
+	// Create the marker file
+	markerFile := filesystem.NewMemoryFile(filesystem.TypeRegular)
+	markerFileHandle, err := markerFile.OpenMut()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open marker file: %w", err)
+	}
+
+	markerHeader := MarkerHeader{
+		Version: MARKET_VERSION,
+	}
+
+	if err := json.NewEncoder(markerFileHandle).Encode(markerHeader); err != nil {
+		markerFileHandle.Close()
+		return nil, fmt.Errorf("failed to encode marker file: %w", err)
+	}
+
+	markerFileHandle.Close()
+
+	if _, err := dir.Create(MARKER_FILENAME, markerFile); err != nil {
+		return nil, fmt.Errorf("failed to create marker file: %w", err)
+	}
+
+	return ret, nil
 }
