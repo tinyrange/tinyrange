@@ -1,7 +1,6 @@
 package vmm
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -27,7 +26,6 @@ type SecureSSHConfig struct {
 }
 
 var ErrInterrupt = errors.New("Interrupt")
-var ErrRestart = errors.New("Restart")
 
 type waitReader struct {
 	closed   chan bool
@@ -53,40 +51,6 @@ func (w *waitReader) Read(p []byte) (n int, err error) {
 
 var (
 	_ io.ReadCloser = &waitReader{}
-)
-
-type closeType byte
-
-const (
-	closeExit closeType = iota
-	closeRestart
-)
-
-type stdinWrap struct {
-	io.Reader
-	close chan closeType
-}
-
-// Read implements io.Reader.
-func (s *stdinWrap) Read(p []byte) (n int, err error) {
-	// Read the underlying reader first.
-	n, err = s.Reader.Read(p)
-	if err != nil {
-		return
-	}
-
-	// Look for the interrupt char (CTRL-B) and return an error if that's encountered.
-	if n := bytes.IndexByte(p[:n], 0x02); n != -1 {
-		log.Info("activating emergency restart")
-		s.close <- closeRestart
-		return 0, ErrInterrupt
-	}
-
-	return
-}
-
-var (
-	_ io.Reader = &stdinWrap{}
 )
 
 // FdReader is an io.Reader with an Fd function
@@ -229,8 +193,8 @@ func connectOverSsh(
 		return fmt.Errorf("failed to request pty: %v", err)
 	}
 
-	close := make(chan closeType, 1)
 	errorChan := make(chan error, 1)
+	closeChan := make(chan struct{}, 1)
 
 	if nonInteractive {
 		reader := &waitReader{closed: make(chan bool)}
@@ -238,7 +202,7 @@ func connectOverSsh(
 
 		session.Stdin = reader
 	} else {
-		session.Stdin = &stdinWrap{Reader: os.Stdin, close: close}
+		session.Stdin = os.Stdin
 	}
 	session.Stdout = os.Stdout
 	session.Stderr = os.Stderr
@@ -257,21 +221,14 @@ func connectOverSsh(
 			}
 		}
 
-		close <- closeExit
+		closeChan <- struct{}{}
 	}()
 
 	select {
 	case err := <-errorChan:
 		return err
-	case val := <-close:
-		switch val {
-		case closeExit:
-			return nil
-		case closeRestart:
-			return ErrRestart
-		default:
-			return fmt.Errorf("unknown close type: %v", val)
-		}
+	case <-closeChan:
+		return nil
 	}
 }
 

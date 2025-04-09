@@ -1777,17 +1777,12 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 			go runVncClient(ns, "10.42.0.2:5901")
 		}
 
-		// Start a loop so SSH can be restarted when requested by the user.
-		for {
-			err = connectOverSsh(ns, "10.42.0.2:2222", "root", secureSSH, exited)
-			if err == ErrRestart {
-				continue
-			} else if err != nil {
-				return fmt.Errorf("failed to connect over ssh: %w", err)
-			}
-
-			return nil
+		err = connectOverSsh(ns, "10.42.0.2:2222", "root", secureSSH, exited)
+		if err != nil {
+			return fmt.Errorf("failed to connect over ssh: %w", err)
 		}
+
+		return nil
 	case config.InteractionSerial:
 		if err := vmm.Run(true); err != nil {
 			return fmt.Errorf("failed to run virtual machine: %w", err)
