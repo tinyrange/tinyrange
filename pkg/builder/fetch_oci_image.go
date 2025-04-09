@@ -535,7 +535,7 @@ func (def *ociFetcher) asFragments(ctx common.BuildContext) ([]config.Fragment, 
 		for _, layer := range def.LayerHashes {
 			def, err := ctx.Database().Builder().GetDefinitionByHash(layer)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to get definition by hash: %w", err)
 			}
 
 			readArchive2, ok := def.(*readArchive2BuildDefinition)

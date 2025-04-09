@@ -35,6 +35,7 @@ func init() {
 	features[FeatureExt4Resize] = false
 	features[FeatureNewDiskFormat] = true
 	features[FeatureNoAccelerate] = false
+	features[FeatureOCIArchive2] = false
 }
 
 func SetFeaturesFromExperimentalFlags(flags []string) {

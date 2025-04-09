@@ -747,7 +747,7 @@ func (r *readArchive2BuildDefinition) AsFragments(ctx common.BuildContext, speci
 
 // ToStarlark implements common.BuildDefinition.
 func (r *readArchive2BuildDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
-	return nil, fmt.Errorf("ToStarlark unimplemented for readArchive2")
+	return nil, fmt.Errorf("ReadArchive2BuildDefinition can not be converted into a Starlark value")
 }
 
 // NeedsBuild implements BuildDefinition.
