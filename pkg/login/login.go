@@ -20,7 +20,7 @@ import (
 )
 
 func detectArchiveExtractor(base common.BuildDefinition, filename string) (common.BuildDefinition, error) {
-	if builder.ReadArchiveSupportsExtracting(filename) {
+	if _, ok := builder.ReadArchiveSupportsExtracting(filename, false); ok {
 		return builder.Factory.NewReadArchiveBuildDefinition(base, filename, 0), nil
 	} else if strings.HasSuffix(filename, ".archive") {
 		return base, nil
@@ -95,10 +95,6 @@ func parseVolumeSize(token string) (uint64, error) {
 	size, err := strconv.ParseUint(token, 0, 64)
 	if err != nil {
 		return 0, err
-	}
-
-	if size < 0 {
-		return 0, fmt.Errorf("invalid size %s", token)
 	}
 
 	return size * multiplier, nil

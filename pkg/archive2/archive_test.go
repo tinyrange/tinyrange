@@ -150,10 +150,11 @@ func BenchmarkArchiveRead(b *testing.B) {
 	}
 
 	for i := 0; i < b.N; i++ {
-		ark, err := NewArchiveReader(bytes.NewReader(index.Bytes()), bytes.NewReader(contents.Bytes()))
+		ark, err := NewArchiveReader(bytes.NewReader(index.Bytes()), nil, bytes.NewReader(contents.Bytes()))
 		if err != nil {
 			b.Fatal(err)
 		}
+		defer ark.Close()
 
 		total := 0
 

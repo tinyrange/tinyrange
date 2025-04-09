@@ -20,15 +20,19 @@ type OutputFileHandle interface {
 	GetHostFilename() (string, error)
 }
 
+type OutputFileProvider interface {
+	// File opens a output file in the build directory.
+	File(name string) (filesystem.File, error)
+}
+
 type BuildCacheDirectory interface {
+	OutputFileProvider
+
 	// ReadDefinition opens the definition file in the build directory and reads it.
 	ReadDefinition() ([]byte, error)
 
 	// ReadReceipt opens the receipt file in the build directory and reads it.
 	ReadReceipt() ([]byte, error)
-
-	// GetOutputFile opens a output file in the build directory.
-	GetOutputFile(name string) (filesystem.File, error)
 }
 
 type WritableBuildCacheDirectory interface {
@@ -152,6 +156,8 @@ type BuildReceipt struct {
 
 // BuildArtifact is the result of a build.
 type BuildArtifact interface {
+	OutputFileProvider
+
 	// Database returns the package database.
 	Database() PackageDatabase
 
@@ -161,8 +167,6 @@ type BuildArtifact interface {
 	Receipt() BuildReceipt
 	// Default returns the default file written with WriteDefault.
 	Default() (filesystem.File, error)
-	// File returns a file in the artifact.
-	File(name string) (filesystem.File, error)
 	// OpenFile opens a file in the artifact.
 	OpenFile(name string) (filesystem.FileHandle, error)
 

@@ -123,6 +123,14 @@ func (*definitionFactory) NewReadArchiveBuildDefinition(
 	return newReadArchiveBuildDefinition(base, kind, stripComponents)
 }
 
+func (d *definitionFactory) NewReadArchive2BuildDefinition(
+	base common.BuildDefinition,
+	kind string,
+	stripComponents int,
+) common.ReadArchiveDefinition {
+	return newReadArchive2BuildDefinition(base, kind, stripComponents)
+}
+
 func (*definitionFactory) NewReadOCIImageDefinition(
 	base common.BuildDefinition,
 ) common.ReadOCIImageDefinition {

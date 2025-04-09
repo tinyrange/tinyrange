@@ -359,12 +359,21 @@ func NewArchiveWriter(index, contents io.Writer) (*ArchiveWriter, error) {
 
 type ArchiveReader struct {
 	index          *bufio.Reader
+	indexCloser    io.Closer
 	contentsReader io.ReaderAt
 	nameEnd        int
 	linkNameEnd    int
 	lenHex         [4]byte
 	lenBytes       [2]byte
 	buf            [10 * 1024]byte
+}
+
+// Close implements io.Closer.
+func (ar *ArchiveReader) Close() error {
+	if ar.indexCloser != nil {
+		return ar.indexCloser.Close()
+	}
+	return nil
 }
 
 func (ar *ArchiveReader) rawKind() []byte {
@@ -553,9 +562,14 @@ func (ar *ArchiveReader) validateHeader() error {
 	return nil
 }
 
-func NewArchiveReader(index io.Reader, contents io.ReaderAt) (*ArchiveReader, error) {
+var (
+	_ io.Closer = (*ArchiveReader)(nil)
+)
+
+func NewArchiveReader(index io.Reader, indexCloser io.Closer, contents io.ReaderAt) (*ArchiveReader, error) {
 	ret := &ArchiveReader{
 		index:          bufio.NewReaderSize(index, 10*1024),
+		indexCloser:    indexCloser,
 		contentsReader: contents,
 	}
 

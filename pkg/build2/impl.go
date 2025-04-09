@@ -59,7 +59,7 @@ func (a *buildArtifact) File(name string) (filesystem.File, error) {
 		return nil, fmt.Errorf("file %s not found", name)
 	}
 
-	f, err := a.buildDir.GetOutputFile(name)
+	f, err := a.buildDir.File(name)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (a *buildArtifact) OpenFile(name string) (filesystem.FileHandle, error) {
 		return nil, fmt.Errorf("file %s not found", name)
 	}
 
-	f, err := a.buildDir.GetOutputFile(name)
+	f, err := a.buildDir.File(name)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func (a *buildArtifact) Default() (filesystem.File, error) {
 		return nil, fmt.Errorf("file default not found")
 	}
 
-	f, err := a.buildDir.GetOutputFile(defaultSuffix)
+	f, err := a.buildDir.File(defaultSuffix)
 	if err != nil {
 		return nil, err
 	}

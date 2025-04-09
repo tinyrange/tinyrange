@@ -40,9 +40,23 @@ func (cfg AbsoluteHostBuildDirectory) Validate() error {
 	return nil
 }
 
+type Archive2BuildArtifact struct {
+	// Assumes that the archive exists in a already mounted filesystem.
+	Hash string `json:"hash" yaml:"hash"`
+}
+
+func (cfg Archive2BuildArtifact) Validate() error {
+	if cfg.Hash == "" {
+		return fmt.Errorf("hash is required")
+	}
+
+	return nil
+}
+
 type BuildDatabaseConfig struct {
 	RelativeHostBuildDirectory *RelativeHostBuildDirectory `json:"relative_host_build_directory" yaml:"relative_host_build_directory"`
 	AbsoluteHostBuildDirectory *AbsoluteHostBuildDirectory `json:"absolute_host_build_directory" yaml:"absolute_host_build_directory"`
+	Archive2BuildArtifact      *Archive2BuildArtifact      `json:"archive2_build_artifact" yaml:"archive2_build_artifact"`
 }
 
 func (cfg BuildDatabaseConfig) Validate() error {
@@ -50,62 +64,9 @@ func (cfg BuildDatabaseConfig) Validate() error {
 		return cfg.RelativeHostBuildDirectory.Validate()
 	} else if cfg.AbsoluteHostBuildDirectory != nil {
 		return cfg.AbsoluteHostBuildDirectory.Validate()
+	} else if cfg.Archive2BuildArtifact != nil {
+		return cfg.Archive2BuildArtifact.Validate()
 	} else {
 		return fmt.Errorf("invalid build database config: %v", cfg)
-	}
-}
-
-func getRealPathForDirectory(dir Directory) (string, error) {
-	switch dir := dir.(type) {
-	case *localDirectory:
-		return dir.filename, nil
-	case *localMutableDirectory:
-		return dir.filename, nil
-	default:
-		return "", fmt.Errorf("unknown directory type: %T", dir)
-	}
-}
-
-func getConfigFromHostFilename(topSyntheticPath string, targetPath string, isPrimary bool) (BuildDatabaseConfig, error) {
-	if isPrimary {
-		relativePath, err := path.Native.Rel(topSyntheticPath, targetPath)
-		if err != nil {
-			return BuildDatabaseConfig{}, fmt.Errorf("failed to get relative path: %w", err)
-		}
-
-		return BuildDatabaseConfig{
-			RelativeHostBuildDirectory: &RelativeHostBuildDirectory{
-				RelativePath: relativePath,
-			},
-		}, nil
-	} else {
-		absPath, err := path.Native.Abs(targetPath)
-		if err != nil {
-			return BuildDatabaseConfig{}, fmt.Errorf("failed to get absolute path: %w", err)
-		}
-
-		return BuildDatabaseConfig{
-			AbsoluteHostBuildDirectory: &AbsoluteHostBuildDirectory{
-				AbsolutePath: absPath,
-			},
-		}, nil
-	}
-}
-
-func GetDatabaseConfigForDirectory(top Directory, dir Directory) (BuildDatabaseConfig, error) {
-	topRealPath, err := getRealPathForDirectory(top)
-	if err != nil {
-		return BuildDatabaseConfig{}, fmt.Errorf("failed to get real path for top directory: %w", err)
-	}
-
-	topSyntheticPath := path.Native.Join(topRealPath, "synthetic/synthetic")
-
-	switch dir := dir.(type) {
-	case *localDirectory:
-		return getConfigFromHostFilename(topSyntheticPath, dir.filename, top == dir)
-	case *localMutableDirectory:
-		return getConfigFromHostFilename(topSyntheticPath, dir.filename, top == dir)
-	default:
-		return BuildDatabaseConfig{}, fmt.Errorf("unknown directory type: %T", dir)
 	}
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/archive2"
 	"github.com/tinyrange/tinyrange/pkg/build2"
+	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
@@ -38,6 +39,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem/p9"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/sftp"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"github.com/tinyrange/tinyrange/pkg/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/linux/goboot"
@@ -405,7 +407,7 @@ func (tr *driver) loadBuildDatabase() error {
 
 		mutBuildDir := filesystem.NewLocalMutableDirectory(buildDir)
 
-		tr.dbBuildDir = build2.NewFilesystemBuildCache(mutBuildDir)
+		tr.dbBuildDir = build2.NewFilesystemBuildCache(mutBuildDir, build2.DEFAULT_DATABASE_CONFIG)
 	} else {
 		return fmt.Errorf("top config build database config is not a relative host build directory")
 	}
@@ -422,7 +424,28 @@ func (tr *driver) loadBuildDatabase() error {
 
 			readOnlyBuildDir := filesystem.NewLocalDirectory(buildDir)
 
-			if err := tr.dbBuildDir.AddCacheDirectory(readOnlyBuildDir); err != nil {
+			if err := tr.dbBuildDir.AddCacheDirectory(readOnlyBuildDir, cfg); err != nil {
+				return fmt.Errorf("failed to add build directory: %w", err)
+			}
+		} else if cfg.Archive2BuildArtifact != nil {
+			hashDir, err := tr.dbBuildDir.GetBuildDirectory(hash.Hash(cfg.Archive2BuildArtifact.Hash))
+			if err != nil {
+				return fmt.Errorf("failed to get build directory: %w", err)
+			}
+
+			ark, err := builder.Archive2FromArtifact(hashDir)
+			if err != nil {
+				return fmt.Errorf("failed to get archive2 from artifact: %w", err)
+			}
+			defer ark.Close()
+
+			dir := filesystem.NewMemoryDirectory()
+
+			if err := fsutil.ExtractArchive2ToFilesystem(ark, "", dir); err != nil {
+				return fmt.Errorf("failed to extract archive: %w", err)
+			}
+
+			if err := tr.dbBuildDir.AddCacheDirectory(dir, cfg); err != nil {
 				return fmt.Errorf("failed to add build directory: %w", err)
 			}
 		} else {
@@ -751,7 +774,6 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 		if err != nil {
 			return fmt.Errorf("failed to open index: %w", err)
 		}
-		defer indexFh.Close()
 
 		contentsFh, err := contents.Open()
 		if err != nil {
@@ -759,114 +781,14 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 		}
 		// don't close contents
 
-		ark, err := archive2.NewArchiveReader(indexFh, contentsFh)
+		ark, err := archive2.NewArchiveReader(indexFh, indexFh, contentsFh)
 		if err != nil {
 			return fmt.Errorf("failed to read archive: %w", err)
 		}
+		defer ark.Close()
 
-		for {
-			err := ark.NextEntry()
-			if err == io.EOF {
-				break
-			} else if err != nil {
-				return fmt.Errorf("failed to read entry: %w", err)
-			}
-
-			ent := ark
-
-			// TODO(joshua): Why is this not path.Native.Join?
-			name := ark2.Target + "/" + ent.Name()
-
-			if _, ok := tr.deletedFiles[name]; ok {
-				continue
-			}
-
-			var file filesystem.MutableFile
-
-			if name != "/" {
-				if filesystem.Exists(dir, name) {
-					continue
-				}
-
-				dirname := path.Unix.Dir(name)
-
-				if !filesystem.Exists(dir, dirname) && path.Unix.Clean(name) != dirname {
-					// log.Info("mkdir", "dirname", dirname)
-					if _, err := filesystem.Mkdir(dir, dirname); err != nil {
-						return err
-					}
-				}
-
-				switch ent.Kind() {
-				case archive2.EntryKindDirectory:
-					// log.Info("directory", "name", name)
-					name = strings.TrimSuffix(name, "/")
-
-					file, err = filesystem.Mkdir(dir, name)
-					if err != nil {
-						return err
-					}
-				case archive2.EntryKindSymlink:
-					// log.Info("symlink", "name", name)
-					symlink := filesystem.NewSymlink(ent.Linkname())
-
-					file = symlink
-
-					if _, err := filesystem.CreateChild(dir, name, symlink); err != nil {
-						return err
-					}
-				case archive2.EntryKindHardlink:
-					// log.Info("link", "name", name, "target", ent.Linkname())
-					link, err := filesystem.NewHardLink(ent.Linkname())
-					if err != nil {
-						return err
-					}
-
-					file = link
-
-					if _, err := filesystem.CreateChild(dir, name, link); err != nil {
-						return err
-					}
-				case archive2.EntryKindRegular:
-					f, err := ent.File()
-					if err != nil {
-						return fmt.Errorf("failed to get file: %w", err)
-					}
-
-					if _, err := filesystem.CreateChild(dir, name, f); err != nil {
-						return err
-					}
-				case archive2.EntryKindExtended:
-					f, err := ent.File()
-					if err != nil {
-						return fmt.Errorf("failed to get file: %w", err)
-					}
-
-					if _, err := filesystem.CreateChild(dir, name, f); err != nil {
-						return err
-					}
-				default:
-					return fmt.Errorf("unimplemented entry type: %s", ent.Kind())
-				}
-			} else {
-				file = dir
-			}
-
-			if file != nil {
-				uid, gid := ent.Owner()
-
-				if err := file.Chown(uid, gid); err != nil {
-					return fmt.Errorf("failed to chown in guest: %w", err)
-				}
-
-				if err := file.Chmod(fs.FileMode(ent.Mode())); err != nil {
-					return fmt.Errorf("failed to chmod in guest: %w", err)
-				}
-
-				if err := file.Chtimes(ent.ModTime()); err != nil {
-					return fmt.Errorf("failed to set modtime in guest: %w", err)
-				}
-			}
+		if err := fsutil.ExtractArchive2ToFilesystem(ark, ark2.Target, dir); err != nil {
+			return fmt.Errorf("failed to extract archive: %w", err)
 		}
 
 		return nil

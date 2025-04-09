@@ -61,8 +61,8 @@ func (f *readOnlyFilesystemBuildDirectory) ReadDefinition() ([]byte, error) {
 	return def, nil
 }
 
-// OpenOutputFile implements BuildCacheDirectory.
-func (f *readOnlyFilesystemBuildDirectory) GetOutputFile(name string) (filesystem.File, error) {
+// File implements BuildCacheDirectory.
+func (f *readOnlyFilesystemBuildDirectory) File(name string) (filesystem.File, error) {
 	file, err := f.dir.GetChild(outputPrefix + name)
 	if err != nil {
 		return nil, err
@@ -158,20 +158,27 @@ var (
 	_ common.WritableBuildCacheDirectory = &filesystemBuildDirectory{}
 )
 
+var DEFAULT_DATABASE_CONFIG = filesystem.BuildDatabaseConfig{
+	RelativeHostBuildDirectory: &filesystem.RelativeHostBuildDirectory{
+		RelativePath: "../..",
+	},
+}
+
 type BuildCacheFilesystem interface {
 	common.BuildCacheFilesystem
 
-	AddCacheDirectory(dir filesystem.Directory) error
+	AddCacheDirectory(dir filesystem.Directory, config filesystem.BuildDatabaseConfig) error
 }
 
 type filesystemBuildCache struct {
 	dir filesystem.MutableDirectory
 
 	cacheDirectories []filesystem.Directory
+	config           []filesystem.BuildDatabaseConfig
 }
 
 // AddCacheDirectory implements BuildCacheFilesystem.
-func (f *filesystemBuildCache) AddCacheDirectory(dir filesystem.Directory) error {
+func (f *filesystemBuildCache) AddCacheDirectory(dir filesystem.Directory, config filesystem.BuildDatabaseConfig) error {
 	if dir == nil {
 		return fmt.Errorf("directory is nil")
 	}
@@ -181,6 +188,7 @@ func (f *filesystemBuildCache) AddCacheDirectory(dir filesystem.Directory) error
 	}
 
 	f.cacheDirectories = append(f.cacheDirectories, dir)
+	f.config = append(f.config, config)
 
 	return nil
 }
@@ -192,7 +200,7 @@ func (f *filesystemBuildCache) FileFromReference(ref config.DatabaseReference) (
 		return nil, fmt.Errorf("failed to get build directory: %w", err)
 	}
 
-	file, err := buildDir.GetOutputFile(ref.Filename)
+	file, err := buildDir.File(ref.Filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get output file: %w", err)
 	}
@@ -202,25 +210,11 @@ func (f *filesystemBuildCache) FileFromReference(ref config.DatabaseReference) (
 
 // DatabaseConfig implements common.BuildCacheFilesystem.
 func (f *filesystemBuildCache) DatabaseConfig() ([]filesystem.BuildDatabaseConfig, error) {
-	var ret []filesystem.BuildDatabaseConfig
-
-	mutableConfig, err := filesystem.GetDatabaseConfigForDirectory(f.dir, f.dir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get config for cache: %w", err)
+	if f.config == nil {
+		return nil, fmt.Errorf("no database config")
 	}
 
-	ret = append(ret, mutableConfig)
-
-	for _, cacheDir := range f.cacheDirectories {
-		config, err := filesystem.GetDatabaseConfigForDirectory(f.dir, cacheDir)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get config for cache: %w", err)
-		}
-
-		ret = append(ret, config)
-	}
-
-	return ret, nil
+	return f.config, nil
 }
 
 // GetHostFilename implements BuildCacheFilesystem.
@@ -372,6 +366,9 @@ var (
 	_ BuildCacheFilesystem = &filesystemBuildCache{}
 )
 
-func NewFilesystemBuildCache(dir filesystem.MutableDirectory) BuildCacheFilesystem {
-	return &filesystemBuildCache{dir: dir}
+func NewFilesystemBuildCache(dir filesystem.MutableDirectory, config filesystem.BuildDatabaseConfig) BuildCacheFilesystem {
+	return &filesystemBuildCache{
+		dir:    dir,
+		config: []filesystem.BuildDatabaseConfig{config},
+	}
 }

@@ -512,27 +512,32 @@ var (
 	_ archiveConverter = &arToArchiveBuildResult{}
 )
 
-func ReadArchiveSupportsExtracting(kind string) bool {
+func ReadArchiveSupportsExtracting(kind string, archive2 bool) (string, bool) {
 	if strings.HasSuffix(kind, ".zip") {
-		return true
+		return ".zip", !archive2
 	}
+
+	var compression = ""
 
 	if strings.HasSuffix(kind, ".gz") {
 		kind = strings.TrimSuffix(kind, ".gz")
+		compression = ".gz"
 	} else if strings.HasSuffix(kind, ".zst") {
 		kind = strings.TrimSuffix(kind, ".zst")
+		compression = ".zst"
 	} else if strings.HasSuffix(kind, ".xz") {
 		kind = strings.TrimSuffix(kind, ".xz")
+		compression = ".xz"
 	}
 
 	if strings.HasSuffix(kind, ".tar") {
-		return true
+		return ".tar" + compression, true
 	} else if strings.HasSuffix(kind, ".cpio") {
-		return true
+		return ".cpio" + compression, !archive2
 	} else if strings.HasSuffix(kind, ".ar") {
-		return true
+		return ".ar" + compression, !archive2
 	} else {
-		return false
+		return "", false
 	}
 }
 
@@ -803,4 +808,28 @@ var (
 
 func newReadArchive2BuildDefinition(base common.BuildDefinition, kind string, stripComponents int) common.ReadArchiveDefinition {
 	return &readArchive2BuildDefinition{params: ReadArchiveParameters{Base: base, Kind: kind, StripComponents: stripComponents}}
+}
+
+func Archive2FromArtifact(artifact common.OutputFileProvider) (*archive2.ArchiveReader, error) {
+	index, err := artifact.File("index")
+	if err != nil {
+		return nil, err
+	}
+
+	indexHandle, err := index.Open()
+	if err != nil {
+		return nil, err
+	}
+
+	contents, err := artifact.File("contents")
+	if err != nil {
+		return nil, err
+	}
+
+	contentsHandle, err := contents.Open()
+	if err != nil {
+		return nil, err
+	}
+
+	return archive2.NewArchiveReader(indexHandle, indexHandle, contentsHandle)
 }

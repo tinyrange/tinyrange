@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"runtime/debug"
@@ -9,9 +10,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tinyrange/tinyrange/pkg/build2"
+	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/database"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
@@ -57,26 +60,73 @@ func getBuildDir() (string, error) {
 	return buildDir, nil
 }
 
-func parseCacheToDirectory(db common.PackageDatabase, cache string) (filesystem.Directory, error) {
+func parseCacheToDirectory(db common.PackageDatabase, cache string) (filesystem.Directory, filesystem.BuildDatabaseConfig, error) {
 	url, err := url.Parse(cache)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse cache URL: %w", err)
+		return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("failed to parse cache URL: %w", err)
 	}
 
 	if url.Scheme == "file" {
 		absPath, err := path.Native.Abs(url.Host + url.Path)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get absolute path: %w", err)
+			return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("failed to get absolute path: %w", err)
 		}
 
-		dir := filesystem.NewLocalDirectory(absPath)
+		stat, err := os.Stat(absPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create local directory: %w", err)
+			return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("failed to stat cache directory: %w", err)
 		}
 
-		return dir, nil
+		if stat.IsDir() {
+			dir := filesystem.NewLocalDirectory(absPath)
+
+			return dir, filesystem.BuildDatabaseConfig{
+				AbsoluteHostBuildDirectory: &filesystem.AbsoluteHostBuildDirectory{
+					AbsolutePath: absPath,
+				},
+			}, nil
+		} else {
+			// Assume it's an archive.
+
+			kind, ok := builder.ReadArchiveSupportsExtracting(absPath, true)
+			if ok {
+				hash, err := common.Sha256HashFromFile(absPath)
+				if err != nil {
+					return nil, filesystem.BuildDatabaseConfig{}, err
+				}
+
+				def := builder.Factory.NewConstantHashDefinition(hash, func() (io.ReadCloser, error) {
+					return os.Open(absPath)
+				})
+				ark := builder.Factory.NewReadArchive2BuildDefinition(def, kind, 0)
+
+				art, err := db.Builder().Build(ark, common.BuildOptions{})
+				if err != nil {
+					return nil, filesystem.BuildDatabaseConfig{}, err
+				}
+
+				archive, err := builder.Archive2FromArtifact(art)
+				if err != nil {
+					return nil, filesystem.BuildDatabaseConfig{}, err
+				}
+
+				top := filesystem.NewMemoryDirectory()
+
+				if err := fsutil.ExtractArchive2ToFilesystem(archive, "", top); err != nil {
+					return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("failed to extract archive: %w", err)
+				}
+
+				return top, filesystem.BuildDatabaseConfig{
+					Archive2BuildArtifact: &filesystem.Archive2BuildArtifact{
+						Hash: art.DefinitionHash().String(),
+					},
+				}, nil
+			} else {
+				return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("cache is not a directory or archive: %s", absPath)
+			}
+		}
 	} else {
-		return nil, fmt.Errorf("unsupported cache type: %s", url.Scheme)
+		return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("unsupported cache type: %s", url.Scheme)
 	}
 }
 
@@ -103,7 +153,7 @@ func newDb() (common.PackageDatabase, error) {
 
 		buildDirMut := filesystem.NewLocalMutableDirectory(buildDir)
 
-		buildFs := build2.NewFilesystemBuildCache(buildDirMut)
+		buildFs := build2.NewFilesystemBuildCache(buildDirMut, build2.DEFAULT_DATABASE_CONFIG)
 
 		return build2.New(buildFs, db, rootBuildJobs, logger.Group("builder")), nil
 	}
@@ -116,12 +166,12 @@ func newDb() (common.PackageDatabase, error) {
 	buildFs := db.Builder().Filesystem().(build2.BuildCacheFilesystem)
 
 	for _, cache := range rootBuildCache {
-		cacheDir, err := parseCacheToDirectory(db, cache)
+		cacheDir, cfg, err := parseCacheToDirectory(db, cache)
 		if err != nil {
 			return nil, err
 		}
 
-		if err := buildFs.AddCacheDirectory(cacheDir); err != nil {
+		if err := buildFs.AddCacheDirectory(cacheDir, cfg); err != nil {
 			return nil, err
 		}
 	}
