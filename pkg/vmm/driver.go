@@ -446,7 +446,7 @@ func (tr *driver) loadBuildDatabase() error {
 
 			dir := filesystem.NewMemoryDirectory()
 
-			if err := fsutil.ExtractArchive2ToFilesystem(ark, tr, "", dir); err != nil {
+			if err := fsutil.ExtractArchive2ToFilesystem(ark, tr, "", dir, nil); err != nil {
 				return fmt.Errorf("failed to extract archive: %w", err)
 			}
 
@@ -808,7 +808,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 		}
 		defer ark.Close()
 
-		if err := fsutil.ExtractArchive2ToFilesystem(ark, tr, ark2.Target, dir); err != nil {
+		if err := fsutil.ExtractArchive2ToFilesystem(ark, tr, ark2.Target, dir, tr.deletedFiles); err != nil {
 			return fmt.Errorf("failed to extract archive: %w", err)
 		}
 

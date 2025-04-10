@@ -11,7 +11,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
-func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.ExtendedFileMethods, target string, dir filesystem.MutableDirectory) error {
+func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.ExtendedFileMethods, target string, dir filesystem.MutableDirectory, deletedFiles map[string]bool) error {
 	for {
 		err := ark.NextEntry()
 		if err == io.EOF {
@@ -88,6 +88,14 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 
 				if _, err := filesystem.CreateChild(dir, name, f); err != nil {
 					return err
+				}
+			case archive2.EntryKindDeleted:
+				if err := filesystem.DeleteChild(dir, name); err != nil {
+					return err
+				}
+
+				if deletedFiles != nil {
+					deletedFiles[name] = true
 				}
 			default:
 				return fmt.Errorf("unimplemented entry type: %s", ent.Kind())

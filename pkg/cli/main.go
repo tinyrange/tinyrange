@@ -77,7 +77,7 @@ func defToFilesystemAndConfig(db common.PackageDatabase, ark common.BuildDefinit
 	var buildDirTop filesystem.Directory
 	top := filesystem.NewMemoryDirectory()
 
-	if err := fsutil.ExtractArchive2ToFilesystem(archive, db.FileMethods(), "", top); err != nil {
+	if err := fsutil.ExtractArchive2ToFilesystem(archive, db.FileMethods(), "", top, nil); err != nil {
 		return nil, filesystem.BuildDatabaseConfig{}, fmt.Errorf("failed to extract archive: %w", err)
 	}
 

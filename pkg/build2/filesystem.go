@@ -248,6 +248,11 @@ func (f *filesystemBuildCache) GetOrSet(hash string, setter func(w io.Writer) er
 		if err := handle.Close(); err != nil {
 			return nil, fmt.Errorf("failed to close cache entry: %w", err)
 		}
+
+		ent, err = cacheDir.GetChild(hash)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get cache entry: %w", err)
+		}
 	}
 
 	handle, err := ent.Open()

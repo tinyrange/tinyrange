@@ -114,8 +114,10 @@ func (k EntryKind) String() string {
 		return "invalid"
 	case EntryKindExtended:
 		return "extended"
+	case EntryKindDeleted:
+		return "deleted"
 	default:
-		panic("invalid entry kind")
+		return fmt.Sprintf("unknown(%d)", k)
 	}
 }
 
