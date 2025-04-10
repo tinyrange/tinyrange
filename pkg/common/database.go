@@ -48,8 +48,16 @@ type WritableBuildCacheDirectory interface {
 	CreateOutputFile(name string) (OutputFileHandle, error)
 }
 
+type SimpleCache interface {
+	GetOrSet(hash string, setter func(w io.Writer) error) (io.ReaderAt, error)
+}
+
 type BuildCacheFilesystem interface {
 	config.BuildCacheFilesystem
+
+	// SimpleCache returns a basic get/set cache suitable for small files.
+	// Can return nil if not supported.
+	SimpleCache() SimpleCache
 
 	// GetHostFilename returns the host filename of the build cache directory.
 	GetHostFilename() (string, error)

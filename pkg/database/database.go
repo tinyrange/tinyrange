@@ -80,21 +80,26 @@ type packageDatabase struct {
 
 // GetOrSetCacheForHash implements filesystem.ExtendedFileMethods.
 func (db *packageDatabase) GetOrSetCacheForHash(hash string, setter func(w io.Writer) error) (io.ReaderAt, error) {
-	if db.simpleCache == nil {
-		db.simpleCache = make(map[string][]byte)
-	}
-
-	if _, ok := db.simpleCache[hash]; !ok {
-		var buf bytes.Buffer
-
-		if err := setter(&buf); err != nil {
-			return nil, err
+	simpleCache := db.builder.Filesystem().SimpleCache()
+	if simpleCache != nil {
+		return simpleCache.GetOrSet(hash, setter)
+	} else {
+		if db.simpleCache == nil {
+			db.simpleCache = make(map[string][]byte)
 		}
 
-		db.simpleCache[hash] = buf.Bytes()
-	}
+		if _, ok := db.simpleCache[hash]; !ok {
+			var buf bytes.Buffer
 
-	return bytes.NewReader(db.simpleCache[hash]), nil
+			if err := setter(&buf); err != nil {
+				return nil, err
+			}
+
+			db.simpleCache[hash] = buf.Bytes()
+		}
+
+		return bytes.NewReader(db.simpleCache[hash]), nil
+	}
 }
 
 func (db *packageDatabase) getFileContents(name string, allowLocal bool) (string, error) {

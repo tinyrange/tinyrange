@@ -211,6 +211,58 @@ type filesystemBuildCache struct {
 	config           []filesystem.BuildDatabaseConfig
 }
 
+// GetOrSet implements common.SimpleCache.
+func (f *filesystemBuildCache) GetOrSet(hash string, setter func(w io.Writer) error) (io.ReaderAt, error) {
+	cacheDir, err := f.dir.Mkdir("cache")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
+	ent, err := cacheDir.GetChild(hash)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("failed to get cache entry: %w", err)
+		}
+
+		// create the cache entry
+		cacheFile, err := cacheDir.Create(hash, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create cache entry: %w", err)
+		}
+
+		cacheFileMut, ok := cacheFile.(filesystem.MutableFile)
+		if !ok {
+			return nil, fmt.Errorf("cache entry is not mutable: %T", cacheFile)
+		}
+
+		handle, err := cacheFileMut.OpenMut()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open cache entry: %w", err)
+		}
+
+		if err := setter(handle); err != nil {
+			handle.Close()
+			return nil, fmt.Errorf("failed to set cache entry: %w", err)
+		}
+
+		if err := handle.Close(); err != nil {
+			return nil, fmt.Errorf("failed to close cache entry: %w", err)
+		}
+	}
+
+	handle, err := ent.Open()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open cache entry: %w", err)
+	}
+
+	return handle, nil
+}
+
+// SimpleCache implements BuildCacheFilesystem.
+func (f *filesystemBuildCache) SimpleCache() common.SimpleCache {
+	return f
+}
+
 // AddCacheDirectory implements BuildCacheFilesystem.
 func (f *filesystemBuildCache) AddCacheDirectory(dir filesystem.Directory, config filesystem.BuildDatabaseConfig) error {
 	if dir == nil {
