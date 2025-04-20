@@ -34,8 +34,8 @@ def main():
 
     # Write /etc/resolv.conf
     if not nonet:
-        path_ensure("/etc")
-        file_write("/etc/resolv.conf", "nameserver 10.42.0.1\n")
+        path_ensure("/etc", make_symlink_target = True)
+        file_write("/etc/resolv.conf", "nameserver 10.42.0.1\n", remove_symlink = True)
 
     # Write a custom MOTD since the default one might link to distribution
     # documentation which may not work inside TinyRange.

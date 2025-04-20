@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -841,13 +842,40 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
 		var (
-			path string
+			path              string
+			makeSymlinkTarget bool
 		)
 
 		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 			"path", &path,
+			"make_symlink_target?", &makeSymlinkTarget,
 		); err != nil {
 			return starlark.None, err
+		}
+
+		if makeSymlinkTarget {
+			info, err := os.Lstat(path)
+			if err == nil {
+				if info.Mode()&os.ModeSymlink != 0 {
+					// If the path is a symlink, we need to create the target directory
+					target, err := os.Readlink(path)
+					if err != nil {
+						return starlark.None, err
+					}
+
+					slog.Info("ensuring symlink target", "path", path, "target", target)
+
+					if err := common.Ensure(target, os.ModePerm); err != nil {
+						return starlark.None, err
+					}
+
+					return starlark.None, nil
+				} else {
+					slog.Info("path exists and is not a symlink", "path", path)
+				}
+			} else {
+				slog.Info("path does not exist", "path", path, "error", err)
+			}
 		}
 
 		if err := common.Ensure(path, os.ModePerm); err != nil {
@@ -936,15 +964,33 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
 		var (
-			path     string
-			contents string
+			path          string
+			contents      string
+			removeSymlink bool
 		)
 
 		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 			"path", &path,
 			"contents", &contents,
+			"remove_symlink?", &removeSymlink,
 		); err != nil {
 			return starlark.None, err
+		}
+
+		if removeSymlink {
+			info, err := os.Lstat(path)
+			if err == nil && info.Mode()&os.ModeSymlink != 0 {
+				// If the path is a symlink, we need to find the target
+				target, err := os.Readlink(path)
+				if err != nil {
+					return starlark.None, err
+				}
+
+				slog.Info("removing symlink", "path", path, "target", target)
+				if err := os.Remove(path); err != nil {
+					return starlark.None, err
+				}
+			}
 		}
 
 		if err := os.WriteFile(path, []byte(contents), os.ModePerm); err != nil {
