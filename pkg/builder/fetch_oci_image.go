@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -69,6 +70,10 @@ func ParseOciImage(ociImage string) (registry string, image string, tag string, 
 
 	if !strings.HasPrefix(registry, "http://") && !strings.HasPrefix(registry, "https://") {
 		registry = "https://" + registry
+	}
+
+	if !strings.HasSuffix(registry, "/v2") {
+		registry += "/v2"
 	}
 
 	if registry == DEFAULT_REGISTRY && !strings.Contains(image, "/") {
@@ -172,6 +177,7 @@ func (ctx *ociRegistryContext) responseHandler(resp *http.Response) (bool, error
 		// Remake the request with the new token.
 		return false, nil
 	} else {
+		slog.Error("failed to handle response code", "url", resp.Request.URL.String(), "status", resp.Status, "headers", resp.Header)
 		return false, fmt.Errorf("failed to handle response code %s: %s", resp.Request.URL.String(), resp.Status)
 	}
 }
@@ -403,8 +409,10 @@ func (def *ociFetcher) buildFromManifestFile(manifestFile filesystem.File) error
 	}
 
 	switch manifest.MediaType {
+	case "":
+		fallthrough
 	case "application/vnd.docker.distribution.manifest.v2+json":
-		return def.buildFromManifest(manifest, config)
+		fallthrough
 	case "application/vnd.oci.image.manifest.v1+json":
 		return def.buildFromManifest(manifest, config)
 	default:
