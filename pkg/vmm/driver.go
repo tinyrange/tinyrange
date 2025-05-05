@@ -407,7 +407,7 @@ func (tr *driver) loadBuildDatabase() error {
 			return fmt.Errorf("build directory does not exist: %s", buildDir)
 		}
 
-		mutBuildDir := filesystem.NewLocalMutableDirectory(buildDir)
+		mutBuildDir := filesystem.Factory.NewLocalMutableDirectory(buildDir)
 
 		tr.dbBuildDir, err = build2.OpenFilesystemBuildCache(mutBuildDir, build2.DEFAULT_DATABASE_CONFIG)
 		if err != nil {
@@ -427,7 +427,7 @@ func (tr *driver) loadBuildDatabase() error {
 				return fmt.Errorf("build directory does not exist: %s", buildDir)
 			}
 
-			readOnlyBuildDir := filesystem.NewLocalDirectory(buildDir)
+			readOnlyBuildDir := filesystem.Factory.NewLocalDirectory(buildDir)
 
 			if err := tr.dbBuildDir.AddCacheDirectory(readOnlyBuildDir, cfg); err != nil {
 				return fmt.Errorf("failed to add build directory: %w", err)
@@ -444,7 +444,7 @@ func (tr *driver) loadBuildDatabase() error {
 			}
 			defer ark.Close()
 
-			dir := filesystem.NewMemoryDirectory()
+			dir := filesystem.Factory.NewMemoryDirectory()
 
 			if err := fsutil.ExtractArchive2ToFilesystem(ark, tr, "", dir, nil); err != nil {
 				return fmt.Errorf("failed to extract archive: %w", err)
@@ -543,7 +543,7 @@ func (tr *driver) HttpClient() (*http.Client, error) {
 func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
 	if localFile := frag.LocalFile; localFile != nil {
 		// The local file is a path to a file on the host. It is guaranteed to be absolute.
-		file := filesystem.NewLocalFile(localFile.HostFilename, nil)
+		file := filesystem.Factory.NewLocalFile(localFile.HostFilename, nil)
 
 		overlay, err := filesystem.NewOverlayFile(file)
 		if err != nil {
@@ -584,7 +584,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 
 		return nil
 	} else if fileContents := frag.FileContents; fileContents != nil {
-		file := filesystem.NewMemoryFile(filesystem.TypeRegular)
+		file := filesystem.Factory.NewMemoryFile()
 
 		if fileContents.StringContents != "" {
 			if err := file.Overwrite([]byte(fileContents.StringContents)); err != nil {
@@ -614,7 +614,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 				return err
 			}
 
-			file := filesystem.NewMemoryFile(filesystem.TypeRegular)
+			file := filesystem.Factory.NewMemoryFile()
 
 			if err := file.Overwrite(exec); err != nil {
 				return err
@@ -635,7 +635,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 				return fmt.Errorf("failed to get executable: %w", err)
 			}
 
-			file := filesystem.NewLocalFile(exe, nil)
+			file := filesystem.Factory.NewLocalFile(exe, nil)
 
 			if _, err := fsutil.CreateChild(dir, builtin.GuestFilename, file); err != nil {
 				return err
@@ -648,7 +648,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 				return fmt.Errorf("failed to get tinyrange_qemu: %w", err)
 			}
 
-			file := filesystem.NewLocalFile(local, nil)
+			file := filesystem.Factory.NewLocalFile(local, nil)
 
 			if _, err := fsutil.CreateChild(dir, builtin.GuestFilename, file); err != nil {
 				return err
@@ -723,7 +723,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 					}
 				case filesystem.TypeSymlink:
 					// log.Info("symlink", "name", name)
-					symlink := filesystem.NewSymlink(ent.Linkname())
+					symlink := filesystem.Factory.NewSymlink(ent.Linkname())
 
 					file = symlink
 
@@ -732,7 +732,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 					}
 				case filesystem.TypeLink:
 					// log.Info("link", "name", name, "target", ent.Linkname())
-					link, err := filesystem.NewHardLink(ent.Linkname())
+					link, err := filesystem.Factory.NewHardLink(ent.Linkname())
 					if err != nil {
 						return err
 					}
@@ -955,7 +955,7 @@ func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []int, [
 	var mountedHostDirectories []mountInfo
 	var volumes []volumeInfo
 
-	root := filesystem.NewMemoryDirectory()
+	root := filesystem.Factory.NewMemoryDirectory()
 
 	tr.deletedFiles = make(map[string]bool)
 
@@ -1009,7 +1009,7 @@ func (tr *driver) configureSecureSSH(root filesystem.Directory) (SecureSSHConfig
 			return SecureSSHConfig{}, fmt.Errorf("failed to marshal secure ssh config: %w", err)
 		}
 
-		memFile := filesystem.NewMemoryFile(filesystem.TypeRegular)
+		memFile := filesystem.Factory.NewMemoryFile()
 
 		if err := memFile.Overwrite(secureConfig); err != nil {
 			return SecureSSHConfig{}, fmt.Errorf("failed to overwrite secure ssh config: %w", err)
@@ -1696,9 +1696,9 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 			var hostDir filesystem.Directory
 
 			if dir.Writable {
-				hostDir = filesystem.NewLocalMutableDirectory(dir.HostDirectory)
+				hostDir = filesystem.Factory.NewLocalMutableDirectory(dir.HostDirectory)
 			} else {
-				hostDir = filesystem.NewLocalDirectory(dir.HostDirectory)
+				hostDir = filesystem.Factory.NewLocalDirectory(dir.HostDirectory)
 			}
 
 			svr := p9.NewServer(hostDir)
@@ -1715,7 +1715,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 			}()
 		}
 	} else {
-		top := filesystem.NewMemoryDirectory()
+		top := filesystem.Factory.NewMemoryDirectory()
 
 		for _, dir := range mountedHostDirectories {
 			name := path.Native.Base(dir.HostDirectory)
@@ -1723,9 +1723,9 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 			var hostDir filesystem.Directory
 
 			if dir.Writable {
-				hostDir = filesystem.NewLocalMutableDirectory(dir.HostDirectory)
+				hostDir = filesystem.Factory.NewLocalMutableDirectory(dir.HostDirectory)
 			} else {
-				hostDir = filesystem.NewLocalDirectory(dir.HostDirectory)
+				hostDir = filesystem.Factory.NewLocalDirectory(dir.HostDirectory)
 			}
 
 			if _, err := fsutil.CreateChild(top, name, hostDir); err != nil {

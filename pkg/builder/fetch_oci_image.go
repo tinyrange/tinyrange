@@ -511,7 +511,7 @@ func (def *ociFetcher) buildTop() error {
 }
 
 func (def *ociFetcher) toStarlark(artifact common.BuildArtifact) (starlark.Value, error) {
-	fs := filesystem.NewMemoryDirectory()
+	fs := filesystem.Factory.NewMemoryDirectory()
 
 	for _, layer := range def.LayerArchives {
 		layerFile, err := artifact.Database().Builder().FileFromReference(layer)

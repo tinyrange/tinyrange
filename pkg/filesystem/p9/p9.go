@@ -551,7 +551,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 
 		mode := fs.FileMode(body.Mode) & (^fs.FileMode(0666) | (dirMode.Mode() & 0666))
 
-		f, err := dir.Create(body.Name, filesystem.NewMemoryFile(filesystem.TypeRegular))
+		f, err := dir.Create(body.Name, filesystem.Factory.NewMemoryFile())
 		if err != nil {
 			return nil, err
 		}
@@ -605,7 +605,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, fs.ErrPermission
 		}
 
-		f, err := dir.Create(body.Name, filesystem.NewSymlink(body.Symtgt))
+		f, err := dir.Create(body.Name, filesystem.Factory.NewSymlink(body.Symtgt))
 		if err != nil {
 			return nil, err
 		}

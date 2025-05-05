@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"strings"
 	"sync"
 	"time"
 
@@ -24,8 +23,6 @@ func GetLinkName(ent File) (string, error) {
 		return string(ent.contents), nil
 	case *overlayFile:
 		return GetLinkName(ent.File)
-	case simpleEntry:
-		return ent.linkName, nil
 	default:
 		return "", fmt.Errorf("GetLinkName not implemented: %T", ent)
 	}
@@ -42,8 +39,6 @@ func GetUidAndGid(ent File) (int, int, error) {
 	case *memoryFile:
 		return ent.uid, ent.gid, nil
 	case *overlayFile:
-		return ent.uid, ent.gid, nil
-	case simpleEntry:
 		return ent.uid, ent.gid, nil
 	case *localFile:
 		return 0, 0, nil
@@ -66,21 +61,6 @@ func GetUidAndGid(ent File) (int, int, error) {
 	default:
 		return -1, -1, fmt.Errorf("GetUidAndGid not implemented: %T", ent)
 	}
-}
-
-type nopCloserFileHandle struct {
-	BasicFileHandle
-}
-
-// Close implements FileHandle.
-func (n *nopCloserFileHandle) Close() error { return nil }
-
-var (
-	_ FileHandle = &nopCloserFileHandle{}
-)
-
-func NewNopCloserFileHandle(fh BasicFileHandle) FileHandle {
-	return &nopCloserFileHandle{BasicFileHandle: fh}
 }
 
 type FileType byte
@@ -330,6 +310,7 @@ var (
 )
 
 type memoryFile struct {
+	fac      FileFactory
 	mtx      sync.RWMutex
 	kind     FileType
 	mTime    time.Time
@@ -427,63 +408,4 @@ func (m *memoryFile) Stat() (FileInfo, error) {
 
 var (
 	_ MutableFile = &memoryFile{}
-)
-
-func NewMemoryFile(kind FileType) MutableFile {
-	return &memoryFile{
-		kind:  kind,
-		mode:  fs.FileMode(0755),
-		mTime: time.Now(),
-	}
-}
-
-func NewSymlink(target string) MutableFile {
-	return &memoryFile{
-		kind:     TypeSymlink,
-		mode:     fs.FileMode(0755),
-		contents: []byte(target),
-	}
-}
-
-func NewHardLink(target string) (MutableFile, error) {
-	target = strings.TrimPrefix(target, ".")
-	if !strings.HasPrefix(target, "/") {
-		target = "/" + target
-	}
-
-	return &memoryFile{
-		kind:     TypeLink,
-		mode:     fs.FileMode(0755),
-		contents: []byte(target),
-	}, nil
-}
-
-type simpleEntry struct {
-	File
-
-	uid      int
-	gid      int
-	linkName string
-	modTime  time.Time
-	mode     fs.FileMode
-	name     string
-	size     int64
-	typeFlag FileType
-}
-
-func (s simpleEntry) LinkName() (string, error)    { return s.linkName, nil }
-func (s simpleEntry) UidAndGid() (int, int, error) { return s.uid, s.gid, nil }
-func (s simpleEntry) Devmajor() int64              { return 0 }
-func (s simpleEntry) Devminor() int64              { return 0 }
-func (s simpleEntry) Uid() int                     { return s.uid }
-func (s simpleEntry) Gid() int                     { return s.gid }
-func (s simpleEntry) Linkname() string             { return s.linkName }
-func (s simpleEntry) ModTime() time.Time           { return s.modTime }
-func (s simpleEntry) Mode() fs.FileMode            { return s.mode }
-func (s simpleEntry) Name() string                 { return s.name }
-func (s simpleEntry) Size() int64                  { return s.size }
-func (s simpleEntry) Typeflag() FileType           { return s.typeFlag }
-
-var (
-	_ Entry = simpleEntry{}
 )

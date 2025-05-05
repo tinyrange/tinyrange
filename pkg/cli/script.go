@@ -53,7 +53,7 @@ var scriptCmd = &cobra.Command{
 				return os.Open(file)
 			})
 
-			f := filesystem.NewLocalFile(file, def)
+			f := filesystem.Factory.NewLocalFile(file, def)
 			files[path.Native.Base(file)] = f
 		}
 

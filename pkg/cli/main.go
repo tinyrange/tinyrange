@@ -76,7 +76,7 @@ func defToFilesystemAndConfig(db common.PackageDatabase, ark common.BuildDefinit
 	}
 
 	var buildDirTop filesystem.Directory
-	top := filesystem.NewMemoryDirectory()
+	top := filesystem.Factory.NewMemoryDirectory()
 
 	if err := fsutil.ExtractArchive2ToFilesystem(archive, db.FileMethods(), "", top, nil); err != nil {
 		return nil, dbconfig.BuildDatabaseConfig{}, fmt.Errorf("failed to extract archive: %w", err)
@@ -124,7 +124,7 @@ func parseCacheToDirectory(db common.PackageDatabase, cache string) (filesystem.
 		}
 
 		if stat.IsDir() {
-			dir := filesystem.NewLocalDirectory(absPath)
+			dir := filesystem.Factory.NewLocalDirectory(absPath)
 
 			return dir, dbconfig.BuildDatabaseConfig{
 				AbsoluteHostBuildDirectory: &dbconfig.AbsoluteHostBuildDirectory{
@@ -194,7 +194,7 @@ func newDb() (common.PackageDatabase, error) {
 			}
 		}
 
-		buildDirMut := filesystem.NewLocalMutableDirectory(buildDir)
+		buildDirMut := filesystem.Factory.NewLocalMutableDirectory(buildDir)
 
 		buildFs, err := build2.OpenFilesystemBuildCache(buildDirMut, build2.DEFAULT_DATABASE_CONFIG)
 		if err != nil {

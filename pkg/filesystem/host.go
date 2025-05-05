@@ -58,6 +58,7 @@ var (
 )
 
 type localFile struct {
+	fac      FileFactory
 	filename string
 	source   hash.SerializableValue
 }
@@ -108,10 +109,6 @@ var (
 	_ HostFile = &localFile{}
 )
 
-func NewLocalFile(filename string, source hash.SerializableValue) File {
-	return &localFile{filename: filename, source: source}
-}
-
 type localDirectory struct {
 	*localFile
 }
@@ -134,9 +131,9 @@ func (l *localDirectory) GetChild(name string) (DirectoryEntry, error) {
 	}
 
 	if info.IsDir() {
-		return DirectoryEntry{File: NewLocalDirectory(childName), Name: name}, nil
+		return DirectoryEntry{File: l.fac.NewLocalDirectory(childName), Name: name}, nil
 	} else {
-		return DirectoryEntry{File: NewLocalFile(childName, nil), Name: name}, nil
+		return DirectoryEntry{File: l.fac.NewLocalFile(childName, nil), Name: name}, nil
 	}
 }
 
@@ -153,9 +150,9 @@ func (l *localDirectory) Readdir() ([]DirectoryEntry, error) {
 		var f File
 
 		if ent.IsDir() {
-			f = NewLocalDirectory(path.Native.Join(l.filename, ent.Name()))
+			f = l.fac.NewLocalDirectory(path.Native.Join(l.filename, ent.Name()))
 		} else {
-			f = NewLocalFile(path.Native.Join(l.filename, ent.Name()), nil)
+			f = l.fac.NewLocalFile(path.Native.Join(l.filename, ent.Name()), nil)
 		}
 
 		ret = append(ret, DirectoryEntry{File: f, Name: ent.Name()})
@@ -167,10 +164,6 @@ func (l *localDirectory) Readdir() ([]DirectoryEntry, error) {
 var (
 	_ Directory = &localDirectory{}
 )
-
-func NewLocalDirectory(filename string) Directory {
-	return &localDirectory{localFile: NewLocalFile(filename, nil).(*localFile)}
-}
 
 type localMutableFile struct {
 	*localFile
@@ -244,10 +237,6 @@ var (
 	_ MutableRenameFile = &localMutableFile{}
 )
 
-func NewLocalMutableFile(filename string, source hash.SerializableValue) MutableFile {
-	return &localMutableFile{localFile: NewLocalFile(filename, source).(*localFile)}
-}
-
 type localMutableDirectory struct {
 	*localMutableFile
 }
@@ -271,7 +260,7 @@ func (l *localMutableDirectory) Create(name string, f File) (File, error) {
 				return nil, err
 			}
 
-			return NewLocalMutableFile(path.Native.Join(l.filename, name), nil), nil
+			return l.fac.NewLocalMutableFile(path.Native.Join(l.filename, name), nil), nil
 		} else if newInfo.Kind() == TypeLink {
 			return nil, fmt.Errorf("cannot create a hard link")
 		} else if newInfo.Kind() != TypeRegular {
@@ -320,7 +309,7 @@ func (l *localMutableDirectory) Create(name string, f File) (File, error) {
 		}
 	}
 
-	return NewLocalMutableFile(path.Native.Join(l.filename, name), nil), nil
+	return l.fac.NewLocalMutableFile(path.Native.Join(l.filename, name), nil), nil
 }
 
 // GetChild implements MutableDirectory.
@@ -341,9 +330,9 @@ func (l *localMutableDirectory) GetChild(name string) (DirectoryEntry, error) {
 	}
 
 	if info.IsDir() {
-		return DirectoryEntry{File: NewLocalMutableDirectory(childName), Name: name}, nil
+		return DirectoryEntry{File: l.fac.NewLocalMutableDirectory(childName), Name: name}, nil
 	} else {
-		return DirectoryEntry{File: NewLocalMutableFile(childName, nil), Name: name}, nil
+		return DirectoryEntry{File: l.fac.NewLocalMutableFile(childName, nil), Name: name}, nil
 	}
 }
 
@@ -351,13 +340,13 @@ func (l *localMutableDirectory) GetChild(name string) (DirectoryEntry, error) {
 func (l *localMutableDirectory) Mkdir(name string) (MutableDirectory, error) {
 	if err := os.Mkdir(path.Native.Join(l.filename, name), 0755); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return NewLocalMutableDirectory(path.Native.Join(l.filename, name)), nil
+			return l.fac.NewLocalMutableDirectory(path.Native.Join(l.filename, name)), nil
 		} else {
 			return nil, err
 		}
 	}
 
-	return NewLocalMutableDirectory(path.Native.Join(l.filename, name)), nil
+	return l.fac.NewLocalMutableDirectory(path.Native.Join(l.filename, name)), nil
 }
 
 // Open implements MutableDirectory.
@@ -390,9 +379,9 @@ func (l *localMutableDirectory) Readdir() ([]DirectoryEntry, error) {
 		var f File
 
 		if ent.IsDir() {
-			f = NewLocalMutableDirectory(path.Native.Join(l.filename, ent.Name()))
+			f = l.fac.NewLocalMutableDirectory(path.Native.Join(l.filename, ent.Name()))
 		} else {
-			f = NewLocalMutableFile(path.Native.Join(l.filename, ent.Name()), nil)
+			f = l.fac.NewLocalMutableFile(path.Native.Join(l.filename, ent.Name()), nil)
 		}
 
 		ret = append(ret, DirectoryEntry{File: f, Name: ent.Name()})
@@ -409,10 +398,6 @@ func (l *localMutableDirectory) Unlink(name string) error {
 var (
 	_ MutableDirectory = &localMutableDirectory{}
 )
-
-func NewLocalMutableDirectory(filename string) MutableDirectory {
-	return &localMutableDirectory{localMutableFile: NewLocalMutableFile(filename, nil).(*localMutableFile)}
-}
 
 func GetHostFilename(f File) (string, error) {
 	switch f := f.(type) {

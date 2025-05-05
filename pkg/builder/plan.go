@@ -116,7 +116,7 @@ func (def *planDefinition) Attr(name string) (starlark.Value, error) {
 
 			var commands []starlark.Value
 
-			dir := filesystem.NewMemoryDirectory()
+			dir := filesystem.Factory.NewMemoryDirectory()
 
 			for _, frag := range def.Fragments {
 				if frag.Archive != nil {

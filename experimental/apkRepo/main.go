@@ -424,7 +424,7 @@ func filesystemFromArchiveDefinition(ctx common.BuildContext, def common.BuildDe
 		return nil, err
 	}
 
-	top := filesystem.NewMemoryDirectory()
+	top := filesystem.Factory.NewMemoryDirectory()
 
 	if err := archive.ExtractArchive(ark, top); err != nil {
 		return nil, err
@@ -757,15 +757,15 @@ var topLevelBuild = NewSimpleBuildDefinition("topLevelBuild", func(ctx common.Bu
 })
 
 func migrateToSplitBuildCache(buildDir string, splitDefinitions string, splitReceipts string, threads int) error {
-	buildDirEnt := filesystem.NewLocalMutableDirectory(buildDir)
+	buildDirEnt := filesystem.Factory.NewLocalMutableDirectory(buildDir)
 	if err := common.Ensure(splitDefinitions, os.ModePerm); err != nil {
 		return err
 	}
-	defsDirEnt := filesystem.NewLocalMutableDirectory(splitDefinitions)
+	defsDirEnt := filesystem.Factory.NewLocalMutableDirectory(splitDefinitions)
 	if err := common.Ensure(splitReceipts, os.ModePerm); err != nil {
 		return err
 	}
-	receiptsDirEnt := filesystem.NewLocalMutableDirectory(splitReceipts)
+	receiptsDirEnt := filesystem.Factory.NewLocalMutableDirectory(splitReceipts)
 
 	oldFs := build2.NewFilesystemBuildCache(buildDirEnt)
 	newFs := newSplitBuildDirectory(defsDirEnt, receiptsDirEnt, buildDirEnt)
@@ -921,16 +921,16 @@ func appMain() error {
 			if err := common.Ensure(*splitDefinitions, os.ModePerm); err != nil {
 				return nil, err
 			}
-			defDir := filesystem.NewLocalMutableDirectory(*splitDefinitions)
+			defDir := filesystem.Factory.NewLocalMutableDirectory(*splitDefinitions)
 			if err := common.Ensure(*splitReceipts, os.ModePerm); err != nil {
 				return nil, err
 			}
-			receiptDir := filesystem.NewLocalMutableDirectory(*splitReceipts)
-			outputDir := filesystem.NewLocalMutableDirectory(*buildDir)
+			receiptDir := filesystem.Factory.NewLocalMutableDirectory(*splitReceipts)
+			outputDir := filesystem.Factory.NewLocalMutableDirectory(*buildDir)
 
 			buildFs = newSplitBuildDirectory(defDir, receiptDir, outputDir)
 		} else {
-			mutBuildDir := filesystem.NewLocalMutableDirectory(*buildDir)
+			mutBuildDir := filesystem.Factory.NewLocalMutableDirectory(*buildDir)
 
 			buildFs = build2.NewFilesystemBuildCache(mutBuildDir)
 		}

@@ -52,7 +52,7 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 				}
 			case archive2.EntryKindSymlink:
 				// log.Info("symlink", "name", name)
-				symlink := filesystem.NewSymlink(ent.Linkname())
+				symlink := filesystem.Factory.NewSymlink(ent.Linkname())
 
 				file = symlink
 
@@ -61,7 +61,7 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 				}
 			case archive2.EntryKindHardlink:
 				// log.Info("link", "name", name, "target", ent.Linkname())
-				link, err := filesystem.NewHardLink(ent.Linkname())
+				link, err := filesystem.Factory.NewHardLink(ent.Linkname())
 				if err != nil {
 					return err
 				}

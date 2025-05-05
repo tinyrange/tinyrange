@@ -78,7 +78,7 @@ func (m *memoryDirectory) create(name string, f File) (File, error) {
 	}
 
 	if f == nil {
-		f = NewMemoryFile(TypeRegular)
+		f = m.fac.NewMemoryFile()
 	}
 
 	m.names = append(m.names, name)
@@ -134,7 +134,7 @@ func (m *memoryDirectory) Mkdir(name string) (MutableDirectory, error) {
 		}
 	}
 
-	newChild, err := m.create(name, NewMemoryDirectory())
+	newChild, err := m.create(name, m.fac.NewMemoryDirectory())
 	if err != nil {
 		return nil, err
 	}
@@ -193,12 +193,3 @@ func (m *memoryDirectory) Stat() (FileInfo, error) {
 var (
 	_ MutableDirectory = &memoryDirectory{}
 )
-
-func NewMemoryDirectory() MutableDirectory {
-	f := NewMemoryFile(TypeDirectory).(*memoryFile)
-	f.mode = fs.ModeDir | fs.FileMode(0755)
-	return &memoryDirectory{
-		memoryFile: f,
-		entries:    make(map[string]File),
-	}
-}

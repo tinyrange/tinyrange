@@ -1138,7 +1138,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 			return starlark.None, err
 		}
 
-		dir := filesystem.NewMemoryDirectory()
+		dir := filesystem.Factory.NewMemoryDirectory()
 
 		if ark != nil {
 			if err := archive.ExtractArchive(ark, dir); err != nil {
@@ -1169,7 +1169,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 			return starlark.None, err
 		}
 
-		f := filesystem.NewMemoryFile(filesystem.TypeRegular)
+		f := filesystem.Factory.NewMemoryFile()
 
 		if str, ok := contents.(starlark.String); ok {
 			f.Overwrite([]byte(str))

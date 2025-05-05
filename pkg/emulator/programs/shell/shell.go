@@ -451,7 +451,7 @@ func (sh *shellProgram) Run(proc shared.Process, argv []string) error {
 // Create implements shared.Program.
 func (sh *shellProgram) Create() shared.Program {
 	return &shellProgram{
-		File:     filesystem.NewMemoryFile(filesystem.TypeRegular),
+		File:     filesystem.Factory.NewMemoryFile(),
 		builtIns: make(map[string]func(args []string) error),
 		locals:   make(shared.Environment),
 	}

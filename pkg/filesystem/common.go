@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"github.com/tinyrange/tinyrange/pkg/hash"
 )
 
 // BasicFileHandle is a basic file handle that can be used for reading but doesn't support being closed.
@@ -164,14 +165,16 @@ type Archive interface {
 	Entries() ([]Entry, error)
 }
 
-type StreamableTempFile interface {
-	io.WriteCloser
-	FilenameAndHash() (string, string)
-}
-
-type StreamableWriter interface {
-	Writer() (StreamableTempFile, error)
-}
-
 type FileFactory interface {
+	// Memory
+	NewMemoryFile() MutableFile
+	NewSymlink(target string) MutableFile
+	NewHardLink(target string) (MutableFile, error)
+	NewMemoryDirectory() MutableDirectory
+
+	// Host
+	NewLocalFile(filename string, source hash.SerializableValue) File
+	NewLocalDirectory(filename string) Directory
+	NewLocalMutableFile(filename string, source hash.SerializableValue) MutableFile
+	NewLocalMutableDirectory(filename string) MutableDirectory
 }

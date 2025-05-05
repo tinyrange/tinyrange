@@ -163,7 +163,7 @@ func (f *filesystemBuildDirectory) CreateOutputFile(name string) (common.OutputF
 
 // WriteDefinition implements BuildCacheDirectory.
 func (f *filesystemBuildDirectory) WriteDefinition(def []byte) error {
-	memFile := filesystem.NewMemoryFile(filesystem.TypeRegular)
+	memFile := filesystem.Factory.NewMemoryFile()
 	if err := memFile.Overwrite(def); err != nil {
 		return err
 	}
@@ -177,7 +177,7 @@ func (f *filesystemBuildDirectory) WriteDefinition(def []byte) error {
 
 // WriteReceipt implements BuildCacheDirectory.
 func (f *filesystemBuildDirectory) WriteReceipt(recept []byte) error {
-	memFile := filesystem.NewMemoryFile(filesystem.TypeRegular)
+	memFile := filesystem.Factory.NewMemoryFile()
 	if err := memFile.Overwrite(recept); err != nil {
 		return err
 	}
@@ -473,7 +473,7 @@ func OpenFilesystemBuildCache(dir filesystem.MutableDirectory, config dbconfig.B
 	}
 
 	// Create the marker file
-	markerFile := filesystem.NewMemoryFile(filesystem.TypeRegular)
+	markerFile := filesystem.Factory.NewMemoryFile()
 	markerFileHandle, err := markerFile.OpenMut()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open marker file: %w", err)

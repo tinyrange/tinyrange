@@ -1,23 +1,18 @@
 package archive
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	goHash "hash"
 	"io"
 	"io/fs"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/hash"
-	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 type arrayArchive []filesystem.Entry
@@ -137,150 +132,19 @@ func ExtractArchive(ark filesystem.Archive, mut filesystem.MutableDirectory) err
 	return nil
 }
 
-type tempFile struct {
-	file     *os.File
-	hashObj  goHash.Hash
-	filename string
-	hash     string
-	fs       *filesystemStreamableWriter
-	writer   io.Writer
+type nopCloserFileHandle struct {
+	filesystem.BasicFileHandle
 }
 
-// Filename implements StreamableTempFile.
-func (t *tempFile) FilenameAndHash() (string, string) {
-	return t.filename, t.hash
-}
-
-// Close implements StreamableTempFile.
-func (t *tempFile) Close() error {
-	if err := t.file.Close(); err != nil {
-		return err
-	}
-
-	filename, hash, err := t.fs.complete(t.file.Name(), t.hashObj.Sum(nil))
-	if err != nil {
-		return err
-	}
-
-	t.filename = filename
-	t.hash = hash
-
-	return nil
-}
-
-// Write implements StreamableTempFile.
-func (t *tempFile) Write(p []byte) (n int, err error) {
-	if t.writer == nil {
-		t.writer = io.MultiWriter(t.file, t.hashObj)
-	}
-
-	return t.writer.Write(p)
-}
+// Close implements FileHandle.
+func (n *nopCloserFileHandle) Close() error { return nil }
 
 var (
-	_ filesystem.StreamableTempFile = &tempFile{}
+	_ filesystem.FileHandle = &nopCloserFileHandle{}
 )
 
-type filesystemStreamableWriter struct {
-	outputPath string
-}
-
-// Writer implements StreamableWriter.
-func (f *filesystemStreamableWriter) Writer() (filesystem.StreamableTempFile, error) {
-	// make a temporary file.
-	tmp, err := os.CreateTemp(f.outputPath, "temp.*.bin")
-	if err != nil {
-		return nil, err
-	}
-
-	return &tempFile{
-		fs:      f,
-		file:    tmp,
-		hashObj: sha256.New(),
-	}, nil
-}
-
-func (f *filesystemStreamableWriter) complete(oldFilename string, hash []byte) (string, string, error) {
-	hashString := hex.EncodeToString(hash)
-
-	relPath := path.Native.Join(hashString[:2], hashString+".bin")
-
-	filename := path.Native.Join(f.outputPath, relPath)
-
-	if err := os.MkdirAll(path.Native.Dir(filename), os.ModePerm); err != nil {
-		return "", "", err
-	}
-
-	if err := os.Rename(oldFilename, filename); err != nil {
-		return "", "", err
-	}
-
-	return relPath, hashString, nil
-}
-
-var (
-	_ filesystem.StreamableWriter = &filesystemStreamableWriter{}
-)
-
-func NewFilesystemStreamableWriter(outputPath string) filesystem.StreamableWriter {
-	return &filesystemStreamableWriter{outputPath: outputPath}
-}
-
-func ExtractArchiveToStreamableIndex(file filesystem.File, idx io.Writer, w filesystem.StreamableWriter) error {
-	ark, err := ReadArchiveFromFile(file)
-	if err != nil {
-		return err
-	}
-
-	ents, err := ark.Entries()
-	if err != nil {
-		return err
-	}
-
-	idxWriter := json.NewEncoder(idx)
-
-	filename, err := filesystem.GetHostFilename(file)
-	if err != nil {
-		return err
-	}
-
-	pb := progressbar.Default(int64(len(ents)), filename)
-	defer pb.Close()
-
-	for _, ent := range ents {
-		cacheEnt := *ent.(*cacheEntry)
-
-		if ent.Typeflag() == filesystem.TypeRegular {
-			f, err := ent.Open()
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-
-			out, err := w.Writer()
-			if err != nil {
-				return err
-			}
-
-			if _, err := io.CopyN(out, f, ent.Size()); err != nil {
-				return err
-			}
-
-			if err := out.Close(); err != nil {
-				return err
-			}
-
-			cacheEnt.ContentsFilename, cacheEnt.Hash = out.FilenameAndHash()
-		}
-
-		if err := idxWriter.Encode(&cacheEnt); err != nil {
-			return err
-		}
-
-		pb.Add(1)
-	}
-
-	return nil
+func newNopCloserFileHandle(fh filesystem.BasicFileHandle) filesystem.FileHandle {
+	return &nopCloserFileHandle{BasicFileHandle: fh}
 }
 
 const CACHE_ENTRY_SIZE = 1024
@@ -343,7 +207,7 @@ func (e *cacheEntry) Open() (filesystem.FileHandle, error) {
 	if e.CTypeflag != filesystem.TypeRegular {
 		return nil, fmt.Errorf("file is not a regular file: %s", e.CTypeflag.String())
 	}
-	return filesystem.NewNopCloserFileHandle(
+	return newNopCloserFileHandle(
 		io.NewSectionReader(e.underlyingFile, e.COffset, e.CSize),
 	), nil
 }

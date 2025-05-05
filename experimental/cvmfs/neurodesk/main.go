@@ -129,7 +129,7 @@ func appMain() error {
 
 		logger := build2.NewSimpleLogger()
 
-		mutBuildDir := filesystem.NewLocalMutableDirectory(*buildDir)
+		mutBuildDir := filesystem.Factory.NewLocalMutableDirectory(*buildDir)
 
 		buildFs := build2.NewFilesystemBuildCache(mutBuildDir)
 

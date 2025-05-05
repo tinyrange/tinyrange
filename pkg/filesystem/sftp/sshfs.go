@@ -201,7 +201,7 @@ func (s *SSHFSServer) PktOpen(ctx sftpContext, pkt *pktOpen) (ResponsePacket, er
 			return nil, fs.ErrInvalid
 		}
 
-		file = filesystem.NewMemoryFile(filesystem.TypeRegular)
+		file = filesystem.Factory.NewMemoryFile()
 
 		if SFTP_DEBUG {
 			log.Debug("creating file", "dir", dirname, "file", basename)
@@ -772,7 +772,7 @@ func (s *SSHFSServer) PktSymlink(ctx sftpContext, pkt *pktSymlink) (ResponsePack
 		return nil, err
 	}
 
-	_, err = targetDir.Create(base, filesystem.NewSymlink(pkt.TargetPath))
+	_, err = targetDir.Create(base, filesystem.Factory.NewSymlink(pkt.TargetPath))
 	if err != nil {
 		return nil, err
 	}

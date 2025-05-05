@@ -79,7 +79,7 @@ func (i *initRamFsBuilderResult) WriteResult(w io.Writer) error {
 				return fmt.Errorf("failed to add simple file %s: %w", c.GuestFilename, err)
 			}
 		} else if frag.LocalFile != nil {
-			f := filesystem.NewLocalFile(frag.LocalFile.HostFilename, nil)
+			f := filesystem.Factory.NewLocalFile(frag.LocalFile.HostFilename, nil)
 
 			fh, err := f.Open()
 			if err != nil {

@@ -45,7 +45,7 @@ var buildOciCmd = &cobra.Command{
 		tag, dockerfile, context := args[0], args[1], args[2]
 
 		// Open the context directory
-		osDir := filesystem.NewLocalDirectory(context)
+		osDir := filesystem.Factory.NewLocalDirectory(context)
 
 		db, err := newDb()
 		if err != nil {

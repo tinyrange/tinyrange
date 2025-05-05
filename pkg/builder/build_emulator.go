@@ -79,7 +79,7 @@ func (def *buildEmulatorDefinition) Build(ctx common.BuildContext) error {
 	}
 
 	// Create the filesystem from the fragment list.
-	dir := filesystem.NewMemoryDirectory()
+	dir := filesystem.Factory.NewMemoryDirectory()
 
 	for _, frag := range def.frags {
 		if frag.Archive != nil {

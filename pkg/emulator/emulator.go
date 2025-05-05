@@ -390,7 +390,7 @@ func (emu *Emulator) LookupExecutable(name string) (shared.Program, []string, er
 
 func (emu *Emulator) AddSimpleProgram(filename string, prog func(proc shared.Process, argv []string) error) error {
 	return emu.AddProgram(filename, &simpleProgram{
-		File: filesystem.NewMemoryFile(filesystem.TypeRegular),
+		File: filesystem.Factory.NewMemoryFile(),
 		run:  prog,
 	})
 }
@@ -485,7 +485,7 @@ func (emu *Emulator) Attr(name string) (starlark.Value, error) {
 			}
 
 			if err := emu.AddProgram(filename, &starProgram{
-				File: filesystem.NewMemoryFile(filesystem.TypeRegular),
+				File: filesystem.Factory.NewMemoryFile(),
 				run:  run,
 			}); err != nil {
 				return starlark.None, err

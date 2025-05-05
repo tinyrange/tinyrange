@@ -32,7 +32,7 @@ func AsFile(f any) (filesystem.File, error) {
 			return nil, fmt.Errorf("could not convert %s to File", f.Type())
 		}
 
-		ret := filesystem.NewMemoryFile(filesystem.TypeRegular)
+		ret := filesystem.Factory.NewMemoryFile()
 
 		if err := ret.Overwrite([]byte(str)); err != nil {
 			return nil, err
@@ -426,7 +426,7 @@ func (f *StarDirectory) SetKey(k starlark.Value, v starlark.Value) error {
 
 		return nil
 	} else if contents, ok := v.(starlark.String); ok {
-		file := filesystem.NewMemoryFile(filesystem.TypeRegular)
+		file := filesystem.Factory.NewMemoryFile()
 
 		if err := file.Overwrite([]byte(contents)); err != nil {
 			return err
