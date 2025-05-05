@@ -10,7 +10,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/common/binary"
@@ -273,19 +272,19 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 		// }
 
 		if body.RequestMask&P9_GETATTR_ATIME != 0 {
-			retMsg.Atime = time.Now()
+			retMsg.Atime = stat.ModTime()
 
 			retMsg.Valid |= P9_GETATTR_ATIME
 		}
 
 		if body.RequestMask&P9_GETATTR_MTIME != 0 {
-			retMsg.Mtime = time.Now()
+			retMsg.Mtime = stat.ModTime()
 
 			retMsg.Valid |= P9_GETATTR_MTIME
 		}
 
 		if body.RequestMask&P9_GETATTR_CTIME != 0 {
-			retMsg.Ctime = time.Now()
+			retMsg.Ctime = stat.ModTime()
 
 			retMsg.Valid |= P9_GETATTR_CTIME
 		}
@@ -714,7 +713,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 				return nil, fs.ErrPermission
 			}
 
-			if err := mut.Chtimes(time.Now()); err != nil {
+			if err := mut.Chtimes(body.Mtime); err != nil {
 				return nil, err
 			}
 		}
