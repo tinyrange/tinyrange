@@ -178,6 +178,32 @@ func (d DirectiveLocalFile) Tag() string {
 	return fmt.Sprintf("LocalFile_%s_%s", d.Filename, d.HostFilename)
 }
 
+type DirectiveLocalDirectory struct {
+	HostDirectory  string
+	GuestDirectory string
+}
+
+// AsFragments implements Directive.
+func (d DirectiveLocalDirectory) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
+	return []config.Fragment{
+		{LocalDirectory: &config.LocalDirectoryFragment{
+			HostDirectory:  d.HostDirectory,
+			GuestDirectory: d.GuestDirectory,
+		}},
+	}, nil
+}
+
+// Dependencies implements Directive.
+func (d DirectiveLocalDirectory) Dependencies() ([]BuildDefinition, error) { return nil, nil }
+
+// SerializableType implements Directive.
+func (d DirectiveLocalDirectory) SerializableType() string { return "DirectiveLocalDirectory" }
+
+// Tag implements Directive.
+func (d DirectiveLocalDirectory) Tag() string {
+	return fmt.Sprintf("LocalDirectory_%s_%s", d.HostDirectory, d.GuestDirectory)
+}
+
 type DirectiveArchive struct {
 	Definition BuildDefinition
 	Target     string

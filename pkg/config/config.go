@@ -90,6 +90,28 @@ func (f LocalFileFragment) Validate() error {
 	return nil
 }
 
+type LocalDirectoryFragment struct {
+	HostDirectory  string `json:"host_directory" yaml:"host_directory"`
+	GuestDirectory string `json:"guest_directory" yaml:"guest_directory"`
+}
+
+func (f LocalDirectoryFragment) Validate() error {
+	if f.HostDirectory == "" {
+		return fmt.Errorf("host_directory is required")
+	}
+
+	// the host directory has to be absolute
+	if !path.Native.IsAbs(f.HostDirectory) {
+		return fmt.Errorf("host_directory must be absolute: %s", f.HostDirectory)
+	}
+
+	if f.GuestDirectory == "" {
+		return fmt.Errorf("guest_directory is required")
+	}
+
+	return nil
+}
+
 type DatabaseFileFragment struct {
 	DatabaseReference DatabaseReference `json:"host_filename" yaml:"host_filename"`
 	GuestFilename     string            `json:"guest_filename" yaml:"guest_filename"`
@@ -340,6 +362,7 @@ type Fragment struct {
 	// Supported Directly
 	DefaultInteractive *DefaultInteractiveFragment `json:"interactive,omitempty" yaml:"interactive"`
 	LocalFile          *LocalFileFragment          `json:"local_file,omitempty" yaml:"local_file"`
+	LocalDirectory     *LocalDirectoryFragment     `json:"local_directory,omitempty" yaml:"local_directory"`
 	DatabaseFile       *DatabaseFileFragment       `json:"database_file,omitempty" yaml:"database_file"`
 	FileContents       *FileContentsFragment       `json:"file_contents,omitempty" yaml:"file_contents"`
 	Archive            *ArchiveFragment            `json:"archive,omitempty" yaml:"archive"`
@@ -366,6 +389,8 @@ func (frag Fragment) Validate() error {
 		return frag.DefaultInteractive.Validate()
 	} else if frag.LocalFile != nil {
 		return frag.LocalFile.Validate()
+	} else if frag.LocalDirectory != nil {
+		return frag.LocalDirectory.Validate()
 	} else if frag.DatabaseFile != nil {
 		return frag.DatabaseFile.Validate()
 	} else if frag.FileContents != nil {

@@ -262,15 +262,29 @@ func (config *Config) addFile(filename string) (common.Directive, error) {
 			return nil, err
 		}
 
-		base := path.Native.Base(parsed.Path)
+		target := path.Unix.Join("/root", path.Native.Base(parsed.Path))
+
+		if strings.Contains(parsed.Path, ":") {
+			target = strings.SplitN(parsed.Path, ":", 2)[1]
+			// remove the target from the filename
+			filename = filename[:len(filename)-len(target)-1]
+		}
 
 		return common.DirectiveAddFile{
 			Definition: builder.Factory.NewFetchHttpBuildDefinition(filename, 0, nil),
-			Filename:   path.Unix.Join("/root", base),
+			Filename:   target,
 		}, nil
 	} else {
 		if !config.localConfig {
 			return nil, fmt.Errorf("remote configs can't include local files")
+		}
+
+		target := ""
+
+		if strings.Contains(filename, ":") {
+			target = strings.SplitN(filename, ":", 2)[1]
+			// remove the target from the filename
+			filename = filename[:len(filename)-len(target)-1]
 		}
 
 		filePath, err := config.resolvePath(filename)
@@ -278,10 +292,26 @@ func (config *Config) addFile(filename string) (common.Directive, error) {
 			return nil, err
 		}
 
-		return common.DirectiveLocalFile{
-			HostFilename: filePath,
-			Filename:     path.Unix.Join("/root", path.Native.Base(filePath)),
-		}, nil
+		if target == "" {
+			target = path.Unix.Join("/root", path.Native.Base(filePath))
+		}
+
+		stat, err := os.Stat(filePath)
+		if err != nil {
+			return nil, err
+		}
+
+		if stat.IsDir() {
+			return common.DirectiveLocalDirectory{
+				HostDirectory:  filePath,
+				GuestDirectory: target,
+			}, nil
+		} else {
+			return common.DirectiveLocalFile{
+				HostFilename: filePath,
+				Filename:     target,
+			}, nil
+		}
 	}
 }
 

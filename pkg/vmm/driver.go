@@ -561,6 +561,15 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 		}
 
 		return nil
+	} else if localDir := frag.LocalDirectory; localDir != nil {
+		// The local directory is a path to a directory on the host. It is guaranteed to be absolute.
+		local := filesystem.Factory.NewLocalDirectory(localDir.HostDirectory)
+
+		if _, err := fsutil.CreateChild(dir, localDir.GuestDirectory, local); err != nil {
+			return err
+		}
+
+		return nil
 	} else if databaseFile := frag.DatabaseFile; databaseFile != nil {
 		file, err := tr.ResolveReference(databaseFile.DatabaseReference)
 		if err != nil {
