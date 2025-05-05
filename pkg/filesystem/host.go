@@ -63,8 +63,22 @@ type localFile struct {
 	source   hash.SerializableValue
 }
 
+func (l *localFile) log(action string, args ...interface{}) {
+	l.fac.LogEvent("localFile",
+		append(
+			[]any{
+				"filename", l.filename,
+				"action", action,
+			},
+			args...,
+		)...,
+	)
+}
+
 // Open implements File.
 func (l *localFile) Open() (FileHandle, error) {
+	l.log("open")
+
 	fh, err := os.OpenFile(l.filename, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
@@ -75,6 +89,8 @@ func (l *localFile) Open() (FileHandle, error) {
 
 // Stat implements File.
 func (l *localFile) Stat() (FileInfo, error) {
+	l.log("stat")
+
 	s, err := os.Stat(l.filename)
 	if err != nil {
 		return nil, err
@@ -90,6 +106,8 @@ func (l *localFile) Filename() (string, error) {
 
 // Lstat implements Symlink.
 func (l *localFile) Lstat() (FileInfo, error) {
+	l.log("lstat")
+
 	s, err := os.Lstat(l.filename)
 	if err != nil {
 		return nil, err
@@ -100,6 +118,8 @@ func (l *localFile) Lstat() (FileInfo, error) {
 
 // Readlink implements Symlink.
 func (l *localFile) Readlink() (string, error) {
+	l.log("readlink")
+
 	return os.Readlink(l.filename)
 }
 
@@ -111,6 +131,18 @@ var (
 
 type localDirectory struct {
 	*localFile
+}
+
+func (l *localDirectory) log(action string, args ...interface{}) {
+	l.fac.LogEvent("localDirectory",
+		append(
+			[]any{
+				"filename", l.filename,
+				"action", action,
+			},
+			args...,
+		)...,
+	)
 }
 
 // GetChild implements Directory.
@@ -131,14 +163,20 @@ func (l *localDirectory) GetChild(name string) (DirectoryEntry, error) {
 	}
 
 	if info.IsDir() {
+		l.log("get-child", "directory", true, "child-name", childName)
+
 		return DirectoryEntry{File: l.fac.NewLocalDirectory(childName), Name: name}, nil
 	} else {
+		l.log("get-child", "directory", false, "child-name", childName)
+
 		return DirectoryEntry{File: l.fac.NewLocalFile(childName, nil), Name: name}, nil
 	}
 }
 
 // Readdir implements Directory.
 func (l *localDirectory) Readdir() ([]DirectoryEntry, error) {
+	l.log("readdir")
+
 	ents, err := os.ReadDir(l.filename)
 	if err != nil {
 		return nil, err
@@ -169,6 +207,18 @@ type localMutableFile struct {
 	*localFile
 }
 
+func (l *localMutableFile) log(action string, args ...interface{}) {
+	l.fac.LogEvent("localMutableFile",
+		append(
+			[]any{
+				"filename", l.filename,
+				"action", action,
+			},
+			args...,
+		)...,
+	)
+}
+
 // Chmod implements MutableFile.
 func (l *localMutableFile) Chmod(mode fs.FileMode) error {
 	return os.Chmod(l.filename, mode)
@@ -180,29 +230,41 @@ func (l *localMutableFile) Chown(uid int, gid int) error {
 		return ErrNotSupported
 	}
 
+	l.log("chown", "uid", uid, "gid", gid)
+
 	return os.Chown(l.filename, uid, gid)
 }
 
 // Chtimes implements MutableFile.
 func (l *localMutableFile) Chtimes(mtime time.Time) error {
+	l.log("chtimes", "mtime", mtime)
+
 	return os.Chtimes(l.filename, mtime, mtime)
 }
 
 // Overwrite implements MutableFile.
 func (l *localMutableFile) Overwrite(contents []byte) error {
+	l.log("overwrite", "contents", contents)
+
 	return os.WriteFile(l.filename, contents, 0644)
 }
 
 // Truncate implements MutableFile.
 func (l *localMutableFile) Truncate(size int64) error {
+	l.log("truncate", "size", size)
+
 	return os.Truncate(l.filename, size)
 }
 
 // Open implements File.
 // This shadows the Open method of LocalFile.
 func (l *localMutableFile) Open() (FileHandle, error) {
+	l.log("open")
+
 	fh, err := os.OpenFile(l.filename, os.O_RDWR, 0)
 	if errors.Is(err, os.ErrPermission) {
+		l.log("open", "read-only", true)
+
 		// try to open the file in read-only mode.
 		fh, err = os.OpenFile(l.filename, os.O_RDONLY, 0)
 		if err != nil {
@@ -220,12 +282,16 @@ func (l *localMutableFile) Open() (FileHandle, error) {
 
 // OpenMut implements MutableFile.
 func (l *localMutableFile) OpenMut() (WritableFileHandle, error) {
+	l.log("open-mut")
+
 	return os.OpenFile(l.filename, os.O_RDWR, 0)
 }
 
 // Rename implements MutableRenameFile.
 func (l *localMutableFile) Rename(newDirectory MutableDirectory, newName string) error {
 	if mut, ok := newDirectory.(*localMutableDirectory); ok {
+		l.log("rename", "new-directory", mut.filename, "new-name", newName)
+
 		return os.Rename(l.filename, path.Native.Join(mut.filename, newName))
 	}
 
@@ -239,6 +305,18 @@ var (
 
 type localMutableDirectory struct {
 	*localMutableFile
+}
+
+func (l *localMutableDirectory) log(action string, args ...interface{}) {
+	l.fac.LogEvent("localMutableDirectory",
+		append(
+			[]any{
+				"filename", l.filename,
+				"action", action,
+			},
+			args...,
+		)...,
+	)
 }
 
 // Create implements MutableDirectory.
@@ -256,6 +334,8 @@ func (l *localMutableDirectory) Create(name string, f File) (File, error) {
 				return nil, err
 			}
 
+			l.log("create", "symlink", "true", "link", link)
+
 			if err := os.Symlink(link, path.Native.Join(l.filename, name)); err != nil {
 				return nil, err
 			}
@@ -267,6 +347,8 @@ func (l *localMutableDirectory) Create(name string, f File) (File, error) {
 			return nil, fmt.Errorf("cannot create a file of type %s", newInfo.Kind())
 		}
 	}
+
+	l.log("create", "name", name)
 
 	if err := os.WriteFile(path.Native.Join(l.filename, name), nil, 0644); err != nil {
 		return nil, err
@@ -330,8 +412,12 @@ func (l *localMutableDirectory) GetChild(name string) (DirectoryEntry, error) {
 	}
 
 	if info.IsDir() {
+		l.log("get-child", "directory", true, "child-name", childName)
+
 		return DirectoryEntry{File: l.fac.NewLocalMutableDirectory(childName), Name: name}, nil
 	} else {
+		l.log("get-child", "directory", false, "child-name", childName)
+
 		return DirectoryEntry{File: l.fac.NewLocalMutableFile(childName, nil), Name: name}, nil
 	}
 }
@@ -340,11 +426,13 @@ func (l *localMutableDirectory) GetChild(name string) (DirectoryEntry, error) {
 func (l *localMutableDirectory) Mkdir(name string) (MutableDirectory, error) {
 	if err := os.Mkdir(path.Native.Join(l.filename, name), 0755); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return l.fac.NewLocalMutableDirectory(path.Native.Join(l.filename, name)), nil
+			// fallthrough to return the existing directory.
 		} else {
 			return nil, err
 		}
 	}
+
+	l.log("mkdir", "child-name", path.Native.Join(l.filename, name))
 
 	return l.fac.NewLocalMutableDirectory(path.Native.Join(l.filename, name)), nil
 }
@@ -368,6 +456,8 @@ func (l *localMutableDirectory) Overwrite(contents []byte) error {
 
 // Readdir implements MutableDirectory.
 func (l *localMutableDirectory) Readdir() ([]DirectoryEntry, error) {
+	l.log("readdir")
+
 	ents, err := os.ReadDir(l.filename)
 	if err != nil {
 		return nil, err
@@ -392,6 +482,8 @@ func (l *localMutableDirectory) Readdir() ([]DirectoryEntry, error) {
 
 // Unlink implements MutableDirectory.
 func (l *localMutableDirectory) Unlink(name string) error {
+	l.log("unlink", "name", name)
+
 	return os.RemoveAll(path.Native.Join(l.filename, name))
 }
 

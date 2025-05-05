@@ -166,6 +166,9 @@ type Archive interface {
 }
 
 type FileFactory interface {
+	// Logging
+	LogEvent(name string, args ...any)
+
 	// Memory
 	NewMemoryFile() MutableFile
 	NewSymlink(target string) MutableFile

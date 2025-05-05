@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"encoding/json"
 	"io/fs"
 	"strings"
 	"time"
@@ -9,6 +10,35 @@ import (
 )
 
 type fileFactory struct {
+	valuesEncoder *json.Encoder
+}
+
+func (f *fileFactory) LogEvent(event string, args ...any) {
+	if f.valuesEncoder == nil {
+		return
+	}
+
+	values := map[string]any{
+		"time":  time.Now().Format(time.RFC3339),
+		"event": event,
+	}
+
+	// args is formatted as a series of key=value pairs.
+
+	for i := 0; i < len(args); i += 2 {
+		if i+1 >= len(args) {
+			break
+		}
+
+		key, ok := args[i].(string)
+		if !ok {
+			continue
+		}
+
+		values[key] = args[i+1]
+	}
+
+	f.valuesEncoder.Encode(values)
 }
 
 // NewMemoryFile implements FileFactory.
@@ -92,5 +122,14 @@ func (f *fileFactory) NewLocalMutableDirectory(filename string) MutableDirectory
 var (
 	_ FileFactory = &fileFactory{}
 )
+
+func SetFileAccessLogger(encoder *json.Encoder) {
+	if encoder == nil {
+		return
+	}
+
+	// Set the encoder to the factory.
+	Factory.valuesEncoder = encoder
+}
 
 var Factory = &fileFactory{}

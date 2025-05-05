@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -29,6 +30,7 @@ var (
 	rootMirrors           []string
 	rootBuildJobs         int
 	rootExperimentalFlags []string
+	rootFileAccessLog     string
 )
 
 var rootCmd = &cobra.Command{
@@ -46,6 +48,17 @@ var rootCmd = &cobra.Command{
 
 		if err := common.SetExperimental(rootExperimentalFlags); err != nil {
 			return err
+		}
+
+		if rootFileAccessLog != "" {
+			f, err := os.OpenFile(rootFileAccessLog, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				return fmt.Errorf("failed to open file access log: %w", err)
+			}
+
+			enc := json.NewEncoder(f)
+
+			filesystem.SetFileAccessLogger(enc)
 		}
 
 		return nil
@@ -254,6 +267,7 @@ Complete documentation is available at https://github.com/tinyrange/tinyrange`, 
 	rootCmd.PersistentFlags().StringArrayVar(&rootMirrors, "mirror", []string{}, "Specify mirrors to override the default mirror settings")
 	rootCmd.PersistentFlags().IntVar(&rootBuildJobs, "jobs", 1, "specify the number of jobs to run concurrently")
 	rootCmd.PersistentFlags().StringArrayVar(&rootExperimentalFlags, "experimental", []string{}, "Add experimental flags.")
+	rootCmd.PersistentFlags().StringVar(&rootFileAccessLog, "file-access-log", "", "Log accesses to any host files.")
 }
 
 func Run() {
