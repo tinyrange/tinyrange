@@ -105,7 +105,15 @@ func runLogin(args []string) error {
 				currentConfig.SetLocalConfig()
 			}
 
-			currentConfig.SetBasePath(path.Native.Dir(loginLoadConfig))
+			configDir := path.Native.Dir(loginLoadConfig)
+			if !path.Native.IsAbs(configDir) {
+				wd, err := os.Getwd()
+				if err != nil {
+					return err
+				}
+				configDir = path.Native.Join(wd, configDir)
+			}
+			currentConfig.SetBasePath(configDir)
 
 			if len(addedCommands) > 0 {
 				if len(currentConfig.Commands) > 0 {
