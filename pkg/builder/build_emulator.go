@@ -8,6 +8,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/emulator"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/log"
@@ -122,7 +123,7 @@ func (def *buildEmulatorDefinition) Build(ctx common.BuildContext) error {
 	}
 
 	// Open the output file.
-	ent, err := filesystem.OpenPath(emu.Root(), def.params.OutputFile)
+	ent, err := fsutil.OpenPath(emu.Root(), def.params.OutputFile)
 	if err != nil {
 		return fmt.Errorf("failed to open output %s: %s", def.params.OutputFile, err)
 	}

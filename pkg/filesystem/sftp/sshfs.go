@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"golang.org/x/crypto/ssh"
@@ -146,7 +147,7 @@ func (s *SSHFSServer) allocateHandleId() string {
 }
 
 func (s *SSHFSServer) lookup(path string) (filesystem.File, error) {
-	ent, err := filesystem.OpenPath(s.fs, path)
+	ent, err := fsutil.OpenPath(s.fs, path)
 	if err != nil {
 		return nil, err
 	}

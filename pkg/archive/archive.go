@@ -9,13 +9,13 @@ import (
 	goHash "hash"
 	"io"
 	"io/fs"
-	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
@@ -81,44 +81,13 @@ func ReadArchiveFromFile(f filesystem.File) (filesystem.Archive, error) {
 	return ret, nil
 }
 
-func ReadArchiveFromStreamingServer(client *http.Client, server string, f filesystem.File) (filesystem.Archive, error) {
-	fh, err := f.Open()
-	if err != nil {
-		return nil, err
-	}
-
-	dec := json.NewDecoder(fh)
-
-	var ret arrayArchive
-
-	for {
-		var cacheEnt cacheEntry
-
-		err := dec.Decode(&cacheEnt)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-
-		if cacheEnt.ContentsFilename != "" {
-			cacheEnt.COffset = 0
-			cacheEnt.underlyingFile = filesystem.NewLazyRemoteFile(client, server+cacheEnt.ContentsFilename, cacheEnt.CSize)
-		}
-
-		ret = append(ret, &cacheEnt)
-	}
-
-	return ret, nil
-}
-
 func extractEntry(ent filesystem.Entry, dir filesystem.MutableDirectory) (filesystem.File, error) {
 	switch ent.Typeflag() {
 	case filesystem.TypeDirectory:
 		name := strings.TrimSuffix(ent.Name(), "/")
 		name = strings.TrimPrefix(name, "./")
 
-		child, err := filesystem.Mkdir(dir, name)
+		child, err := fsutil.Mkdir(dir, name)
 		if errors.Is(err, os.ErrExist) {
 			return nil, nil
 		} else if err != nil {
@@ -139,11 +108,11 @@ func extractEntry(ent filesystem.Entry, dir filesystem.MutableDirectory) (filesy
 
 		return child, nil
 	case filesystem.TypeRegular:
-		return filesystem.CreateChild(dir, ent.Name(), ent)
+		return fsutil.CreateChild(dir, ent.Name(), ent)
 	case filesystem.TypeSymlink:
-		return filesystem.CreateChild(dir, ent.Name(), ent)
+		return fsutil.CreateChild(dir, ent.Name(), ent)
 	case filesystem.TypeLink:
-		return filesystem.CreateChild(dir, ent.Name(), ent)
+		return fsutil.CreateChild(dir, ent.Name(), ent)
 	default:
 		return nil, fmt.Errorf("unknown Entry type: %s", ent.Typeflag())
 	}

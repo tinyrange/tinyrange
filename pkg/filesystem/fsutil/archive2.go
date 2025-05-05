@@ -28,15 +28,15 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 		var file filesystem.MutableFile
 
 		if name != "/" {
-			if filesystem.Exists(dir, name) {
+			if Exists(dir, name) {
 				continue
 			}
 
 			dirname := path.Unix.Dir(name)
 
-			if !filesystem.Exists(dir, dirname) && path.Unix.Clean(name) != dirname {
+			if !Exists(dir, dirname) && path.Unix.Clean(name) != dirname {
 				// log.Info("mkdir", "dirname", dirname)
-				if _, err := filesystem.Mkdir(dir, dirname); err != nil {
+				if _, err := Mkdir(dir, dirname); err != nil {
 					return err
 				}
 			}
@@ -46,7 +46,7 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 				// log.Info("directory", "name", name)
 				name = strings.TrimSuffix(name, "/")
 
-				file, err = filesystem.Mkdir(dir, name)
+				file, err = Mkdir(dir, name)
 				if err != nil {
 					return err
 				}
@@ -56,7 +56,7 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 
 				file = symlink
 
-				if _, err := filesystem.CreateChild(dir, name, symlink); err != nil {
+				if _, err := CreateChild(dir, name, symlink); err != nil {
 					return err
 				}
 			case archive2.EntryKindHardlink:
@@ -68,7 +68,7 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 
 				file = link
 
-				if _, err := filesystem.CreateChild(dir, name, link); err != nil {
+				if _, err := CreateChild(dir, name, link); err != nil {
 					return err
 				}
 			case archive2.EntryKindRegular:
@@ -77,7 +77,7 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 					return fmt.Errorf("failed to get file: %w", err)
 				}
 
-				if _, err := filesystem.CreateChild(dir, name, f); err != nil {
+				if _, err := CreateChild(dir, name, f); err != nil {
 					return err
 				}
 			case archive2.EntryKindExtended:
@@ -86,11 +86,11 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 					return fmt.Errorf("failed to get file: %w", err)
 				}
 
-				if _, err := filesystem.CreateChild(dir, name, f); err != nil {
+				if _, err := CreateChild(dir, name, f); err != nil {
 					return err
 				}
 			case archive2.EntryKindDeleted:
-				if err := filesystem.DeleteChild(dir, name); err != nil {
+				if err := DeleteChild(dir, name); err != nil {
 					return err
 				}
 

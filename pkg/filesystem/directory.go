@@ -3,17 +3,12 @@ package filesystem
 import (
 	"fmt"
 	"io/fs"
-	"strings"
 	"sync"
 
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
-type AsMutableDirectory interface {
-	AsMutableDirectory() MutableDirectory
-}
-
-func getMutable(dir Directory) MutableDirectory {
+func GetMutableDirectory(dir Directory) MutableDirectory {
 	switch dir := dir.(type) {
 	case AsMutableDirectory:
 		return dir.AsMutableDirectory()
@@ -24,226 +19,8 @@ func getMutable(dir Directory) MutableDirectory {
 	}
 }
 
-func Exists(dir Directory, p string) bool {
-	_, err := OpenPath(dir, p)
-	return err == nil
-}
-
-func resolveDirectory(root Directory, file File, name string) (Directory, error) {
-	if dir, ok := file.(Directory); ok {
-		return dir, nil
-	}
-
-	info, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	switch info.Kind() {
-	case TypeSymlink:
-		target, err := GetLinkName(file)
-		if err != nil {
-			return nil, err
-		}
-
-		currentDir := path.Unix.Dir(name)
-
-		newTarget := path.Unix.Join(currentDir, target)
-
-		ent, err := OpenPath(root, newTarget)
-		if err != nil {
-			return nil, err
-		}
-
-		return resolveDirectory(root, ent.File, newTarget)
-	default:
-		return nil, fmt.Errorf("OpenPath(%s): child %T is not a directory (kind=%s)", name, file, info.Kind())
-	}
-}
-
-func OpenPath(dir Directory, p string) (DirectoryEntry, error) {
-	p = strings.TrimPrefix(p, "/")
-
-	tokens := strings.Split(path.Unix.Clean(p), "/")
-
-	var currentDir = dir
-
-	for i, token := range tokens[:len(tokens)-1] {
-		child, err := currentDir.GetChild(token)
-		if err != nil {
-			return DirectoryEntry{}, err
-		}
-
-		childDir, err := resolveDirectory(dir, child.File, path.Unix.Join(tokens[:i+1]...))
-		if err != nil {
-			return DirectoryEntry{}, err
-		}
-
-		currentDir = childDir
-	}
-
-	dirname := tokens[len(tokens)-1]
-
-	if dirname == "." {
-		return DirectoryEntry{
-			File: currentDir,
-			Name: ".",
-		}, nil
-	}
-
-	return currentDir.GetChild(dirname)
-}
-
-func Mkdir(dir Directory, p string) (MutableDirectory, error) {
-	p = strings.TrimPrefix(p, "/")
-
-	tokens := strings.Split(path.Unix.Clean(p), "/")
-
-	var currentDir = dir
-
-	for i, token := range tokens[:len(tokens)-1] {
-		child, err := currentDir.GetChild(token)
-		if err == fs.ErrNotExist {
-			if mut := getMutable(currentDir); mut != nil {
-				newChild, err := mut.Mkdir(token)
-				if err != nil {
-					return nil, err
-				}
-
-				child = DirectoryEntry{File: newChild, Name: token}
-			} else {
-				return nil, err
-			}
-		} else if err != nil {
-			return nil, err
-		}
-
-		childDir, err := resolveDirectory(dir, child.File, path.Unix.Join(tokens[:i+1]...))
-		if err != nil {
-			return nil, err
-		}
-
-		currentDir = childDir
-	}
-
-	mut := getMutable(currentDir)
-	if mut == nil {
-		return nil, fmt.Errorf("directory %T is not mutable", currentDir)
-	}
-
-	dirname := tokens[len(tokens)-1]
-
-	if dirname == "." {
-		return mut, nil
-	}
-
-	return mut.Mkdir(dirname)
-}
-
-func CreateChild(dir Directory, p string, f File) (File, error) {
-	p = strings.TrimPrefix(p, "/")
-
-	tokens := strings.Split(path.Unix.Clean(p), "/")
-
-	var currentDir = dir
-
-	for i, token := range tokens[:len(tokens)-1] {
-		child, err := currentDir.GetChild(token)
-		if err == fs.ErrNotExist {
-			if mut := getMutable(currentDir); mut != nil {
-				newChild, err := mut.Mkdir(token)
-				if err != nil {
-					return nil, err
-				}
-
-				child = DirectoryEntry{File: newChild, Name: token}
-			} else {
-				return nil, err
-			}
-		} else if err != nil {
-			return nil, err
-		}
-
-		childDir, err := resolveDirectory(dir, child.File, path.Unix.Join(tokens[:i+1]...))
-		if err != nil {
-			return nil, err
-		}
-
-		currentDir = childDir
-	}
-
-	mut := getMutable(currentDir)
-	if mut == nil {
-		return nil, fmt.Errorf("directory %T is not mutable", currentDir)
-	}
-
-	return mut.Create(tokens[len(tokens)-1], f)
-}
-
-func DeleteChild(dir Directory, p string) error {
-	p = strings.TrimPrefix(p, "/")
-
-	tokens := strings.Split(path.Unix.Clean(p), "/")
-
-	var currentDir = dir
-
-	for i, token := range tokens[:len(tokens)-1] {
-		child, err := currentDir.GetChild(token)
-		if err != nil {
-			return err
-		}
-
-		childDir, err := resolveDirectory(dir, child.File, path.Unix.Join(tokens[:i+1]...))
-		if err != nil {
-			return err
-		}
-
-		currentDir = childDir
-	}
-
-	mut := getMutable(currentDir)
-	if mut == nil {
-		return fmt.Errorf("directory %T is not mutable", currentDir)
-	}
-
-	return mut.Unlink(tokens[len(tokens)-1])
-}
-
-func GetTotalSize(dir Directory) (int64, error) {
-	ents, err := dir.Readdir()
-	if err != nil {
-		return -1, err
-	}
-
-	var total int64 = 0
-
-	for _, child := range ents {
-		info, err := child.Stat()
-		if err != nil {
-			return -1, err
-		}
-
-		switch info.Kind() {
-		case TypeRegular:
-			total += info.Size()
-		case TypeDirectory:
-			dir, ok := child.File.(Directory)
-			if !ok {
-				return -1, fmt.Errorf("child is not a directory %T", child.File)
-			}
-
-			childTotal, err := GetTotalSize(dir)
-			if err != nil {
-				return -1, err
-			}
-
-			total += childTotal
-		default:
-			continue
-		}
-	}
-
-	return total, nil
+type AsMutableDirectory interface {
+	AsMutableDirectory() MutableDirectory
 }
 
 type memoryDirectory struct {
@@ -346,7 +123,7 @@ func (m *memoryDirectory) Mkdir(name string) (MutableDirectory, error) {
 
 	if ent, exists := m.entries[name]; exists {
 		if dir, ok := ent.(Directory); ok {
-			mut := getMutable(dir)
+			mut := GetMutableDirectory(dir)
 			if mut != nil {
 				return mut, nil
 			} else {

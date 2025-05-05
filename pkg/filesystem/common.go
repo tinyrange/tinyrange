@@ -172,3 +172,6 @@ type StreamableTempFile interface {
 type StreamableWriter interface {
 	Writer() (StreamableTempFile, error)
 }
+
+type FileFactory interface {
+}

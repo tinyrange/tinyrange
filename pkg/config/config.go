@@ -5,6 +5,7 @@ import (
 	"runtime"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/dbconfig"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
@@ -445,7 +446,7 @@ type TinyRangeConfig struct {
 	// compatible with the current version of TinyRange.
 	Version int `json:"version" yaml:"version"`
 
-	BuildDatabaseConfig []filesystem.BuildDatabaseConfig `json:"build_database" yaml:"build_database"`
+	BuildDatabaseConfig []dbconfig.BuildDatabaseConfig `json:"build_database" yaml:"build_database"`
 	// The CPU Architecture of the guest.
 	Architecture CPUArchitecture `json:"architecture" yaml:"architecture"`
 	// The Architecture of the root filesystem. This is a hint to enable vmm-specific optimizations.

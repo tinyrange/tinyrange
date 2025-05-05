@@ -12,6 +12,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
@@ -143,7 +144,7 @@ var buildOciCmd = &cobra.Command{
 							Definition: file,
 						})
 					} else {
-						file, err := filesystem.OpenPath(osDir, src)
+						file, err := fsutil.OpenPath(osDir, src)
 						if err != nil {
 							return fmt.Errorf("failed to open %s: %w", src, err)
 						}
@@ -210,7 +211,7 @@ var buildOciCmd = &cobra.Command{
 				var dir []common.Directive
 
 				for _, src := range srcFiles {
-					file, err := filesystem.OpenPath(osDir, src)
+					file, err := fsutil.OpenPath(osDir, src)
 					if err != nil {
 						return fmt.Errorf("failed to open %s: %w", src, err)
 					}

@@ -10,6 +10,7 @@ import (
 	xj "github.com/basgys/goxml2json"
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
@@ -395,7 +396,7 @@ func (f *StarDirectory) Get(k starlark.Value) (v starlark.Value, found bool, err
 		return nil, false, fmt.Errorf("expected string got %s", k.Type())
 	}
 
-	ent, err := filesystem.OpenPath(f, name)
+	ent, err := fsutil.OpenPath(f, name)
 	if err == fs.ErrNotExist {
 		return nil, false, nil
 	} else if err != nil {
@@ -419,7 +420,7 @@ func (f *StarDirectory) SetKey(k starlark.Value, v starlark.Value) error {
 	}
 
 	if file, ok := v.(filesystem.File); ok {
-		if _, err := filesystem.CreateChild(f, name, file); err != nil {
+		if _, err := fsutil.CreateChild(f, name, file); err != nil {
 			return err
 		}
 
@@ -431,7 +432,7 @@ func (f *StarDirectory) SetKey(k starlark.Value, v starlark.Value) error {
 			return err
 		}
 
-		if _, err := filesystem.CreateChild(f, name, file); err != nil {
+		if _, err := fsutil.CreateChild(f, name, file); err != nil {
 			return err
 		}
 

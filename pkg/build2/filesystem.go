@@ -11,6 +11,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/dbconfig"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/log"
 )
@@ -192,8 +193,8 @@ var (
 	_ common.WritableBuildCacheDirectory = &filesystemBuildDirectory{}
 )
 
-var DEFAULT_DATABASE_CONFIG = filesystem.BuildDatabaseConfig{
-	RelativeHostBuildDirectory: &filesystem.RelativeHostBuildDirectory{
+var DEFAULT_DATABASE_CONFIG = dbconfig.BuildDatabaseConfig{
+	RelativeHostBuildDirectory: &dbconfig.RelativeHostBuildDirectory{
 		RelativePath: "../..",
 	},
 }
@@ -201,14 +202,14 @@ var DEFAULT_DATABASE_CONFIG = filesystem.BuildDatabaseConfig{
 type BuildCacheFilesystem interface {
 	common.BuildCacheFilesystem
 
-	AddCacheDirectory(dir filesystem.Directory, config filesystem.BuildDatabaseConfig) error
+	AddCacheDirectory(dir filesystem.Directory, config dbconfig.BuildDatabaseConfig) error
 }
 
 type filesystemBuildCache struct {
 	dir filesystem.MutableDirectory
 
 	cacheDirectories []filesystem.Directory
-	config           []filesystem.BuildDatabaseConfig
+	config           []dbconfig.BuildDatabaseConfig
 }
 
 // GetOrSet implements common.SimpleCache.
@@ -269,7 +270,7 @@ func (f *filesystemBuildCache) SimpleCache() common.SimpleCache {
 }
 
 // AddCacheDirectory implements BuildCacheFilesystem.
-func (f *filesystemBuildCache) AddCacheDirectory(dir filesystem.Directory, config filesystem.BuildDatabaseConfig) error {
+func (f *filesystemBuildCache) AddCacheDirectory(dir filesystem.Directory, config dbconfig.BuildDatabaseConfig) error {
 	if dir == nil {
 		return fmt.Errorf("directory is nil")
 	}
@@ -304,7 +305,7 @@ func (f *filesystemBuildCache) FileFromReference(ref config.DatabaseReference) (
 }
 
 // DatabaseConfig implements common.BuildCacheFilesystem.
-func (f *filesystemBuildCache) DatabaseConfig() ([]filesystem.BuildDatabaseConfig, error) {
+func (f *filesystemBuildCache) DatabaseConfig() ([]dbconfig.BuildDatabaseConfig, error) {
 	if f.config == nil {
 		return nil, fmt.Errorf("no database config")
 	}
@@ -461,10 +462,10 @@ var (
 	_ BuildCacheFilesystem = &filesystemBuildCache{}
 )
 
-func OpenFilesystemBuildCache(dir filesystem.MutableDirectory, config filesystem.BuildDatabaseConfig) (BuildCacheFilesystem, error) {
+func OpenFilesystemBuildCache(dir filesystem.MutableDirectory, config dbconfig.BuildDatabaseConfig) (BuildCacheFilesystem, error) {
 	ret := &filesystemBuildCache{
 		dir:    dir,
-		config: []filesystem.BuildDatabaseConfig{config},
+		config: []dbconfig.BuildDatabaseConfig{config},
 	}
 
 	if err := checkMarkerFile(dir); err != nil && !errors.Is(err, fs.ErrNotExist) {

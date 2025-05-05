@@ -36,10 +36,10 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/ext4"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/p9"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/sftp"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
-	"github.com/tinyrange/tinyrange/pkg/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
 	"github.com/tinyrange/tinyrange/pkg/linux/goboot"
@@ -451,7 +451,7 @@ func (tr *driver) loadBuildDatabase() error {
 			}
 
 			if cfg.Archive2BuildArtifact.Path != "" {
-				pathEnt, err := filesystem.OpenPath(dir, cfg.Archive2BuildArtifact.Path)
+				pathEnt, err := fsutil.OpenPath(dir, cfg.Archive2BuildArtifact.Path)
 				if err != nil {
 					return fmt.Errorf("failed to open path in archive: %w", err)
 				}
@@ -556,7 +556,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 			}
 		}
 
-		if _, err := filesystem.CreateChild(dir, localFile.GuestFilename, overlay); err != nil {
+		if _, err := fsutil.CreateChild(dir, localFile.GuestFilename, overlay); err != nil {
 			return err
 		}
 
@@ -578,7 +578,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 			}
 		}
 
-		if _, err := filesystem.CreateChild(dir, databaseFile.GuestFilename, overlay); err != nil {
+		if _, err := fsutil.CreateChild(dir, databaseFile.GuestFilename, overlay); err != nil {
 			return err
 		}
 
@@ -602,7 +602,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 			}
 		}
 
-		if _, err := filesystem.CreateChild(dir, fileContents.GuestFilename, file); err != nil {
+		if _, err := fsutil.CreateChild(dir, fileContents.GuestFilename, file); err != nil {
 			return err
 		}
 
@@ -624,7 +624,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 				return err
 			}
 
-			if _, err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
+			if _, err := fsutil.CreateChild(dir, builtin.GuestFilename, file); err != nil {
 				return err
 			}
 
@@ -637,7 +637,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 
 			file := filesystem.NewLocalFile(exe, nil)
 
-			if _, err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
+			if _, err := fsutil.CreateChild(dir, builtin.GuestFilename, file); err != nil {
 				return err
 			}
 
@@ -650,7 +650,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 
 			file := filesystem.NewLocalFile(local, nil)
 
-			if _, err := filesystem.CreateChild(dir, builtin.GuestFilename, file); err != nil {
+			if _, err := fsutil.CreateChild(dir, builtin.GuestFilename, file); err != nil {
 				return err
 			}
 
@@ -699,15 +699,15 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 			var file filesystem.MutableFile
 
 			if name != "/" {
-				if filesystem.Exists(dir, name) {
+				if fsutil.Exists(dir, name) {
 					continue
 				}
 
 				dirname := path.Unix.Dir(name)
 
-				if !filesystem.Exists(dir, dirname) && path.Unix.Clean(name) != dirname {
+				if !fsutil.Exists(dir, dirname) && path.Unix.Clean(name) != dirname {
 					// log.Info("mkdir", "dirname", dirname)
-					if _, err := filesystem.Mkdir(dir, dirname); err != nil {
+					if _, err := fsutil.Mkdir(dir, dirname); err != nil {
 						return err
 					}
 				}
@@ -717,7 +717,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 					// log.Info("directory", "name", name)
 					name = strings.TrimSuffix(name, "/")
 
-					file, err = filesystem.Mkdir(dir, name)
+					file, err = fsutil.Mkdir(dir, name)
 					if err != nil {
 						return err
 					}
@@ -727,7 +727,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 
 					file = symlink
 
-					if _, err := filesystem.CreateChild(dir, name, symlink); err != nil {
+					if _, err := fsutil.CreateChild(dir, name, symlink); err != nil {
 						return err
 					}
 				case filesystem.TypeLink:
@@ -739,7 +739,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 
 					file = link
 
-					if _, err := filesystem.CreateChild(dir, name, link); err != nil {
+					if _, err := fsutil.CreateChild(dir, name, link); err != nil {
 						return err
 					}
 				case filesystem.TypeRegular:
@@ -749,11 +749,11 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 						return err
 					}
 
-					if _, err := filesystem.CreateChild(dir, name, ent); err != nil {
+					if _, err := fsutil.CreateChild(dir, name, ent); err != nil {
 						return err
 					}
 				case filesystem.TypeDeleted:
-					if err := filesystem.DeleteChild(dir, name); err != nil {
+					if err := fsutil.DeleteChild(dir, name); err != nil {
 						return err
 					}
 
@@ -1019,7 +1019,7 @@ func (tr *driver) configureSecureSSH(root filesystem.Directory) (SecureSSHConfig
 			return SecureSSHConfig{}, fmt.Errorf("failed to chmod secure ssh config: %w", err)
 		}
 
-		if _, err := filesystem.CreateChild(root, "/init.d/secure_ssh.json", memFile); err != nil {
+		if _, err := fsutil.CreateChild(root, "/init.d/secure_ssh.json", memFile); err != nil {
 			return SecureSSHConfig{}, fmt.Errorf("failed to create secure ssh config: %w", err)
 		}
 	} else {
@@ -1045,7 +1045,7 @@ func (tr *driver) buildFilesystem(
 	error,
 ) {
 	// start by computing the size of the filesystem.
-	totalSize, err := filesystem.GetTotalSize(root)
+	totalSize, err := fsutil.GetTotalSize(root)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("could not compute total size")
 	}
@@ -1506,7 +1506,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 	var rootFilesystem Filesystem
 
 	for _, volume := range volumes {
-		if _, err := filesystem.Mkdir(root, volume.GuestPath); err != nil {
+		if _, err := fsutil.Mkdir(root, volume.GuestPath); err != nil {
 			return fmt.Errorf("failed to open path: %w", err)
 		}
 	}
@@ -1514,7 +1514,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 	for _, volume := range append([]volumeInfo{
 		{VolumeName: "root", GuestPath: "/", MinimumSizeMB: uint64(rootInfo.StorageSize)},
 	}, volumes...) {
-		rootDir, err := filesystem.Mkdir(root, volume.GuestPath)
+		rootDir, err := fsutil.Mkdir(root, volume.GuestPath)
 		if err != nil {
 			return fmt.Errorf("failed to open path: %w", err)
 		}
@@ -1728,7 +1728,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 				hostDir = filesystem.NewLocalDirectory(dir.HostDirectory)
 			}
 
-			if _, err := filesystem.CreateChild(top, name, hostDir); err != nil {
+			if _, err := fsutil.CreateChild(top, name, hostDir); err != nil {
 				return fmt.Errorf("failed to create child %s: %w", name, err)
 			}
 		}

@@ -21,6 +21,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/dbconfig"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
@@ -181,7 +182,7 @@ type buildContext struct {
 }
 
 // DatabaseConfig implements common.BuildContext.
-func (b *buildContext) DatabaseConfig() ([]filesystem.BuildDatabaseConfig, error) {
+func (b *buildContext) DatabaseConfig() ([]dbconfig.BuildDatabaseConfig, error) {
 	return b.builder.buildDir.DatabaseConfig()
 }
 

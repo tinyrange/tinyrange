@@ -10,6 +10,7 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/dbconfig"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"go.starlark.net/starlark"
 )
@@ -72,7 +73,7 @@ type BuildCacheFilesystem interface {
 	GetAllHashes() ([]hash.Hash, error)
 
 	// DatabaseConfig returns the configuration for the build database.
-	DatabaseConfig() ([]filesystem.BuildDatabaseConfig, error)
+	DatabaseConfig() ([]dbconfig.BuildDatabaseConfig, error)
 }
 
 type ErrNonFatal struct {
@@ -199,7 +200,7 @@ type BuildContext interface {
 	MinimalBuildContext
 
 	// DatabaseConfig returns the configuration for the build database.
-	DatabaseConfig() ([]filesystem.BuildDatabaseConfig, error)
+	DatabaseConfig() ([]dbconfig.BuildDatabaseConfig, error)
 
 	// PrenotifyChildren starts builds in the background for a list of children.
 	PrenotifyChildren(children []BuildDefinition) error

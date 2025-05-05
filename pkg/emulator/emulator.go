@@ -13,6 +13,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/emulator/programs/shell"
 	"github.com/tinyrange/tinyrange/pkg/emulator/shared"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
@@ -126,7 +127,7 @@ func (proc *process) SetKey(k starlark.Value, v starlark.Value) error {
 		return err
 	}
 
-	if _, err := filesystem.CreateChild(root, p, file); err != nil {
+	if _, err := fsutil.CreateChild(root, p, file); err != nil {
 		return err
 	}
 
@@ -312,7 +313,7 @@ type Emulator struct {
 }
 
 func (emu *Emulator) openPath(name string) (filesystem.File, error) {
-	f, err := filesystem.OpenPath(emu.root, name)
+	f, err := fsutil.OpenPath(emu.root, name)
 	if err != nil {
 		return nil, err
 	}
@@ -395,7 +396,7 @@ func (emu *Emulator) AddSimpleProgram(filename string, prog func(proc shared.Pro
 }
 
 func (emu *Emulator) AddProgram(filename string, prog shared.Program) error {
-	if _, err := filesystem.CreateChild(emu.root, filename, prog); err != nil {
+	if _, err := fsutil.CreateChild(emu.root, filename, prog); err != nil {
 		return err
 	}
 
