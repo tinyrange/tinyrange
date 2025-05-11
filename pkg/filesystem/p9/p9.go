@@ -168,6 +168,8 @@ func (s *Server) clunkFile(id uint32) error {
 func (s *Server) getQid(info filesystem.FileInfo) QID {
 	kind := info.Kind()
 
+	s.debug("9p: getQid", "kind", kind, "info", info)
+
 	qid := QID{}
 
 	if kind == filesystem.TypeRegular {
@@ -307,7 +309,17 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			retMsg.Valid |= P9_GETATTR_BLOCKS
 		}
 
-		s.debug("9p: getattr", "retMsg", fmt.Sprintf("%+v", retMsg))
+		host, err := filesystem.GetHostFilename(fid.file)
+		if err != nil {
+			s.debug("9p: failed to get host filename", "err", err)
+		}
+
+		s.debug("9p: getattr",
+			"retMsg", fmt.Sprintf("%+v", retMsg),
+			"mode", fs.FileMode(retMsg.Mode),
+			"qid", fmt.Sprintf("%+v", retMsg.Qid),
+			"hostname", host,
+		)
 
 		return ret.EncodeBody(MsgRgetattr, msg.Tag, &retMsg)
 	case MsgTversion:
@@ -408,7 +420,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			return nil, fmt.Errorf("failed to set new fid: %v", err)
 		}
 
-		s.debug("", "Newfid", body.Newfid, "newInfo", newFile)
+		s.debug("Rwalk", "Newfid", body.Newfid, "newInfo", newFile)
 
 		return ret.EncodeBody(MsgRwalk, msg.Tag, &retMsg)
 	case MsgTread:
@@ -819,6 +831,13 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			retMsg.Count += uint32(entrySize)
 			retMsg.Data = append(retMsg.Data, dirent)
 		}
+
+		s.debug("9p: readdir",
+			"body.Offset", body.Offset,
+			"body.Count", body.Count,
+			"retMsg.Count", retMsg.Count,
+			"retMsg.Data", retMsg.Data,
+		)
 
 		return msg.EncodeBody(MsgRreaddir, msg.Tag, &retMsg)
 	case MsgTfsync:

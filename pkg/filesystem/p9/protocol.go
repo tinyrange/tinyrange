@@ -286,6 +286,31 @@ const (
 	TypeRegular QIDType = 0x00
 )
 
+func (q QIDType) String() string {
+	switch q {
+	case TypeDir:
+		return "TypeDir"
+	case TypeAppendOnly:
+		return "TypeAppendOnly"
+	case TypeExclusive:
+		return "TypeExclusive"
+	case TypeMount:
+		return "TypeMount"
+	case TypeAuth:
+		return "TypeAuth"
+	case TypeTemporary:
+		return "TypeTemporary"
+	case TypeSymlink:
+		return "TypeSymlink"
+	case TypeLink:
+		return "TypeLink"
+	case TypeRegular:
+		return "TypeRegular"
+	default:
+		return "<unknown>"
+	}
+}
+
 // QID is a unique file identifier.
 //
 // This may be embedded in other requests and responses.

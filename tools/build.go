@@ -381,12 +381,22 @@ func executeOptions(options []string) ([]string, error) {
 	return ret, nil
 }
 
-func runTest(filename string) error {
+func runTest(filename string, verbose bool, experimental string) error {
 	args := []string{
 		"build/tinyrange",
 		"login",
 		"-c",
 		filename,
+	}
+
+	if verbose {
+		args = append(args, "--verbose")
+	}
+
+	if experimental != "" {
+		for _, exp := range strings.Split(experimental, ",") {
+			args = append(args, "--experimental", exp)
+		}
 	}
 
 	slog.Info("Running test", "filename", filename)
@@ -416,7 +426,7 @@ func runTest(filename string) error {
 	return cmd.Run()
 }
 
-func runTests(filename string) error {
+func runTests(filename string, verbose bool, experimental string) error {
 	info, err := os.Stat(filename)
 	if err != nil {
 		return err
@@ -431,13 +441,13 @@ func runTests(filename string) error {
 		for _, ent := range ents {
 			child := filepath.Join(filename, ent.Name())
 
-			if err := runTests(child); err != nil {
+			if err := runTests(child, verbose, experimental); err != nil {
 				return err
 			}
 		}
 	} else {
 		if filepath.Ext(filename) == ".yml" {
-			if err := runTest(filename); err != nil {
+			if err := runTest(filename, verbose, experimental); err != nil {
 				return err
 			}
 		}
@@ -677,17 +687,19 @@ func getBasePath() (string, error) {
 }
 
 var (
-	buildOs       = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
-	buildArch     = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
-	buildDir      = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
-	cross         = flag.String("cross", "", "Specify another init executable architecture to build (options x86_64 and aarch64).")
-	debug         = flag.Bool("debug", false, "Print executed commands.")
-	run           = flag.Bool("run", false, "Run TinyRange with the remaining arguments.")
-	test          = flag.String("test", "", "Run all .yml files in a subdirectory using TinyRange.")
-	release       = flag.Bool("release", false, "Build a release version of TinyRange.")
-	cgo           = flag.Bool("cgo", false, "Build VMMs that require CGO.")
-	exp           = flag.String("exp", "", "Run a experimental feature.")
-	runExpScripts = flag.Bool("exp-scripts", false, "Run experimental scripts defined by a build file in the experimental path.")
+	buildOs          = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
+	buildArch        = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
+	buildDir         = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
+	cross            = flag.String("cross", "", "Specify another init executable architecture to build (options x86_64 and aarch64).")
+	debug            = flag.Bool("debug", false, "Print executed commands.")
+	run              = flag.Bool("run", false, "Run TinyRange with the remaining arguments.")
+	test             = flag.String("test", "", "Run all .yml files in a subdirectory using TinyRange.")
+	testVerbose      = flag.Bool("test-verbose", false, "Run tests in verbose mode.")
+	testExperimental = flag.String("test-experimental", "", "Add experimental feature flags to the test.")
+	release          = flag.Bool("release", false, "Build a release version of TinyRange.")
+	cgo              = flag.Bool("cgo", false, "Build VMMs that require CGO.")
+	exp              = flag.String("exp", "", "Run a experimental feature.")
+	runExpScripts    = flag.Bool("exp-scripts", false, "Run experimental scripts defined by a build file in the experimental path.")
 )
 
 func main() {
@@ -783,7 +795,7 @@ func main() {
 			log.Fatal(err)
 		}
 	} else if *test != "" {
-		if err := runTests(*test); err != nil {
+		if err := runTests(*test, *testVerbose, *testExperimental); err != nil {
 			log.Fatal(err)
 		}
 	} else if *run {
