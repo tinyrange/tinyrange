@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/adler32"
 	"io"
 	"io/fs"
+	"net/http"
 	"regexp"
+	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -22,7 +25,7 @@ const (
 	outputPrefix       = "output."
 
 	MARKER_FILENAME = "tinyrange-build.json"
-	MARKET_VERSION  = 1
+	MARKER_VERSION  = 1
 )
 
 type MarkerHeader struct {
@@ -48,8 +51,8 @@ func checkMarkerFile(dir filesystem.Directory) error {
 		return fmt.Errorf("failed to decode marker file: %w", err)
 	}
 
-	if markerHeader.Version > MARKET_VERSION {
-		return fmt.Errorf("marker file is newer than the current version: %d > %d", markerHeader.Version, MARKET_VERSION)
+	if markerHeader.Version > MARKER_VERSION {
+		return fmt.Errorf("marker file is newer than the current version: %d > %d", markerHeader.Version, MARKER_VERSION)
 	}
 
 	return nil
@@ -132,6 +135,44 @@ var (
 	_ common.BuildCacheDirectory = &readOnlyFilesystemBuildDirectory{}
 )
 
+type readOnlyBuildCache struct {
+	dir    filesystem.Directory
+	config dbconfig.BuildDatabaseConfig
+}
+
+// Config implements ReadOnlyBuildCache.
+func (f *readOnlyBuildCache) Config() dbconfig.BuildDatabaseConfig {
+	return f.config
+}
+
+func (f *readOnlyBuildCache) GetBuildDirectoryFromCache(hash hash.Hash) (common.BuildCacheDirectory, error) {
+	buildEntTop, err := f.dir.GetChild(hash.String()[:2])
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cache build directory: %w", err)
+	}
+
+	buildDirTop, ok := buildEntTop.File.(filesystem.Directory)
+	if !ok {
+		return nil, fmt.Errorf("cache build directory is not a directory")
+	}
+
+	buildEnt, err := buildDirTop.GetChild(hash.String()[2:])
+	if err != nil {
+		return nil, fmt.Errorf("failed to get build directory: %w", err)
+	}
+
+	buildDir, ok := buildEnt.File.(filesystem.Directory)
+	if !ok {
+		return nil, fmt.Errorf("build directory is not a directory")
+	}
+
+	return &readOnlyFilesystemBuildDirectory{dir: buildDir}, nil
+}
+
+var (
+	_ ReadOnlyBuildCache = &readOnlyBuildCache{}
+)
+
 type filesystemBuildDirectory struct {
 	*readOnlyFilesystemBuildDirectory
 
@@ -203,13 +244,201 @@ type BuildCacheFilesystem interface {
 	common.BuildCacheFilesystem
 
 	AddCacheDirectory(dir filesystem.Directory, config dbconfig.BuildDatabaseConfig) error
+	AddRemoteCacheDirectory(baseUrl string, config dbconfig.BuildDatabaseConfig) error
+}
+
+type remoteBuildOutput struct {
+	name string
+	hash string
+	size int64
+	dir  *remoteBuildDirectory
+}
+
+func (r *remoteBuildOutput) Id() uint64 {
+	return uint64(adler32.Checksum([]byte(fmt.Sprintf("%s/%s", r.dir.hash.String(), r.name))))
+}
+func (r *remoteBuildOutput) IsDir() bool               { return false }
+func (r *remoteBuildOutput) Kind() filesystem.FileType { return filesystem.TypeRegular }
+func (r *remoteBuildOutput) ModTime() time.Time {
+	return r.dir.receipt.StartTime.Add(r.dir.receipt.Duration)
+}
+func (r *remoteBuildOutput) Mode() fs.FileMode { return fs.ModePerm }
+func (r *remoteBuildOutput) Name() string      { return outputPrefix + r.name }
+func (r *remoteBuildOutput) Size() int64       { return r.size }
+func (r *remoteBuildOutput) Sys() any          { return nil }
+
+// Open implements filesystem.File.
+func (r *remoteBuildOutput) Open() (filesystem.FileHandle, error) {
+	readerAt, err := r.dir.cache.cache.GetOrSet(r.hash, func(w io.Writer) error {
+		fileUrl := fmt.Sprintf("%s/%s/%s/%s", r.dir.cache.baseUrl, r.dir.hash.String()[:2], r.dir.hash.String()[2:], outputPrefix+r.name)
+		resp, err := r.dir.cache.client.Get(fileUrl)
+		if err != nil {
+			return fmt.Errorf("failed to get file: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("failed to get file: %s", resp.Status)
+		}
+
+		if _, err := io.Copy(w, resp.Body); err != nil {
+			return fmt.Errorf("failed to copy file: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file: %w", err)
+	}
+
+	return filesystem.NewSimpleFileHandle(readerAt, r.size), nil
+}
+
+// Stat implements filesystem.File.
+func (r *remoteBuildOutput) Stat() (filesystem.FileInfo, error) {
+	return r, nil
+}
+
+var (
+	_ filesystem.File = &remoteBuildOutput{}
+)
+
+type remoteBuildDirectory struct {
+	cache      *remoteBuildCache
+	hash       hash.Hash
+	receipt    common.BuildReceipt
+	definition []byte
+}
+
+// File implements common.BuildCacheDirectory.
+func (r *remoteBuildDirectory) File(name string) (filesystem.File, error) {
+	if _, ok := r.receipt.Files[name]; !ok {
+		return nil, fmt.Errorf("file %s not found in receipt", name)
+	}
+
+	// send a head request to ensure the file exists and get the size
+	fileUrl := fmt.Sprintf("%s/%s/%s/%s", r.cache.baseUrl, r.hash.String()[:2], r.hash.String()[2:], outputPrefix+name)
+	resp, err := r.cache.client.Head(fileUrl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file size: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get file size: %s", resp.Status)
+	}
+	if err := resp.Body.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close response body: %w", err)
+	}
+
+	return &remoteBuildOutput{
+		name: name,
+		hash: r.receipt.Files[name],
+		size: resp.ContentLength,
+		dir:  r,
+	}, nil
+}
+
+// ReadDefinition implements common.BuildCacheDirectory.
+func (r *remoteBuildDirectory) ReadDefinition() ([]byte, error) {
+	if r.definition != nil {
+		return r.definition, nil
+	}
+
+	// try to request the definition file
+	definitionUrl := fmt.Sprintf("%s/%s/%s/%s", r.cache.baseUrl, r.hash.String()[:2], r.hash.String()[2:], definitionFileName)
+
+	resp, err := r.cache.client.Get(definitionUrl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get definition file: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get definition file: %s", resp.Status)
+	}
+	defer resp.Body.Close()
+
+	definition, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read definition file: %w", err)
+	}
+
+	r.definition = definition
+
+	return definition, nil
+}
+
+// ReadReceipt implements common.BuildCacheDirectory.
+func (r *remoteBuildDirectory) ReadReceipt() ([]byte, error) {
+	// encode the local receipt
+	receipt, err := json.Marshal(r.receipt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode receipt: %w", err)
+	}
+
+	return receipt, nil
+}
+
+var (
+	_ common.BuildCacheDirectory = &remoteBuildDirectory{}
+)
+
+type remoteBuildCache struct {
+	cache   common.SimpleCache
+	client  *http.Client
+	baseUrl string
+	config  dbconfig.BuildDatabaseConfig
+}
+
+// Config implements ReadOnlyBuildCache.
+func (r *remoteBuildCache) Config() dbconfig.BuildDatabaseConfig {
+	return r.config
+}
+
+// GetBuildDirectoryFromCache implements ReadOnlyBuildCache.
+func (r *remoteBuildCache) GetBuildDirectoryFromCache(hash hash.Hash) (common.BuildCacheDirectory, error) {
+	// try to request the receipt file
+	receiptUrl := fmt.Sprintf("%s/%s/%s/%s", r.baseUrl, hash.String()[:2], hash.String()[2:], receiptFileName)
+
+	resp, err := r.client.Get(receiptUrl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get receipt file: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get receipt file: %s", resp.Status)
+	}
+	defer resp.Body.Close()
+
+	var receipt common.BuildReceipt
+	if err := json.NewDecoder(resp.Body).Decode(&receipt); err != nil {
+		return nil, fmt.Errorf("failed to decode receipt file: %w", err)
+	}
+
+	return &remoteBuildDirectory{
+		cache:   r,
+		hash:    hash,
+		receipt: receipt,
+	}, nil
+}
+
+var (
+	_ ReadOnlyBuildCache = &remoteBuildCache{}
+)
+
+type ReadOnlyBuildCache interface {
+	GetBuildDirectoryFromCache(hash hash.Hash) (common.BuildCacheDirectory, error)
+
+	Config() dbconfig.BuildDatabaseConfig
 }
 
 type filesystemBuildCache struct {
-	dir filesystem.MutableDirectory
+	baseConfig dbconfig.BuildDatabaseConfig
+	dir        filesystem.MutableDirectory
 
-	cacheDirectories []filesystem.Directory
-	config           []dbconfig.BuildDatabaseConfig
+	cacheDirectories []ReadOnlyBuildCache
+}
+
+func (f *filesystemBuildCache) HttpClient() *http.Client {
+	return http.DefaultClient
 }
 
 // GetOrSet implements common.SimpleCache.
@@ -283,8 +512,44 @@ func (f *filesystemBuildCache) AddCacheDirectory(dir filesystem.Directory, confi
 		return fmt.Errorf("failed to check marker file in cache directory: %w", err)
 	}
 
-	f.cacheDirectories = append(f.cacheDirectories, dir)
-	f.config = append(f.config, config)
+	f.cacheDirectories = append(f.cacheDirectories, &readOnlyBuildCache{
+		dir:    dir,
+		config: config,
+	})
+
+	return nil
+}
+
+// AddRemoteCacheDirectory implements BuildCacheFilesystem.
+func (f *filesystemBuildCache) AddRemoteCacheDirectory(baseUrl string, config dbconfig.BuildDatabaseConfig) error {
+	markerUrl := fmt.Sprintf("%s/%s", baseUrl, MARKER_FILENAME)
+
+	// try to get the marker file from the remote cache
+	markerResp, err := f.HttpClient().Get(markerUrl)
+	if err != nil {
+		return fmt.Errorf("failed to get marker file from remote cache: %w", err)
+	}
+
+	if markerResp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to get marker file from remote cache: %s %s", markerUrl, markerResp.Status)
+	}
+	defer markerResp.Body.Close()
+
+	// check the version of the marker file
+	var markerHeader MarkerHeader
+	if err := json.NewDecoder(markerResp.Body).Decode(&markerHeader); err != nil {
+		return fmt.Errorf("failed to decode marker file from remote cache: %w", err)
+	}
+	if markerHeader.Version > MARKER_VERSION {
+		return fmt.Errorf("marker file from remote cache is newer than the current version: %d > %d", markerHeader.Version, MARKER_VERSION)
+	}
+
+	f.cacheDirectories = append(f.cacheDirectories, &remoteBuildCache{
+		cache:   f.SimpleCache(),
+		client:  f.HttpClient(),
+		baseUrl: baseUrl,
+		config:  config,
+	})
 
 	return nil
 }
@@ -306,11 +571,20 @@ func (f *filesystemBuildCache) FileFromReference(ref config.DatabaseReference) (
 
 // DatabaseConfig implements common.BuildCacheFilesystem.
 func (f *filesystemBuildCache) DatabaseConfig() ([]dbconfig.BuildDatabaseConfig, error) {
-	if f.config == nil {
-		return nil, fmt.Errorf("no database config")
+	var ret []dbconfig.BuildDatabaseConfig
+
+	// add the base config
+	ret = append(ret, f.baseConfig)
+
+	for _, config := range f.cacheDirectories {
+		ret = append(ret, config.Config())
 	}
 
-	return f.config, nil
+	if len(ret) == 0 {
+		return nil, fmt.Errorf("no cache directories")
+	}
+
+	return ret, nil
 }
 
 // GetHostFilename implements BuildCacheFilesystem.
@@ -339,30 +613,6 @@ func (f *filesystemBuildCache) CreateBuildDirectory(hash hash.Hash) (common.Buil
 		},
 		dir: buildDir,
 	}, nil
-}
-
-func (f *filesystemBuildCache) getBuildDirectoryFromCache(top filesystem.Directory, hash hash.Hash) (common.BuildCacheDirectory, error) {
-	buildEntTop, err := top.GetChild(hash.String()[:2])
-	if err != nil {
-		return nil, fmt.Errorf("failed to get cache build directory: %w", err)
-	}
-
-	buildDirTop, ok := buildEntTop.File.(filesystem.Directory)
-	if !ok {
-		return nil, fmt.Errorf("cache build directory is not a directory")
-	}
-
-	buildEnt, err := buildDirTop.GetChild(hash.String()[2:])
-	if err != nil {
-		return nil, fmt.Errorf("failed to get build directory: %w", err)
-	}
-
-	buildDir, ok := buildEnt.File.(filesystem.Directory)
-	if !ok {
-		return nil, fmt.Errorf("build directory is not a directory")
-	}
-
-	return &readOnlyFilesystemBuildDirectory{dir: buildDir}, nil
 }
 
 func (f *filesystemBuildCache) getBuildDirectory(hash hash.Hash) (common.BuildCacheDirectory, error) {
@@ -403,7 +653,7 @@ func (f *filesystemBuildCache) GetBuildDirectory(hash hash.Hash) (common.BuildCa
 	} else if errors.Is(topErr, fs.ErrNotExist) {
 		// try cache directories
 		for _, cacheDir := range f.cacheDirectories {
-			buildDir, err := f.getBuildDirectoryFromCache(cacheDir, hash)
+			buildDir, err := cacheDir.GetBuildDirectoryFromCache(hash)
 			if err == nil {
 				return buildDir, nil
 			} else if !errors.Is(err, fs.ErrNotExist) {
@@ -464,8 +714,8 @@ var (
 
 func OpenFilesystemBuildCache(dir filesystem.MutableDirectory, config dbconfig.BuildDatabaseConfig) (BuildCacheFilesystem, error) {
 	ret := &filesystemBuildCache{
-		dir:    dir,
-		config: []dbconfig.BuildDatabaseConfig{config},
+		dir:        dir,
+		baseConfig: config,
 	}
 
 	if err := checkMarkerFile(dir); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -480,7 +730,7 @@ func OpenFilesystemBuildCache(dir filesystem.MutableDirectory, config dbconfig.B
 	}
 
 	markerHeader := MarkerHeader{
-		Version: MARKET_VERSION,
+		Version: MARKER_VERSION,
 	}
 
 	if err := json.NewEncoder(markerFileHandle).Encode(markerHeader); err != nil {

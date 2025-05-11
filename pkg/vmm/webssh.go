@@ -12,7 +12,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/htm/bootstrap"
 	"github.com/tinyrange/tinyrange/pkg/htm/html"
 	"github.com/tinyrange/tinyrange/pkg/log"
-	"github.com/tinyrange/tinyrange/pkg/netstack"
+	"github.com/tinyrange/tinyrange/pkg/netstack/ns"
 )
 
 //go:embed ssh_static/*
@@ -91,7 +91,7 @@ margin-bottom: 1rem;
 
 var upgrader = websocket.Upgrader{}
 
-func runWebSsh(ns *netstack.NetStack, address string, username string, secureSSH SecureSSHConfig, args string) error {
+func runWebSsh(ns ns.NetStack, address string, username string, secureSSH SecureSSHConfig, args string) error {
 	host, arg, _ := strings.Cut(args, ",")
 
 	minimal := arg == "minimal"

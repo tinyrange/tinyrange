@@ -14,7 +14,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/tinyrange/tinyrange/pkg/log"
-	"github.com/tinyrange/tinyrange/pkg/netstack"
+	"github.com/tinyrange/tinyrange/pkg/netstack/ns"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
@@ -82,7 +82,7 @@ func (e *exitNotify) Get() bool {
 }
 
 func connectOverSsh(
-	ns *netstack.NetStack,
+	ns ns.NetStack,
 	address string,
 	username string,
 	secureSSH SecureSSHConfig,
@@ -270,7 +270,7 @@ var (
 	_ io.WriteCloser = &webSocketWriter{}
 )
 
-func newWebSocketSSH(ws *websocket.Conn, ns *netstack.NetStack, address string, username string, secureSSH SecureSSHConfig) error {
+func newWebSocketSSH(ws *websocket.Conn, ns ns.NetStack, address string, username string, secureSSH SecureSSHConfig) error {
 	config := &ssh.ClientConfig{
 		User: username,
 		Auth: []ssh.AuthMethod{

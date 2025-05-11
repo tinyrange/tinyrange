@@ -120,7 +120,7 @@ var (
 )
 
 func main() {
-	vmm.Entry(func(driver vmm.Driver) (vmm.PrepareResult, error) {
+	vmm.Entry(func(driver vmm.ProxyDriver) (vmm.PrepareResult, error) {
 		return vmm.PrepareResult{}, nil
 	}, func(dri vmm.Driver) (vmm.VirtualMachineMonitor, error) {
 		if !dri.GuestArchitecture().IsNative() {

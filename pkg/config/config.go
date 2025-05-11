@@ -459,6 +459,7 @@ const (
 	InteractionWebSSH         InteractionKind = "webssh"
 	InteractionWebSSHMinimal  InteractionKind = "webssh,minimal"
 	InteractionWebSSHNoBrower InteractionKind = "webssh,nobrowser"
+	InteractionRemote         InteractionKind = "remote"
 )
 
 const (
@@ -471,17 +472,23 @@ type TinyRangeConfig struct {
 	// compatible with the current version of TinyRange.
 	Version int `json:"version" yaml:"version"`
 
+	// The list of build databases to use. This is used to determine where to find the
+	// files needed to build the virtual machine.
 	BuildDatabaseConfig []dbconfig.BuildDatabaseConfig `json:"build_database" yaml:"build_database"`
+
 	// The CPU Architecture of the guest.
 	Architecture CPUArchitecture `json:"architecture" yaml:"architecture"`
 	// The Architecture of the root filesystem. This is a hint to enable vmm-specific optimizations.
 	RootArchitecture CPUArchitecture `json:"root_architecture" yaml:"root_architecture"`
+
 	// The kernel to boot.
 	Kernel *DatabaseReference `json:"kernel" yaml:"kernel"`
 	// A initramfs to pass to the kernel or nil to disable passing a initramfs.
 	InitFilesystem *DatabaseReference `json:"initramfs" yaml:"initramfs"`
+
 	// A list of filesystems to create.
 	Filesystems map[string]Filesystem `json:"filesystems" yaml:"filesystems"`
+
 	// The way the user will interact with the virtual machine (options: [ssh, serial], default: ssh).
 	Interaction InteractionKind `json:"interaction" yaml:"interaction"`
 	// The number of CPU cores to allocate to the virtual machine.
@@ -490,6 +497,7 @@ type TinyRangeConfig struct {
 	MemoryMB int `json:"memory_mb" yaml:"memory_mb"`
 	// Automatically scale the CPU and RAM to the limits of the host.
 	AutoScale bool `json:"auto_scale" yaml:"auto_scale"`
+
 	// Redirect hypervisor input to the host. The VM will exit after it completes initialization.
 	Debug bool `json:"debug" yaml:"debug"`
 }
@@ -545,4 +553,8 @@ func (cfg TinyRangeConfig) Validate() error {
 type BuildCacheFilesystem interface {
 	// FileFromReference returns a file from a database reference.
 	FileFromReference(ref DatabaseReference) (filesystem.File, error)
+}
+
+type ProxyLoadRequest struct {
+	Socks5Address string `json:"socks5_address" yaml:"socks5_address"`
 }

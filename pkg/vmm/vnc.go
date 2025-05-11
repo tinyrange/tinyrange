@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/tinyrange/tinyrange/pkg/log"
-	"github.com/tinyrange/tinyrange/pkg/netstack"
+	"github.com/tinyrange/tinyrange/pkg/netstack/ns"
 	"github.com/tinyrange/tinyrange/pkg/vnc/client"
 )
 
-func runVncClient(ns *netstack.NetStack, address string) error {
+func runVncClient(ns ns.NetStack, address string) error {
 	var (
 		conn net.Conn
 		err  error

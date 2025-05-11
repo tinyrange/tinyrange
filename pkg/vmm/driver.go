@@ -16,6 +16,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -27,6 +28,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/miekg/dns"
 	"github.com/schollz/progressbar/v3"
+	"github.com/things-go/go-socks5"
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/archive2"
 	"github.com/tinyrange/tinyrange/pkg/build2"
@@ -45,6 +47,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/linux/goboot"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/netstack"
+	"github.com/tinyrange/tinyrange/pkg/netstack/ns"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	_ "github.com/tinyrange/tinyrange/pkg/platform"
 	"github.com/tinyrange/tinyrange/pkg/trdf"
@@ -224,6 +227,12 @@ type VirtualMachineMonitor interface {
 	Shutdown() error
 }
 
+type ProxyMonitor interface {
+	VirtualMachineMonitor
+
+	NetStack() ns.NetStack
+}
+
 type executable struct {
 	name string
 	args []string
@@ -273,7 +282,20 @@ func NewExecutable(name string, args []string) VirtualMachineMonitor {
 	}
 }
 
+type ProxyDriver interface {
+	// URL returns the URL of the driver. The URL can contain parameters for the driver.
+	URL() *url.URL
+
+	// Configs returns the list of configs for the driver.
+	Configs() []config.TinyRangeConfig
+
+	// BuildDatabase returns the build database.
+	BuildDatabase() build2.BuildCacheFilesystem
+}
+
 type Driver interface {
+	ProxyDriver
+
 	// FindExecutable finds the executable with the given name.
 	// It looks beside the current executable first then searches the PATH.
 	FindExecutable(name string) (string, error)
@@ -359,10 +381,15 @@ type driver struct {
 	packetCapturePath string
 	cpuCores          int
 	memoryMB          int
+	socks5Listener    net.Listener
+	socks5Proxy       string
+	driverUrl         *url.URL
 
 	dbBuildDir build2.BuildCacheFilesystem
 
 	dumpWriter *csv.Writer
+
+	ns ns.NetStack
 
 	kernel           File
 	initRamFs        File
@@ -383,6 +410,49 @@ func (tr *driver) fatalError() {
 	os.Exit(1)
 }
 
+func (tr *driver) getOrCreateDefaultBuildDirectory() (string, error) {
+	// look upwards for a tinyrange.portable file.
+	// if it exists, use that as the build directory.
+	var currentDir string
+
+	executable, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("failed to get executable: %w", err)
+	}
+
+	currentDir = path.Native.Dir(executable)
+	for {
+		if _, err := os.Stat(path.Native.Join(currentDir, "tinyrange.portable")); err == nil {
+			// found the tinyrange.portable file, use this directory as the build directory.
+
+			if err := os.MkdirAll(path.Native.Join(currentDir, "build"), 0755); err != nil {
+				return "", fmt.Errorf("failed to create build directory: %w", err)
+			}
+
+			log.Info("found tinyrange.portable, using build directory", "dir", path.Native.Join(currentDir, "build"))
+
+			return path.Native.Join(currentDir, "build"), nil
+		}
+
+		if path.Native.Dir(currentDir) == currentDir {
+			// reached the root directory, stop searching.
+			break
+		}
+		currentDir = path.Native.Dir(currentDir)
+	}
+
+	// otherwise use the default build directory.
+	defaultDir := common.GetDefaultBuildDir()
+
+	log.Info("using default build directory", "dir", defaultDir)
+
+	if err := os.MkdirAll(defaultDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create build directory: %w", err)
+	}
+
+	return defaultDir, nil
+}
+
 func (tr *driver) loadBuildDatabase() error {
 	var err error
 
@@ -396,7 +466,24 @@ func (tr *driver) loadBuildDatabase() error {
 
 	dbConfig := topConfig.BuildDatabaseConfig[0]
 
-	if dbConfig.RelativeHostBuildDirectory != nil {
+	if dbConfig.DefaultBuildDirectory != nil {
+		buildDir, err := tr.getOrCreateDefaultBuildDirectory()
+		if err != nil {
+			return fmt.Errorf("failed to get default build directory: %w", err)
+		}
+
+		mutBuildDir := filesystem.Factory.NewLocalMutableDirectory(buildDir)
+
+		// set the build directory to the default build directory.
+		if tr.buildDir == common.GetDefaultBuildDir() {
+			tr.buildDir = buildDir
+		}
+
+		tr.dbBuildDir, err = build2.OpenFilesystemBuildCache(mutBuildDir, build2.DEFAULT_DATABASE_CONFIG)
+		if err != nil {
+			return fmt.Errorf("failed to open build database: %w", err)
+		}
+	} else if dbConfig.RelativeHostBuildDirectory != nil {
 		if topConfigFilename == "" || topConfigFilename == "<stdin>" {
 			return fmt.Errorf("no build database config filename")
 		}
@@ -468,6 +555,10 @@ func (tr *driver) loadBuildDatabase() error {
 				if err := tr.dbBuildDir.AddCacheDirectory(dir, cfg); err != nil {
 					return fmt.Errorf("failed to add build directory: %w", err)
 				}
+			}
+		} else if cfg.RemoteBuildDirectory != nil {
+			if err := tr.dbBuildDir.AddRemoteCacheDirectory(cfg.RemoteBuildDirectory.BaseURL, cfg); err != nil {
+				return fmt.Errorf("failed to add remote build directory: %w", err)
 			}
 		} else {
 			return fmt.Errorf("unknown build database config: %v", cfg)
@@ -1264,7 +1355,7 @@ func (tr *driver) nbdLoop(listener net.Listener, exports ...nbdExport) {
 	}
 }
 
-func (tr *driver) startDNSServer(ns *netstack.NetStack) error {
+func (d *driver) startDNSServer() error {
 	dnsServer := &dnsServer{
 		dnsLookup: func(name string) (string, error) {
 			if name == "tinyrange." {
@@ -1288,7 +1379,7 @@ func (tr *driver) startDNSServer(ns *netstack.NetStack) error {
 
 	dnsMux.HandleFunc(".", dnsServer.handleDnsRequest)
 
-	packetConn, err := ns.ListenPacketInternal("udp", ":53")
+	packetConn, err := d.ns.ListenPacketInternal("udp", ":53")
 	if err != nil {
 		return fmt.Errorf("failed to listen internal (dns): %w", err)
 	}
@@ -1310,7 +1401,7 @@ func (tr *driver) startDNSServer(ns *netstack.NetStack) error {
 	return nil
 }
 
-func (tr *driver) exportPort(ns *netstack.NetStack, port int) error {
+func (d *driver) exportPort(port int) error {
 	log.Info("exporting port", "address", fmt.Sprintf("localhost:%d", port))
 
 	portListen, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
@@ -1329,7 +1420,7 @@ func (tr *driver) exportPort(ns *netstack.NetStack, port int) error {
 			go func() {
 				defer conn.Close()
 
-				clientConn, err := ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("10.42.0.2:%d", port))
+				clientConn, err := d.ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("10.42.0.2:%d", port))
 				if err != nil {
 					// silence these errors since they are exposed to the client anyway.
 					log.Debug("failed to dial vm port", "err", err)
@@ -1363,6 +1454,98 @@ type volumeInfo struct {
 	MinimumSizeMB uint64
 	GuestPath     string
 	Persist       bool
+}
+
+func (d *driver) startFileShare(mountedHostDirectories []mountInfo) error {
+	if feature.HasFeature(feature.Feature9P) {
+		for _, dir := range mountedHostDirectories {
+			var hostDir filesystem.Directory
+
+			if dir.Writable {
+				hostDir = filesystem.Factory.NewLocalMutableDirectory(dir.HostDirectory)
+			} else {
+				hostDir = filesystem.Factory.NewLocalDirectory(dir.HostDirectory)
+			}
+
+			svr := p9.NewServer(hostDir)
+
+			listen, err := d.ns.ListenInternal("tcp", fmt.Sprintf(":%d", dir.Port))
+			if err != nil {
+				return fmt.Errorf("failed to listen internal (9p): %w", err)
+			}
+
+			go func() {
+				if err := svr.Serve(listen); err != nil {
+					log.Error("failed to run 9p server", "err", err)
+				}
+			}()
+		}
+	} else {
+		top := filesystem.Factory.NewMemoryDirectory()
+
+		for _, dir := range mountedHostDirectories {
+			name := path.Native.Base(dir.HostDirectory)
+
+			var hostDir filesystem.Directory
+
+			if dir.Writable {
+				hostDir = filesystem.Factory.NewLocalMutableDirectory(dir.HostDirectory)
+			} else {
+				hostDir = filesystem.Factory.NewLocalDirectory(dir.HostDirectory)
+			}
+
+			if _, err := fsutil.CreateChild(top, name, hostDir); err != nil {
+				return fmt.Errorf("failed to create child %s: %w", name, err)
+			}
+		}
+
+		if len(mountedHostDirectories) > 0 {
+			log.Info("host directories avalible via SFTP on sftp://host.internal")
+		}
+
+		svr := sftp.NewInternalServer(top, ":22")
+
+		go func() {
+			if err := svr.Run(func(network, addr string) (net.Listener, error) {
+				return d.ns.ListenInternal("tcp", addr)
+			}); err != nil {
+				log.Error("failed to run sftp server", "err", err)
+			}
+		}()
+	}
+
+	return nil
+}
+
+func (d *driver) startSocks5Proxy(listener net.Listener) error {
+	server := socks5.NewServer(
+		socks5.WithDialAndRequest(func(ctx context.Context, network, addr string, request *socks5.Request) (net.Conn, error) {
+			if network != "tcp" {
+				return nil, fmt.Errorf("unsupported network: %s", network)
+			}
+
+			clientConn, err := d.ns.DialInternalContext(ctx, network, addr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to dial vm port: %w", err)
+			}
+
+			return clientConn, nil
+		}),
+		socks5.WithBindHandle(func(ctx context.Context, writer io.Writer, request *socks5.Request) error {
+			return fmt.Errorf("bind not supported")
+		}),
+		socks5.WithAssociateHandle(func(ctx context.Context, writer io.Writer, request *socks5.Request) error {
+			return fmt.Errorf("associate not supported")
+		}),
+	)
+
+	go func() {
+		if err := server.Serve(listener); err != nil {
+			log.Error("failed to run socks5 server", "err", err)
+		}
+	}()
+
+	return nil
 }
 
 func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) error {
@@ -1603,6 +1786,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 	go d.nbdLoop(listener, exports...)
 
 	ns := netstack.New()
+	d.ns = ns
 
 	if d.wireguardUrl != "" {
 		resp, err := http.Get(d.wireguardUrl)
@@ -1647,13 +1831,13 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 	}
 
 	// Create DNS server.
-	if err := d.startDNSServer(ns); err != nil {
+	if err := d.startDNSServer(); err != nil {
 		return fmt.Errorf("failed to start DNS server: %w", err)
 	}
 
 	// Export ports.
 	for _, port := range exportedPorts {
-		if err := d.exportPort(ns, port); err != nil {
+		if err := d.exportPort(port); err != nil {
 			return fmt.Errorf("failed to export port: %w", err)
 		}
 	}
@@ -1700,61 +1884,24 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		return fmt.Errorf("failed to create virtual machine monitor: %w", err)
 	}
 
-	if feature.HasFeature(feature.Feature9P) {
-		for _, dir := range mountedHostDirectories {
-			var hostDir filesystem.Directory
+	// Start the file share.
+	// Do this after the VM is created so the driver can add files viable to the VM.
+	if err := d.startFileShare(mountedHostDirectories); err != nil {
+		return fmt.Errorf("failed to start file share: %w", err)
+	}
 
-			if dir.Writable {
-				hostDir = filesystem.Factory.NewLocalMutableDirectory(dir.HostDirectory)
-			} else {
-				hostDir = filesystem.Factory.NewLocalDirectory(dir.HostDirectory)
-			}
-
-			svr := p9.NewServer(hostDir)
-
-			listen, err := ns.ListenInternal("tcp", fmt.Sprintf(":%d", dir.Port))
-			if err != nil {
-				return fmt.Errorf("failed to listen internal (9p): %w", err)
-			}
-
-			go func() {
-				if err := svr.Serve(listen); err != nil {
-					log.Error("failed to run 9p server", "err", err)
-				}
-			}()
-		}
-	} else {
-		top := filesystem.Factory.NewMemoryDirectory()
-
-		for _, dir := range mountedHostDirectories {
-			name := path.Native.Base(dir.HostDirectory)
-
-			var hostDir filesystem.Directory
-
-			if dir.Writable {
-				hostDir = filesystem.Factory.NewLocalMutableDirectory(dir.HostDirectory)
-			} else {
-				hostDir = filesystem.Factory.NewLocalDirectory(dir.HostDirectory)
-			}
-
-			if _, err := fsutil.CreateChild(top, name, hostDir); err != nil {
-				return fmt.Errorf("failed to create child %s: %w", name, err)
-			}
+	if d.socks5Proxy != "" && d.socks5Listener == nil {
+		listener, err := net.Listen("tcp", d.socks5Proxy)
+		if err != nil {
+			return fmt.Errorf("failed to listen on socks5 proxy: %w", err)
 		}
 
-		if len(mountedHostDirectories) > 0 {
-			log.Info("host directories avalible via SFTP on sftp://host.internal")
+		d.socks5Listener = listener
+	}
+	if d.socks5Listener != nil {
+		if err := d.startSocks5Proxy(d.socks5Listener); err != nil {
+			return fmt.Errorf("failed to start socks5 proxy: %w", err)
 		}
-
-		svr := sftp.NewInternalServer(top, ":22")
-
-		go func() {
-			if err := svr.Run(func(network, addr string) (net.Listener, error) {
-				return ns.ListenInternal("tcp", addr)
-			}); err != nil {
-				log.Error("failed to run sftp server", "err", err)
-			}
-		}()
 	}
 
 	log.Debug("starting virtual machine", "took", time.Since(start))
@@ -1765,13 +1912,50 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		}
 	})
 
+	log.Debug("running virtual machine", "initTime", time.Since(mainStart))
+
+	return d.runInteraction(
+		vmm,
+		secureSSH,
+	)
+}
+
+func (d *driver) execProxy(create func(vmm ProxyDriver) (ProxyMonitor, error)) error {
+	if err := d.loadBuildDatabase(); err != nil {
+		return fmt.Errorf("failed to load build database: %w", err)
+	}
+
+	secureSSH := SecureSSHConfig{
+		Password: config.INSECURE_SSH_PASSWORD,
+	}
+
+	inst, err := create(d)
+	if err != nil {
+		return fmt.Errorf("failed to create proxy instance: %w", err)
+	}
+
+	d.onExit = append(d.onExit, func() {
+		if err := inst.Shutdown(); err != nil {
+			log.Error("failed to shutdown virtual machine", "err", err)
+		}
+	})
+
+	d.ns = inst.NetStack()
+
+	return d.runInteraction(inst, secureSSH)
+}
+
+func (d *driver) runInteraction(
+	vmm VirtualMachineMonitor,
+	secureSSH SecureSSHConfig,
+) error {
+	var err error
+
 	defer func() {
 		for _, fn := range d.onExit {
 			fn()
 		}
 	}()
-
-	log.Debug("running virtual machine", "initTime", time.Since(mainStart))
 
 	switch d.Interaction() {
 	case config.InteractionSSH, config.InteractionVNC:
@@ -1788,12 +1972,18 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		}()
 
 		if d.Interaction() == config.InteractionVNC {
-			go runVncClient(ns, "10.42.0.2:5901")
+			go runVncClient(d.ns, "10.42.0.2:5901")
 		}
 
-		err = connectOverSsh(ns, "10.42.0.2:2222", "root", secureSSH, exited)
+		err = connectOverSsh(d.ns, "10.42.0.2:2222", "root", secureSSH, exited)
 		if err != nil {
 			return fmt.Errorf("failed to connect over ssh: %w", err)
+		}
+
+		return nil
+	case config.InteractionRemote:
+		if err := vmm.Run(d.debug); err != nil {
+			return fmt.Errorf("failed to run virtual machine: %w", err)
 		}
 
 		return nil
@@ -1811,7 +2001,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 			}
 		}()
 
-		return runWebSsh(ns, "10.42.0.2:2222", "root", secureSSH, strings.TrimPrefix(string(d.Interaction()), "webssh,"))
+		return runWebSsh(d.ns, "10.42.0.2:2222", "root", secureSSH, strings.TrimPrefix(string(d.Interaction()), "webssh,"))
 	default:
 		return fmt.Errorf("unsupported interaction mode: %s", d.Interaction())
 	}
@@ -1902,17 +2092,20 @@ func (d *driver) Accelerated() bool {
 	return accelerate.SupportsAcceleration()
 }
 
-func (d *driver) HostOperatingSystem() string               { return runtime.GOOS }
-func (d *driver) GuestArchitecture() config.CPUArchitecture { return d.topConfig().Architecture }
-func (d *driver) DiskImages() []File                        { return d.diskImages }
-func (d *driver) InitRamFs() File                           { return d.initRamFs }
-func (d *driver) Verbose() bool                             { return common.IsVerbose() }
-func (d *driver) Experimental() []string                    { return feature.GetFeatureFlags() }
-func (d *driver) Interaction() config.InteractionKind       { return d.topConfig().Interaction }
-func (d *driver) NetworkInterface() NetworkInterface        { return d.networkInterface }
-func (d *driver) Kernel() File                              { return d.kernel }
-func (d *driver) CPUCores() int                             { return d.cpuCores }
-func (d *driver) MemoryMB() int                             { return d.memoryMB }
+func (d *driver) HostOperatingSystem() string                { return runtime.GOOS }
+func (d *driver) GuestArchitecture() config.CPUArchitecture  { return d.topConfig().Architecture }
+func (d *driver) DiskImages() []File                         { return d.diskImages }
+func (d *driver) InitRamFs() File                            { return d.initRamFs }
+func (d *driver) Verbose() bool                              { return common.IsVerbose() }
+func (d *driver) Experimental() []string                     { return feature.GetFeatureFlags() }
+func (d *driver) Interaction() config.InteractionKind        { return d.topConfig().Interaction }
+func (d *driver) NetworkInterface() NetworkInterface         { return d.networkInterface }
+func (d *driver) Kernel() File                               { return d.kernel }
+func (d *driver) CPUCores() int                              { return d.cpuCores }
+func (d *driver) MemoryMB() int                              { return d.memoryMB }
+func (d *driver) URL() *url.URL                              { return d.driverUrl }
+func (d *driver) Configs() []config.TinyRangeConfig          { return d.configs }
+func (d *driver) BuildDatabase() build2.BuildCacheFilesystem { return d.dbBuildDir }
 
 func (d *driver) RootArchitecture() config.CPUArchitecture {
 	return d.topConfig().RootArchitecture
@@ -1958,14 +2151,16 @@ var (
 	wireguardUrl      = DriverFlags.String("wireguard-url", "", "URL to fetch wireguard config from.")
 	nbdBlockSize      = DriverFlags.Int("nbd-block-size", 0, "Override the preferred and maximum block size for the NBD server. This can have major performance implications.")
 	packetCapturePath = DriverFlags.String("packet-capture", "", "Path to write packet capture in pcap format to.")
+	driverUrl         = DriverFlags.String("url", "", "The URL of the driver to create.")
+	proxy             = DriverFlags.String("proxy", "", "The URL of a proxy host to fetch the configuration from.")
+	socks5Proxy       = DriverFlags.String("socks5-proxy", "", "The URL of a socks5 proxy to listen.")
 )
 
-func entryMain(
-	prepare func(vmm Driver) (PrepareResult, error),
-	create func(vmm Driver) (VirtualMachineMonitor, error),
-) error {
+func initCommon(
+	prepare func(vmm ProxyDriver) (PrepareResult, error),
+) (*driver, error) {
 	if err := DriverFlags.Parse(os.Args[1:]); err != nil {
-		return err
+		return nil, err
 	}
 
 	if *verbose {
@@ -1973,7 +2168,12 @@ func entryMain(
 	}
 
 	if err := common.SetExperimental(strings.Split(*experimental, ",")); err != nil {
-		return err
+		return nil, err
+	}
+
+	driverUrl, err := url.Parse(*driverUrl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse driver URL: %w", err)
 	}
 
 	driver := &driver{
@@ -1986,6 +2186,8 @@ func entryMain(
 		wireguardUrl:      *wireguardUrl,
 		nbdBlockSize:      *nbdBlockSize,
 		packetCapturePath: *packetCapturePath,
+		socks5Proxy:       *socks5Proxy,
+		driverUrl:         driverUrl,
 	}
 
 	if *doPrepare {
@@ -1997,33 +2199,113 @@ func entryMain(
 
 		enc, err := json.Marshal(out)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if _, err := os.Stdout.Write(enc); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	for _, arg := range DriverFlags.Args() {
-		if err := driver.addConfig(arg); err != nil {
-			return err
+	if *proxy != "" {
+		// do a request to the proxy server to get the config.
+		var req config.ProxyLoadRequest
+
+		listen, err := net.Listen("tcp", "localhost:0")
+		if err != nil {
+			return nil, fmt.Errorf("failed to listen: %w", err)
+		}
+		driver.socks5Listener = listen
+
+		req.Socks5Address = listen.Addr().String()
+
+		buf := bytes.NewBuffer(nil)
+		if err := json.NewEncoder(buf).Encode(&req); err != nil {
+			return nil, fmt.Errorf("failed to encode request: %w", err)
+		}
+
+		client := http.DefaultClient
+
+		request, err := http.NewRequest("POST", *proxy, buf)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Accept", "application/json")
+
+		resp, err := client.Do(request)
+		if err != nil {
+			return nil, fmt.Errorf("failed to do request: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("failed to get config from proxy: %s", resp.Status)
+		}
+
+		defer resp.Body.Close()
+
+		var configs []config.TinyRangeConfig
+
+		if err := json.NewDecoder(resp.Body).Decode(&configs); err != nil {
+			return nil, fmt.Errorf("failed to decode response: %w", err)
+		}
+
+		for _, cfg := range configs {
+			if err := cfg.Validate(); err != nil {
+				return nil, fmt.Errorf("failed to validate config: %w", err)
+			}
+
+			driver.configs = append(driver.configs, cfg)
+			driver.configFilenames = append(driver.configFilenames, *proxy)
+		}
+
+		if len(driver.configs) == 0 {
+			return nil, fmt.Errorf("no configs provided")
+		}
+	} else {
+		for _, arg := range DriverFlags.Args() {
+			if err := driver.addConfig(arg); err != nil {
+				return nil, err
+			}
+		}
+
+		if len(driver.configs) == 0 {
+			return nil, fmt.Errorf("no configs provided")
 		}
 	}
 
-	if len(driver.configs) == 0 {
-		return fmt.Errorf("no configs provided")
+	return driver, nil
+}
+
+func ProxyEntry(
+	prepare func(vmm ProxyDriver) (PrepareResult, error),
+	create func(vmm ProxyDriver) (ProxyMonitor, error),
+) {
+	if goboot.MaybeExecInit() {
+		return
 	}
 
-	if err := driver.exec(create); err != nil {
-		return err
+	if os.Getenv("TINYRANGE_VERBOSE") == "on" {
+		if err := common.EnableVerbose(); err != nil {
+			log.Error("failed to enable verbose logging", "err", err)
+			os.Exit(1)
+		}
 	}
 
-	return nil
+	driver, err := initCommon(prepare)
+	if err != nil {
+		log.Error("driver fatal", "err", err)
+		os.Exit(1)
+	}
+
+	if err := driver.execProxy(create); err != nil {
+		log.Error("driver fatal", "err", err)
+		os.Exit(1)
+	}
 }
 
 func Entry(
-	prepare func(vmm Driver) (PrepareResult, error),
+	prepare func(vmm ProxyDriver) (PrepareResult, error),
 	create func(vmm Driver) (VirtualMachineMonitor, error),
 ) {
 	if goboot.MaybeExecInit() {
@@ -2037,7 +2319,13 @@ func Entry(
 		}
 	}
 
-	if err := entryMain(prepare, create); err != nil {
+	driver, err := initCommon(prepare)
+	if err != nil {
+		log.Error("driver fatal", "err", err)
+		os.Exit(1)
+	}
+
+	if err := driver.exec(create); err != nil {
 		log.Error("driver fatal", "err", err)
 		os.Exit(1)
 	}

@@ -402,3 +402,18 @@ func (m *memoryFile) Stat() (FileInfo, error) {
 var (
 	_ MutableFile = &memoryFile{}
 )
+
+type simpleFileHandle struct {
+	io.SectionReader
+}
+
+// Close implements FileHandle.
+func (s *simpleFileHandle) Close() error {
+	return nil
+}
+
+func NewSimpleFileHandle(r io.ReaderAt, size int64) FileHandle {
+	return &simpleFileHandle{
+		SectionReader: *io.NewSectionReader(r, 0, size),
+	}
+}

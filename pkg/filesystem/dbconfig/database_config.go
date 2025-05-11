@@ -2,6 +2,7 @@ package dbconfig
 
 import (
 	"fmt"
+	"net/url"
 
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
@@ -54,10 +55,41 @@ func (cfg Archive2BuildArtifact) Validate() error {
 	return nil
 }
 
+type RemoteBuildDirectory struct {
+	BaseURL string `json:"base_url" yaml:"base_url"`
+}
+
+func (cfg RemoteBuildDirectory) Validate() error {
+	url, err := url.Parse(cfg.BaseURL)
+	if err != nil {
+		return fmt.Errorf("invalid base_url: %s", cfg.BaseURL)
+	}
+
+	if url.Scheme != "http" && url.Scheme != "https" {
+		return fmt.Errorf("base_url must be http or https: %s", cfg.BaseURL)
+	}
+
+	if url.Host == "" {
+		return fmt.Errorf("base_url must have a host: %s", cfg.BaseURL)
+	}
+
+	return nil
+}
+
+type DefaultBuildDirectory struct {
+}
+
+func (cfg DefaultBuildDirectory) Validate() error {
+	// Default build directory is always valid.
+	return nil
+}
+
 type BuildDatabaseConfig struct {
+	DefaultBuildDirectory      *DefaultBuildDirectory      `json:"default_build_directory" yaml:"default_build_directory"`
 	RelativeHostBuildDirectory *RelativeHostBuildDirectory `json:"relative_host_build_directory" yaml:"relative_host_build_directory"`
 	AbsoluteHostBuildDirectory *AbsoluteHostBuildDirectory `json:"absolute_host_build_directory" yaml:"absolute_host_build_directory"`
 	Archive2BuildArtifact      *Archive2BuildArtifact      `json:"archive2_build_artifact" yaml:"archive2_build_artifact"`
+	RemoteBuildDirectory       *RemoteBuildDirectory       `json:"remote_build_directory" yaml:"remote_build_directory"`
 }
 
 func (cfg BuildDatabaseConfig) Validate() error {
@@ -67,6 +99,10 @@ func (cfg BuildDatabaseConfig) Validate() error {
 		return cfg.AbsoluteHostBuildDirectory.Validate()
 	} else if cfg.Archive2BuildArtifact != nil {
 		return cfg.Archive2BuildArtifact.Validate()
+	} else if cfg.RemoteBuildDirectory != nil {
+		return cfg.RemoteBuildDirectory.Validate()
+	} else if cfg.DefaultBuildDirectory != nil {
+		return cfg.DefaultBuildDirectory.Validate()
 	} else {
 		return fmt.Errorf("invalid build database config: %v", cfg)
 	}

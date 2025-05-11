@@ -53,7 +53,7 @@ const (
 )
 
 func main() {
-	vmm.Entry(func(driver vmm.Driver) (vmm.PrepareResult, error) {
+	vmm.Entry(func(driver vmm.ProxyDriver) (vmm.PrepareResult, error) {
 		return vmm.PrepareResult{}, nil
 	}, func(driver vmm.Driver) (vmm.VirtualMachineMonitor, error) {
 		var (
