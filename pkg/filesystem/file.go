@@ -90,9 +90,12 @@ func (t FileType) String() string {
 	}
 }
 
+const OVERLAY_FILE_ID = 0xcafecafe_00000000
+
 type overlayFile struct {
 	File
 
+	id    uint32
 	kind  FileType
 	size  int64
 	mTime time.Time
@@ -106,6 +109,7 @@ func (m *overlayFile) OpenMut() (WritableFileHandle, error) {
 	return nil, fmt.Errorf("OverlayFiles do not support being opened for writing")
 }
 
+func (m *overlayFile) Id() uint64         { return hashId(OVERLAY_FILE_ID + uint64(m.id)) }
 func (m *overlayFile) Kind() FileType     { return m.kind }
 func (m *overlayFile) IsDir() bool        { return false }
 func (m *overlayFile) ModTime() time.Time { return m.mTime }
@@ -159,21 +163,6 @@ func (o *overlayFile) Stat() (FileInfo, error) {
 var (
 	_ MutableFile = &overlayFile{}
 )
-
-func NewOverlayFile(underlying File) (MutableFile, error) {
-	info, err := underlying.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	return &overlayFile{
-		File:  underlying,
-		mode:  fs.FileMode(0755),
-		mTime: time.Now(),
-		kind:  info.Kind(),
-		size:  info.Size(),
-	}, nil
-}
 
 type ChildSource struct {
 	Source hash.SerializableValue
@@ -309,7 +298,10 @@ var (
 	_ WritableFileHandle = &memoryFileHandle{}
 )
 
+const MEMORy_FILE_ID = 0xdeadbeef_00000000
+
 type memoryFile struct {
+	id       uint32
 	fac      FileFactory
 	mtx      sync.RWMutex
 	kind     FileType
@@ -320,6 +312,7 @@ type memoryFile struct {
 	contents []byte
 }
 
+func (m *memoryFile) Id() uint64         { return hashId(MEMORy_FILE_ID + uint64(m.id)) }
 func (m *memoryFile) Kind() FileType     { return m.kind }
 func (m *memoryFile) IsDir() bool        { return false }
 func (m *memoryFile) ModTime() time.Time { return m.mTime }

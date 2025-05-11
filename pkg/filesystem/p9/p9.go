@@ -100,7 +100,7 @@ func (f *serverFile) clunk() error {
 type Server struct {
 	dir filesystem.Directory
 
-	filePaths map[filesystem.FileInfo]uint64
+	filePaths map[uint64]uint64
 	fileIds   map[uint32]*serverFile
 
 	debugEnabled bool
@@ -181,11 +181,11 @@ func (s *Server) getQid(info filesystem.FileInfo) QID {
 	}
 
 	qid.Version = 1
-	if path, ok := s.filePaths[info]; ok {
+	if path, ok := s.filePaths[info.Id()]; ok {
 		qid.Path = path
 	} else {
 		qid.Path = uint64(len(s.filePaths) + 1)
-		s.filePaths[info] = qid.Path
+		s.filePaths[info.Id()] = qid.Path
 	}
 
 	return qid
@@ -1137,7 +1137,7 @@ func (s *Server) Serve(listener net.Listener) error {
 func NewServer(dir filesystem.Directory) *Server {
 	return &Server{
 		dir:       dir,
-		filePaths: make(map[filesystem.FileInfo]uint64),
+		filePaths: make(map[uint64]uint64),
 		fileIds:   make(map[uint32]*serverFile),
 
 		debugEnabled: feature.HasFeature(feature.Feature9PVerbose),

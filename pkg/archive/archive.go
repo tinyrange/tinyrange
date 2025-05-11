@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/adler32"
 	"io"
 	"io/fs"
 	"os"
@@ -217,6 +218,10 @@ func (e *cacheEntry) Stat() (filesystem.FileInfo, error) {
 	return e, nil
 }
 
+func (e *cacheEntry) Id() uint64 {
+	// TODO(joshua): This is a very weak hash. We should use a better one.
+	return uint64(adler32.Checksum([]byte(fmt.Sprintf("%x%s%x", e.COffset, e.CName, e.CModTime))))
+}
 func (e *cacheEntry) Kind() filesystem.FileType     { return e.CTypeflag }
 func (e *cacheEntry) Typeflag() filesystem.FileType { return e.CTypeflag }
 func (e *cacheEntry) Name() string                  { return e.CName }

@@ -1,6 +1,7 @@
 package archive2
 
 import (
+	"hash/adler32"
 	"io"
 	"io/fs"
 	"time"
@@ -25,6 +26,7 @@ type archiveFile struct {
 	contentsReader io.ReaderAt
 	offset         int64
 
+	id       uint64
 	modTime  time.Time
 	mode     fs.FileMode
 	size     int64
@@ -45,6 +47,7 @@ func (a *archiveFile) LinkName() (string, error) {
 }
 
 // implements filesystem.FileInfo.
+func (a *archiveFile) Id() uint64                { return a.id }
 func (a *archiveFile) IsDir() bool               { return a.Mode().IsDir() }
 func (a *archiveFile) Kind() filesystem.FileType { return filesystem.TypeRegular }
 func (a *archiveFile) ModTime() time.Time        { return a.modTime }
@@ -89,9 +92,12 @@ func (ar *ArchiveReader) File(ext filesystem.ExtendedFileMethods) (filesystem.Fi
 
 	uid, gid := ar.Owner()
 
+	id := uint64(adler32.Checksum(append(ar.Hash(), []byte(ar.Name())...)))
+
 	return &archiveFile{
 		contentsReader: ar.contentsReader,
 		offset:         offset,
+		id:             id,
 		modTime:        ar.ModTime(),
 		mode:           ar.Mode(),
 		size:           ar.Size(),

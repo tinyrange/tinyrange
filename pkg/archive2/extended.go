@@ -4,6 +4,7 @@ import (
 	"compress/zlib"
 	"encoding/json"
 	"fmt"
+	"hash/adler32"
 	"io"
 	"io/fs"
 	"time"
@@ -219,6 +220,7 @@ func (c *cvmfsFile) Stat() (filesystem.FileInfo, error) {
 	return c, nil
 }
 
+func (c *cvmfsFile) Id() uint64                { return uint64(adler32.Checksum([]byte(c.metadata.Chunks[0].Hash))) }
 func (a *cvmfsFile) IsDir() bool               { return a.Mode().IsDir() }
 func (a *cvmfsFile) Kind() filesystem.FileType { return filesystem.TypeRegular }
 func (a *cvmfsFile) ModTime() time.Time        { return a.modTime }

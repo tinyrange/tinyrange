@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"hash/adler32"
 	"io"
 	"io/fs"
 	"time"
@@ -173,6 +174,11 @@ type starRpm struct {
 	pkg           *rpm.Package
 	payloadReader io.ReadCloser
 	openedPayload bool
+}
+
+// Id implements filesystem.FileInfo.
+func (s *starRpm) Id() uint64 {
+	return uint64(adler32.Checksum(s.pkg.GPGSignature()))
 }
 
 // Kind implements FileInfo.

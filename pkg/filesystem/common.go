@@ -34,6 +34,9 @@ type FileInfo interface {
 	fs.FileInfo
 
 	Kind() FileType
+	// Returns a unique id for the file
+	// The ID is only stable across a single process.
+	Id() uint64
 }
 
 type ExtendedFileMethods interface {
@@ -180,4 +183,7 @@ type FileFactory interface {
 	NewLocalDirectory(filename string) Directory
 	NewLocalMutableFile(filename string, source hash.SerializableValue) MutableFile
 	NewLocalMutableDirectory(filename string) MutableDirectory
+
+	// Overlay
+	NewOverlayFile(underlying File) (MutableFile, error)
 }

@@ -1,0 +1,30 @@
+version: 1
+oci_image: ubuntu:24.04
+commands:
+  - "%exit_on_failure,verbose"
+
+  # Successful tests
+  # Check that test/hello.txt contains "hello"
+  - cat /test/hello.txt | grep hello
+  # Check that listing the contents of /test returns "hello.txt"
+  - ls /test | grep hello.txt
+
+  # Failing tests
+  # Check that trying to create a directory returns EPERM
+  - mkdir /test/readonly || [ $? -eq 1 ]
+  # Check that trying to create a file returns EPERM
+  - (echo hello > /test/readonly.txt) || [ $? -eq 2 ]
+  # Check that trying to remove a file returns EPERM
+  - rm /test/hello.txt || [ $? -eq 1 ]
+  # Check that trying to remove a directory returns EPERM
+  - rm -r /test/hello || [ $? -eq 1 ]
+  # Check that trying to rename a file returns EPERM
+  - mv /test/hello.txt /test/hello2.txt || [ $? -eq 1 ]
+  # Check that trying to rename a directory returns EPERM
+  - mv /test/hello /test/hello2 || [ $? -eq 1 ]
+  # Check that trying to change the permissions of a file returns EPERM
+  - chmod 777 /test/hello.txt || [ $? -eq 1 ]
+  # Check that trying to touch a file returns EPERM
+  - touch /test/hello.txt || [ $? -eq 1 ]
+  # Check that trying to change the owner of a file returns EPERM
+  - chown 1000:1000 /test/hello.txt || [ $? -eq 1 ]

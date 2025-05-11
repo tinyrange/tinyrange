@@ -545,7 +545,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 		// The local file is a path to a file on the host. It is guaranteed to be absolute.
 		file := filesystem.Factory.NewLocalFile(localFile.HostFilename, nil)
 
-		overlay, err := filesystem.NewOverlayFile(file)
+		overlay, err := filesystem.Factory.NewOverlayFile(file)
 		if err != nil {
 			return err
 		}
@@ -576,7 +576,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 			return fmt.Errorf("failed to resolve host filename: %w", err)
 		}
 
-		overlay, err := filesystem.NewOverlayFile(file)
+		overlay, err := filesystem.Factory.NewOverlayFile(file)
 		if err != nil {
 			return err
 		}
@@ -753,7 +753,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 					}
 				case filesystem.TypeRegular:
 					// log.Info("reg", "name", name)
-					file, err = filesystem.NewOverlayFile(ent)
+					file, err = filesystem.Factory.NewOverlayFile(ent)
 					if err != nil {
 						return err
 					}

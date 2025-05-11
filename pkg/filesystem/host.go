@@ -19,6 +19,11 @@ type osStat struct {
 	fs.FileInfo
 }
 
+// Id implements FileInfo.
+func (o *osStat) Id() uint64 {
+	return hashId(uniqueIdFromFileInfo(o.FileInfo))
+}
+
 // Kind implements FileInfo.
 func (o *osStat) Kind() FileType {
 	if o.IsDir() {
