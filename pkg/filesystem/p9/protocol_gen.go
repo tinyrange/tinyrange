@@ -509,10 +509,24 @@ func (t *Treaddir) Decode(r binary.BinaryReader) error {
 	return r.Error()
 }
 
+type DirentType uint8
+
+const (
+	DirentTypeUnknown DirentType = 0
+	DirentTypeFifo    DirentType = 1
+	DirentTypeChr     DirentType = 2
+	DirentTypeDir     DirentType = 4
+	DirentTypeBlk     DirentType = 6
+	DirentTypeReg     DirentType = 8
+	DirentTypeLnk     DirentType = 10
+	DirentTypeSock    DirentType = 12
+	DirentTypeWht     DirentType = 14
+)
+
 type Dirent struct {
 	Qid    QID
 	Offset uint64
-	Type   uint8
+	Type   DirentType
 	Name   string
 }
 
@@ -521,7 +535,7 @@ func (t *Dirent) Encode(r binary.BinaryWriter) error {
 		return err
 	}
 	r.Uint64(t.Offset)
-	r.Uint8(t.Type)
+	r.Uint8(uint8(t.Type))
 	writeString(r, t.Name)
 	return r.Error()
 }

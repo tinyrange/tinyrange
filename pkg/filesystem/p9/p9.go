@@ -810,7 +810,16 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			// Populate the directory entry.
 			dirent.Name = ent.Name
 			dirent.Qid = s.getQid(stat)
-			dirent.Type = uint8(dirent.Qid.Type)
+			switch dirent.Qid.Type {
+			case TypeDir:
+				dirent.Type = DirentTypeDir
+			case TypeRegular:
+				dirent.Type = DirentTypeReg
+			case TypeSymlink:
+				dirent.Type = DirentTypeLnk
+			default:
+				dirent.Type = DirentTypeUnknown
+			}
 
 			entrySize := 13 + 8 + 1 + 2 + len(ent.Name)
 
