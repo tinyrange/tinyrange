@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/user"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -32,13 +31,13 @@ func getDriverPath(driverPath string) (string, error) {
 		return "", fmt.Errorf("driver path required")
 	}
 
-	if path.Unix.IsAbs(driverPath) && runtime.GOOS == "windows" {
+	if path.Unix.IsAbs(driverPath) && strings.HasPrefix(driverPath, "/dos_") {
 		// windows paths are in the format /letter/path
 
 		// get the drive letter
-		driveLetter := driverPath[1:2]
+		driveLetter := driverPath[5:6]
 		// convert to windows path
-		driverPath = fmt.Sprintf("%s:\\%s", driveLetter, strings.ReplaceAll(driverPath[3:], "/", "\\"))
+		driverPath = fmt.Sprintf("%s:\\%s", driveLetter, strings.ReplaceAll(driverPath[7:], "/", "\\"))
 	}
 
 	return driverPath, nil
