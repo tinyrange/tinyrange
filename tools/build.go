@@ -686,6 +686,22 @@ func getBasePath() (string, error) {
 	return basePath, nil
 }
 
+func runCommand(cmdName string, args ...string) error {
+	cmd := exec.Command(cmdName, args...)
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	env := os.Environ()
+	if !*cgo {
+		env = append(env, "CGO_ENABLED=0")
+	}
+	cmd.Env = env
+
+	return cmd.Run()
+}
+
 var (
 	buildOs          = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
 	buildArch        = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
@@ -700,6 +716,7 @@ var (
 	cgo              = flag.Bool("cgo", false, "Build VMMs that require CGO.")
 	exp              = flag.String("exp", "", "Run a experimental feature.")
 	runExpScripts    = flag.Bool("exp-scripts", false, "Run experimental scripts defined by a build file in the experimental path.")
+	install          = flag.Bool("install", false, "Install TinyRange and any compatible VMMs into the GOPATH")
 )
 
 func main() {
@@ -807,6 +824,18 @@ func main() {
 
 		if err := cmd.Run(); err != nil {
 			log.Fatal(err)
+		}
+	} else if *install {
+		log.Printf("installing tinyrange")
+		if err := runCommand("go", "install", PACKAGE_NAME); err != nil {
+			log.Fatal(err)
+		}
+
+		for _, vmm := range buildVmmList {
+			log.Printf("installing VMM %s", vmm.Name)
+			if err := runCommand("go", "install", PACKAGE_NAME+"/cmd/tinyrange_"+vmm.Name); err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 }
