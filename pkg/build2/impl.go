@@ -241,7 +241,7 @@ func (c *buildContext) RunVMM(name string, config config.TinyRangeConfig) (*exec
 	var exe string
 
 	if name == "qemu" {
-		exe, err = common.GetAdjacentExecutable("tinyrange_qemu", "tinyqemu/tinyrange_qemu")
+		exe, err = common.GetAdjacentExecutable("tinyqemu/tinyrange_qemu", "tinyrange_qemu")
 		if err != nil {
 			return nil, err
 		}
