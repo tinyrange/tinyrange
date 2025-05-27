@@ -36,12 +36,15 @@ const (
 )
 
 type pciBarSetFunc func(index uint8, addr uint32, enabled bool) error
+type pciIOReadFunc func(port uint16, size int) []byte
+type pciIOWriteFunc func(port uint16, data []byte)
 
 type pciIORegion struct {
-	size    uint32
-	typ     uint8
-	enabled bool
-	barSet  pciBarSetFunc
+	size     uint32
+	typ      uint8
+	enabled  bool
+	barSet   pciBarSetFunc
+	baseAddr uint32
 }
 
 func (p *pciIORegion) tryBarSet(index uint8, addr uint32, enabled bool) error {
@@ -57,6 +60,10 @@ type PciDevice struct {
 	config        [256]byte
 	nextCapOffset uint8
 	ioRegions     [7]pciIORegion
+
+	// I/O port handlers for devices that need them (like virtio)
+	ioReadHandler  pciIOReadFunc
+	ioWriteHandler pciIOWriteFunc
 }
 
 func (p *PciDevice) writeU32(addr uint32, val uint32) {
@@ -75,6 +82,14 @@ func (p *PciDevice) readU32(addr uint32) uint32 {
 	return binary.LittleEndian.Uint32(p.config[addr : addr+4])
 }
 
+func (p *PciDevice) setIOHandler(
+	readHandler pciIOReadFunc,
+	writeHandler pciIOWriteFunc,
+) {
+	p.ioReadHandler = readHandler
+	p.ioWriteHandler = writeHandler
+}
+
 func (p *PciDevice) addCapability(cap []byte) error {
 	offset := p.nextCapOffset
 	if offset+uint8(len(cap)) > 255 { // TODO(joshua): not sure if this overflows
@@ -91,7 +106,16 @@ func (p *PciDevice) addCapability(cap []byte) error {
 func (p *PciDevice) updateMappings() error {
 	cmd := binary.LittleEndian.Uint16(p.config[PCI_COMMAND : PCI_COMMAND+2])
 
-	for i, region := range p.ioRegions {
+	log.Info(
+		"PCI updateMappings",
+		"device",
+		p.name,
+		"command",
+		fmt.Sprintf("0x%04x", cmd),
+	)
+
+	for i := range p.ioRegions {
+		region := &p.ioRegions[i]
 		var offset uint32
 		if i == PCI_ROM_SLOT {
 			offset = 0x30
@@ -105,6 +129,15 @@ func (p *PciDevice) updateMappings() error {
 			if (region.typ&PCI_ADDRESS_SPACE_IO != 0) &&
 				(cmd&PCI_COMMAND_IO != 0) {
 				newEnabled = true
+				log.Info(
+					"PCI I/O region will be enabled",
+					"device",
+					p.name,
+					"bar",
+					i,
+					"addr",
+					fmt.Sprintf("0x%08x", newAddr),
+				)
 			} else {
 				if cmd&PCI_COMMAND_MEMORY != 0 {
 					if i == PCI_ROM_SLOT {
@@ -118,22 +151,41 @@ func (p *PciDevice) updateMappings() error {
 		if newEnabled {
 			// new address
 			newAddr = p.readU32(offset) & ^(region.size - 1)
+			region.baseAddr = newAddr
+			log.Info(
+				"PCI region enabled",
+				"device",
+				p.name,
+				"bar",
+				i,
+				"baseAddr",
+				fmt.Sprintf("0x%08x", newAddr),
+				"size",
+				region.size,
+			)
 			if err := region.tryBarSet(uint8(i), newAddr, true); err != nil {
 				return err
 			}
 			region.enabled = true
 		} else if region.enabled {
+			log.Info("PCI region disabled", "device", p.name, "bar", i)
 			if err := region.tryBarSet(uint8(i), 0, false); err != nil {
 				return err
 			}
 			region.enabled = false
+			region.baseAddr = 0
 		}
 	}
 
 	return nil
 }
 
-func (p *PciDevice) registerBar(index uint8, size uint32, typ uint8, barSet pciBarSetFunc) error {
+func (p *PciDevice) registerBar(
+	index uint8,
+	size uint32,
+	typ uint8,
+	barSet pciBarSetFunc,
+) error {
 	p.ioRegions[index] = pciIORegion{
 		size:    size,
 		typ:     typ,
@@ -155,7 +207,6 @@ func (p *PciDevice) registerBar(index uint8, size uint32, typ uint8, barSet pciB
 }
 
 func (p *PciDevice) writeBar(addr uint32, val uint32) (bool, error) {
-
 	var reg uint8
 	if addr == 0x30 {
 		reg = PCI_ROM_SLOT
@@ -165,49 +216,132 @@ func (p *PciDevice) writeBar(addr uint32, val uint32) (bool, error) {
 
 	log.Info(
 		"pci write bar",
-		"name", p.name,
-		"addr", fmt.Sprintf("0x%02x", addr),
-		"val", fmt.Sprintf("0x%08x", val),
-		"reg", reg,
+		"name",
+		p.name,
+		"addr",
+		fmt.Sprintf("0x%02x", addr),
+		"val",
+		fmt.Sprintf("0x%08x", val),
+		"reg",
+		reg,
 	)
 
-	r := p.ioRegions[reg]
+	r := &p.ioRegions[reg]
 	if r.size == 0 {
 		log.Warn("pci write bar: region not registered", "reg", reg)
 		return false, nil // don't handle the write
 	}
-	if reg == PCI_ROM_SLOT {
-		val = val & ((^(r.size - 1)) | 1)
+
+	// Handle size probing
+	if val == 0xffffffff {
+		if reg == PCI_ROM_SLOT {
+			val = (^(r.size - 1)) | 1
+		} else {
+			val = (^(r.size - 1)) | uint32(r.typ)
+		}
 	} else {
-		val = uint32(uint8(val & ^(r.size-1)) | r.typ)
+		if reg == PCI_ROM_SLOT {
+			val = val & ((^(r.size - 1)) | 1)
+		} else {
+			val = (val & ^(r.size - 1)) | uint32(r.typ)
+		}
 	}
-	log.Info("pci write bar: setting bar", "reg", reg, "val", val)
+
+	log.Info(
+		"pci write bar: setting bar",
+		"reg",
+		reg,
+		"val",
+		fmt.Sprintf("0x%08x", val),
+	)
 	p.writeU32(addr, val)
 	return true, p.updateMappings()
+}
+
+// Check if a port falls within any of this device's I/O BARs
+func (p *PciDevice) handlesIOPort(port uint16) bool {
+	for i, region := range p.ioRegions {
+		if region.enabled && (region.typ&PCI_ADDRESS_SPACE_IO != 0) {
+			base := uint16(region.baseAddr)
+			if port >= base && port < base+uint16(region.size) {
+				log.Info(
+					"PCI device handles I/O port",
+					"device",
+					p.name,
+					"port",
+					fmt.Sprintf("0x%04x", port),
+					"bar",
+					i,
+					"base",
+					fmt.Sprintf("0x%04x", base),
+					"size",
+					region.size,
+				)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Handle I/O port access for this device
+func (p *PciDevice) handleIOPort(io *kvm.KVMIoEvent) error {
+	if p.ioReadHandler == nil || p.ioWriteHandler == nil {
+		return fmt.Errorf("device %s has no I/O handlers", p.name)
+	}
+
+	switch io.Direction {
+	case kvm.IoDirectionRead:
+		data := p.ioReadHandler(io.Port, int(io.Size))
+		io.Write(data)
+		return nil
+	case kvm.IoDirectionWrite:
+		data := io.Read()
+		p.ioWriteHandler(io.Port, data)
+		return nil
+	default:
+		return fmt.Errorf("invalid I/O direction %d", io.Direction)
+	}
 }
 
 func (p *PciDevice) ConfigIO(io *kvm.KVMIoEvent, addr uint32) error {
 	switch io.Direction {
 	case kvm.IoDirectionRead:
-		log.Info("pci config io read",
-			"name", p.name,
-			"addr", fmt.Sprintf("0x%02x", addr),
-			"size", io.Size,
-			"value", p.config[addr:addr+uint32(io.Size)],
-		)
+		// Add special logging for IRQ line reads
+		if addr == PCI_INTERRUPT_LINE {
+			log.Info("pci config io read IRQ LINE",
+				"name", p.name,
+				"addr", fmt.Sprintf("0x%02x", addr),
+				"size", io.Size,
+				"value", fmt.Sprintf("0x%02x", p.config[addr]),
+			)
+		} else {
+			log.Info("pci config io read",
+				"name", p.name,
+				"addr", fmt.Sprintf("0x%02x", addr),
+				"size", io.Size,
+				"value", fmt.Sprintf("%x", p.config[addr:addr+uint32(io.Size)]),
+			)
+		}
 		io.Write(p.config[addr : addr+uint32(io.Size)])
 		return nil
 	case kvm.IoDirectionWrite:
 		data := io.Read()
 
-		log.Info("pci config io write",
-			"name", p.name,
-			"addr", fmt.Sprintf("0x%02x", addr),
-			"size", io.Size,
-			"value", data,
+		log.Info(
+			"pci config io write",
+			"name",
+			p.name,
+			"addr",
+			fmt.Sprintf("0x%02x", addr),
+			"size",
+			io.Size,
+			"value",
+			fmt.Sprintf("%x", data),
 		)
 
-		if io.Size == 4 && ((addr >= 0x10 && addr < 0x10+4*6) || addr == 0x30) {
+		if io.Size == 4 &&
+			((addr >= 0x10 && addr < 0x10+4*6) || addr == 0x30) {
 			ok, err := p.writeBar(addr, binary.LittleEndian.Uint32(data))
 			if err != nil {
 				return err
@@ -229,7 +363,13 @@ func (p *PciDevice) ConfigIO(io *kvm.KVMIoEvent, addr uint32) error {
 	}
 }
 
-func NewPciDevice(name string, vendorId uint16, deviceId uint16, revision uint8, classId uint16) *PciDevice {
+func NewPciDevice(
+	name string,
+	vendorId uint16,
+	deviceId uint16,
+	revision uint8,
+	classId uint32,
+) *PciDevice {
 	dev := &PciDevice{
 		name:          name,
 		nextCapOffset: 0x40,
@@ -238,7 +378,12 @@ func NewPciDevice(name string, vendorId uint16, deviceId uint16, revision uint8,
 	binary.LittleEndian.PutUint16(dev.config[0x00:0x02], vendorId)
 	binary.LittleEndian.PutUint16(dev.config[0x02:0x04], deviceId)
 	dev.config[0x08] = revision
-	binary.LittleEndian.PutUint16(dev.config[0x0A:0x0C], classId)
+
+	// Fix class code writing - it's 3 bytes starting at 0x09
+	dev.config[0x09] = uint8(classId)       // prog interface
+	dev.config[0x0A] = uint8(classId >> 8)  // subclass
+	dev.config[0x0B] = uint8(classId >> 16) // class
+
 	dev.config[0x0E] = 0x00 // header type
 
 	return dev
@@ -268,6 +413,16 @@ func (p *PciBus) AddDevice(devfn uint8, dev *PciDevice) {
 	p.devices[devfn] = dev
 }
 
+// Add this method to your PciBus struct in the PCI code
+func (p *PciBus) HandleIOPort(io *kvm.KVMIoEvent) error {
+	for _, dev := range p.devices {
+		if dev.handlesIOPort(io.Port) {
+			return dev.handleIOPort(io)
+		}
+	}
+	return fmt.Errorf("no PCI device handles port 0x%04x", io.Port)
+}
+
 func (p *PciBus) valOnes(io *kvm.KVMIoEvent) error {
 	val := make([]byte, io.Size)
 	for i := range val {
@@ -290,18 +445,40 @@ func (p *PciBus) Init(cpu VMDevice) error {
 
 // Ports implements IODevice.
 func (p *PciBus) Ports() []uint16 {
-	return []uint16{0xCF8, 0xCFC}
+	return []uint16{0xCF8, 0xCFC, 0xCFD, 0xCFE, 0xCFF}
+}
+
+// handleConfigAccess handles PCI configuration space access for both 0xCFC and byte-level ports
+func (p *PciBus) handleConfigAccess(
+	io *kvm.KVMIoEvent,
+	byteOffset uint8,
+) error {
+	if p.addr&0x80000000 == 0 {
+		if io.Direction == kvm.IoDirectionWrite {
+			return nil
+		}
+		return p.valOnes(io)
+	}
+
+	addr := p.addr & 0x7fffffff
+
+	bus_num := uint8((addr >> 16) & 0xff)
+	if bus_num != p.busNum {
+		return p.valOnes(io)
+	}
+	devfn := uint8((addr >> 8) & 0xff)
+	dev, ok := p.devices[devfn]
+	if !ok {
+		log.Info("pci device not found", "devfn", devfn)
+		return p.valOnes(io)
+	}
+	config_addr := (addr & 0xfc) + uint32(byteOffset)
+
+	return dev.ConfigIO(io, config_addr)
 }
 
 // IO implements IODevice.
 func (p *PciBus) IO(io *kvm.KVMIoEvent) error {
-	// log.Warn("pci access",
-	// 	"port", fmt.Sprintf("0x%04x", io.Port),
-	// 	"count", io.Count,
-	// 	"size", io.Size,
-	// 	"dir", io.Direction,
-	// )
-
 	if io.Port == 0xCF8 {
 		if io.Size != 4 {
 			return fmt.Errorf("invalid size %d", io.Size)
@@ -311,35 +488,14 @@ func (p *PciBus) IO(io *kvm.KVMIoEvent) error {
 			io.Write(binary.LittleEndian.AppendUint32(nil, p.addr))
 		} else {
 			data := io.Read()
-
 			p.addr = binary.LittleEndian.Uint32(data)
 		}
 
 		return nil
-	} else if io.Port == 0xCFC {
-		if p.addr&0x80000000 == 0 {
-			if io.Direction == kvm.IoDirectionWrite {
-				return nil
-			}
-
-			return p.valOnes(io)
-		}
-
-		addr := p.addr & 0x7fffffff
-
-		bus_num := uint8((addr >> 16) & 0xff)
-		if bus_num != p.busNum {
-			return p.valOnes(io)
-		}
-		devfn := uint8((addr >> 8) & 0xff)
-		dev, ok := p.devices[devfn]
-		if !ok {
-			log.Info("pci device not found", "devfn", devfn)
-			return p.valOnes(io)
-		}
-		config_addr := addr & 0xff
-
-		return dev.ConfigIO(io, config_addr)
+	} else if io.Port >= 0xCFC && io.Port <= 0xCFF {
+		// Handle byte-level access to configuration data
+		byteOffset := uint8(io.Port - 0xCFC)
+		return p.handleConfigAccess(io, byteOffset)
 	} else {
 		return fmt.Errorf("unknown port 0x%04x", io.Port)
 	}

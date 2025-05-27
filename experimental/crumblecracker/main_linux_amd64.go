@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"runtime/pprof"
 	"strings"
@@ -265,6 +266,11 @@ func (vm *VirtualMachine) loadLinux(imagePath string, initrdPath string, cmdline
 	}
 	if _, err := io.Copy(io.NewOffsetWriter(vm.mem, KERNEL_LOAD_ADDR), io.NewSectionReader(image, setupSize, imageStat.Size()-setupSize)); err != nil {
 		return fmt.Errorf("failed to write kernel: %w", err)
+	}
+
+	// Set up ACPI tables BEFORE loading the kernel
+	if err := vm.setupACPI(); err != nil {
+		return fmt.Errorf("failed to setup ACPI: %w", err)
 	}
 
 	return nil
@@ -651,14 +657,33 @@ func (cpu *VirtualCPU) Run() error {
 		switch exit {
 		case kvm.ExitIo:
 			io := cpu.cpu.ExitIo()
+
+			// First try PCI devices for I/O port operations
+			if err := pci.HandleIOPort(io); err == nil {
+				slog.Info("handled io on PCI device",
+					"port", fmt.Sprintf("0x%x", io.Port),
+					"direction", io.Direction,
+					"size", io.Size,
+					"data", fmt.Sprintf("%x", io.Read()),
+				)
+				continue
+			}
+
+			// Then try regular I/O devices
 			device, ok := ioMap[io.Port]
 			if !ok {
-				log.Info("unknown io", "port", fmt.Sprintf("0x%x", io.Port), "direction", io.Direction, "size", io.Size)
+				log.Info("unknown io",
+					"port", fmt.Sprintf("0x%x", io.Port),
+					"direction", io.Direction,
+					"size", io.Size,
+					"data", fmt.Sprintf("%x", io.Read()),
+				)
 				continue
 			}
 			if err := device.IO(io); err != nil {
 				return fmt.Errorf("failed to handle io: %w", err)
 			}
+
 		case kvm.ExitShutdown:
 			log.Info("shutdown")
 
