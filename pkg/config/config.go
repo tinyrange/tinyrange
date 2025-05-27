@@ -472,6 +472,9 @@ type TinyRangeConfig struct {
 	// compatible with the current version of TinyRange.
 	Version int `json:"version" yaml:"version"`
 
+	// The version of TinyRange that this config file is compatible with.
+	TinyRangeVersion string `json:"tinyrange_version" yaml:"tinyrange_version"`
+
 	// The list of build databases to use. This is used to determine where to find the
 	// files needed to build the virtual machine.
 	BuildDatabaseConfig []dbconfig.BuildDatabaseConfig `json:"build_database" yaml:"build_database"`

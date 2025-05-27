@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	goDebug "runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -368,22 +369,23 @@ func (r *loggerRegion) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 type driver struct {
-	configs           []config.TinyRangeConfig
-	configFilenames   []string
-	buildDir          string
-	debug             bool
-	secureSSH         string
-	persistPath       string
-	exportFsPath      string
-	dumpFsPath        string
-	nbdBlockSize      int
-	wireguardUrl      string
-	packetCapturePath string
-	cpuCores          int
-	memoryMB          int
-	socks5Listener    net.Listener
-	socks5Proxy       string
-	driverUrl         *url.URL
+	configs                    []config.TinyRangeConfig
+	configFilenames            []string
+	buildDir                   string
+	debug                      bool
+	secureSSH                  string
+	persistPath                string
+	exportFsPath               string
+	dumpFsPath                 string
+	nbdBlockSize               int
+	wireguardUrl               string
+	packetCapturePath          string
+	cpuCores                   int
+	memoryMB                   int
+	socks5Listener             net.Listener
+	socks5Proxy                string
+	noValidateTinyRangeVersion bool
+	driverUrl                  *url.URL
 
 	dbBuildDir build2.BuildCacheFilesystem
 
@@ -2048,6 +2050,17 @@ func (d *driver) addConfig(p string) error {
 		return fmt.Errorf("failed to validate config: %w", err)
 	}
 
+	if cfg.TinyRangeVersion != "" && !d.noValidateTinyRangeVersion {
+		nfo, ok := goDebug.ReadBuildInfo()
+		if ok {
+			if cfg.TinyRangeVersion != nfo.Main.Version {
+				return fmt.Errorf(
+					"config TinyRangeVersion %s does not match current version %s, please regenerate your config",
+					cfg.TinyRangeVersion, nfo.Main.Version)
+			}
+		}
+	}
+
 	d.configs = append(d.configs, cfg)
 	d.configFilenames = append(d.configFilenames, absPath)
 
@@ -2139,21 +2152,22 @@ var (
 var DriverFlags = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
 var (
-	doPrepare         = DriverFlags.Bool("prepare", false, "prepare the driver and check if it is runnable")
-	buildDir          = DriverFlags.String("build-dir", common.GetDefaultBuildDir(), "the build directory")
-	debug             = DriverFlags.Bool("debug", false, "enable debug mode")
-	verbose           = DriverFlags.Bool("verbose", false, "enable verbose mode")
-	experimental      = DriverFlags.String("experimental", "", "enable comma separated experimental features")
-	secureSSH         = DriverFlags.String("secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
-	persistPath       = DriverFlags.String("persist-path", "", "Specify a path to save VM files to.")
-	exportFsPath      = DriverFlags.String("exportfs", "", "Export the filesystem to a file.")
-	dumpFsPath        = DriverFlags.String("dumpfs", "", "Dump the filename and offset of any reads from the filesystem to a CSV file.")
-	wireguardUrl      = DriverFlags.String("wireguard-url", "", "URL to fetch wireguard config from.")
-	nbdBlockSize      = DriverFlags.Int("nbd-block-size", 0, "Override the preferred and maximum block size for the NBD server. This can have major performance implications.")
-	packetCapturePath = DriverFlags.String("packet-capture", "", "Path to write packet capture in pcap format to.")
-	driverUrl         = DriverFlags.String("url", "", "The URL of the driver to create.")
-	proxy             = DriverFlags.String("proxy", "", "The URL of a proxy host to fetch the configuration from.")
-	socks5Proxy       = DriverFlags.String("socks5-proxy", "", "The URL of a socks5 proxy to listen.")
+	doPrepare                  = DriverFlags.Bool("prepare", false, "prepare the driver and check if it is runnable")
+	buildDir                   = DriverFlags.String("build-dir", common.GetDefaultBuildDir(), "the build directory")
+	debug                      = DriverFlags.Bool("debug", false, "enable debug mode")
+	verbose                    = DriverFlags.Bool("verbose", false, "enable verbose mode")
+	experimental               = DriverFlags.String("experimental", "", "enable comma separated experimental features")
+	secureSSH                  = DriverFlags.String("secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
+	persistPath                = DriverFlags.String("persist-path", "", "Specify a path to save VM files to.")
+	exportFsPath               = DriverFlags.String("exportfs", "", "Export the filesystem to a file.")
+	dumpFsPath                 = DriverFlags.String("dumpfs", "", "Dump the filename and offset of any reads from the filesystem to a CSV file.")
+	wireguardUrl               = DriverFlags.String("wireguard-url", "", "URL to fetch wireguard config from.")
+	nbdBlockSize               = DriverFlags.Int("nbd-block-size", 0, "Override the preferred and maximum block size for the NBD server. This can have major performance implications.")
+	packetCapturePath          = DriverFlags.String("packet-capture", "", "Path to write packet capture in pcap format to.")
+	driverUrl                  = DriverFlags.String("url", "", "The URL of the driver to create.")
+	proxy                      = DriverFlags.String("proxy", "", "The URL of a proxy host to fetch the configuration from.")
+	socks5Proxy                = DriverFlags.String("socks5-proxy", "", "The URL of a socks5 proxy to listen.")
+	noValidateTinyRangeVersion = DriverFlags.Bool("no-validate-tinyrange-version", false, "Do not validate the TinyRange version. This is useful for development, but should not be used in production.")
 )
 
 func initCommon(
@@ -2177,17 +2191,18 @@ func initCommon(
 	}
 
 	driver := &driver{
-		buildDir:          *buildDir,
-		debug:             *debug,
-		secureSSH:         *secureSSH,
-		persistPath:       *persistPath,
-		exportFsPath:      *exportFsPath,
-		dumpFsPath:        *dumpFsPath,
-		wireguardUrl:      *wireguardUrl,
-		nbdBlockSize:      *nbdBlockSize,
-		packetCapturePath: *packetCapturePath,
-		socks5Proxy:       *socks5Proxy,
-		driverUrl:         driverUrl,
+		buildDir:                   *buildDir,
+		debug:                      *debug,
+		secureSSH:                  *secureSSH,
+		persistPath:                *persistPath,
+		exportFsPath:               *exportFsPath,
+		dumpFsPath:                 *dumpFsPath,
+		wireguardUrl:               *wireguardUrl,
+		nbdBlockSize:               *nbdBlockSize,
+		packetCapturePath:          *packetCapturePath,
+		socks5Proxy:                *socks5Proxy,
+		noValidateTinyRangeVersion: *noValidateTinyRangeVersion,
+		driverUrl:                  driverUrl,
 	}
 
 	if *doPrepare {

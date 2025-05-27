@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"runtime/debug"
 	"strings"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -156,6 +157,11 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 
 	vmCfg := config.TinyRangeConfig{
 		Version: config.CURRENT_CONFIG_VERSION,
+	}
+
+	buildInfo, ok := debug.ReadBuildInfo()
+	if ok {
+		vmCfg.TinyRangeVersion = buildInfo.Main.Version
 	}
 
 	kernelDef := def.params.Kernel
