@@ -136,26 +136,27 @@ type VMSpec struct {
 }
 
 type Config struct {
-	Version          int      `json:"version" yaml:"version"`
-	Builder          string   `json:"builder" yaml:"builder"`
-	OciImage         string   `json:"oci_image,omitempty" yaml:"oci_image,omitempty"`
-	Architecture     string   `json:"architecture,omitempty" yaml:"architecture,omitempty"`
-	RootArchitecture string   `json:"root_architecture,omitempty" yaml:"root_architecture,omitempty"`
-	Commands         []string `json:"commands,omitempty" yaml:"commands,omitempty"`
-	ServiceCommands  []string `json:"service_commands,omitempty" yaml:"service_commands,omitempty"`
-	Layers           []string `json:"layers,omitempty" yaml:"layers,omitempty"`
-	Files            []string `json:"files,omitempty" yaml:"files,omitempty"`
-	Archives         []string `json:"archives,omitempty" yaml:"archives,omitempty"`
-	Output           string   `json:"output,omitempty" yaml:"output,omitempty"`
-	Packages         []string `json:"packages,omitempty" yaml:"packages,omitempty"`
-	Macros           []string `json:"macros,omitempty" yaml:"macros,omitempty"`
-	Environment      []string `json:"environment,omitempty" yaml:"environment,omitempty"`
-	NoScripts        bool     `json:"no_scripts,omitempty" yaml:"no_scripts,omitempty"`
-	Init             string   `json:"init,omitempty" yaml:"init,omitempty"`
-	ForwardPorts     []string `json:"forward_ports,omitempty" yaml:"forward_ports,omitempty"`
-	Volumes          []string `json:"volumes,omitempty" yaml:"volumes,omitempty"`
-	AutoScale        bool     `json:"auto_scale,omitempty" yaml:"auto_scale,omitempty"`
-	MinSpec          VMSpec   `json:"min_spec,omitempty" yaml:"min_spec,omitempty"`
+	Version          int               `json:"version" yaml:"version"`
+	Builder          string            `json:"builder" yaml:"builder"`
+	OciImage         string            `json:"oci_image,omitempty" yaml:"oci_image,omitempty"`
+	Architecture     string            `json:"architecture,omitempty" yaml:"architecture,omitempty"`
+	RootArchitecture string            `json:"root_architecture,omitempty" yaml:"root_architecture,omitempty"`
+	Commands         []string          `json:"commands,omitempty" yaml:"commands,omitempty"`
+	ServiceCommands  []string          `json:"service_commands,omitempty" yaml:"service_commands,omitempty"`
+	Layers           []string          `json:"layers,omitempty" yaml:"layers,omitempty"`
+	Files            []string          `json:"files,omitempty" yaml:"files,omitempty"`
+	FileContents     map[string]string `json:"file_contents,omitempty" yaml:"file_contents,omitempty"`
+	Archives         []string          `json:"archives,omitempty" yaml:"archives,omitempty"`
+	Output           string            `json:"output,omitempty" yaml:"output,omitempty"`
+	Packages         []string          `json:"packages,omitempty" yaml:"packages,omitempty"`
+	Macros           []string          `json:"macros,omitempty" yaml:"macros,omitempty"`
+	Environment      []string          `json:"environment,omitempty" yaml:"environment,omitempty"`
+	NoScripts        bool              `json:"no_scripts,omitempty" yaml:"no_scripts,omitempty"`
+	Init             string            `json:"init,omitempty" yaml:"init,omitempty"`
+	ForwardPorts     []string          `json:"forward_ports,omitempty" yaml:"forward_ports,omitempty"`
+	Volumes          []string          `json:"volumes,omitempty" yaml:"volumes,omitempty"`
+	AutoScale        bool              `json:"auto_scale,omitempty" yaml:"auto_scale,omitempty"`
+	MinSpec          VMSpec            `json:"min_spec,omitempty" yaml:"min_spec,omitempty"`
 
 	// secure configs that have to be set on the command line.
 	CpuCores        int      `json:"-" yaml:"-"`
@@ -541,6 +542,14 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		}
 
 		directives = append(directives, dir)
+	}
+
+	// Add raw file contents.
+	for guestFilename, content := range config.FileContents {
+		directives = append(directives, common.DirectiveAddFile{
+			Filename: guestFilename,
+			Contents: []byte(content),
+		})
 	}
 
 	for _, filename := range config.Archives {
