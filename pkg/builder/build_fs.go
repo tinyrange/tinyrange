@@ -114,6 +114,27 @@ func (i *initRamFsBuilderResult) WriteResult(w io.Writer) error {
 			// Ignore run commands.
 		} else if frag.Environment != nil {
 			// Ignore environment.
+		} else if frag.DatabaseFile != nil {
+			f, err := i.ctx.Database().Builder().FileFromReference(frag.DatabaseFile.DatabaseReference)
+			if err != nil {
+				return err
+			}
+
+			fh, err := f.Open()
+			if err != nil {
+				return err
+			}
+			defer fh.Close()
+
+			contents, err := io.ReadAll(fh)
+			if err != nil {
+				return err
+			}
+
+			filename := strings.TrimPrefix(frag.DatabaseFile.GuestFilename, "/")
+			if err := writer.AddSimpleFile(filename, contents, true); err != nil {
+				return fmt.Errorf("failed to add simple file %s: %w", frag.DatabaseFile.GuestFilename, err)
+			}
 		} else {
 			return fmt.Errorf("unhandled fragment type: %+v", frag)
 		}
