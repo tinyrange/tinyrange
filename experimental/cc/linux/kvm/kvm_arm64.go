@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	RegArm64X0 RegisterId = 0x6030000000100000
-	RegArm64SP RegisterId = 0x603000000010003e
-	RegArm64PC RegisterId = 0x6030000000100040
+	RegArm64X0     RegisterId = 0x6030000000100000
+	RegArm64SP     RegisterId = 0x603000000010003e
+	RegArm64PC     RegisterId = 0x6030000000100040
+	RegArm64PSTATE RegisterId = 0x6030000000100042
 
 	ArmVCPUPowerOff       = 0 // CPU is started in OFF state
 	ArmVCPUEl132bit       = 1 // CPU running a 32bit VM

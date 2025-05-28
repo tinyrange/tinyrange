@@ -441,8 +441,162 @@ type kvmOneReg struct {
 
 type RegisterId uint64
 
+type ExitReason uint32
+
+const (
+	ExitUnknown        ExitReason = 0
+	ExitException      ExitReason = 1
+	ExitIo             ExitReason = 2
+	ExitHypercall      ExitReason = 3
+	ExitDebug          ExitReason = 4
+	ExitHlt            ExitReason = 5
+	ExitMmio           ExitReason = 6
+	ExitIrqWindowOpen  ExitReason = 7
+	ExitShutdown       ExitReason = 8
+	ExitFailEntry      ExitReason = 9
+	ExitIntr           ExitReason = 10
+	ExitSetTpr         ExitReason = 11
+	ExitTprAccess      ExitReason = 12
+	ExitS390Sieic      ExitReason = 13
+	ExitS390Reset      ExitReason = 14
+	ExitDcr            ExitReason = 15
+	ExitNmi            ExitReason = 16
+	ExitInternalError  ExitReason = 17
+	ExitOsi            ExitReason = 18
+	ExitPaprHcall      ExitReason = 19
+	ExitS390Ucontrol   ExitReason = 20
+	ExitWatchdog       ExitReason = 21
+	ExitS390Tsch       ExitReason = 22
+	ExitEpr            ExitReason = 23
+	ExitSystemEvent    ExitReason = 24
+	ExitS390Stsi       ExitReason = 25
+	ExitIoapicEoi      ExitReason = 26
+	ExitHyperv         ExitReason = 27
+	ExitArmNisv        ExitReason = 28
+	ExitX86Rdmsr       ExitReason = 29
+	ExitX86Wrmsr       ExitReason = 30
+	ExitDirtyRingFull  ExitReason = 31
+	ExitApResetHold    ExitReason = 32
+	ExitX86BusLock     ExitReason = 33
+	ExitXen            ExitReason = 34
+	ExitRiscvSbi       ExitReason = 35
+	ExitRiscvCsr       ExitReason = 36
+	ExitNotify         ExitReason = 37
+	ExitLoongarchIocsr ExitReason = 38
+	ExitMemoryFault    ExitReason = 39
+)
+
+func (r ExitReason) String() string {
+	switch r {
+	case ExitUnknown:
+		return "Unknown"
+	case ExitException:
+		return "Exception"
+	case ExitIo:
+		return "IO"
+	case ExitHypercall:
+		return "Hypercall"
+	case ExitDebug:
+		return "Debug"
+	case ExitHlt:
+		return "Halt"
+	case ExitMmio:
+		return "MMIO"
+	case ExitIrqWindowOpen:
+		return "IRQ Window Open"
+	case ExitShutdown:
+		return "Shutdown"
+	case ExitFailEntry:
+		return "Fail Entry"
+	case ExitIntr:
+		return "Interrupt"
+	case ExitSetTpr:
+		return "Set TPR"
+	case ExitTprAccess:
+		return "TPR Access"
+	case ExitS390Sieic:
+		return "S390 SIEIC"
+	case ExitS390Reset:
+		return "S390 Reset"
+	case ExitDcr:
+		return "DCR"
+	case ExitNmi:
+		return "NMI"
+	case ExitInternalError:
+		return "Internal Error"
+	case ExitOsi:
+		return "OSI"
+	case ExitPaprHcall:
+		return "PAPR HCall"
+	case ExitS390Ucontrol:
+		return "S390 UControl"
+	case ExitWatchdog:
+		return "Watchdog"
+	case ExitS390Tsch:
+		return "S390 TSCH"
+	case ExitEpr:
+		return "EPR"
+	case ExitSystemEvent:
+		return "System Event"
+	case ExitS390Stsi:
+		return "S390 STSI"
+	case ExitIoapicEoi:
+		return "IOAPIC EOI"
+	case ExitHyperv:
+		return "Hyper-V Event"
+	case ExitArmNisv:
+		return "ARM NISV"
+	case ExitX86Rdmsr:
+		return "X86 RDMSR"
+	case ExitX86Wrmsr:
+		return "X86 WRMSR"
+	case ExitDirtyRingFull:
+		return "Dirty Ring Full"
+	case ExitApResetHold:
+		return "AP Reset Hold"
+	case ExitX86BusLock:
+		return "X86 Bus Lock"
+	case ExitXen:
+		return "Xen Hypercall"
+	case ExitRiscvSbi:
+		return "RISC-V SBI"
+	case ExitRiscvCsr:
+		return "RISC-V CSR"
+	case ExitNotify:
+		return "Notify"
+	case ExitLoongarchIocsr:
+		return "Loongarch IOCSR"
+	case ExitMemoryFault:
+		return "Memory Fault"
+	default:
+		return fmt.Sprintf("Unknown Exit Reason (%d)", r)
+	}
+}
+
+type KVMExit struct {
+	cpu *KVMVirtualCPU
+}
+
+func (exit *KVMExit) Reason() ExitReason {
+	if exit.cpu.run == nil {
+		return ExitUnknown
+	}
+	return ExitReason(exit.cpu.run.ExitReason)
+}
+
+func (exit *KVMExit) SystemEvent() SystemEventType {
+	if exit.cpu.run == nil {
+		return SystemEventUnknown
+	}
+	if exit.Reason() != ExitSystemEvent {
+		return SystemEventUnknown
+	}
+	return SystemEventType(exit.cpu.run.DataSystemEvent().Type)
+}
+
 type KVMVirtualCPU struct {
-	fd uintptr
+	fd  uintptr
+	run *_kvmRun
 }
 
 func (vcpu *KVMVirtualCPU) SetRegister(id RegisterId, value uint64) error {
@@ -474,6 +628,16 @@ func (vcpu *KVMVirtualCPU) GetRegister(id RegisterId) (uint64, error) {
 	return value, nil
 }
 
+func (vcpu *KVMVirtualCPU) Run() (*KVMExit, error) {
+	if vcpu.fd == 0 {
+		return nil, fmt.Errorf("KVM virtual CPU is not open")
+	}
+	if _, err := ioctl(vcpu.fd, iio(kvmRun), 0); err != 0 {
+		return nil, fmt.Errorf("failed to run KVM VCPU: %w", err)
+	}
+	return &KVMExit{cpu: vcpu}, nil
+}
+
 func (vcpu *KVMVirtualCPU) Close() error {
 	// TODO(joshua): Implement proper VCPU cleanup
 	return nil
@@ -485,23 +649,81 @@ var (
 
 type KVMVirtualMachine struct {
 	fd uintptr
+
+	memory [][]byte // Memory allocated for the VM
 }
 
 func (vm *KVMVirtualMachine) CreateVCPU() (*KVMVirtualCPU, error) {
 	if vm.fd == 0 {
 		return nil, fmt.Errorf("KVM virtual machine is not open")
 	}
+
 	res, err := ioctl(vm.fd, iio(kvmCreateVCPU), 0)
 	if err != 0 {
 		return nil, fmt.Errorf("failed to create KVM VCPU: %w", err)
 	}
+
 	vcpu := &KVMVirtualCPU{
 		fd: res,
 	}
 	if vcpu.fd == 0 {
 		return nil, fmt.Errorf("failed to create KVM VCPU: returned fd is 0")
 	}
+
+	// map the run structure
+	run, goErr := syscall.Mmap(
+		int(vcpu.fd),
+		0,
+		int(unsafe.Sizeof(_kvmRun{})),
+		syscall.PROT_READ|syscall.PROT_WRITE,
+		syscall.MAP_SHARED,
+	)
+	if goErr != nil {
+		syscall.Close(int(vcpu.fd))
+		return nil, fmt.Errorf("failed to mmap KVM VCPU run structure: %w", err)
+	}
+
+	vcpu.run = (*_kvmRun)(unsafe.Pointer(&run[0]))
+
 	return vcpu, nil
+}
+
+type kvmUserspaceMemoryRegion struct {
+	Slot          uint32  // Slot number for the memory region
+	Flags         uint32  // Flags for the memory region
+	GuestPhysAddr uintptr // Guest physical address of the memory region
+	MemSize       uint64  // Size of the memory region in bytes
+	UserAddr      uintptr // User space address of the memory region
+}
+
+func (vm *KVMVirtualMachine) AllocateMemory(addr uintptr, size int, flags uint32) ([]byte, error) {
+	if vm.fd == 0 {
+		return nil, fmt.Errorf("KVM virtual machine is not open")
+	}
+
+	// Get Golang to allocate the memory
+	mem := make([]byte, size)
+
+	// Create a memory region structure
+	memRegion := &kvmUserspaceMemoryRegion{
+		Slot:          uint32(len(vm.memory)), // Slot number for the memory region
+		Flags:         flags,                  // Flags for the memory region
+		GuestPhysAddr: addr,
+		MemSize:       uint64(size),
+		UserAddr:      uintptr(unsafe.Pointer(&mem[0])),
+	}
+
+	if _, err := ioctl(
+		vm.fd,
+		iiow(kvmSetUserMemoryRegion, unsafe.Sizeof(*memRegion)),
+		uintptr(unsafe.Pointer(memRegion)),
+	); err != 0 {
+		return nil, fmt.Errorf("failed to set user memory region: %w", err)
+	}
+
+	vm.memory = append(vm.memory, mem)
+
+	return mem, nil
 }
 
 func (vm *KVMVirtualMachine) Close() error {
