@@ -1,0 +1,24 @@
+#!/usr/bin/env tinyrange
+version: 1
+file_contents:
+  # simple assembly payload
+  /payload.s: |
+    /* Take the value at 0x40010000 and increment it before writing it back */
+    _start:
+      ldr x0, =0x40010000 /* Load address */
+      ldr x1, [x0]        /* Load value */
+      add x1, x1, #1      /* Increment value */
+      str x1, [x0]        /* Store value back */    
+    exit:
+      ldr x0, =0x84000008 /* SYSTEM_OFF function ID */
+      hvc #0              /* Hypervisor call */
+packages:
+  # need an assembler to build the payload
+  - binutils
+commands:
+  - "%exit_on_failure,verbose"
+  # assemble the payload
+  - as -o /payload.o /payload.s
+  # get the raw binary
+  - objcopy -O binary /payload.o /payload.bin
+output: /payload.bin
