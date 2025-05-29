@@ -260,14 +260,17 @@ func (f BuiltinFragment) Validate() error {
 }
 
 type ExportPortFragment struct {
-	Name string `json:"name" yaml:"name"`
-	Port int    `json:"port" yaml:"port"`
+	Name          string `json:"name" yaml:"name"`
+	ListenAddress string `json:"listen_address" yaml:"listen_address"`
+	Port          int    `json:"port" yaml:"port"`
 }
 
 func (f ExportPortFragment) Validate() error {
 	if f.Name == "" {
 		return fmt.Errorf("name is required")
 	}
+
+	// listen address defaults to localhost
 
 	if f.Port <= 0 {
 		return fmt.Errorf("port must be greater than 0")

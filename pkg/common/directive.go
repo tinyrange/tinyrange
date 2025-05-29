@@ -259,8 +259,9 @@ func (d DirectiveArchive) AsFragments(ctx BuildContext, special SpecialDirective
 }
 
 type DirectiveExportPort struct {
-	Name string
-	Port int
+	Name          string
+	ListenAddress string // default is localhost
+	Port          int
 }
 
 // SerializableType implements Directive.
@@ -272,7 +273,7 @@ func (d DirectiveExportPort) Dependencies() ([]BuildDefinition, error) { return 
 // AsFragments implements Directive.
 func (d DirectiveExportPort) AsFragments(ctx BuildContext, special SpecialDirectiveHandlers) ([]config.Fragment, error) {
 	return []config.Fragment{
-		{ExportPort: &config.ExportPortFragment{Name: d.Name, Port: d.Port}},
+		{ExportPort: &config.ExportPortFragment{Name: d.Name, ListenAddress: d.ListenAddress, Port: d.Port}},
 	}, nil
 }
 

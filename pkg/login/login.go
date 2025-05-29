@@ -687,6 +687,16 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 	forwardedPorts := make(map[int]struct{})
 	for _, port := range config.ForwardPorts {
+		listenAddress := "localhost"
+		if strings.Contains(port, ":") {
+			parts := strings.SplitN(port, ":", 2)
+			if len(parts) != 2 {
+				return fmt.Errorf("invalid port forwarding %s", port)
+			}
+			listenAddress = parts[0]
+			port = parts[1]
+		}
+
 		portNum, err := strconv.Atoi(port)
 		if err != nil {
 			return err
@@ -697,7 +707,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		}
 		forwardedPorts[portNum] = struct{}{}
 
-		directives = append(directives, common.DirectiveExportPort{Name: "forward", Port: portNum})
+		directives = append(directives, common.DirectiveExportPort{Name: "forward", ListenAddress: listenAddress, Port: portNum})
 	}
 
 	interaction := "ssh"

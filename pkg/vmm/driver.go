@@ -1052,8 +1052,13 @@ func (tr *driver) createNbdListener(tryUnix bool) (net.Addr, net.Listener, error
 	}
 }
 
-func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []int, []mountInfo, []volumeInfo, error) {
-	var exportedPorts []int
+type portInformation struct {
+	listenAddress string
+	port          int
+}
+
+func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []portInformation, []mountInfo, []volumeInfo, error) {
+	var exportedPorts []portInformation
 	var mountedHostDirectories []mountInfo
 	var volumes []volumeInfo
 
@@ -1069,7 +1074,10 @@ func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []int, [
 
 		for _, frag := range fsInfo.Fragments {
 			if port := frag.ExportPort; port != nil {
-				exportedPorts = append(exportedPorts, port.Port)
+				exportedPorts = append(exportedPorts, portInformation{
+					listenAddress: port.ListenAddress,
+					port:          port.Port,
+				})
 			} else if mount := frag.MountHostDirectory; mount != nil {
 				mountedHostDirectories = append(mountedHostDirectories, mountInfo{
 					HostDirectory: mount.HostDirectory, // the host directory is guaranteed to be absolute
@@ -1403,10 +1411,14 @@ func (d *driver) startDNSServer() error {
 	return nil
 }
 
-func (d *driver) exportPort(port int) error {
-	log.Info("exporting port", "address", fmt.Sprintf("localhost:%d", port))
+func (d *driver) exportPort(port portInformation) error {
+	if port.listenAddress == "" {
+		port.listenAddress = "localhost"
+	}
 
-	portListen, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+	log.Info("exporting port", "address", fmt.Sprintf("%s:%d", port.listenAddress, port.port))
+
+	portListen, err := net.Listen("tcp", fmt.Sprintf("%s:%d", port.listenAddress, port.port))
 	if err != nil {
 		return err
 	}
@@ -1422,7 +1434,7 @@ func (d *driver) exportPort(port int) error {
 			go func() {
 				defer conn.Close()
 
-				clientConn, err := d.ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("10.42.0.2:%d", port))
+				clientConn, err := d.ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("10.42.0.2:%d", port.port))
 				if err != nil {
 					// silence these errors since they are exposed to the client anyway.
 					log.Debug("failed to dial vm port", "err", err)
