@@ -1,0 +1,97 @@
+version: 2
+
+# Misc changes from version 1.
+# - Run directives now fail on exit non-zero.
+
+# directives are all executed in the same virtual machine by default.
+directives:
+  # driver is a directive the allows you to configure the virtual machine
+  # the driver config affects all layers underneath it unless overridden.
+  # changing the driver config in a layer is allowed only if it doesn't conflict.
+  - driver:
+      min_cpu_cores: 4
+      min_memory: 2048M
+      min_disk: 1024M
+
+  # you don't have to start with a plan directive.
+  # plan just creates a root filesystem with a series of packages installed.
+  - plan:
+      version: 1
+      builder: alpine@3.21
+      packages:
+        - build-base
+
+  # groups are included into the directive list directly.
+  # they exist for documentation and so they can be split into multiple files.
+  - group:
+      # environment changes only affect the commands that follow.
+      - environment:
+          TESTING: Hello
+
+      # commands are executed in the order they are declared.
+      # steps in a single run directive are merged into a single shell script.
+      - run:
+          - echo "Hello, $TESTING!"
+
+      # workdir sets the working directory. The default is /
+      - workdir: /root
+
+      # files are first declared being sourced from a variety of locations.
+      - file:
+          name: hello.txt
+          contents: |
+            Hello, world!
+
+      # there are 2 ways of getting files.
+      # 1. get_file loads it into a ephemeral path. This will print the path.
+      #    This is just a syntactic convenience. All referenced files are
+      #    included in all layers they are referenced in.
+      - run:
+          - echo {{ get_file hello.txt }}
+      # 2. copy explicitly puts the file at a given location on the filesystem.
+      - copy: hello.txt /root/hello.txt
+
+  - layer:
+      # Layers export their filesystem contents for subsequent layers.
+      # All previous directives are implicitly joined into a layer.
+      # Putting subsequent directives without a layer after a layer is
+      # declared is invalid.
+      - run:
+          - grep -q Hello /root/hello.txt || exit 1
+          - echo "Hello, world!" > /root/hello2.txt
+
+      - layer:
+          # layers can be nested. these follow the same rules regarding
+          # directives after the layer.
+          - run:
+              - grep -q Hello /root/hello2.txt || exit 1
+              - echo "Hello, world!" > /root/hello3.txt
+
+  - stage:
+      # a stage is a separate build that doesn't inherit anything from the
+      # previous layers. They also do not inherit the driver config.
+
+      # Stages are named and files from them can be referenced like stage:filename
+      # Once a stage is created it can be referenced from any subsequent layer.
+      name: hello
+
+      directives:
+        # From pulls a OCI base image as a filesystem.
+        - from: ubuntu:latest
+
+        - run:
+            - echo 'Hello, world!' > hello4.txt
+
+        # Output directives are used to specify the output of the stage.
+        # All outputs are in the form of archives.
+        - output:
+            - /hello4.txt
+
+  - layer:
+      # Make hello4.txt available in the root filesystem of the final layer.
+      - copy: hello:hello4.txt /root/hello4.txt
+
+      # Setting an entrypoint overrides the default behavior when the layer
+      # starts. "internal" layers are non-interactive and don't have an
+      # entrypoint specified.
+      - entrypoint: ["interactive"]
