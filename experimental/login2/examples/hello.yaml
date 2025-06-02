@@ -9,9 +9,10 @@ directives:
   # the driver config affects all layers underneath it unless overridden.
   # changing the driver config in a layer is allowed only if it doesn't conflict.
   - driver:
-      min_cpu_cores: 4
-      min_memory: 2048M
-      min_disk: 1024M
+      min_spec:
+        cpu_cores: 4
+        memory: 2048M
+        storage: 1024M
 
   # you don't have to start with a plan directive.
   # plan just creates a root filesystem with a series of packages installed.
@@ -47,7 +48,7 @@ directives:
       #    This is just a syntactic convenience. All referenced files are
       #    included in all layers they are referenced in.
       - run:
-          - echo {{ get_file hello.txt }}
+          - echo {{ get_file "hello.txt" }}
       # 2. copy explicitly puts the file at a given location on the filesystem.
       - copy: hello.txt /root/hello.txt
 
@@ -69,7 +70,7 @@ directives:
 
   - stage:
       # a stage is a separate build that doesn't inherit anything from the
-      # previous layers. They also do not inherit the driver config.
+      # previous layers.
 
       # Stages are named and files from them can be referenced like stage:filename
       # Once a stage is created it can be referenced from any subsequent layer.
