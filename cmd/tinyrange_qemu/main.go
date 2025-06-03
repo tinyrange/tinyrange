@@ -100,6 +100,8 @@ func main() {
 				// Workaround for QEMU bug https://gitlab.com/qemu-project/qemu/-/issues/2665
 				args = append(args, "-cpu", "cortex-a57", "-accel", "hvf")
 			} else if driver.HostOperatingSystem() == "windows" {
+				// I would like to use `-cpu host` here but it's broken on Windows.
+				// See https://gitlab.com/qemu-project/qemu/-/issues/1594
 				args = append(args, "-accel", "whpx")
 			} else {
 				return nil, fmt.Errorf("unsupported host operating system for hardware acceleration: %s", driver.HostOperatingSystem())
