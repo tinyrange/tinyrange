@@ -4,8 +4,8 @@ github.com/BurntSushi/graphics-go v0.0.0-20160129215708-b43f31a4a966 h1:lTG4HQym
 github.com/BurntSushi/graphics-go v0.0.0-20160129215708-b43f31a4a966/go.mod h1:Mid70uvE93zn9wgF92A/r5ixgnvX8Lh68fxp9KQBaI0=
 github.com/Code-Hex/go-infinity-channel v1.0.0 h1:M8BWlfDOxq9or9yvF9+YkceoTkDI1pFAqvnP87Zh0Nw=
 github.com/Code-Hex/go-infinity-channel v1.0.0/go.mod h1:5yUVg/Fqao9dAjcpzoQ33WwfdMWmISOrQloDRn3bsvY=
-github.com/Code-Hex/vz/v3 v3.6.0 h1:S79dokzXmaLgC2yR0l0drRTGO/iFL3xwiCNVF80lJ5k=
-github.com/Code-Hex/vz/v3 v3.6.0/go.mod h1:1LsW0jqW0r0cQ+IeR4hHbjdqOtSidNCVMWhStMHGho8=
+github.com/Code-Hex/vz/v3 v3.7.0 h1:VEkfq5TVKnv85M81gQVPzLH9JzHrUJN/QQMpDZ+odPA=
+github.com/Code-Hex/vz/v3 v3.7.0/go.mod h1:1LsW0jqW0r0cQ+IeR4hHbjdqOtSidNCVMWhStMHGho8=
 github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949 h1:udSToqCviS4KPy3kps1QJKUqBjjzxruRr61OnECZL7Q=
 github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949/go.mod h1:A8CAY38Xm8Bo85Od6knJTdq35LFIGuZjjYhF4o4C1kY=
 github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be h1:9AeTilPcZAjCFIImctFaOjnTIavg87rW78vTPkQqLI8=
