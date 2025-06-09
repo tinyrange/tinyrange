@@ -99,7 +99,7 @@ func (window *windowImpl) Create(width int, height int, title string) error {
 	window.X = X
 
 	xevent.ErrorHandlerSet(X, func(err xgb.Error) {
-		log.Error("error", "err", err)
+		log.Default().Error("error", "err", err)
 	})
 
 	window.canvas = xgraphics.New(X, image.Rect(0, 0, width, height))

@@ -113,7 +113,7 @@ func remapRegion(old *regionFragment, new *regionFragment) []*regionFragment {
 		}
 	}
 
-	log.Info("unimplemented", "oldStart", oldStart, "oldEnd", oldEnd, "newStart", newStart, "newEnd", newEnd)
+	log.Default().Error("unimplemented", "oldStart", oldStart, "oldEnd", oldEnd, "newStart", newStart, "newEnd", newEnd)
 
 	panic("unimplemented")
 }

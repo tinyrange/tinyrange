@@ -548,7 +548,7 @@ func builderRunScripts(filename string) error {
 // regex to match $ENV so long as it doesn't have $ before it.
 var envRegex = regexp.MustCompile(`([^$])\$([A-Z_]+)`)
 
-func builderRunWithConfig(cfg config.BuilderConfig) error {
+func builderRunWithConfig(cfg config.BuilderConfig, log log.Handler) error {
 	if len(cfg.DefaultInteractive) > 0 {
 		common.SetDefaultInteractive(cfg.DefaultInteractive)
 	}
@@ -557,14 +557,14 @@ func builderRunWithConfig(cfg config.BuilderConfig) error {
 
 	// run init scripts first
 	for _, script := range cfg.InitScripts {
-		if err := runStarlarkFile(script); err != nil {
+		if err := runStarlarkFile(script, log); err != nil {
 			return err
 		}
 	}
 
 	// run starlark scripts
 	for _, script := range cfg.StarlarkScripts {
-		if err := runStarlarkScript("script.star", script); err != nil {
+		if err := runStarlarkScript("script.star", script, log); err != nil {
 			return err
 		}
 	}

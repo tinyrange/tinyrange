@@ -153,7 +153,7 @@ func GetDefaultBuildDir() string {
 	// Look for the tinyrange.portable file first.
 	exeDir, err := getExeDirectory()
 	if err != nil {
-		log.Warn("Could not get executable directory. Builds will default to the current directory under build.", "err", err)
+		log.Default().Warn("Could not get executable directory. Builds will default to the current directory under build.", "err", err)
 		return "build"
 	}
 
@@ -165,7 +165,7 @@ func GetDefaultBuildDir() string {
 	// Otherwise find the user cache directory...
 	cache, err := os.UserCacheDir()
 	if err != nil {
-		log.Warn("Could not get executable directory. Builds will default to the current directory under build.", "err", err)
+		log.Default().Warn("Could not get user cache directory. Builds will default to the current directory under build.", "err", err)
 		return "build"
 	}
 
@@ -222,13 +222,13 @@ func ExecCommand(args []string, environment map[string]string, options *ExecOpti
 	}
 
 	if options.Verbose {
-		log.Info("executing command", "args", args)
+		log.Default().Info("executing command", "args", args)
 	}
 
 	err := cmd.Run()
 	if exit, ok := err.(*exec.ExitError); ok {
 		if exit.ExitCode() == 255 {
-			log.Warn("command returned exit 255", "args", args)
+			log.Default().Warn("command returned exit 255", "args", args)
 			return nil
 		}
 

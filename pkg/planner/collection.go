@@ -11,7 +11,6 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/hash"
-	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/record"
 	"go.starlark.net/starlark"
 )
@@ -190,7 +189,7 @@ func (parser *packageCollection) load(ctx common.MinimalBuildContext) error {
 		}
 	}
 
-	log.Debug("built all package sources", "took", time.Since(start))
+	ctx.Logger().Debug("built all package sources", "took", time.Since(start))
 	start = time.Now()
 
 	wg := sync.WaitGroup{}
@@ -224,7 +223,7 @@ func (parser *packageCollection) load(ctx common.MinimalBuildContext) error {
 	case err := <-errors:
 		return err
 	case <-done:
-		log.Debug("loaded all packages", "count", len(records), "took", time.Since(start))
+		ctx.Logger().Debug("loaded all packages", "count", len(records), "took", time.Since(start))
 
 		return nil
 	}
@@ -278,7 +277,7 @@ func (parser *packageCollection) InstallerFor(c common.MinimalBuildContext, pkg 
 	ret, err := c.Database().Call(parser.Filename, parser.Install, pkg, tags)
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
-			log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+			c.Logger().Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
 		}
 
 		return nil, err

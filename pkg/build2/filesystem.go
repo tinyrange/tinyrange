@@ -433,6 +433,7 @@ type ReadOnlyBuildCache interface {
 type filesystemBuildCache struct {
 	baseConfig dbconfig.BuildDatabaseConfig
 	dir        filesystem.MutableDirectory
+	log        log.Handler
 
 	cacheDirectories []ReadOnlyBuildCache
 }
@@ -692,7 +693,7 @@ func (f *filesystemBuildCache) GetAllHashes() ([]hash.Hash, error) {
 
 		childEnts, err := childDir.Readdir()
 		if err != nil {
-			log.Warn("failed to read directory", "err", err)
+			f.log.Warn("failed to read directory", "err", err)
 			continue
 		}
 
@@ -712,10 +713,11 @@ var (
 	_ BuildCacheFilesystem = &filesystemBuildCache{}
 )
 
-func OpenFilesystemBuildCache(dir filesystem.MutableDirectory, config dbconfig.BuildDatabaseConfig) (BuildCacheFilesystem, error) {
+func OpenFilesystemBuildCache(dir filesystem.MutableDirectory, config dbconfig.BuildDatabaseConfig, log log.Handler) (BuildCacheFilesystem, error) {
 	ret := &filesystemBuildCache{
 		dir:        dir,
 		baseConfig: config,
+		log:        log,
 	}
 
 	if err := checkMarkerFile(dir); err != nil && !errors.Is(err, fs.ErrNotExist) {

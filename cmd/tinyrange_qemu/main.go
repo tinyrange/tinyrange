@@ -8,7 +8,6 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/linux/kernel"
-	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/vmm"
 )
 
@@ -127,7 +126,7 @@ func main() {
 			}
 		} else {
 			// Print a warning since the serial console degrades performance.
-			log.Warn("Using serial console")
+			driver.Logger().Warn("Using serial console")
 
 			args = append(args, "-serial", "stdio")
 			if guestOs == OperatingSystemLinux {

@@ -10,6 +10,8 @@ import (
 )
 
 func RunVNCClient(nConn net.Conn) error {
+	log := log.Default()
+
 	win, err := window.New()
 	if err != nil {
 		return err

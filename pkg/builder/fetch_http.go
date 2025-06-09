@@ -11,7 +11,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
-	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 )
 
@@ -83,6 +82,8 @@ func (f *fetchHttpBuildDefinition) WriteResult(w io.Writer) error {
 
 // Build implements BuildDefinition.
 func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext) error {
+	log := ctx.Logger()
+
 	urls, err := ctx.Database().UrlsFor(f.params.Url)
 	if err != nil {
 		return err

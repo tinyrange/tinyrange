@@ -11,7 +11,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/vnc/client"
 )
 
-func runVncClient(ns ns.NetStack, address string) error {
+func runVncClient(ns ns.NetStack, log log.Handler, address string) error {
 	var (
 		conn net.Conn
 		err  error

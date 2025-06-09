@@ -606,13 +606,13 @@ func (r *recordListIterator) Next(p *starlark.Value) bool {
 
 	_, len, err := r.rec.readRecord(buf, r.off)
 	if err != nil {
-		log.Warn("error iterating", "err", err)
+		log.Default().Warn("error iterating", "err", err)
 		return false
 	}
 
 	val, err := r.rec.toStarlarkValue(r.off)
 	if err != nil {
-		log.Warn("error iterating", "err", err)
+		log.Default().Warn("error iterating", "err", err)
 		return false
 	}
 

@@ -83,6 +83,7 @@ func (e *exitNotify) Get() bool {
 
 func connectOverSsh(
 	ns ns.NetStack,
+	log log.Handler,
 	address string,
 	username string,
 	secureSSH SecureSSHConfig,
@@ -270,7 +271,7 @@ var (
 	_ io.WriteCloser = &webSocketWriter{}
 )
 
-func newWebSocketSSH(ws *websocket.Conn, ns ns.NetStack, address string, username string, secureSSH SecureSSHConfig) error {
+func newWebSocketSSH(ws *websocket.Conn, ns ns.NetStack, log log.Handler, address string, username string, secureSSH SecureSSHConfig) error {
 	config := &ssh.ClientConfig{
 		User: username,
 		Auth: []ssh.AuthMethod{

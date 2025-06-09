@@ -283,7 +283,7 @@ type StarArchive struct {
 func (f *StarArchive) Iterate() starlark.Iterator {
 	ents, err := f.Entries()
 	if err != nil {
-		log.Error("could not get entries", "err", err)
+		log.Default().Error("could not get entries", "err", err)
 		return nil
 	}
 

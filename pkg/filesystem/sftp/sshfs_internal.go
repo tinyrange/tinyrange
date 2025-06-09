@@ -18,7 +18,7 @@ type SSHFSInternalServer struct {
 }
 
 func (s *SSHFSInternalServer) handleConnection(sshConn *ssh.ServerConn, channels <-chan ssh.NewChannel) {
-	log.Debug("sftp: got connection", "remote", sshConn.RemoteAddr().String())
+	s.log.Debug("sftp: got connection", "remote", sshConn.RemoteAddr().String())
 
 	for newChannel := range channels {
 		if t := newChannel.ChannelType(); t != "session" {
@@ -28,7 +28,7 @@ func (s *SSHFSInternalServer) handleConnection(sshConn *ssh.ServerConn, channels
 
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
-			log.Warn("ssh: could not accept channel", "error", err)
+			s.log.Warn("ssh: could not accept channel", "error", err)
 			return
 		}
 
@@ -39,7 +39,7 @@ func (s *SSHFSInternalServer) handleConnection(sshConn *ssh.ServerConn, channels
 					defer channel.Close() // SSH_MSG_CHANNEL_CLOSE
 					err := s.ServeSftp(channel)
 					if err != nil {
-						log.Warn("failed to serve sftp", "error", err)
+						s.log.Warn("failed to serve sftp", "error", err)
 						return
 					}
 				}()
@@ -47,7 +47,7 @@ func (s *SSHFSInternalServer) handleConnection(sshConn *ssh.ServerConn, channels
 			case req.Type == "shell":
 				req.Reply(false, nil)
 			default:
-				log.Debug("ssh: unknown request", "type", req.Type, "reply", req.WantReply, "data", req.Payload)
+				s.log.Debug("ssh: unknown request", "type", req.Type, "reply", req.WantReply, "data", req.Payload)
 				if req.WantReply {
 					req.Reply(false, nil)
 				}
@@ -85,15 +85,15 @@ func (s *SSHFSInternalServer) Run(listen func(network, addr string) (net.Listene
 		for {
 			nConn, err := listener.Accept()
 			if err != nil {
-				log.Debug("ssh: failed to accept", "error", err)
+				s.log.Debug("ssh: failed to accept", "error", err)
 				return
 			}
 
-			log.Debug("got connection", "addr", nConn.RemoteAddr())
+			s.log.Debug("got connection", "addr", nConn.RemoteAddr())
 
 			sshConn, chans, reqs, err := ssh.NewServerConn(nConn, config)
 			if err != nil {
-				log.Debug("ssh: failed to make connection", "error", err)
+				s.log.Debug("ssh: failed to make connection", "error", err)
 				continue
 			}
 
@@ -107,6 +107,6 @@ func (s *SSHFSInternalServer) Run(listen func(network, addr string) (net.Listene
 	return nil
 }
 
-func NewInternalServer(fs filesystem.Directory, addr string) *SSHFSInternalServer {
-	return &SSHFSInternalServer{SSHFSServer: New(fs), Addr: addr}
+func NewInternalServer(fs filesystem.Directory, log log.Handler, addr string) *SSHFSInternalServer {
+	return &SSHFSInternalServer{SSHFSServer: New(fs, log), Addr: addr}
 }

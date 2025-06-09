@@ -62,7 +62,7 @@ func LoadModule(module string) error {
 		return fmt.Errorf("error reading module: %s", err)
 	}
 
-	log.Debug("loading module", "name", module)
+	log.Default().Debug("loading module", "name", module)
 	err = unix.InitModule(moduleContent, "")
 	if sErr, ok := err.(syscall.Errno); ok {
 		if !errors.Is(sErr, fs.ErrExist) {
@@ -96,7 +96,7 @@ func Modprobe(name string) error {
 
 	deps, err := parseDeps(path.Native.Join(kernelDir, "modules.dep"))
 	if err != nil {
-		log.Warn("could not parse dependencies", "error", err)
+		log.Default().Warn("could not parse dependencies", "error", err)
 		return nil
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/dbconfig"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 )
 
@@ -109,7 +110,7 @@ var (
 	ErrUseExistingBuild = errors.New("use existing build")
 )
 
-type BuilderFactor func(PackageDatabase) (Builder, error)
+type BuilderFactory func(PackageDatabase) (Builder, error)
 
 // BuildResult is implemented by definitions and called with a writer.
 type BuildResult interface {
@@ -192,6 +193,8 @@ type MinimalBuildContext interface {
 	Database() PackageDatabase
 	// Return a factory to make definitions.
 	Factory() DefinitionFactory
+	// Logger returns the log handler for the build context.
+	Logger() log.Handler
 }
 
 // BuildContext is the context of a build.
@@ -220,10 +223,6 @@ type BuildContext interface {
 
 	// CreateFile creates a file in the build context.
 	CreateFile(name string) (io.WriteCloser, error)
-	// Describe logs a message about the build.
-	Describe(format string, args ...interface{})
-	// Logf logs a message about the build.
-	Logf(format string, args ...interface{})
 }
 
 // InstallationPlan represents a plan for installing packages.
@@ -352,6 +351,7 @@ type PackageDatabase interface {
 	MacroManager
 	RequestManager
 	Builder() Builder
+	Logger() log.Handler
 
 	// Get a set of extended file methods to return a HTTPClient and handle simple caching.
 	FileMethods() filesystem.ExtendedFileMethods

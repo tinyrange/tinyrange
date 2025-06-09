@@ -325,7 +325,7 @@ func (vm *VirtualMemory) WriteAt(p []byte, off int64) (n int, err error) {
 			// If the region exists then forward the write to the region.
 			writeSize, err = region.WriteAt(p, regionOffset)
 			if err != nil {
-				log.Error("VirtualMemory WriteAt Error", "len", len(p), "off", off, "regionOffset", regionOffset)
+				log.Default().Error("VirtualMemory WriteAt Error", "len", len(p), "off", off, "regionOffset", regionOffset)
 				return 0, err
 			}
 		} else {
@@ -385,7 +385,7 @@ func (vm *VirtualMemory) Reset() error {
 	return nil
 }
 
-func (vm *VirtualMemory) DumpStats() {
+func (vm *VirtualMemory) DumpStats(log log.Handler) {
 	log.Info("vm stats",
 		"totalMaps", vm.totalMaps,
 		"totalMapFragments", vm.totalMapFragments,

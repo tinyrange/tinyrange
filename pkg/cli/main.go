@@ -81,7 +81,7 @@ func defToFilesystemAndConfig(db common.PackageDatabase, ark common.BuildDefinit
 		return nil, dbconfig.BuildDatabaseConfig{}, err
 	}
 
-	log.Debug("adding archive to builder cache", "hash", art.DefinitionHash().String())
+	db.Logger().Debug("adding archive to builder cache", "hash", art.DefinitionHash().String())
 
 	archive, err := builder.Archive2FromArtifact(art)
 	if err != nil {
@@ -187,6 +187,8 @@ func parseCacheToDirectory(db common.PackageDatabase, cache string) (filesystem.
 }
 
 func newDb() (common.PackageDatabase, error) {
+	log := log.Default()
+
 	buildDir, err := getBuildDir()
 	if err != nil {
 		return nil, err
@@ -209,15 +211,15 @@ func newDb() (common.PackageDatabase, error) {
 
 		buildDirMut := filesystem.Factory.NewLocalMutableDirectory(buildDir)
 
-		buildFs, err := build2.OpenFilesystemBuildCache(buildDirMut, build2.DEFAULT_DATABASE_CONFIG)
+		buildFs, err := build2.OpenFilesystemBuildCache(buildDirMut, build2.DEFAULT_DATABASE_CONFIG, log)
 		if err != nil {
 			return nil, err
 		}
 
-		return build2.New(buildFs, db, rootBuildJobs, logger.Group("builder")), nil
+		return build2.New(buildFs, db, rootBuildJobs, logger.Group("builder"), log), nil
 	}
 
-	db, err := database.New(builderFactory)
+	db, err := database.New(log, builderFactory)
 	if err != nil {
 		return nil, err
 	}

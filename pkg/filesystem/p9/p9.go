@@ -105,6 +105,7 @@ type Server struct {
 
 	debugEnabled bool
 	warnEnabled  bool
+	log          log.Handler
 }
 
 // Close implements core.Component.
@@ -114,18 +115,18 @@ func (*Server) Close() error {
 
 func (s *Server) debug(message string, args ...any) {
 	if s.debugEnabled {
-		log.Debug(message, args...)
+		s.log.Debug(message, args...)
 	}
 }
 
 func (s *Server) warn(message string, args ...any) {
 	if s.warnEnabled {
-		log.Warn(message, args...)
+		s.log.Warn(message, args...)
 	}
 }
 
 func (s *Server) error(message string, args ...any) {
-	log.Error(message, args...)
+	s.log.Error(message, args...)
 }
 
 func (s *Server) getFid(id uint32) (*serverFile, error) {
@@ -1120,21 +1121,21 @@ func (s *Server) Serve(listener net.Listener) error {
 	for {
 		client, err := listener.Accept()
 		if err != nil {
-			log.Error("9p: failed to accept", "error", err)
+			s.log.Error("9p: failed to accept", "error", err)
 			return err
 		}
 
 		go func(client net.Conn) {
 			err := s.handleClient(client)
 			if err != nil {
-				log.Error("9p: failed to handle client", "error", err)
+				s.log.Error("9p: failed to handle client", "error", err)
 				return
 			}
 		}(client)
 	}
 }
 
-func NewServer(dir filesystem.Directory) *Server {
+func NewServer(dir filesystem.Directory, log log.Handler) *Server {
 	return &Server{
 		dir:       dir,
 		filePaths: make(map[uint64]uint64),
@@ -1142,5 +1143,6 @@ func NewServer(dir filesystem.Directory) *Server {
 
 		debugEnabled: feature.HasFeature(feature.Feature9PVerbose),
 		warnEnabled:  common.IsVerbose(),
+		log:          log,
 	}
 }

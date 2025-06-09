@@ -74,6 +74,7 @@ type packageDatabase struct {
 	builders map[string]starlark.Callable
 
 	builder common.Builder
+	log     log.Handler
 
 	simpleCache map[string][]byte
 }
@@ -156,7 +157,7 @@ func (db *packageDatabase) newThread(filename string) *starlark.Thread {
 			ret, err := starlark.ExecFileOptions(db.getFileOptions(), newThread, module, contents, globals)
 			if err != nil {
 				if sErr, ok := err.(*starlark.EvalError); ok {
-					log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+					db.log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
 				}
 				return nil, err
 			}
@@ -286,7 +287,7 @@ func (db *packageDatabase) RunScript(filename string, files map[string]filesyste
 	_, err = starlark.Call(thread, mainFunc, starlark.Tuple{args}, []starlark.Tuple{})
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
-			log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+			db.log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
 		}
 		return err
 	}
@@ -396,7 +397,7 @@ func (db *packageDatabase) GetMacroByDeclaredName(ctx common.MacroContext, name 
 	}
 
 	if _, ok := db.loadedFiles[filename]; !ok {
-		log.Debug("load file for macro", "filename", filename)
+		db.log.Debug("load file for macro", "filename", filename)
 		if err := db.LoadFile(filename, allowLocal); err != nil {
 			return nil, err
 		}
@@ -487,7 +488,7 @@ func (db *packageDatabase) Call(filename string, builder string, args ...starlar
 	result, err := starlark.Call(db.newThread(filename), target, args, []starlark.Tuple{})
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
-			log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+			db.log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
 		}
 		return starlark.None, err
 	}
@@ -499,6 +500,10 @@ func (db *packageDatabase) Builder() common.Builder {
 	return db.builder
 }
 
+func (db *packageDatabase) Logger() log.Handler {
+	return db.log
+}
+
 // FileMethods implements common.PackageDatabase.
 func (db *packageDatabase) FileMethods() filesystem.ExtendedFileMethods {
 	return db
@@ -508,13 +513,14 @@ var (
 	_ common.PackageDatabase = &packageDatabase{}
 )
 
-func New(builderFactory common.BuilderFactor) (common.PackageDatabase, error) {
+func New(log log.Handler, builderFactory common.BuilderFactory) (common.PackageDatabase, error) {
 	db := &packageDatabase{
 		containerBuilders: make(map[string]common.ContainerBuilder),
 		mirrors:           make(map[string][]string),
 		defs:              make(map[string]starlark.Value),
 		loadedFiles:       make(map[string]bool),
 		builders:          make(map[string]starlark.Callable),
+		log:               log,
 	}
 
 	builder, err := builderFactory(db)

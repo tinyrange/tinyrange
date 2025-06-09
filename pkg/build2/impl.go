@@ -142,7 +142,7 @@ const (
 	buildContextStateUsedCache
 )
 
-func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
+func runVMM(log log.Handler, exe string, buildDir string, configFilename string) (*exec.Cmd, error) {
 	persistPath := path.Native.Join(buildDir, "persist")
 
 	if err := common.Ensure(persistPath, os.ModePerm); err != nil {
@@ -165,20 +165,26 @@ func runVMM(exe string, buildDir string, configFilename string) (*exec.Cmd, erro
 }
 
 type buildContext struct {
-	builder      *builder
-	parent       *buildContext
-	hash         hash.Hash
-	def          common.BuildDefinition
-	buildDir     common.BuildCacheDirectory
-	options      common.BuildOptions
-	recept       *common.BuildReceipt
-	requirements map[hash.Hash]struct{}
-	err          error
-	state        buildContextState
-	wg           sync.WaitGroup
-	logger       Logger
-	token        *token
-	files        map[string]*contextFile
+	builder        *builder
+	parent         *buildContext
+	hash           hash.Hash
+	def            common.BuildDefinition
+	buildDir       common.BuildCacheDirectory
+	options        common.BuildOptions
+	recept         *common.BuildReceipt
+	requirements   map[hash.Hash]struct{}
+	err            error
+	state          buildContextState
+	wg             sync.WaitGroup
+	log            log.Handler
+	internalLogger Logger
+	token          *token
+	files          map[string]*contextFile
+}
+
+// Logger implements common.BuildContext.
+func (b *buildContext) Logger() log.Handler {
+	return b.log
 }
 
 // DatabaseConfig implements common.BuildContext.
@@ -259,7 +265,7 @@ func (c *buildContext) RunVMM(name string, config config.TinyRangeConfig) (*exec
 		return nil, err
 	}
 
-	return runVMM(exe, buildDirPath, configFilename)
+	return runVMM(c.log, exe, buildDirPath, configFilename)
 }
 
 // Database implements common.BuildContext.
@@ -275,11 +281,11 @@ func (c *buildContext) ShouldRebuildUserDefinitions() bool {
 // Precondition: The definition has to be rebuilt.
 func (c *buildContext) build(writable common.WritableBuildCacheDirectory) error {
 	// c.logger.Describe(ColorYellow, "%s : waiting for token", c.def.String())
-	defer c.logger.Close()
+	defer c.internalLogger.Close()
 
 	// Update the state.
 	atomic.StoreUint32((*uint32)(&c.state), uint32(buildContextStateBuilding))
-	c.logger.Describe(ColorYellow, "starting build")
+	c.internalLogger.Describe(ColorYellow, "starting build")
 
 	// Save the definition to the build directory.
 	def, err := c.builder.defDb.MarshalDefinition(c.def)
@@ -309,7 +315,7 @@ func (c *buildContext) build(writable common.WritableBuildCacheDirectory) error 
 	// Call the user builder function.
 	err = c.def.Build(c)
 	if errors.Is(err, common.ErrNonFatal{}) {
-		log.Warn("non-fatal error building", "def", c.def.String(), "err", err)
+		c.log.Warn("non-fatal error building", "def", c.def.String(), "err", err)
 
 		attempts := 0
 
@@ -320,7 +326,7 @@ func (c *buildContext) build(writable common.WritableBuildCacheDirectory) error 
 				return fmt.Errorf("error building %s after %d: %w", c.def.String(), attempts, err)
 			}
 
-			log.Warn("non-fatal error building", "def", c.def.String(), "err", err, "attempts", attempts)
+			c.log.Warn("non-fatal error building", "def", c.def.String(), "err", err, "attempts", attempts)
 
 			time.Sleep(1 * time.Second)
 
@@ -340,7 +346,7 @@ func (c *buildContext) build(writable common.WritableBuildCacheDirectory) error 
 			return err
 		}
 
-		c.logger.Describe(ColorGreen, "skipped build, using existing build")
+		c.internalLogger.Describe(ColorGreen, "skipped build, using existing build")
 
 		currentRecept.StartTime = c.recept.StartTime
 
@@ -368,7 +374,7 @@ func (c *buildContext) build(writable common.WritableBuildCacheDirectory) error 
 
 	// Update the state.
 	atomic.StoreUint32((*uint32)(&c.state), uint32(buildContextStateBuilt))
-	c.logger.Describe(ColorGreen, "built successfully in %s", c.recept.Duration)
+	c.internalLogger.Describe(ColorGreen, "built successfully in %s", c.recept.Duration)
 
 	return nil
 }
@@ -464,7 +470,7 @@ func (c *buildContext) ensureUpToDate() error {
 			return fmt.Errorf("failed to check if build is needed: %w", err)
 		}
 		if needsBuild {
-			c.logger.Describe(ColorYellow, "rebuilding due to user NeedsBuild")
+			c.internalLogger.Describe(ColorYellow, "rebuilding due to user NeedsBuild")
 
 			defer c.token.Lock("user needs build").Close()
 
@@ -478,7 +484,7 @@ func (c *buildContext) ensureUpToDate() error {
 		for _, req := range c.recept.Requirements {
 			child, err := c.builder.contextForHash(c, req, common.BuildOptions{})
 			if errors.Is(err, fs.ErrNotExist) {
-				c.logger.Describe(ColorYellow, "rebuilding due to missing requirement %s", req.String())
+				c.internalLogger.Describe(ColorYellow, "rebuilding due to missing requirement %s", req.String())
 				return c.build(writable)
 			} else if err != nil {
 				return fmt.Errorf("failed to load requirement: %w", err)
@@ -495,7 +501,7 @@ func (c *buildContext) ensureUpToDate() error {
 			}
 
 			if art.freshlyBuilt() {
-				c.logger.Describe(ColorYellow, "rebuilding due to requirement %s", child.def.String())
+				c.internalLogger.Describe(ColorYellow, "rebuilding due to requirement %s", child.def.String())
 				return c.build(writable)
 			}
 		}
@@ -552,14 +558,6 @@ func (c *buildContext) BuildChild(def common.BuildDefinition) (common.BuildArtif
 	c.addRequirement(child.hash)
 
 	return artifact, nil
-}
-
-func (c *buildContext) Describe(format string, args ...interface{}) {
-	c.logger.Describe(ColorDefault, format, args...)
-}
-
-func (c *buildContext) Logf(format string, args ...interface{}) {
-	c.logger.Logf(format, args...)
 }
 
 func (c *buildContext) LastBuild() time.Time {
@@ -652,7 +650,8 @@ type builder struct {
 	buildDir               common.BuildCacheFilesystem
 	defDb                  *hash.DefinitionDatabase
 	contextCache           sync.Map
-	logger                 Logger
+	internalLogger         Logger
+	log                    log.Handler
 	tokenLocker            *tokenLocker
 	rebuildUserDefinitions bool
 }
@@ -724,10 +723,11 @@ func (b *builder) GetDefinitionByHash(hash hash.Hash) (common.BuildDefinition, e
 // MinimalContext implements common.Builder.
 func (b *builder) MinimalContext() common.MinimalBuildContext {
 	return &buildContext{
-		builder:      b,
-		recept:       &common.BuildReceipt{},
-		logger:       b.logger.Child("minimal"),
-		requirements: make(map[hash.Hash]struct{}),
+		builder:        b,
+		recept:         &common.BuildReceipt{},
+		internalLogger: b.internalLogger.Child("minimal"),
+		log:            b.log,
+		requirements:   make(map[hash.Hash]struct{}),
 	}
 }
 
@@ -743,6 +743,7 @@ func (b *builder) contextForDefinition(parent *buildContext, def common.BuildDef
 		def:          def,
 		requirements: make(map[hash.Hash]struct{}),
 		options:      opts,
+		log:          b.log,
 		token:        b.tokenLocker.New(),
 		files:        make(map[string]*contextFile),
 	}
@@ -752,9 +753,9 @@ func (b *builder) contextForDefinition(parent *buildContext, def common.BuildDef
 	ctx := c.(*buildContext)
 	if !loaded {
 		if parent != nil {
-			ctx.logger = parent.logger.Child(def.String())
+			ctx.internalLogger = parent.internalLogger.Child(def.String())
 		} else {
-			ctx.logger = b.logger.Child(def.String())
+			ctx.internalLogger = b.internalLogger.Child(def.String())
 		}
 
 		go func() {
@@ -854,7 +855,7 @@ func (b *builder) receiptFromHash(hash hash.Hash) (*common.BuildReceipt, error) 
 		return nil, err
 	}
 
-	fakeCtx := &buildContext{buildDir: dir}
+	fakeCtx := &buildContext{buildDir: dir, log: b.log}
 
 	return fakeCtx.loadRecept()
 }
@@ -877,7 +878,7 @@ func (b *builder) GarbageCollect(olderThan time.Time) ([]hash.Hash, error) {
 	for _, hash := range hashes {
 		receipt, err := b.receiptFromHash(hash)
 		if err != nil {
-			log.Warn("failed to load receipt", "err", err)
+			b.log.Warn("failed to load receipt", "err", err)
 			continue
 		}
 
@@ -951,13 +952,15 @@ func New(
 	cache common.BuildCacheFilesystem,
 	db common.PackageDatabase,
 	maxJobs int,
-	logger Logger,
+	internalLogger Logger,
+	log log.Handler,
 ) common.Builder {
 	b := &builder{
-		buildDir:    cache,
-		database:    db,
-		logger:      logger,
-		tokenLocker: newTokenLocker(maxJobs),
+		buildDir:       cache,
+		database:       db,
+		internalLogger: internalLogger,
+		tokenLocker:    newTokenLocker(maxJobs, log),
+		log:            log,
 	}
 
 	b.defDb = hash.NewDefinitionDatabase(b.loadDefinition)

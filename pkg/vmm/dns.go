@@ -8,6 +8,7 @@ import (
 )
 
 type dnsServer struct {
+	log       log.Handler
 	server    *dns.Server
 	dnsLookup func(name string) (string, error)
 }
@@ -18,7 +19,7 @@ func (s *dnsServer) parseQuery(r *dns.Msg, m *dns.Msg) {
 		case dns.TypeA:
 			ip, err := s.dnsLookup(q.Name)
 			if err != nil {
-				log.Error("error resolving dns", "name", q.Name, "err", err)
+				s.log.Error("error resolving dns", "name", q.Name, "err", err)
 				m.SetRcode(r, dns.RcodeServerFailure)
 				return
 			}
@@ -29,7 +30,7 @@ func (s *dnsServer) parseQuery(r *dns.Msg, m *dns.Msg) {
 					m.Answer = append(m.Answer, rr)
 				}
 			} else {
-				log.Error("DNS Query for unknown name", "name", q.Name)
+				s.log.Error("DNS Query for unknown name", "name", q.Name)
 				m.SetRcode(r, dns.RcodeNameError)
 				return
 			}

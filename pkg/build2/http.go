@@ -10,7 +10,14 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
-func RegisterBuildDirectoryHandler(mux *http.ServeMux, buildDir BuildCacheFilesystem, prefix string, allowSingleHashes bool) {
+func RegisterBuildDirectoryHandler(
+	mux *http.ServeMux,
+	buildDir BuildCacheFilesystem,
+	// options
+	log log.Handler,
+	prefix string,
+	allowSingleHashes bool,
+) {
 	mux.Handle(prefix+"/{hash2}/{hash}/"+receiptFileName, http.StripPrefix(prefix, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hash2 := r.PathValue("hash2")
 		hashRest := r.PathValue("hash")

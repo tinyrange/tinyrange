@@ -122,7 +122,7 @@ func (vm *vmBackend) Close() error {
 func (vm *vmBackend) ReadAt(p []byte, off int64) (n int, err error) {
 	n, err = vm.vm.ReadAt(p, off)
 	if err != nil {
-		log.Error("vmBackend readAt", "len", len(p), "off", off, "err", err)
+		vm.driver.log.Error("vmBackend readAt", "len", len(p), "off", off, "err", err)
 
 		// assume the VM will detect this as corruption and exit immediately.
 		vm.driver.fatalError()
@@ -137,7 +137,7 @@ func (vm *vmBackend) ReadAt(p []byte, off int64) (n int, err error) {
 func (vm *vmBackend) WriteAt(p []byte, off int64) (n int, err error) {
 	n, err = vm.vm.WriteAt(p, off)
 	if err != nil {
-		log.Error("vmBackend writeAt", "len", len(p), "off", off, "err", err)
+		vm.driver.log.Error("vmBackend writeAt", "len", len(p), "off", off, "err", err)
 
 		// assume the VM will detect this as corruption and exit immediately.
 		vm.driver.fatalError()
@@ -222,7 +222,7 @@ var (
 type VirtualMachineMonitor interface {
 	// Run starts the virtual machine.
 	// If bindOutput is true, the output is bound to the current process.
-	Run(bindOutput bool) error
+	Run(log log.Handler, bindOutput bool) error
 
 	// Shutdown stops the virtual machine.
 	Shutdown() error
@@ -242,7 +242,7 @@ type executable struct {
 	cmd *exec.Cmd
 }
 
-func (exe *executable) Run(bindOutput bool) error {
+func (exe *executable) Run(log log.Handler, bindOutput bool) error {
 	exe.mtx.Lock()
 
 	log.Debug("running hypervisor", "command", exe.name, "args", exe.args)
@@ -292,6 +292,9 @@ type ProxyDriver interface {
 
 	// BuildDatabase returns the build database.
 	BuildDatabase() build2.BuildCacheFilesystem
+
+	// Logger returns the logger for the driver.
+	Logger() log.Handler
 }
 
 type Driver interface {
@@ -369,6 +372,8 @@ func (r *loggerRegion) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 type driver struct {
+	log log.Handler
+
 	configs                    []config.TinyRangeConfig
 	configFilenames            []string
 	buildDir                   string
@@ -404,6 +409,11 @@ type driver struct {
 	simpleCache map[string][]byte
 }
 
+// Logger implements Driver.
+func (tr *driver) Logger() log.Handler {
+	return tr.log
+}
+
 func (tr *driver) fatalError() {
 	for _, f := range tr.onExit {
 		f()
@@ -431,7 +441,7 @@ func (tr *driver) getOrCreateDefaultBuildDirectory() (string, error) {
 				return "", fmt.Errorf("failed to create build directory: %w", err)
 			}
 
-			log.Info("found tinyrange.portable, using build directory", "dir", path.Native.Join(currentDir, "build"))
+			tr.log.Info("found tinyrange.portable, using build directory", "dir", path.Native.Join(currentDir, "build"))
 
 			return path.Native.Join(currentDir, "build"), nil
 		}
@@ -446,7 +456,7 @@ func (tr *driver) getOrCreateDefaultBuildDirectory() (string, error) {
 	// otherwise use the default build directory.
 	defaultDir := common.GetDefaultBuildDir()
 
-	log.Info("using default build directory", "dir", defaultDir)
+	tr.log.Info("using default build directory", "dir", defaultDir)
 
 	if err := os.MkdirAll(defaultDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create build directory: %w", err)
@@ -481,7 +491,7 @@ func (tr *driver) loadBuildDatabase() error {
 			tr.buildDir = buildDir
 		}
 
-		tr.dbBuildDir, err = build2.OpenFilesystemBuildCache(mutBuildDir, build2.DEFAULT_DATABASE_CONFIG)
+		tr.dbBuildDir, err = build2.OpenFilesystemBuildCache(mutBuildDir, build2.DEFAULT_DATABASE_CONFIG, tr.log)
 		if err != nil {
 			return fmt.Errorf("failed to open build database: %w", err)
 		}
@@ -498,7 +508,7 @@ func (tr *driver) loadBuildDatabase() error {
 
 		mutBuildDir := filesystem.Factory.NewLocalMutableDirectory(buildDir)
 
-		tr.dbBuildDir, err = build2.OpenFilesystemBuildCache(mutBuildDir, build2.DEFAULT_DATABASE_CONFIG)
+		tr.dbBuildDir, err = build2.OpenFilesystemBuildCache(mutBuildDir, build2.DEFAULT_DATABASE_CONFIG, tr.log)
 		if err != nil {
 			return fmt.Errorf("failed to open build database: %w", err)
 		}
@@ -1025,18 +1035,18 @@ func (tr *driver) createNbdListener(tryUnix bool) (net.Addr, net.Listener, error
 
 		listener, err := net.Listen("unix", filename)
 		if err != nil {
-			log.Warn("failed to listen on unix socket", "error", err)
+			tr.log.Warn("failed to listen on unix socket", "error", err)
 			return tr.createNbdListener(false)
 		}
 
 		tr.onExit = append(tr.onExit, func() {
 			if err := listener.Close(); err != nil {
-				log.Error("failed to close listener", "error", err)
+				tr.log.Error("failed to close listener", "error", err)
 			}
 
 			if ok, _ := common.Exists(filename); ok {
 				if err := os.Remove(filename); err != nil {
-					log.Error("failed to remove socket", "error", err)
+					tr.log.Error("failed to remove socket", "error", err)
 				}
 			}
 		})
@@ -1164,7 +1174,7 @@ func (tr *driver) buildFilesystem(
 	if int64(float64(totalSize)*1.5) > int64(minSize)*1024*1024 {
 		targetSize := int64(float64(totalSize)*1.5) / 128 / 1024 / 1024
 
-		log.Debug("resize filesystem", "new", fmt.Sprintf("%dmb", targetSize*128))
+		tr.log.Debug("resize filesystem", "new", fmt.Sprintf("%dmb", targetSize*128))
 
 		fsSize = targetSize * 128 * 1024 * 1024
 	} else {
@@ -1226,7 +1236,7 @@ func (tr *driver) buildFilesystem(
 				if info.Size() == fsSize {
 					// all good
 				} else if info.Size() < fsSize && feature.HasFeature(feature.FeatureExt4Resize) {
-					log.Warn("resizing persistent filesystem", "size", fsSize, "current", info.Size())
+					tr.log.Warn("resizing persistent filesystem", "size", fsSize, "current", info.Size())
 					if err := fh.Truncate(fsSize); err != nil {
 						return nil, nil, 0, fmt.Errorf("failed to truncate persistent filesystem: %w", err)
 					}
@@ -1246,7 +1256,7 @@ func (tr *driver) buildFilesystem(
 	// Only create the filesystem if it needs to be created.
 	if create {
 		if final != nil {
-			log.Info("creating persistent disk", "size", fsSize, "path", persistPath)
+			tr.log.Info("creating persistent disk", "size", fsSize, "path", persistPath)
 		}
 
 		start := time.Now()
@@ -1254,7 +1264,7 @@ func (tr *driver) buildFilesystem(
 		vmem := vm.NewVirtualMemory(fsSize, 4096)
 		bd := &virtualBlockDevice{VirtualMemory: vmem}
 
-		log.Debug("created virtual memory", "took", time.Since(start))
+		tr.log.Debug("created virtual memory", "took", time.Since(start))
 
 		var ext4Fs *ext4.Ext4Filesystem
 		switch kind {
@@ -1267,7 +1277,7 @@ func (tr *driver) buildFilesystem(
 			}
 			ext4Fs = fs
 
-			log.Debug("created ext4 filesystem", "took", time.Since(start))
+			tr.log.Debug("created ext4 filesystem", "took", time.Since(start))
 
 			start = time.Now()
 
@@ -1287,7 +1297,7 @@ func (tr *driver) buildFilesystem(
 				return nil, nil, 0, fmt.Errorf("failed to add directory to filesystem: %w", err)
 			}
 
-			log.Debug("built filesystem", "took", time.Since(start))
+			tr.log.Debug("built filesystem", "took", time.Since(start))
 		case config.FilesystemKindRaw:
 			// noop
 		default:
@@ -1311,7 +1321,7 @@ func (tr *driver) buildFilesystem(
 
 		return final, ext4Fs, fsSize, nil
 	} else {
-		log.Info("opened persistent disk", "size", fsSize, "path", persistPath)
+		tr.log.Info("opened persistent disk", "size", fsSize, "path", persistPath)
 
 		return final, nil, fsSize, nil
 	}
@@ -1328,7 +1338,7 @@ func (tr *driver) nbdLoop(listener net.Listener, exports ...nbdExport) {
 		if errors.Is(err, net.ErrClosed) {
 			return
 		} else if err != nil {
-			log.Error("nbd server failed to accept", "error", err)
+			tr.log.Error("nbd server failed to accept", "error", err)
 			return
 		}
 
@@ -1357,9 +1367,10 @@ func (tr *driver) nbdLoop(listener net.Listener, exports ...nbdExport) {
 				MinimumBlockSize:   minBlockSize, // Fix for VZ on Darwin, it errors if the minimum is too large.
 				PreferredBlockSize: preferredBlockSize,
 				MaximumBlockSize:   maximumBlockSize,
+				Log:                tr.log,
 			})
 			if err != nil {
-				log.Warn("nbd server failed to handle", "error", err)
+				tr.log.Warn("nbd server failed to handle", "error", err)
 			}
 		}(conn)
 	}
@@ -1367,6 +1378,7 @@ func (tr *driver) nbdLoop(listener net.Listener, exports ...nbdExport) {
 
 func (d *driver) startDNSServer() error {
 	dnsServer := &dnsServer{
+		log: d.log,
 		dnsLookup: func(name string) (string, error) {
 			if name == "tinyrange." {
 				return "10.42.0.2", nil
@@ -1374,7 +1386,7 @@ func (d *driver) startDNSServer() error {
 				return "10.42.0.1", nil
 			}
 
-			log.Debug("doing DNS lookup", "name", name)
+			d.log.Debug("doing DNS lookup", "name", name)
 
 			// Do a DNS lookup on the host.
 			addr, err := net.ResolveIPAddr("ip4", name)
@@ -1404,7 +1416,7 @@ func (d *driver) startDNSServer() error {
 	go func() {
 		err := dnsServer.server.ActivateAndServe()
 		if err != nil {
-			log.Error("dns: failed to start server", "error", err.Error())
+			d.log.Error("dns: failed to start server", "error", err.Error())
 		}
 	}()
 
@@ -1416,7 +1428,7 @@ func (d *driver) exportPort(port portInformation) error {
 		port.listenAddress = "localhost"
 	}
 
-	log.Info("exporting port", "address", fmt.Sprintf("%s:%d", port.listenAddress, port.port))
+	d.log.Info("exporting port", "address", fmt.Sprintf("%s:%d", port.listenAddress, port.port))
 
 	portListen, err := net.Listen("tcp", fmt.Sprintf("%s:%d", port.listenAddress, port.port))
 	if err != nil {
@@ -1427,7 +1439,7 @@ func (d *driver) exportPort(port portInformation) error {
 		for {
 			conn, err := portListen.Accept()
 			if err != nil {
-				log.Error("failed to accept", "err", err)
+				d.log.Error("failed to accept", "err", err)
 				return
 			}
 
@@ -1437,13 +1449,13 @@ func (d *driver) exportPort(port portInformation) error {
 				clientConn, err := d.ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("10.42.0.2:%d", port.port))
 				if err != nil {
 					// silence these errors since they are exposed to the client anyway.
-					log.Debug("failed to dial vm port", "err", err)
+					d.log.Debug("failed to dial vm port", "err", err)
 					return
 				}
 				defer clientConn.Close()
 
 				if err := common.Proxy(clientConn, conn, 4096); err != nil {
-					log.Debug("failed to proxy connection", "err", err)
+					d.log.Debug("failed to proxy connection", "err", err)
 					return
 				}
 			}()
@@ -1481,7 +1493,7 @@ func (d *driver) startFileShare(mountedHostDirectories []mountInfo) error {
 				hostDir = filesystem.Factory.NewLocalDirectory(dir.HostDirectory)
 			}
 
-			svr := p9.NewServer(hostDir)
+			svr := p9.NewServer(hostDir, d.log)
 
 			listen, err := d.ns.ListenInternal("tcp", fmt.Sprintf(":%d", dir.Port))
 			if err != nil {
@@ -1490,7 +1502,7 @@ func (d *driver) startFileShare(mountedHostDirectories []mountInfo) error {
 
 			go func() {
 				if err := svr.Serve(listen); err != nil {
-					log.Error("failed to run 9p server", "err", err)
+					d.log.Error("failed to run 9p server", "err", err)
 				}
 			}()
 		}
@@ -1514,16 +1526,16 @@ func (d *driver) startFileShare(mountedHostDirectories []mountInfo) error {
 		}
 
 		if len(mountedHostDirectories) > 0 {
-			log.Info("host directories avalible via SFTP on sftp://host.internal")
+			d.log.Info("host directories avalible via SFTP on sftp://host.internal")
 		}
 
-		svr := sftp.NewInternalServer(top, ":22")
+		svr := sftp.NewInternalServer(top, d.log, ":22")
 
 		go func() {
 			if err := svr.Run(func(network, addr string) (net.Listener, error) {
 				return d.ns.ListenInternal("tcp", addr)
 			}); err != nil {
-				log.Error("failed to run sftp server", "err", err)
+				d.log.Error("failed to run sftp server", "err", err)
 			}
 		}()
 	}
@@ -1555,7 +1567,7 @@ func (d *driver) startSocks5Proxy(listener net.Listener) error {
 
 	go func() {
 		if err := server.Serve(listener); err != nil {
-			log.Error("failed to run socks5 server", "err", err)
+			d.log.Error("failed to run socks5 server", "err", err)
 		}
 	}()
 
@@ -1603,7 +1615,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 	}
 
 	if topConfig.Debug {
-		log.Warn("enabling hypervisor debug mode")
+		d.log.Warn("enabling hypervisor debug mode")
 		d.debug = true
 	}
 
@@ -1632,7 +1644,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		return fmt.Errorf("failed to convert fragments to config: %w", err)
 	}
 
-	log.Debug("built filesystem tree", "took", time.Since(start))
+	d.log.Debug("built filesystem tree", "took", time.Since(start))
 
 	secureSSH, err := d.configureSecureSSH(root)
 	if err != nil {
@@ -1694,7 +1706,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 			}
 		}
 
-		log.Debug("exported filesystem", "took", time.Since(start))
+		d.log.Debug("exported filesystem", "took", time.Since(start))
 
 		return nil
 	}
@@ -1743,7 +1755,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		}
 		d.onExit = append(d.onExit, func() {
 			if err := vmem.Close(); err != nil {
-				log.Error("failed to close virtual memory", "error", err)
+				d.log.Error("failed to close virtual memory", "error", err)
 			}
 		})
 
@@ -1799,7 +1811,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 	go d.nbdLoop(listener, exports...)
 
-	ns := netstack.New()
+	ns := netstack.New(d.log)
 	d.ns = ns
 
 	if d.wireguardUrl != "" {
@@ -1918,15 +1930,15 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		}
 	}
 
-	log.Debug("starting virtual machine", "took", time.Since(start))
+	d.log.Debug("starting virtual machine", "took", time.Since(start))
 
 	d.onExit = append(d.onExit, func() {
 		if err := vmm.Shutdown(); err != nil {
-			log.Error("failed to shutdown virtual machine", "err", err)
+			d.log.Error("failed to shutdown virtual machine", "err", err)
 		}
 	})
 
-	log.Debug("running virtual machine", "initTime", time.Since(mainStart))
+	d.log.Debug("running virtual machine", "initTime", time.Since(mainStart))
 
 	return d.runInteraction(
 		vmm,
@@ -1950,7 +1962,7 @@ func (d *driver) execProxy(create func(vmm ProxyDriver) (ProxyMonitor, error)) e
 
 	d.onExit = append(d.onExit, func() {
 		if err := inst.Shutdown(); err != nil {
-			log.Error("failed to shutdown virtual machine", "err", err)
+			d.log.Error("failed to shutdown virtual machine", "err", err)
 		}
 	})
 
@@ -1976,8 +1988,8 @@ func (d *driver) runInteraction(
 		exited := &exitNotify{}
 
 		go func() {
-			if err := vmm.Run(d.debug); err != nil {
-				log.Error("failed to run virtual machine", "err", err)
+			if err := vmm.Run(d.log, d.debug); err != nil {
+				d.log.Error("failed to run virtual machine", "err", err)
 				os.Exit(1)
 			}
 
@@ -1986,36 +1998,36 @@ func (d *driver) runInteraction(
 		}()
 
 		if d.Interaction() == config.InteractionVNC {
-			go runVncClient(d.ns, "10.42.0.2:5901")
+			go runVncClient(d.ns, d.log, "10.42.0.2:5901")
 		}
 
-		err = connectOverSsh(d.ns, "10.42.0.2:2222", "root", secureSSH, exited)
+		err = connectOverSsh(d.ns, d.log, "10.42.0.2:2222", "root", secureSSH, exited)
 		if err != nil {
 			return fmt.Errorf("failed to connect over ssh: %w", err)
 		}
 
 		return nil
 	case config.InteractionRemote:
-		if err := vmm.Run(d.debug); err != nil {
+		if err := vmm.Run(d.log, d.debug); err != nil {
 			return fmt.Errorf("failed to run virtual machine: %w", err)
 		}
 
 		return nil
 	case config.InteractionSerial:
-		if err := vmm.Run(true); err != nil {
+		if err := vmm.Run(d.log, true); err != nil {
 			return fmt.Errorf("failed to run virtual machine: %w", err)
 		}
 
 		return nil
 	case config.InteractionWebSSH, config.InteractionWebSSHMinimal, config.InteractionWebSSHNoBrower:
 		go func() {
-			if err := vmm.Run(d.debug); err != nil {
-				log.Error("failed to run virtual machine", "err", err)
+			if err := vmm.Run(d.log, d.debug); err != nil {
+				d.log.Error("failed to run virtual machine", "err", err)
 				os.Exit(1)
 			}
 		}()
 
-		return runWebSsh(d.ns, "10.42.0.2:2222", "root", secureSSH, strings.TrimPrefix(string(d.Interaction()), "webssh,"))
+		return runWebSsh(d.ns, d.log, "10.42.0.2:2222", "root", secureSSH, strings.TrimPrefix(string(d.Interaction()), "webssh,"))
 	default:
 		return fmt.Errorf("unsupported interaction mode: %s", d.Interaction())
 	}
@@ -2145,7 +2157,7 @@ func (d *driver) EnsureFile(contents []byte) (File, error) {
 
 	path := path.Native.Join(d.buildDir, string(hash)+".bin")
 
-	log.Debug("ensure file", "path", path, "length", len(contents))
+	d.log.Debug("ensure file", "path", path, "length", len(contents))
 
 	if ok, _ := common.Exists(path); !ok {
 		if err := os.WriteFile(path, contents, os.ModePerm); err != nil {
@@ -2203,6 +2215,7 @@ func initCommon(
 	}
 
 	driver := &driver{
+		log:                        log.Default(),
 		buildDir:                   *buildDir,
 		debug:                      *debug,
 		secureSSH:                  *secureSSH,
@@ -2220,7 +2233,7 @@ func initCommon(
 	if *doPrepare {
 		out, err := prepare(driver)
 		if err != nil {
-			log.Error("fatal", "err", err)
+			driver.log.Error("fatal", "err", err)
 			os.Exit(1)
 		}
 
@@ -2312,6 +2325,8 @@ func ProxyEntry(
 		return
 	}
 
+	log := log.Default()
+
 	if os.Getenv("TINYRANGE_VERBOSE") == "on" {
 		if err := common.EnableVerbose(); err != nil {
 			log.Error("failed to enable verbose logging", "err", err)
@@ -2338,6 +2353,8 @@ func Entry(
 	if goboot.MaybeExecInit() {
 		return
 	}
+
+	log := log.Default()
 
 	if os.Getenv("TINYRANGE_VERBOSE") == "on" {
 		if err := common.EnableVerbose(); err != nil {

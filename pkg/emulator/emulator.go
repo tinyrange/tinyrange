@@ -47,7 +47,7 @@ func (s *starProgram) Run(proc shared.Process, argv []string) error {
 	)
 	if err != nil {
 		if sErr, ok := err.(*starlark.EvalError); ok {
-			log.Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
+			log.Default().Error("got starlark error", "error", sErr, "backtrace", sErr.Backtrace())
 		}
 		return err
 	}

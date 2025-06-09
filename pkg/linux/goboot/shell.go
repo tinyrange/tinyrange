@@ -18,7 +18,8 @@ import (
 )
 
 type shellInstance struct {
-	rl *readline.Instance
+	log log.Handler
+	rl  *readline.Instance
 }
 
 var (
@@ -68,7 +69,7 @@ func (sh *shellInstance) processLine(line string) error {
 		err := recover()
 
 		if err != nil {
-			log.Error("caught panic", "err", err)
+			sh.log.Error("caught panic", "err", err)
 		}
 	}()
 
@@ -166,7 +167,7 @@ func (sh *shellInstance) processLine(line string) error {
 		return nil
 	case strings.HasPrefix(line, "env"):
 		for _, env := range os.Environ() {
-			log.Info("", "env", env)
+			sh.log.Info("", "env", env)
 		}
 
 		return nil
@@ -178,7 +179,7 @@ def main():
 	print(` + rest + `)
 `
 
-		if err := runStarlarkScript("shell.star", template); err != nil {
+		if err := runStarlarkScript("shell.star", template, sh.log); err != nil {
 			return err
 		}
 
@@ -206,10 +207,12 @@ func (sh *shellInstance) updatePrompt() {
 	sh.rl.SetPrompt(cwd + " \033[94m# \033[0m")
 }
 
-func shellMain() error {
+func shellMain(log log.Handler) error {
 	var err error
 
-	sh := &shellInstance{}
+	sh := &shellInstance{
+		log: log,
+	}
 
 	sh.rl, err = readline.NewEx(&readline.Config{
 		Prompt:       "\033[94m>>> \033[0m",

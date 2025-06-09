@@ -54,12 +54,12 @@ func (t *token) Donate() {
 // Lock waits until it can acquire a token or receives a donation.
 func (t *token) Lock(reason string) io.Closer {
 	if t.locker.debug {
-		log.Info("try lock", "reason", reason, "currentlyLocked", t.locker.currentlyLocked.Load())
+		t.locker.log.Info("try lock", "reason", reason, "currentlyLocked", t.locker.currentlyLocked.Load())
 	}
 
 	if !t.mode.CompareAndSwap(modeFresh, modeWaiting) {
 		if t.locker.debug {
-			log.Error("token already waiting", "currentlyLocked", t.locker.currentlyLocked.Load())
+			t.locker.log.Error("token already waiting", "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
 
 		return nil
@@ -76,7 +76,7 @@ func (t *token) Lock(reason string) io.Closer {
 		t.lockReason = reason
 
 		if t.locker.debug {
-			log.Info("acquire token", "reason", reason, "currentlyLocked", t.locker.currentlyLocked.Load())
+			t.locker.log.Info("acquire token", "reason", reason, "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
 
 		t.locker.currentlyLocked.Add(1)
@@ -99,7 +99,7 @@ func (t *token) Close() error {
 
 	if t.closed {
 		if t.locker.debug {
-			log.Error("token already closed", "currentlyLocked", t.locker.currentlyLocked.Load())
+			t.locker.log.Error("token already closed", "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
 
 		return errors.New("token already closed")
@@ -110,7 +110,7 @@ func (t *token) Close() error {
 	switch t.mode.Load() {
 	case modeLocked:
 		if t.locker.debug {
-			log.Info("release token", "reason", t.lockReason, "currentlyLocked", t.locker.currentlyLocked.Load())
+			t.locker.log.Info("release token", "reason", t.lockReason, "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
 
 		t.mode.Store(modeReleased)
@@ -119,21 +119,21 @@ func (t *token) Close() error {
 		select {
 		case t.locker.c <- struct{}{}:
 			if t.locker.debug {
-				log.Info("return token", "currentlyLocked", t.locker.currentlyLocked.Load())
+				t.locker.log.Info("return token", "currentlyLocked", t.locker.currentlyLocked.Load())
 			}
 
 			t.locker.currentlyLocked.Add(-1)
 			return nil
 		default:
 			if t.locker.debug {
-				log.Error("locker channel is full, cannot return token", "currentlyLocked", t.locker.currentlyLocked.Load())
+				t.locker.log.Error("locker channel is full, cannot return token", "currentlyLocked", t.locker.currentlyLocked.Load())
 			}
 
 			return errors.New("locker channel is full, cannot return token")
 		}
 	case modeDonated:
 		if t.locker.debug {
-			log.Info("donated token", "currentlyLocked", t.locker.currentlyLocked.Load())
+			t.locker.log.Info("donated token", "currentlyLocked", t.locker.currentlyLocked.Load())
 		}
 
 		t.mode.Store(modeReleased)
@@ -153,6 +153,7 @@ type tokenLocker struct {
 	c               chan struct{}
 	currentlyLocked atomic.Int32
 	debug           bool
+	log             log.Handler
 }
 
 // New creates a new token associated with the locker.
@@ -164,10 +165,11 @@ func (t *tokenLocker) New() *token {
 }
 
 // newTokenLocker initializes a new token locker with a given size.
-func newTokenLocker(size int) *tokenLocker {
+func newTokenLocker(size int, log log.Handler) *tokenLocker {
 	tl := &tokenLocker{
 		c:     make(chan struct{}, size),
 		debug: feature.HasFeature(feature.FeatureTokenLockerDebug),
+		log:   log,
 	}
 
 	if tl.debug {

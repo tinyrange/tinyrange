@@ -7,7 +7,6 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/build2"
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 const API_VERSION = "0.1.0"
@@ -27,7 +26,7 @@ func (s *Server) ListenAndServe(address string) error {
 	s.http.Addr = address
 	s.http.Handler = s.mux
 
-	log.Info("Starting TinyRange server", "address", "http://"+address)
+	s.db.Logger().Info("Starting TinyRange server", "address", "http://"+address)
 
 	return s.http.ListenAndServe()
 }
@@ -98,7 +97,13 @@ func New(db common.PackageDatabase) *Server {
 	s.mux.HandleFunc("GET /build", s.handleGetAllDefinitions)
 
 	// Register the standard build2 handler for reading the build directory
-	build2.RegisterBuildDirectoryHandler(s.mux, db.Builder().Filesystem().(build2.BuildCacheFilesystem), "/build", true)
+	build2.RegisterBuildDirectoryHandler(
+		s.mux,
+		db.Builder().Filesystem().(build2.BuildCacheFilesystem),
+		db.Logger(),
+		"/build",
+		true,
+	)
 
 	return s
 }

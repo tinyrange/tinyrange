@@ -63,7 +63,8 @@ func generateMacAddress() (net.HardwareAddr, error) {
 }
 
 type NetworkInterface struct {
-	ns *NetStack
+	ns  *NetStack
+	log log.Handler
 
 	netSend    net.Addr
 	netRecv    net.Addr
@@ -92,7 +93,7 @@ func (nic *NetworkInterface) GetUDPSocketPair() (net.Addr, net.Addr, error) {
 		for {
 			n, _, err := send.ReadFromUDP(buf)
 			if err != nil {
-				log.Error("failed to read send socket", "err", err)
+				nic.log.Error("failed to read send socket", "err", err)
 				return
 			}
 
@@ -159,7 +160,7 @@ func (nic *NetworkInterface) GetUDPSocketPair() (net.Addr, net.Addr, error) {
 
 			_, err := nic.udpConn.Write(pktBytes)
 			if err != nil {
-				log.Debug("failed to write packet to guest", "err", err)
+				nic.log.Debug("failed to write packet to guest", "err", err)
 			}
 
 			pkt.DecRef()
@@ -177,7 +178,7 @@ func (nic *NetworkInterface) AttachFile(file *os.File) error {
 		for {
 			n, err := file.Read(buf)
 			if err != nil {
-				log.Error("failed to read send socket", "err", err)
+				nic.log.Error("failed to read send socket", "err", err)
 				return
 			}
 
@@ -224,7 +225,7 @@ func (nic *NetworkInterface) AttachFile(file *os.File) error {
 
 			_, err := file.Write(pktBytes)
 			if err != nil {
-				log.Debug("failed to write packet to guest", "err", err)
+				nic.log.Debug("failed to write packet to guest", "err", err)
 			}
 
 			pkt.DecRef()
@@ -249,7 +250,7 @@ func (nic *NetworkInterface) onReceivePacket(pkt []byte) {
 	} else if etherType == uint16(ipv6.ProtocolNumber) {
 		proto = ipv6.ProtocolNumber
 	} else {
-		log.Warn("nets: unknown protocol number", "proto", proto)
+		nic.log.Warn("nets: unknown protocol number", "proto", proto)
 	}
 
 	// log.Info("pkt", "dst", dstMac.String(), "src", srcMac.String(), "etherType", etherType, "payload", payload)
@@ -268,6 +269,7 @@ type NetStack struct {
 	packetDump *pcapgo.Writer
 	wg         Wireguard
 	hostMac    net.HardwareAddr
+	log        log.Handler
 }
 
 func (ns *NetStack) splitAddress(addr string) (tcpip.FullAddress, error) {
@@ -374,7 +376,8 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 	var err error
 
 	nic := &NetworkInterface{
-		ns: ns,
+		ns:  ns,
+		log: ns.log,
 	}
 
 	ns.hostMac, err = generateMacAddress()
@@ -467,7 +470,7 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 
 	ep, ipErr := r.CreateEndpoint(&wq)
 	if ipErr != nil {
-		log.Error("error creating endpoint", "err", ipErr)
+		ns.log.Error("error creating endpoint", "err", ipErr)
 		r.Complete(true)
 		return
 	}
@@ -492,7 +495,7 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 			Port: int(id.LocalPort),
 		}
 
-		log.Debug("dialing remote host", "addr", loc.String())
+		ns.log.Debug("dialing remote host", "addr", loc.String())
 
 		var outbound net.Conn
 
@@ -521,8 +524,10 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 // 	log.Info("udp forwarding request", "req", r)
 // }
 
-func New() *NetStack {
-	ns := NetStack{}
+func New(log log.Handler) *NetStack {
+	ns := NetStack{
+		log: log,
+	}
 
 	ns.nStack = stack.New(stack.Options{
 		NetworkProtocols: []stack.NetworkProtocolFactory{

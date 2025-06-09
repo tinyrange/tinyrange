@@ -84,7 +84,7 @@ func ToStringList(it starlark.Iterable) ([]string, error) {
 
 const EXT4_IOC_RESIZE_FS = 0x40086610
 
-func tryResizeExt4(mountPoint string) error {
+func tryResizeExt4(mountPoint string, log log.Handler) error {
 	tmpFilename := "/init.d/resize"
 
 	// get the underlying block device for the mount point
@@ -173,6 +173,7 @@ func SetWinsize(fd uintptr, w, h uint32) error {
 }
 
 type sshServer struct {
+	log      log.Handler
 	callable starlark.Callable
 	command  []string
 	hostKey  string
@@ -237,7 +238,7 @@ func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, nonIntera
 	close := func() {
 		if shell.Process != nil {
 			if ps, err := shell.Process.Wait(); err != nil && ps != nil {
-				log.Warn("failed to exit shell", "error", err)
+				s.log.Warn("failed to exit shell", "error", err)
 			}
 		}
 
@@ -263,7 +264,7 @@ func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, nonIntera
 	go func() {
 		err := common.Proxy(shellf, connection, 4096)
 		if err != nil {
-			log.Warn("proxy failed", "error", err)
+			s.log.Warn("proxy failed", "error", err)
 		}
 
 		close()
@@ -275,7 +276,7 @@ func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, nonIntera
 		if shell.Process != nil {
 			ps, err := shell.Process.Wait()
 			if err != nil && ps != nil {
-				log.Warn("failed to exit shell", "error", err)
+				s.log.Warn("failed to exit shell", "error", err)
 			}
 
 			// Send the exit code to the client
@@ -305,7 +306,7 @@ func (s *sshServer) handleChannel(conn ssh.Conn, newChannel ssh.NewChannel) {
 
 	connection, requests, err := newChannel.Accept()
 	if err != nil {
-		log.Warn("could not accept channel", "error", err)
+		s.log.Warn("could not accept channel", "error", err)
 		return
 	}
 
@@ -376,7 +377,7 @@ func (s *sshServer) handleRequests(conn ssh.Conn, connection ssh.Channel, reques
 	for req := range requests {
 		switch req.Type {
 		case "pty-req":
-			log.Debug("pty-req", "payload", hex.EncodeToString(req.Payload))
+			s.log.Debug("pty-req", "payload", hex.EncodeToString(req.Payload))
 			termLen := req.Payload[3]
 
 			// Make sure we correctly forward the terminal from the host.
@@ -397,26 +398,26 @@ func (s *sshServer) handleRequests(conn ssh.Conn, connection ssh.Channel, reques
 			// Responding true (OK) here will let the client
 			// know we have attached the shell (pty) to the connection
 			if len(req.Payload) > 0 {
-				log.Debug("shell command ignored", "payload", req.Payload)
+				s.log.Debug("shell command ignored", "payload", req.Payload)
 			}
 
 			err := s.attachShell(conn, connection, nonInteractive, env, resizes)
 			if err != nil {
-				log.Warn("failed to attach shell", "error", err)
+				s.log.Warn("failed to attach shell", "error", err)
 			}
 
 			_ = req.Reply(err == nil, nil)
 		case "exec":
 			err := s.handleExec(conn, connection, req, env)
 			if err != nil {
-				log.Warn("failed to handle exec", "error", err)
+				s.log.Warn("failed to handle exec", "error", err)
 			}
 
 			if err := connection.Close(); err != nil {
-				log.Warn("failed to close connection", "error", err)
+				s.log.Warn("failed to close connection", "error", err)
 			}
 		default:
-			log.Debug("unknown request", "type", req.Type, "reply", req.WantReply, "data", req.Payload)
+			s.log.Debug("unknown request", "type", req.Type, "reply", req.WantReply, "data", req.Payload)
 
 			if req.WantReply {
 				req.Reply(false, nil)
@@ -439,7 +440,7 @@ func (s *sshServer) handleClient(nConn net.Conn, config *ssh.ServerConfig) error
 		return err
 	}
 
-	log.Debug("new SSH connection", "remote", sshConn.RemoteAddr(), "client_version", sshConn.ClientVersion())
+	s.log.Debug("new SSH connection", "remote", sshConn.RemoteAddr(), "client_version", sshConn.ClientVersion())
 
 	// Discard all global out-of-band Requests
 	go ssh.DiscardRequests(reqs)
@@ -496,7 +497,7 @@ func (s *sshServer) run(callable starlark.Callable) error {
 		go func() {
 			err := s.handleClient(nConn, config)
 			if err != nil {
-				log.Debug("failed to handle ssh client", "err", err)
+				s.log.Debug("failed to handle ssh client", "err", err)
 			}
 		}()
 	}
@@ -617,7 +618,7 @@ func loadStarlarkArgs() (starlark.Value, error) {
 	return args, nil
 }
 
-func getStarlarkGlobals() (starlark.StringDict, error) {
+func getStarlarkGlobals(log log.Handler) (starlark.StringDict, error) {
 	globals := starlark.StringDict{}
 
 	globals["exit"] = starlark.NewBuiltin("exit", func(
@@ -1162,6 +1163,7 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 		}
 
 		sshServer := &sshServer{
+			log:      log,
 			hostKey:  hostKey,
 			password: password,
 		}
@@ -1277,7 +1279,7 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 			return starlark.None, err
 		}
 
-		return starlark.None, runStarlarkFile(filename)
+		return starlark.None, runStarlarkFile(filename, log)
 	})
 
 	globals["run_starlark_server"] = starlark.NewBuiltin("run_starlark_server", func(
@@ -1294,7 +1296,7 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 			return starlark.None, err
 		}
 
-		return starlark.None, runStarlarkServer(port)
+		return starlark.None, runStarlarkServer(port, log)
 	})
 
 	globals["run_shell"] = starlark.NewBuiltin("run_shell", func(
@@ -1303,7 +1305,7 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 		args starlark.Tuple,
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
-		return starlark.None, shellMain()
+		return starlark.None, shellMain(log)
 	})
 
 	globals["has_experimental_flag"] = starlark.NewBuiltin("has_experimental_flag", func(
@@ -1343,7 +1345,7 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 			return starlark.None, err
 		}
 
-		if err := tryResizeExt4(mountPoint); err != nil {
+		if err := tryResizeExt4(mountPoint, log); err != nil {
 			return starlark.None, err
 		}
 
@@ -1447,7 +1449,7 @@ func getStarlarkGlobals() (starlark.StringDict, error) {
 	return globals, nil
 }
 
-func runStarlarkServer(port int) error {
+func runStarlarkServer(port int, log log.Handler) error {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "OKAY")
 	})
@@ -1465,7 +1467,7 @@ func runStarlarkServer(port int) error {
 		// run this in the background since it may disconnect us by invoking a new init.
 		go func() {
 			log.Info("running starlark script", "contents", string(contents))
-			if err := runStarlarkScript("script.star", string(contents)); err != nil {
+			if err := runStarlarkScript("script.star", string(contents), log); err != nil {
 				log.Error("failed to run starlark script", "err", err)
 			}
 		}()
@@ -1476,13 +1478,13 @@ func runStarlarkServer(port int) error {
 	return http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 }
 
-func runStarlarkScript(filename string, contents string) error {
+func runStarlarkScript(filename string, contents string, log log.Handler) error {
 	args, err := loadStarlarkArgs()
 	if err != nil {
 		return fmt.Errorf("failed to load starlark args: %v", err)
 	}
 
-	globals, err := getStarlarkGlobals()
+	globals, err := getStarlarkGlobals(log)
 	if err != nil {
 		return fmt.Errorf("failed to get starlark globals: %v", err)
 	}
@@ -1509,16 +1511,16 @@ func runStarlarkScript(filename string, contents string) error {
 	return nil
 }
 
-func runStarlarkFile(filename string) error {
+func runStarlarkFile(filename string, log log.Handler) error {
 	contents, err := os.ReadFile(filename)
 	if err != nil {
 		return err
 	}
 
-	return runStarlarkScript(filename, string(contents))
+	return runStarlarkScript(filename, string(contents), log)
 }
 
-func runSSHServer() error {
+func runSSHServer(log log.Handler) error {
 	// Load the configuration file.
 	args, err := loadStarlarkArgs()
 	if err != nil {
@@ -1561,6 +1563,7 @@ func runSSHServer() error {
 	}
 
 	server := &sshServer{
+		log:      log,
 		hostKey:  sshHostKey,
 		password: sshPassword,
 		command:  commandArgs,
@@ -1595,8 +1598,10 @@ func initMain() error {
 		return err
 	}
 
+	log := log.Default()
+
 	if *execShell {
-		return shellMain()
+		return shellMain(log)
 	}
 
 	if *runSshServer != "" {
@@ -1605,13 +1610,17 @@ func initMain() error {
 			return err
 		}
 
-		sshServer := &sshServer{command: cmd, password: config.INSECURE_SSH_PASSWORD}
+		sshServer := &sshServer{
+			log:      log,
+			command:  cmd,
+			password: config.INSECURE_SSH_PASSWORD,
+		}
 
 		return sshServer.run(nil)
 	}
 
 	if *runConfiguredSsh {
-		return runSSHServer()
+		return runSSHServer(log)
 	}
 
 	if *downloadFile != "" {
@@ -1707,11 +1716,11 @@ func initMain() error {
 			return err
 		}
 
-		return builderRunWithConfig(cfg)
+		return builderRunWithConfig(cfg, log)
 	}
 
 	if *runStarlarkScriptFile != "" {
-		return runStarlarkFile(*runStarlarkScriptFile)
+		return runStarlarkFile(*runStarlarkScriptFile, log)
 	}
 
 	if *modprobe != "" {
@@ -1810,11 +1819,11 @@ func initMain() error {
 	}
 
 	if ok, _ := common.Exists("/init.star"); ok {
-		if err := runStarlarkFile("/init.star"); err != nil {
+		if err := runStarlarkFile("/init.star", log); err != nil {
 			return fmt.Errorf("failed to run /init.star: %v", err)
 		}
 	} else {
-		if err := runStarlarkScript("/init.star", string(INIT_SCRIPT)); err != nil {
+		if err := runStarlarkScript("/init.star", string(INIT_SCRIPT), log); err != nil {
 			return fmt.Errorf("failed to run /init.star: %v", err)
 		}
 	}
@@ -1825,7 +1834,7 @@ func initMain() error {
 func InitMain() {
 	if os.Getenv("TINYRANGE_VERBOSE") == "on" {
 		if err := common.EnableVerbose(); err != nil {
-			log.Error("failed to enable verbose logging", "err", err)
+			log.Default().Error("failed to enable verbose logging", "err", err)
 			os.Exit(1)
 		}
 	}
@@ -1836,10 +1845,10 @@ func InitMain() {
 		version = buildinfo.Main.Version
 	}
 
-	log.Debug("TinyRange Init", "version", version, "pid", os.Getpid())
+	log.Default().Debug("TinyRange Init", "version", version, "pid", os.Getpid())
 
 	if err := initMain(); err != nil {
-		log.Error("fatal", "err", err)
+		log.Default().Error("fatal", "err", err)
 		os.Exit(1)
 	}
 }

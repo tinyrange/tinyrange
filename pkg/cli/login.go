@@ -148,7 +148,7 @@ func runConfig(configFilename string) {
 	loginLoadConfig = configFilename
 
 	if err := runLogin([]string{}); err != nil {
-		log.Error("failed to run config", "error", err)
+		log.Default().Error("failed to run config", "error", err)
 		os.Exit(1)
 	}
 }

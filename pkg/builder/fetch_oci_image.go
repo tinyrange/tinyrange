@@ -80,7 +80,7 @@ func ParseOciImage(ociImage string) (registry string, image string, tag string, 
 		image = "library/" + image
 	}
 
-	log.Debug("parsed OCI image", "registry", registry, "image", image, "tag", tag)
+	log.Default().Debug("parsed OCI image", "registry", registry, "image", image, "tag", tag)
 
 	return
 }
@@ -126,6 +126,7 @@ var (
 )
 
 type ociRegistryContext struct {
+	log      log.Handler
 	registry string
 	token    string
 }
@@ -158,7 +159,7 @@ func (ctx *ociRegistryContext) responseHandler(resp *http.Response) (bool, error
 			authenticate["service"],
 			authenticate["scope"])
 
-		log.Debug("registry auth", "url", tokenUrl)
+		ctx.log.Debug("registry auth", "url", tokenUrl)
 
 		resp, err := http.Get(tokenUrl)
 		if err != nil {
@@ -238,7 +239,7 @@ func (r *registryRequestDefinition) Build(ctx common.BuildContext) error {
 			return err
 		}
 
-		log.Debug("registry request failed", "url", r.ctx.registry+r.params.Url, "content", string(content))
+		ctx.Logger().Debug("registry request failed", "url", r.ctx.registry+r.params.Url, "content", string(content))
 
 		return r.Build(ctx)
 	}

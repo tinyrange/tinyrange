@@ -34,6 +34,7 @@ type buildVmDefinition struct {
 	cmd       *exec.Cmd
 	out       io.WriteCloser
 	gotOutput bool
+	log       log.Handler
 }
 
 // AsFragments implements common.Directive.
@@ -113,7 +114,7 @@ func (def *buildVmDefinition) ToStarlark(artifact common.BuildArtifact) (starlar
 // WriteTo implements common.BuildResult.
 func (def *buildVmDefinition) WriteResult(w io.Writer) error {
 	if err := def.cmd.Wait(); err != nil {
-		log.Error("error waiting for VM", "err", err)
+		def.log.Error("error waiting for VM", "err", err)
 		return err
 	}
 
@@ -122,11 +123,11 @@ func (def *buildVmDefinition) WriteResult(w io.Writer) error {
 	}
 
 	if err := def.server.Shutdown(context.Background()); err != nil {
-		log.Error("error shutting down server", "err", err)
+		def.log.Error("error shutting down server", "err", err)
 	}
 
 	if err := def.out.Close(); err != nil {
-		log.Error("error closing output", "err", err)
+		def.log.Error("error closing output", "err", err)
 	}
 
 	return nil
@@ -327,6 +328,8 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 		}
 	}
 
+	def.log = ctx.Logger()
+
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
 		return err
@@ -356,7 +359,7 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 
 		_, err := io.Copy(def.out, r.Body)
 		if err != nil {
-			log.Error("error writing output from VM", "err", err)
+			def.log.Error("error writing output from VM", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})

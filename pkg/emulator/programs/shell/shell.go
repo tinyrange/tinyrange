@@ -242,7 +242,7 @@ func (sh *shellProgram) evalFile(f *syntax.File) error {
 
 func (sh *shellProgram) init() {
 	sh.builtIns["set"] = func(args []string) error {
-		log.Info("set", "args", args)
+		log.Default().Info("set", "args", args)
 
 		return nil
 	}
@@ -281,7 +281,7 @@ func (sh *shellProgram) init() {
 				return err
 			}
 
-			log.Info("", "data", data)
+			log.Default().Info("", "data", data)
 
 			tokens := strings.Split(string(data), args[2])
 

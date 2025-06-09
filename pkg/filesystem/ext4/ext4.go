@@ -285,7 +285,7 @@ func (d *LinearDirectory) increaseSize() error {
 		// Allocate more blocks.
 		// The block allocation goes 1,4,16,64 blocks.
 		if err = d.extentTree.AllocateBlocks(int64(len(d.blocks) * 4)); err != nil {
-			log.Info("failed to allocate blocks", "blocks", int64(len(d.blocks)*2))
+			log.Default().Warn("failed to allocate blocks", "blocks", int64(len(d.blocks)*2))
 			return err
 		}
 
@@ -1385,7 +1385,7 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool, resol
 	tokens := strings.Split(filename, "/")
 
 	if debug {
-		log.Debug("", "tokens", tokens)
+		log.Default().Debug("", "tokens", tokens)
 	}
 
 	currentNode, err := fs.root()
@@ -1422,7 +1422,7 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool, resol
 		}
 
 		if debug {
-			log.Debug("", "name", token, "child", child)
+			log.Default().Debug("", "name", token, "child", child)
 		}
 
 		currentNode = child
@@ -1629,7 +1629,7 @@ func (fs *Ext4Filesystem) mapRawExtent(region vm.MemoryRegion, extent *Extent) e
 	)
 }
 
-func (fs *Ext4Filesystem) DumpDebug(filename string) {
+func (fs *Ext4Filesystem) DumpDebug(log log.Handler, filename string) {
 	ent, err := fs.getNode(filename, true, false, false)
 	if err != nil {
 		log.Error("file does not exist", "filename", filename)
@@ -1733,7 +1733,7 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 			if err != nil {
 				ctx.deferredFilesystem = append(ctx.deferredFilesystem, func() error {
 					if err := fs.Link(name, target); err != nil {
-						log.Error("failed to link", "name", name, "target", target, "err", err)
+						log.Default().Error("failed to link", "name", name, "target", target, "err", err)
 
 						// major hack to try and reorder things.
 						ctx.deferredFilesystem = append(ctx.deferredFilesystem, func() error {
@@ -1865,7 +1865,7 @@ func (fs *Ext4Filesystem) AddDirectory(
 	return nil
 }
 
-func (fs *Ext4Filesystem) PrintStats() {
+func (fs *Ext4Filesystem) PrintStats(log log.Handler) {
 	log.Info("ext4 stats",
 		"totalMapRegion", float64(totalMapRegion)/1000/1000,
 		"totalAllocateInode", float64(totalAllocateInode)/1000/1000,
@@ -1894,7 +1894,7 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 	blockGroupCount := roundUpDiv(blockCount, int64(blocksPerGroup))
 	inodeCount := blockGroupCount * int64(inodesPerGroup)
 
-	log.Debug("making exr4 filesystem", "vmPageSize", _vm.PageSize(), "blocks", blockCount, "inodes", inodeCount, "blockGroups", blockGroupCount)
+	log.Default().Debug("making exr4 filesystem", "vmPageSize", _vm.PageSize(), "blocks", blockCount, "inodes", inodeCount, "blockGroups", blockGroupCount)
 
 	fs := &Ext4Filesystem{
 		vm:         _vm,

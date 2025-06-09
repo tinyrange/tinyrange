@@ -43,14 +43,14 @@ func SetFeaturesFromExperimentalFlags(flags []string) {
 		feat := Feature(flag)
 		val, ok := features[feat]
 		if !ok {
-			log.Info("enabling unknown feature", "feature", feat)
+			log.Default().Info("enabling unknown feature", "feature", feat)
 			features[feat] = true
 		} else {
 			if val {
-				log.Info("disabling feature", "feature", feat)
+				log.Default().Info("disabling feature", "feature", feat)
 				features[feat] = false
 			} else {
-				log.Info("enabling feature", "feature", feat)
+				log.Default().Info("enabling feature", "feature", feat)
 				features[feat] = true
 			}
 		}

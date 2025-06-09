@@ -207,7 +207,7 @@ func newDefinitionFromFile(f filesystem.File) (common.BuildDefinition, error) {
 	if source, err := filesystem.SourceFromFile(f); err == nil {
 		return definitionFromSource(source)
 	} else {
-		log.Warn("failed to get source from file", "err", err)
+		log.Default().Warn("failed to get source from file", "err", err)
 	}
 
 	return &fileDefinition{params: FileParameters{File: f}}, nil

@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 var (
@@ -72,7 +71,7 @@ var buildCmd = &cobra.Command{
 				AlwaysRebuild: !buildUseCache,
 			})
 			if err != nil {
-				log.Error("fatal", "err", err)
+				db.Logger().Error("fatal", "err", err)
 				os.Exit(1)
 			}
 

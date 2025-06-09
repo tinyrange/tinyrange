@@ -374,7 +374,7 @@ func (t *Disk) ReadAt(p []byte, off int64) (n int, err error) {
 		return len(p), nil
 	}
 
-	log.Error("ReadAt",
+	log.Default().Error("ReadAt",
 		"start", start, "startOffset", startOffset,
 		"end", end, "endOffset", endOffset,
 	)
@@ -409,7 +409,7 @@ func (t *Disk) WriteAt(p []byte, off int64) (n int, err error) {
 		return len(p), nil
 	}
 
-	log.Error("WriteAt",
+	log.Default().Error("WriteAt",
 		"start", start, "startOffset", startOffset,
 		"end", end, "endOffset", endOffset,
 	)

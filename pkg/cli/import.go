@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type importData struct {
@@ -33,7 +32,7 @@ var importCmd = &cobra.Command{
 				return fmt.Errorf("failed to import definition: %w", err)
 			}
 
-			log.Info("imported", "definition", buildDef)
+			db.Logger().Info("imported", "definition", buildDef)
 		}
 
 		return nil

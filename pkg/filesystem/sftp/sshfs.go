@@ -97,6 +97,7 @@ type SSHFSServer struct {
 	openHandles      map[string]*fileHandle
 	directoryHandles map[string]*directoryHandle
 	fs               filesystem.Directory
+	log              log.Handler
 }
 
 // Close implements core.Component.
@@ -157,7 +158,7 @@ func (s *SSHFSServer) lookup(path string) (filesystem.File, error) {
 
 func (s *SSHFSServer) PktInit(ctx sftpContext, pkt *pktInit) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: init", "version", pkt.Version)
+		s.log.Debug("sftp: init", "version", pkt.Version)
 	}
 
 	// We only support version 3 right now.
@@ -170,7 +171,7 @@ func (s *SSHFSServer) PktInit(ctx sftpContext, pkt *pktInit) (ResponsePacket, er
 
 func (s *SSHFSServer) PktOpen(ctx sftpContext, pkt *pktOpen) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: open", "open", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: open", "open", fmt.Sprintf("%+v", pkt))
 	}
 
 	dirname := path.Unix.Dir(pkt.Path)
@@ -197,14 +198,14 @@ func (s *SSHFSServer) PktOpen(ctx sftpContext, pkt *pktOpen) (ResponsePacket, er
 	if pkt.Flags&openFlagCreat != 0 {
 		mut, ok := dir.(filesystem.MutableDirectory)
 		if !ok {
-			log.Warn("directory is not mutable", "dir", dirname)
+			s.log.Warn("directory is not mutable", "dir", dirname)
 			return nil, fs.ErrInvalid
 		}
 
 		file = filesystem.Factory.NewMemoryFile()
 
 		if SFTP_DEBUG {
-			log.Debug("creating file", "dir", dirname, "file", basename)
+			s.log.Debug("creating file", "dir", dirname, "file", basename)
 		}
 
 		newFile, err := mut.Create(basename, file)
@@ -225,12 +226,12 @@ func (s *SSHFSServer) PktOpen(ctx sftpContext, pkt *pktOpen) (ResponsePacket, er
 	} else if pkt.Flags&openFlagTrunc != 0 {
 		mut, ok := dir.(filesystem.MutableDirectory)
 		if !ok {
-			log.Warn("directory is not mutable", "dir", dirname)
+			s.log.Warn("directory is not mutable", "dir", dirname)
 			return nil, fs.ErrInvalid
 		}
 
 		if SFTP_DEBUG {
-			log.Debug("truncating file", "dir", dirname, "file", basename)
+			s.log.Debug("truncating file", "dir", dirname, "file", basename)
 		}
 
 		ent, err := mut.GetChild(basename)
@@ -242,7 +243,7 @@ func (s *SSHFSServer) PktOpen(ctx sftpContext, pkt *pktOpen) (ResponsePacket, er
 
 		mutFile, ok := file.(filesystem.MutableFile)
 		if !ok {
-			log.Info("file is not mutable", "file", pkt.Path, "type", fmt.Sprintf("%T", file))
+			s.log.Info("file is not mutable", "file", pkt.Path, "type", fmt.Sprintf("%T", file))
 			return nil, fs.ErrInvalid
 		}
 
@@ -276,7 +277,7 @@ func (s *SSHFSServer) PktOpen(ctx sftpContext, pkt *pktOpen) (ResponsePacket, er
 
 func (s *SSHFSServer) PktClose(ctx sftpContext, pkt *pktClose) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: close", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: close", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	fh, ok := s.openHandles[pkt.Handle]
@@ -311,7 +312,7 @@ func (s *SSHFSServer) PktClose(ctx sftpContext, pkt *pktClose) (ResponsePacket, 
 
 func (s *SSHFSServer) PktRead(ctx sftpContext, pkt *pktRead) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: read", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: read", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	fh, ok := s.openHandles[pkt.Handle]
@@ -343,7 +344,7 @@ func (s *SSHFSServer) PktRead(ctx sftpContext, pkt *pktRead) (ResponsePacket, er
 // PktWrite implements filesystem.
 func (s *SSHFSServer) PktWrite(ctx sftpContext, pkt *pktWrite) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: write", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: write", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	fh, ok := s.openHandles[pkt.Handle]
@@ -351,7 +352,7 @@ func (s *SSHFSServer) PktWrite(ctx sftpContext, pkt *pktWrite) (ResponsePacket, 
 		return nil, fmt.Errorf("file handle not found: %s", pkt.Handle)
 	}
 
-	log.Debug("write", "handle", pkt.Handle, "offset", pkt.Offset, "fh", fh.file)
+	s.log.Debug("write", "handle", pkt.Handle, "offset", pkt.Offset, "fh", fh.file)
 
 	mut, ok := fh.handle.(filesystem.WritableFileHandle)
 	if !ok {
@@ -379,7 +380,7 @@ func (s *SSHFSServer) PktWrite(ctx sftpContext, pkt *pktWrite) (ResponsePacket, 
 // PktStat implements filesystem.
 func (s *SSHFSServer) PktStat(ctx sftpContext, pkt *pktStat) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: stat in", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: stat in", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	child, err := s.lookup(pkt.Path)
@@ -410,7 +411,7 @@ func (s *SSHFSServer) PktStat(ctx sftpContext, pkt *pktStat) (ResponsePacket, er
 
 func (s *SSHFSServer) PktLstat(ctx sftpContext, pkt *pktLstat) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: lstat in", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: lstat in", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	child, err := s.lookup(pkt.Path)
@@ -442,7 +443,7 @@ func (s *SSHFSServer) PktLstat(ctx sftpContext, pkt *pktLstat) (ResponsePacket, 
 // PktFstat implements filesystem.
 func (s *SSHFSServer) PktFstat(ctx sftpContext, pkt *pktFstat) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: fstat", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: fstat", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	fh, ok := s.openHandles[pkt.Handle]
@@ -473,7 +474,7 @@ func (s *SSHFSServer) PktFstat(ctx sftpContext, pkt *pktFstat) (ResponsePacket, 
 
 func (s *SSHFSServer) PktOpenDir(ctx sftpContext, pkt *pktOpenDir) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: opendir", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: opendir", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	dirF, err := s.lookup(pkt.Path)
@@ -508,7 +509,7 @@ func (s *SSHFSServer) PktOpenDir(ctx sftpContext, pkt *pktOpenDir) (ResponsePack
 
 func (s *SSHFSServer) PktReadDir(ctx sftpContext, pkt *pktReadDir) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: readdir", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: readdir", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	dh, ok := s.directoryHandles[pkt.Handle]
@@ -565,7 +566,7 @@ func (s *SSHFSServer) PktReadDir(ctx sftpContext, pkt *pktReadDir) (ResponsePack
 // PktMkdir implements filesystem.
 func (s *SSHFSServer) PktMkdir(ctx sftpContext, pkt *pktMkdir) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: mkdir", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: mkdir", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	dir := path.Unix.Dir(pkt.Path)
@@ -612,7 +613,7 @@ func (s *SSHFSServer) PktMkdir(ctx sftpContext, pkt *pktMkdir) (ResponsePacket, 
 // PktSetStat implements filesystem.
 func (s *SSHFSServer) PktSetStat(ctx sftpContext, pkt *pktSetStat) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: setstat", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: setstat", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	f, err := s.lookup(pkt.Path)
@@ -646,7 +647,7 @@ func (s *SSHFSServer) PktSetStat(ctx sftpContext, pkt *pktSetStat) (ResponsePack
 // PktFSetStat implements filesystem.
 func (s *SSHFSServer) PktFSetStat(ctx sftpContext, pkt *pktFSetStat) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: fsetstat", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: fsetstat", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	fh, ok := s.openHandles[pkt.Handle]
@@ -674,7 +675,7 @@ func (s *SSHFSServer) PktFSetStat(ctx sftpContext, pkt *pktFSetStat) (ResponsePa
 // PktRename implements filesystem.
 func (s *SSHFSServer) PktRename(ctx sftpContext, pkt *pktRename) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: rename", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: rename", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	file, err := s.lookup(pkt.OldPath)
@@ -750,7 +751,7 @@ func (s *SSHFSServer) PktRename(ctx sftpContext, pkt *pktRename) (ResponsePacket
 // PktSymlink implements filesystem.
 func (s *SSHFSServer) PktSymlink(ctx sftpContext, pkt *pktSymlink) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: symlink", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: symlink", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	dir := path.Unix.Dir(pkt.LinkPath)
@@ -787,7 +788,7 @@ func (s *SSHFSServer) PktSymlink(ctx sftpContext, pkt *pktSymlink) (ResponsePack
 // PktReadlink implements filesystem.
 func (s *SSHFSServer) PktReadlink(ctx sftpContext, pkt *pktReadlink) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: readlink", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: readlink", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	file, err := s.lookup(pkt.Path)
@@ -814,7 +815,7 @@ func (s *SSHFSServer) PktReadlink(ctx sftpContext, pkt *pktReadlink) (ResponsePa
 // PktRealPath implements filesystem.
 func (s *SSHFSServer) PktRealPath(ctx sftpContext, pkt *pktRealPath) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: realpath", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: realpath", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	return &pktNames{Names: []name{
@@ -825,7 +826,7 @@ func (s *SSHFSServer) PktRealPath(ctx sftpContext, pkt *pktRealPath) (ResponsePa
 // PktRmdir implements filesystem.
 func (s *SSHFSServer) PktRmdir(ctx sftpContext, pkt *pktRmdir) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: rmdir", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: rmdir", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	dir := path.Unix.Dir(pkt.Path)
@@ -868,7 +869,7 @@ func (s *SSHFSServer) PktRmdir(ctx sftpContext, pkt *pktRmdir) (ResponsePacket, 
 // PktRemove implements filesystem.
 func (s *SSHFSServer) PktRemove(ctx sftpContext, pkt *pktRemove) (ResponsePacket, error) {
 	if SFTP_DEBUG {
-		log.Debug("sftp: remove", "pkt", fmt.Sprintf("%+v", pkt))
+		s.log.Debug("sftp: remove", "pkt", fmt.Sprintf("%+v", pkt))
 	}
 
 	dir := path.Unix.Dir(pkt.Filename)
@@ -924,7 +925,7 @@ func (s *SSHFSServer) ServeSftp(channel ssh.Channel) error {
 
 		ret, err := handlePacket(s, channel, pkt)
 		if err != nil {
-			log.Warn("failed to handle packet", "kind", rawPkt.kind, "error", err)
+			s.log.Warn("failed to handle packet", "kind", rawPkt.kind, "error", err)
 			ret = &pktStatus{
 				Code:     errFailure,
 				Message:  err.Error(),
@@ -943,10 +944,11 @@ var (
 	_ sftpFilesystem = &SSHFSServer{}
 )
 
-func New(fs filesystem.Directory) *SSHFSServer {
+func New(fs filesystem.Directory, log log.Handler) *SSHFSServer {
 	return &SSHFSServer{
 		openHandles:      make(map[string]*fileHandle),
 		directoryHandles: make(map[string]*directoryHandle),
 		fs:               fs,
+		log:              log,
 	}
 }
