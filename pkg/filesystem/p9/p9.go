@@ -742,10 +742,10 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 			}
 		}
 		if body.Valid&P9_SETATTR_ATIME_SET != 0 {
-			// log.Warn("p9: unimplemented P9_SETATTR_ATIME_SET")
+			// log.Default().Warn("p9: unimplemented P9_SETATTR_ATIME_SET")
 		}
 		if body.Valid&P9_SETATTR_MTIME_SET != 0 {
-			// log.Warn("p9: unimplemented P9_SETATTR_MTIME_SET")
+			// log.Default().Warn("p9: unimplemented P9_SETATTR_MTIME_SET")
 		}
 
 		_ = fid
@@ -950,7 +950,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 
 		s.debug("9p: message", "type", msg.Type, "body", body)
 
-		// log.Info("rename", "olddirfid", body.Olddirfid, "oldname", body.Oldname, "newdirfid", body.Newdirfid, "newname", body.Newname)
+		// log.Default().Info("rename", "olddirfid", body.Olddirfid, "oldname", body.Oldname, "newdirfid", body.Newdirfid, "newname", body.Newname)
 
 		// Get the old directory.
 		oldFid, err := s.getFid(body.Olddirfid)

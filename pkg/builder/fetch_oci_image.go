@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -178,7 +177,7 @@ func (ctx *ociRegistryContext) responseHandler(resp *http.Response) (bool, error
 		// Remake the request with the new token.
 		return false, nil
 	} else {
-		slog.Error("failed to handle response code", "url", resp.Request.URL.String(), "status", resp.Status, "headers", resp.Header)
+		ctx.log.Error("failed to handle response code", "url", resp.Request.URL.String(), "status", resp.Status, "headers", resp.Header)
 		return false, fmt.Errorf("failed to handle response code %s: %s", resp.Request.URL.String(), resp.Status)
 	}
 }

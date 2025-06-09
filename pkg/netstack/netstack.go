@@ -99,7 +99,7 @@ func (nic *NetworkInterface) GetUDPSocketPair() (net.Addr, net.Addr, error) {
 
 			pkt := buf[:n]
 
-			// log.Info("got packet from client", "data", pkt)
+			// log.Default().Info("got packet from client", "data", pkt)
 
 			if nic.ns.packetDump != nil {
 				nic.ns.packetDump.WritePacket(gopacket.CaptureInfo{
@@ -149,7 +149,7 @@ func (nic *NetworkInterface) GetUDPSocketPair() (net.Addr, net.Addr, error) {
 				off += copy(pktBytes[off:], slice)
 			}
 
-			// log.Info("got packet from host", "pktBytes", pktBytes)
+			// log.Default().Info("got packet from host", "pktBytes", pktBytes)
 
 			if nic.ns.packetDump != nil {
 				nic.ns.packetDump.WritePacket(gopacket.CaptureInfo{
@@ -184,7 +184,7 @@ func (nic *NetworkInterface) AttachFile(file *os.File) error {
 
 			pkt := buf[:n]
 
-			// log.Info("got packet from client", "data", pkt)
+			// log.Default().Info("got packet from client", "data", pkt)
 
 			if nic.ns.packetDump != nil {
 				nic.ns.packetDump.WritePacket(gopacket.CaptureInfo{
@@ -214,7 +214,7 @@ func (nic *NetworkInterface) AttachFile(file *os.File) error {
 				off += copy(pktBytes[off:], slice)
 			}
 
-			// log.Info("got packet from host", "pktBytes", pktBytes)
+			// log.Default().Info("got packet from host", "pktBytes", pktBytes)
 
 			if nic.ns.packetDump != nil {
 				nic.ns.packetDump.WritePacket(gopacket.CaptureInfo{
@@ -253,7 +253,7 @@ func (nic *NetworkInterface) onReceivePacket(pkt []byte) {
 		nic.log.Warn("nets: unknown protocol number", "proto", proto)
 	}
 
-	// log.Info("pkt", "dst", dstMac.String(), "src", srcMac.String(), "etherType", etherType, "payload", payload)
+	// log.Default().Info("pkt", "dst", dstMac.String(), "src", srcMac.String(), "etherType", etherType, "payload", payload)
 
 	pktBuf := stack.NewPacketBuffer(stack.PacketBufferOptions{
 		Payload: buffer.MakeWithData(payload),
@@ -521,7 +521,7 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 }
 
 // func (ns *NetStack) handleUdpForward(r *udp.ForwarderRequest) {
-// 	log.Info("udp forwarding request", "req", r)
+// 	log.Default().Info("udp forwarding request", "req", r)
 // }
 
 func New(log log.Handler) *NetStack {

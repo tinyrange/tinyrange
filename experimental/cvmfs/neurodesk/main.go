@@ -264,14 +264,14 @@ func appMain() error {
 		}
 	}
 
-	log.Info("done", "duration", time.Since(start))
+	log.Default().Info("done", "duration", time.Since(start))
 
 	return nil
 }
 
 func main() {
 	if err := appMain(); err != nil {
-		log.Error("fatal", "error", err)
+		log.Default().Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

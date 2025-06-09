@@ -55,7 +55,7 @@ func appMain() error {
 		}
 
 		for _, nestedCatalog := range nested {
-			log.Info("nested catalog", "path", nestedCatalog.Path, "sha1", nestedCatalog.Sha1, "size", nestedCatalog.Size)
+			log.Default().Info("nested catalog", "path", nestedCatalog.Path, "sha1", nestedCatalog.Sha1, "size", nestedCatalog.Size)
 
 			child, err := repo.GetCatalog(nestedCatalog)
 			if err != nil {
@@ -79,7 +79,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		log.Error("fatal", "error", err)
+		log.Default().Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

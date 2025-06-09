@@ -25,7 +25,7 @@ func getAndWatchSize(_ int, sess *ssh.Session) (int, int, error) {
 
 	go func() {
 		if err := watchWindowSize(fd, sess, width, height); err != nil {
-			log.Debug("Error watching window size", "error", err)
+			log.Default().Debug("Error watching window size", "error", err)
 		}
 	}()
 

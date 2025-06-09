@@ -394,7 +394,7 @@ func appMain() error {
 
 			if !equal {
 				if nonFatal {
-					log.Error("assertion failed", "value", value, "expected", expected)
+					log.Default().Error("assertion failed", "value", value, "expected", expected)
 				} else {
 					return starlark.None, fmt.Errorf("assertion failed: %s != %s", value, expected)
 				}
@@ -467,7 +467,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		log.Error("fatal", "error", err)
+		log.Default().Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

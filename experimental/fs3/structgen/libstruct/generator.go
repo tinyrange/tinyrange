@@ -277,7 +277,7 @@ type SysIL4Generator struct {
 }
 
 func (g *SysIL4Generator) declareType(name string, underlyingType ast.Expr, typ TypeInfo) {
-	// log.Info("declareType", "name", name, "type", typ)
+	// log.Default().Info("declareType", "name", name, "type", typ)
 
 	g.declarations = append(g.declarations, &ast.GenDecl{
 		Tok:   goToken.TYPE,

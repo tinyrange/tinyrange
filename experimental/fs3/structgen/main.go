@@ -60,7 +60,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		log.Error("fatal", "error", err)
+		log.Default().Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

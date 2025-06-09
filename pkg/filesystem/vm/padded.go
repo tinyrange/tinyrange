@@ -23,7 +23,7 @@ func (r *PaddedRegion) ReadAt(p []byte, off int64) (n int, err error) {
 	// If the read is smaller than the requested size, pad with zeros
 	padSize := min(len(p), int(r.RegionSize-off))
 	if n < padSize {
-		// log.Info("pad", "n", n, "padSize", padSize)
+		// log.Default().Info("pad", "n", n, "padSize", padSize)
 		for i := n; i < padSize; i++ {
 			p[i] = 0
 		}

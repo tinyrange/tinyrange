@@ -107,7 +107,7 @@ func (v *virtIODevice) deliverInterrupt() error {
 		v.isr |= VIRTIO_PCI_ISR_QUEUE
 
 		// Deliver interrupt to guest
-		log.Info("virtio delivering interrupt", "irq", v.irqLine)
+		log.Default().Info("virtio delivering interrupt", "irq", v.irqLine)
 		return v.cpu.RaiseIrq(v.irqLine)
 	}
 	return nil
@@ -115,32 +115,32 @@ func (v *virtIODevice) deliverInterrupt() error {
 
 func (v *virtIODevice) handleQueueNotify(queueIndex uint16) {
 	if queueIndex >= uint16(len(v.queues)) {
-		log.Warn("virtio queue notify for invalid queue", "queue", queueIndex)
+		log.Default().Warn("virtio queue notify for invalid queue", "queue", queueIndex)
 		return
 	}
 
 	queue := &v.queues[queueIndex]
 	if !queue.enabled {
-		log.Warn("virtio queue notify for disabled queue", "queue", queueIndex)
+		log.Default().Warn("virtio queue notify for disabled queue", "queue", queueIndex)
 		return
 	}
 
-	log.Info("virtio processing queue", "queue", queueIndex, "pfn", queue.pfn)
+	log.Default().Info("virtio processing queue", "queue", queueIndex, "pfn", queue.pfn)
 
 	// Process the queue and then deliver interrupt
 	if err := v.deliverInterrupt(); err != nil {
-		log.Error("failed to deliver virtio interrupt", "error", err)
+		log.Default().Error("failed to deliver virtio interrupt", "error", err)
 	}
 }
 
 func (v *virtIODevice) handleIORead(port uint16, size int) []byte {
 	if v.ioBase == 0 {
-		log.Warn("virtio IO read before BAR configured", "port", port)
+		log.Default().Warn("virtio IO read before BAR configured", "port", port)
 		return make([]byte, size)
 	}
 
 	offset := port - v.ioBase
-	log.Info(
+	log.Default().Info(
 		"virtio IO read",
 		"port", fmt.Sprintf("0x%04x", port),
 		"offset", fmt.Sprintf("0x%02x", offset),
@@ -159,7 +159,7 @@ func (v *virtIODevice) handleIORead(port uint16, size int) []byte {
 				data[i] = byte(features >> (i * 8))
 			}
 		}
-		log.Info("virtio returning host features", "features", fmt.Sprintf("0x%08x", features))
+		log.Default().Info("virtio returning host features", "features", fmt.Sprintf("0x%08x", features))
 		return data
 
 	case VIRTIO_PCI_GUEST_FEATURES:
@@ -171,7 +171,7 @@ func (v *virtIODevice) handleIORead(port uint16, size int) []byte {
 				data[i] = byte(v.guestFeatures >> (i * 8))
 			}
 		}
-		log.Info("virtio returning guest features", "features", fmt.Sprintf("0x%08x", v.guestFeatures))
+		log.Default().Info("virtio returning guest features", "features", fmt.Sprintf("0x%08x", v.guestFeatures))
 		return data
 
 	case VIRTIO_PCI_QUEUE_PFN:
@@ -179,7 +179,7 @@ func (v *virtIODevice) handleIORead(port uint16, size int) []byte {
 		if v.queueSel < uint16(len(v.queues)) && size >= 4 {
 			binary.LittleEndian.PutUint32(data, v.queues[v.queueSel].pfn)
 		}
-		log.Info("virtio returning queue PFN", "queue", v.queueSel, "pfn", v.queues[v.queueSel].pfn)
+		log.Default().Info("virtio returning queue PFN", "queue", v.queueSel, "pfn", v.queues[v.queueSel].pfn)
 		return data
 
 	case VIRTIO_PCI_QUEUE_NUM:
@@ -195,7 +195,7 @@ func (v *virtIODevice) handleIORead(port uint16, size int) []byte {
 		} else if size == 1 {
 			data[0] = byte(queueSize)
 		}
-		log.Info("virtio returning queue size", "queue", v.queueSel, "size", queueSize)
+		log.Default().Info("virtio returning queue size", "queue", v.queueSel, "size", queueSize)
 		return data
 
 	case VIRTIO_PCI_QUEUE_SEL:
@@ -205,35 +205,35 @@ func (v *virtIODevice) handleIORead(port uint16, size int) []byte {
 		} else if size == 1 {
 			data[0] = byte(v.queueSel)
 		}
-		log.Info("virtio returning queue sel", "queue", v.queueSel)
+		log.Default().Info("virtio returning queue sel", "queue", v.queueSel)
 		return data
 
 	case VIRTIO_PCI_STATUS:
 		status := v.dev.GetStatus()
-		log.Info("virtio returning status", "status", fmt.Sprintf("0x%02x", status))
+		log.Default().Info("virtio returning status", "status", fmt.Sprintf("0x%02x", status))
 		return []byte{status}
 
 	case VIRTIO_PCI_ISR:
 		// Reading ISR clears it
 		isr := v.isr
 		v.isr = 0
-		log.Info("virtio ISR read and cleared", "value", fmt.Sprintf("0x%02x", isr))
+		log.Default().Info("virtio ISR read and cleared", "value", fmt.Sprintf("0x%02x", isr))
 		return []byte{isr}
 
 	default:
 		if offset >= VIRTIO_PCI_CONFIG_START {
 			configOffset := int(offset - VIRTIO_PCI_CONFIG_START)
 			data := v.dev.ReadConfig(configOffset, size)
-			log.Info("virtio config read", "offset", configOffset, "size", size, "data", fmt.Sprintf("%x", data))
+			log.Default().Info("virtio config read", "offset", configOffset, "size", size, "data", fmt.Sprintf("%x", data))
 			return data
 		} else {
-			log.Warn("virtio IO read from unknown register", "port", fmt.Sprintf("0x%04x", port), "offset", fmt.Sprintf("0x%02x", offset))
+			log.Default().Warn("virtio IO read from unknown register", "port", fmt.Sprintf("0x%04x", port), "offset", fmt.Sprintf("0x%02x", offset))
 		}
 	}
 
 	// Return zeros for unhandled reads
 	data := make([]byte, size)
-	log.Info("virtio returning zeros", "size", size)
+	log.Default().Info("virtio returning zeros", "size", size)
 	return data
 }
 
@@ -265,12 +265,12 @@ func (v *virtIODevice) getRegisterName(offset uint16) string {
 
 func (v *virtIODevice) handleIOWrite(port uint16, data []byte) {
 	if v.ioBase == 0 {
-		log.Warn("virtio IO write before BAR configured", "port", port)
+		log.Default().Warn("virtio IO write before BAR configured", "port", port)
 		return
 	}
 
 	offset := port - v.ioBase
-	log.Info(
+	log.Default().Info(
 		"virtio IO write",
 		"port",
 		port,
@@ -292,7 +292,7 @@ func (v *virtIODevice) handleIOWrite(port uint16, data []byte) {
 			v.guestFeatures = uint32(data[0])
 		}
 		v.dev.SetGuestFeatures(v.guestFeatures)
-		log.Info("virtio guest features set", "features", fmt.Sprintf("0x%08x", v.guestFeatures))
+		log.Default().Info("virtio guest features set", "features", fmt.Sprintf("0x%08x", v.guestFeatures))
 
 	case VIRTIO_PCI_QUEUE_SEL:
 		if len(data) >= 2 {
@@ -300,17 +300,17 @@ func (v *virtIODevice) handleIOWrite(port uint16, data []byte) {
 		} else if len(data) == 1 {
 			v.queueSel = uint16(data[0])
 		}
-		log.Info("virtio queue selected", "queue", v.queueSel)
+		log.Default().Info("virtio queue selected", "queue", v.queueSel)
 
 	case VIRTIO_PCI_QUEUE_PFN:
 		if len(data) >= 4 {
 			pfn := binary.LittleEndian.Uint32(data)
-			log.Info("virtio queue PFN set", "queue", v.queueSel, "pfn", pfn)
+			log.Default().Info("virtio queue PFN set", "queue", v.queueSel, "pfn", pfn)
 			if v.queueSel < uint16(len(v.queues)) {
 				v.queues[v.queueSel].pfn = pfn
 				v.queues[v.queueSel].enabled = (pfn != 0)
 				if pfn != 0 {
-					log.Info(
+					log.Default().Info(
 						"virtio queue enabled",
 						"queue",
 						v.queueSel,
@@ -326,11 +326,11 @@ func (v *virtIODevice) handleIOWrite(port uint16, data []byte) {
 	case VIRTIO_PCI_QUEUE_NOTIFY:
 		if len(data) >= 2 {
 			queue := binary.LittleEndian.Uint16(data)
-			log.Info("virtio queue notify", "queue", queue)
+			log.Default().Info("virtio queue notify", "queue", queue)
 			v.handleQueueNotify(queue)
 		} else if len(data) == 1 {
 			queue := uint16(data[0])
-			log.Info("virtio queue notify", "queue", queue)
+			log.Default().Info("virtio queue notify", "queue", queue)
 			v.handleQueueNotify(queue)
 		}
 
@@ -348,7 +348,7 @@ func (v *virtIODevice) handleIOWrite(port uint16, data []byte) {
 }
 
 func (v *virtIODevice) barSet(index uint8, addr uint32, enabled bool) error {
-	log.Info(
+	log.Default().Info(
 		"virtio barSet",
 		"index",
 		index,
@@ -360,13 +360,13 @@ func (v *virtIODevice) barSet(index uint8, addr uint32, enabled bool) error {
 
 	if index == 0 && enabled { // Legacy I/O BAR
 		v.ioBase = uint16(addr & 0xFFFC)
-		log.Info("virtio I/O base set", "base", v.ioBase)
+		log.Default().Info("virtio I/O base set", "base", v.ioBase)
 
 		if v.handleIORead == nil || v.handleIOWrite == nil {
-			log.Error("virtio I/O handlers not set!")
+			log.Default().Error("virtio I/O handlers not set!")
 			return fmt.Errorf("I/O handlers not configured")
 		}
-		log.Info(
+		log.Default().Info(
 			"virtio I/O handlers confirmed",
 			"read",
 			v.handleIORead != nil,
@@ -374,7 +374,7 @@ func (v *virtIODevice) barSet(index uint8, addr uint32, enabled bool) error {
 			v.handleIOWrite != nil,
 		)
 	} else if index == 0 && !enabled {
-		log.Info("virtio I/O disabled")
+		log.Default().Info("virtio I/O disabled")
 		v.ioBase = 0
 	}
 
@@ -409,7 +409,7 @@ func (v *virtIODevice) toPCIDevice() (*PciDevice, error) {
 	// Set up I/O handlers
 	dev.setIOHandler(v.handleIORead, v.handleIOWrite)
 
-	log.Info(
+	log.Default().Info(
 		"virtio device created",
 		"kind", v.dev.Kind(),
 		"revision", dev.config[0x08],
@@ -475,13 +475,13 @@ func (v *VirtIOConsole) Kind() VirtIOKind {
 func (v *VirtIOConsole) GetHostFeatures() uint32 {
 	// Only advertise basic console features for legacy compatibility
 	features := uint32(1 << VIRTIO_CONSOLE_F_SIZE)
-	log.Info("virtio console host features", "features", fmt.Sprintf("0x%08x", features))
+	log.Default().Info("virtio console host features", "features", fmt.Sprintf("0x%08x", features))
 	return features
 }
 
 func (v *VirtIOConsole) SetGuestFeatures(features uint32) {
 	v.guestFeatures = features
-	log.Info("virtio console guest features", "features", fmt.Sprintf("0x%08x", features))
+	log.Default().Info("virtio console guest features", "features", fmt.Sprintf("0x%08x", features))
 }
 
 func (v *VirtIOConsole) GetStatus() uint8 {
@@ -489,7 +489,7 @@ func (v *VirtIOConsole) GetStatus() uint8 {
 }
 
 func (v *VirtIOConsole) SetStatus(status uint8) {
-	log.Info("virtio console status change", "old", fmt.Sprintf("0x%02x", v.status), "new", fmt.Sprintf("0x%02x", status))
+	log.Default().Info("virtio console status change", "old", fmt.Sprintf("0x%02x", v.status), "new", fmt.Sprintf("0x%02x", status))
 	oldStatus := v.status
 	v.status = status
 
@@ -501,27 +501,27 @@ func (v *VirtIOConsole) SetStatus(status uint8) {
 	// Handle status transitions
 	if (status&VIRTIO_CONFIG_S_ACKNOWLEDGE) != 0 &&
 		(oldStatus&VIRTIO_CONFIG_S_ACKNOWLEDGE) == 0 {
-		log.Info("virtio console: device acknowledged")
+		log.Default().Info("virtio console: device acknowledged")
 	}
 	if (status&VIRTIO_CONFIG_S_DRIVER) != 0 &&
 		(oldStatus&VIRTIO_CONFIG_S_DRIVER) == 0 {
-		log.Info("virtio console: driver loaded")
+		log.Default().Info("virtio console: driver loaded")
 	}
 	if (status&VIRTIO_CONFIG_S_FEATURES_OK) != 0 &&
 		(oldStatus&VIRTIO_CONFIG_S_FEATURES_OK) == 0 {
-		log.Info("virtio console: features negotiated")
+		log.Default().Info("virtio console: features negotiated")
 	}
 	if (status&VIRTIO_CONFIG_S_DRIVER_OK) != 0 &&
 		(oldStatus&VIRTIO_CONFIG_S_DRIVER_OK) == 0 {
-		log.Info("virtio console: driver ready - device is now operational")
+		log.Default().Info("virtio console: driver ready - device is now operational")
 	}
 	if (status & VIRTIO_CONFIG_S_FAILED) != 0 {
-		log.Error("virtio console: device failed")
+		log.Default().Error("virtio console: device failed")
 	}
 }
 
 func (v *VirtIOConsole) Reset() {
-	log.Info("virtio console reset")
+	log.Default().Info("virtio console reset")
 	v.status = 0
 	v.guestFeatures = 0
 }
@@ -543,7 +543,7 @@ func (v *VirtIOConsole) ReadConfig(offset int, size int) []byte {
 		data[i] = config[offset+i]
 	}
 
-	log.Info(
+	log.Default().Info(
 		"virtio console config read",
 		"offset",
 		offset,
@@ -557,7 +557,7 @@ func (v *VirtIOConsole) ReadConfig(offset int, size int) []byte {
 }
 
 func (v *VirtIOConsole) WriteConfig(offset int, data []byte) {
-	log.Info(
+	log.Default().Info(
 		"virtio console config write",
 		"offset",
 		offset,

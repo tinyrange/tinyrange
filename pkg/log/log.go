@@ -44,9 +44,14 @@ func init() {
 	}, &slog.HandlerOptions{
 		Level: &level,
 	})))
+	_defaultHandler = &defaultHandler{
+		handler: slog.Default(),
+	}
 }
 
-type defaultHandler struct{}
+type defaultHandler struct {
+	handler *slog.Logger
+}
 
 // NewProgressBarBytes implements Handler.
 func (d *defaultHandler) NewProgressBarBytes(total int64, title string) ProgressBar {
@@ -55,22 +60,22 @@ func (d *defaultHandler) NewProgressBarBytes(total int64, title string) Progress
 
 // Debug implements Handler.
 func (d *defaultHandler) Debug(msg string, args ...any) {
-	slog.Debug(msg, args...)
+	d.handler.Debug(msg, args...)
 }
 
 // Error implements Handler.
 func (d *defaultHandler) Error(msg string, args ...any) {
-	slog.Error(msg, args...)
+	d.handler.Error(msg, args...)
 }
 
 // Info implements Handler.
 func (d *defaultHandler) Info(msg string, args ...any) {
-	slog.Info(msg, args...)
+	d.handler.Info(msg, args...)
 }
 
 // Warn implements Handler.
 func (d *defaultHandler) Warn(msg string, args ...any) {
-	slog.Warn(msg, args...)
+	d.handler.Warn(msg, args...)
 }
 
 var (
@@ -78,7 +83,7 @@ var (
 )
 
 var (
-	_defaultHandler = &defaultHandler{}
+	_defaultHandler Handler
 )
 
 func Default() Handler {

@@ -26,7 +26,7 @@ func (vm *VirtualMemory) PageSize() uint32 { return vm.pageSize }
 func (vm *VirtualMemory) mapFragment(region MemoryRegion, offset int64) error {
 	vm.totalMapFragments += 1
 
-	// log.Info("mapFragment", "offset", offset)
+	// log.Default().Info("mapFragment", "offset", offset)
 	// Get the region index.
 	regionIndex := offset / int64(vm.pageSize)
 	regionOffset := offset % int64(vm.pageSize)
@@ -41,7 +41,7 @@ func (vm *VirtualMemory) mapFragment(region MemoryRegion, offset int64) error {
 		} else {
 			// Otherwise it's something else.
 
-			// log.Info("map existingRegion into fragmentRegion",
+			// log.Default().Info("map existingRegion into fragmentRegion",
 			// 	"pageSize", vm.pageSize,
 			// 	"regionIndex", regionIndex,
 			// 	"existingRegion", existingRegion,
@@ -59,7 +59,7 @@ func (vm *VirtualMemory) mapFragment(region MemoryRegion, offset int64) error {
 				return errors.Join(fmt.Errorf("failed to map fragment"), err)
 			}
 
-			// log.Info("", "newFrag", newFrag)
+			// log.Default().Info("", "newFrag", newFrag)
 
 			vm.pages[uint64(regionIndex)] = newFrag
 
@@ -107,7 +107,7 @@ func (vm *VirtualMemory) Map(region MemoryRegion, offset int64) error {
 
 	vm.totalMaps += 1
 
-	// log.Info("map", "region", region, "offset", offset)
+	// log.Default().Info("map", "region", region, "offset", offset)
 
 	// Get the size of the region.
 	regionSize := region.Size()

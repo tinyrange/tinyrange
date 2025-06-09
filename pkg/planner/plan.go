@@ -164,7 +164,7 @@ func (plan *installationPlan) AttrNames() []string {
 }
 
 func (plan *installationPlan) checkName(name common.PackageName) (*common.Package, bool) {
-	// log.Info("checkName", "name", name)
+	// log.Default().Info("checkName", "name", name)
 
 	installed, ok := plan.installedNames[name.Name]
 	if !ok {
@@ -175,7 +175,7 @@ func (plan *installationPlan) checkName(name common.PackageName) (*common.Packag
 }
 
 func (plan *installationPlan) addName(name common.PackageName, pkg *common.Package) {
-	// log.Info("addName", "name", name, "pkg", pkg)
+	// log.Default().Info("addName", "name", name, "pkg", pkg)
 
 	plan.installedNames[name.Name] = &installInfo{
 		version: name.Version,
@@ -198,13 +198,13 @@ func (plan *installationPlan) addInternal(
 	// Check to see if this package is already installed.
 	if pkg, ok := plan.checkName(option.pkg.Name); ok {
 		ret.Package = pkg
-		// log.Info("already installed")
+		// log.Default().Info("already installed")
 		return ret // already installed.
 	}
 	// for _, alias := range option.pkg.Aliases {
 	// 	if pkg, ok := plan.checkName(alias); ok {
 	// 		ret.Package = pkg
-	// 		log.Info("already installed")
+	// 		log.Default().Info("already installed")
 	// 		return ret // already installed.
 	// 	}
 	// }
@@ -214,7 +214,7 @@ func (plan *installationPlan) addInternal(
 	ret.Package = option.pkg
 	ret.Installer = option.install
 
-	// log.Info("selected", "pkg", ret.Package, "install", ret.Installer)
+	// log.Default().Info("selected", "pkg", ret.Package, "install", ret.Installer)
 
 	// Add the package
 	plan.addName(option.pkg.Name, option.pkg)

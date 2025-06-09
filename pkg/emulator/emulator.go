@@ -136,7 +136,7 @@ func (proc *process) SetKey(k starlark.Value, v starlark.Value) error {
 
 // Chdir implements shared.Process.
 func (proc *process) Chdir(name string) error {
-	// log.Info("chdir", "name", name)
+	// log.Default().Info("chdir", "name", name)
 
 	proc.cwd = path.Unix.Join(proc.cwd, name)
 
@@ -273,7 +273,7 @@ func (p *process) Exec(args []string) error {
 		return err
 	}
 
-	// log.Info("found executable", "name", name)
+	// log.Default().Info("found executable", "name", name)
 
 	prog, extra, err := p.kernel.LookupExecutable(name)
 	if err != nil {

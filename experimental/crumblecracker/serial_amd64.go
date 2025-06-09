@@ -242,7 +242,7 @@ func (s *SerialDevice) IO(io *kvm.KVMIoEvent) error {
 		}
 	}
 
-	log.Info("unknown serial io", "port", fmt.Sprintf("0x%x", io.Port-s.Base), "direction", io.Direction, "size", io.Size)
+	log.Default().Info("unknown serial io", "port", fmt.Sprintf("0x%x", io.Port-s.Base), "direction", io.Direction, "size", io.Size)
 	return nil
 }
 

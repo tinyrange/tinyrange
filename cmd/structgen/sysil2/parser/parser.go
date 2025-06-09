@@ -592,7 +592,7 @@ func (p *parser) nextSignificant() token {
 			return e
 		}
 
-		log.Debug("", "token", fmt.Sprintf("%T", tk), "value", tk)
+		log.Default().Debug("", "token", fmt.Sprintf("%T", tk), "value", tk)
 
 		switch tk.(type) {
 		case tokenComment:

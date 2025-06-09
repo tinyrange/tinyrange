@@ -274,7 +274,7 @@ func (b *BinaryAnnotator) Slice(name string, typ string, size int64, offset int6
 }
 
 func (b *BinaryAnnotator) WriteHTML(w io.Writer) error {
-	log.Info("writing HTML")
+	log.Default().Info("writing HTML")
 
 	sliceable := NewAnnotatedBuffer(b.bytes)
 
@@ -357,7 +357,7 @@ func (b *BinaryAnnotator) WriteHTML(w io.Writer) error {
 		),
 	)
 
-	log.Info("rendering HTML")
+	log.Default().Info("rendering HTML")
 
 	return htm.Render(context.Background(), w, root)
 }
@@ -801,7 +801,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		log.Error("fatal", "error", err)
+		log.Default().Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

@@ -746,7 +746,7 @@ func newExtentTree(fs *Ext4Filesystem, i *InodeWrapper, blocks int64) (ExtentTre
 
 	requiredBlockGroups := roundUpDiv(blocks, blockGroupSize)
 
-	// log.Info("", "requiredBlockGroups", requiredBlockGroups)
+	// log.Default().Info("", "requiredBlockGroups", requiredBlockGroups)
 
 	if requiredBlockGroups <= 4 {
 		return newExtentTree2(fs, i, blocks)
@@ -852,7 +852,7 @@ func (i *InodeWrapper) allocateDirectory(parent *InodeWrapper) error {
 	// set the directory flag.
 	i.node.SetMode(i.node.Mode() | S_IFDIR)
 
-	// log.Info("", "mode", fmt.Sprintf("%X", i.node.Mode()))
+	// log.Default().Info("", "mode", fmt.Sprintf("%X", i.node.Mode()))
 
 	if !i.fs.deterministicTime.IsZero() {
 		i.node.SetCtime(uint32(i.fs.deterministicTime.Unix()))
@@ -982,7 +982,7 @@ func (i *InodeWrapper) chmod(mode goFs.FileMode) error {
 
 	i.node.SetMode(newMode)
 
-	// log.Info("", "mode", fmt.Sprintf("%X", i.node.Mode()))
+	// log.Default().Info("", "mode", fmt.Sprintf("%X", i.node.Mode()))
 
 	return nil
 }
@@ -1096,12 +1096,12 @@ func (bg *BlockGroup) allocateBlocks(blocks uint32) (*Extent, error) {
 		// Update the block count.
 		bg.desc.SetFreeBlocksCount(bg.desc.FreeBlocksCount() - uint32(blocks))
 
-		// log.Info("allocated", "start", start, "blocks", blocks)
+		// log.Default().Info("allocated", "start", start, "blocks", blocks)
 
 		// Return the extent.
 		ext, err := NewExtent(0, uint64(bg.firstBlock)+uint64(start), uint16(blocks))
 		if err != nil {
-			// log.Info("",
+			// log.Default().Info("",
 			// 	"firstBlock", bg.firstBlock,
 			// 	"start", start,
 			// 	"blocks", blocks,
@@ -1156,7 +1156,7 @@ func (bg *BlockGroup) allocateInode() (*InodeWrapper, error) {
 			return nil, err
 		}
 
-		// log.Info("map inode", "off", inodeOffset, "num", inodeNumber)
+		// log.Default().Info("map inode", "off", inodeOffset, "num", inodeNumber)
 		// Map the inode data.
 		if err := bg.fs.mapRegion(inode.node, int64(inodeOffset)); err != nil {
 			return nil, err
@@ -1218,7 +1218,7 @@ func (fs *Ext4Filesystem) allocateMultiExtentBlocks(blocks int64) ([]*Extent, er
 	}
 
 	// if len(ret) > 1 {
-	// 	log.Info("multi extent",
+	// 	log.Default().Info("multi extent",
 	// 		"totalBlockGroups", totalBlockGroups,
 	// 		"remainingBlocks", remainingBlocks,
 	// 		"ret", ret,
@@ -2053,7 +2053,7 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 		}
 		bg.desc.SetInodeTable(extent.StartBlock)
 
-		// log.Info("", "block bitmap", bg.desc.blockBitmapBlock(), "inode bitmap", bg.desc.inodeBitmapBlock(), "inode table", bg.desc.inodeTableBlock())
+		// log.Default().Info("", "block bitmap", bg.desc.blockBitmapBlock(), "inode bitmap", bg.desc.inodeBitmapBlock(), "inode table", bg.desc.inodeTableBlock())
 	}
 
 	// Create the set of default inodes and the root directory.

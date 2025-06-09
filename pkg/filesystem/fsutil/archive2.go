@@ -35,7 +35,7 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 			dirname := path.Unix.Dir(name)
 
 			if !Exists(dir, dirname) && path.Unix.Clean(name) != dirname {
-				// log.Info("mkdir", "dirname", dirname)
+				// log.Default().Info("mkdir", "dirname", dirname)
 				if _, err := Mkdir(dir, dirname); err != nil {
 					return err
 				}
@@ -43,7 +43,7 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 
 			switch ent.Kind() {
 			case archive2.EntryKindDirectory:
-				// log.Info("directory", "name", name)
+				// log.Default().Info("directory", "name", name)
 				name = strings.TrimSuffix(name, "/")
 
 				file, err = Mkdir(dir, name)
@@ -51,7 +51,7 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 					return err
 				}
 			case archive2.EntryKindSymlink:
-				// log.Info("symlink", "name", name)
+				// log.Default().Info("symlink", "name", name)
 				symlink := filesystem.Factory.NewSymlink(ent.Linkname())
 
 				file = symlink
@@ -60,7 +60,7 @@ func ExtractArchive2ToFilesystem(ark *archive2.ArchiveReader, ext filesystem.Ext
 					return err
 				}
 			case archive2.EntryKindHardlink:
-				// log.Info("link", "name", name, "target", ent.Linkname())
+				// log.Default().Info("link", "name", name, "target", ent.Linkname())
 				link, err := filesystem.Factory.NewHardLink(ent.Linkname())
 				if err != nil {
 					return err

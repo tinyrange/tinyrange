@@ -105,7 +105,7 @@ func NewFATFilesystem(reader io.ReaderAt) (*FATFilesystem, error) {
 		return nil, fmt.Errorf("unsupported FAT kind")
 	}
 
-	slog.Info("FAT filesystem",
+	slog.Default().Info("FAT filesystem",
 		"kind", kind,
 		"sectorSize", ret.sectorSize(),
 		"totalSectors", ret.totalSectors(),
@@ -149,7 +149,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		log.Error("fatal", "error", err)
+		log.Default().Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

@@ -35,7 +35,7 @@ func (sh *shellProgram) runProgram(args []string, env shared.Environment) error 
 		return builtin(args)
 	}
 
-	// log.Info("runProgram", "args", args)
+	// log.Default().Info("runProgram", "args", args)
 
 	proc, err := sh.proc.Fork()
 	if err != nil {
@@ -428,7 +428,7 @@ func (sh *shellProgram) Run(proc shared.Process, argv []string) error {
 		return fmt.Errorf("usage: shell <filename>")
 	}
 
-	// log.Info("shell main", "argv", argv)
+	// log.Default().Info("shell main", "argv", argv)
 
 	sh.init()
 

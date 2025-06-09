@@ -151,7 +151,7 @@ func (i *iso9660Reader) readDirectory(ent DirectoryEntry, f func(id int64, ent D
 			localOffset += int64(dataLength)
 
 			if ent.GetBase().GetExtendedAttributeRecordLength() != 0 {
-				slog.Warn("extended attributes are not supported")
+				slog.Default().Warn("extended attributes are not supported")
 			}
 
 			name := ent.GetName()
@@ -184,7 +184,7 @@ func (i *iso9660Reader) IterateNodes() fs3.NodeIterator {
 			base := ent.GetBase()
 
 			if base.GetExtendedAttributeRecordLength() != 0 {
-				slog.Warn("extended attributes are not supported")
+				slog.Default().Warn("extended attributes are not supported")
 			}
 
 			if base.GetFlags().Has(DirectoryEntryFlagsDirectory) {
@@ -429,7 +429,7 @@ func appMain() error {
 
 func main() {
 	if err := appMain(); err != nil {
-		log.Error("fatal", "error", err)
+		log.Default().Error("fatal", "error", err)
 		os.Exit(1)
 	}
 }

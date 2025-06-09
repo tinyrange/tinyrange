@@ -143,7 +143,7 @@ func (s *sshProxyMonitor) NetStack() ns.NetStack {
 }
 
 // Run implements vmm.ProxyMonitor.
-func (s *sshProxyMonitor) Run(bindOutput bool) error {
+func (s *sshProxyMonitor) Run(log log.Handler, bindOutput bool) error {
 	if bindOutput {
 		s.session.Stdout = os.Stdout
 		s.session.Stderr = os.Stderr
@@ -237,6 +237,8 @@ func (s *sshProxyMonitor) Run(bindOutput bool) error {
 
 // Shutdown implements vmm.ProxyMonitor.
 func (s *sshProxyMonitor) Shutdown() error {
+	log := s.driver.Logger()
+
 	if err := s.session.Signal(ssh.SIGKILL); err != nil {
 		log.Error("failed to send shutdown signal", "error", err)
 		return fmt.Errorf("failed to send shutdown signal: %w", err)

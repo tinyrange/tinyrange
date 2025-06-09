@@ -16,7 +16,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -863,7 +862,7 @@ func getStarlarkGlobals(log log.Handler) (starlark.StringDict, error) {
 						return starlark.None, err
 					}
 
-					slog.Info("ensuring symlink target", "path", path, "target", target)
+					log.Info("ensuring symlink target", "path", path, "target", target)
 
 					if err := common.Ensure(target, os.ModePerm); err != nil {
 						return starlark.None, err
@@ -871,10 +870,10 @@ func getStarlarkGlobals(log log.Handler) (starlark.StringDict, error) {
 
 					return starlark.None, nil
 				} else {
-					slog.Info("path exists and is not a symlink", "path", path)
+					log.Info("path exists and is not a symlink", "path", path)
 				}
 			} else {
-				slog.Info("path does not exist", "path", path, "error", err)
+				log.Info("path does not exist", "path", path, "error", err)
 			}
 		}
 
@@ -986,7 +985,7 @@ func getStarlarkGlobals(log log.Handler) (starlark.StringDict, error) {
 					return starlark.None, err
 				}
 
-				slog.Info("removing symlink", "path", path, "target", target)
+				log.Info("removing symlink", "path", path, "target", target)
 				if err := os.Remove(path); err != nil {
 					return starlark.None, err
 				}

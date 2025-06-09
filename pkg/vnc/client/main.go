@@ -83,7 +83,7 @@ func RunVNCClient(nConn net.Conn) error {
 					return err
 				}
 			default:
-				log.Info("unrecognized", "event", evt)
+				log.Warn("unrecognized", "event", evt)
 			}
 		case <-updateTicks.C:
 			if connected {
