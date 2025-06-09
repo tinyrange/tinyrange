@@ -2,6 +2,8 @@
 
 package accelerate
 
-func SupportsAcceleration() bool {
+import "github.com/tinyrange/tinyrange/pkg/log"
+
+func SupportsAcceleration(log log.Handler) bool {
 	return false
 }

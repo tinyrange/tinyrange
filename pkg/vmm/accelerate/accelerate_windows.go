@@ -12,7 +12,7 @@ import (
 
 const WHvCapabilityCodeHypervisorPresent = 0x00000000
 
-func SupportsAcceleration() bool {
+func SupportsAcceleration(log log.Handler) bool {
 	lib, err := windows.LoadLibrary("WinHVPlatform.dll")
 	if err != nil {
 		log.Warn("Failed to load WinHVPlatform.dll", "err", err)

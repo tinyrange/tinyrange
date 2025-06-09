@@ -2125,7 +2125,7 @@ func (d *driver) Accelerated() bool {
 		return false
 	}
 
-	return accelerate.SupportsAcceleration()
+	return accelerate.SupportsAcceleration(d.log)
 }
 
 func (d *driver) HostOperatingSystem() string                { return runtime.GOOS }

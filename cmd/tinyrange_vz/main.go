@@ -60,7 +60,7 @@ type VZVirtualMachineMonitor struct {
 	vm     *vz.VirtualMachine
 }
 
-func (vm *VZVirtualMachineMonitor) Run(bindOutput bool) error {
+func (vm *VZVirtualMachineMonitor) Run(log log.Handler, bindOutput bool) error {
 	if bindOutput {
 		nullFile, err := os.Open("/dev/null")
 		if err != nil {
@@ -126,6 +126,8 @@ func main() {
 		if !dri.GuestArchitecture().IsNative() {
 			return nil, fmt.Errorf("vz does not support emulation")
 		}
+
+		log := dri.Logger()
 
 		var (
 			rosetta2 bool

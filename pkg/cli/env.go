@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/vmm/accelerate"
 )
 
@@ -33,7 +34,7 @@ var checkHardwareAccelerationCmd = &cobra.Command{
 	Use:   "check-hv",
 	Short: "Check if hardware acceleration is available",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		supported := accelerate.SupportsAcceleration()
+		supported := accelerate.SupportsAcceleration(log.Default())
 		if supported {
 			fmt.Println("Hardware acceleration is available")
 			os.Exit(0)

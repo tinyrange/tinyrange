@@ -455,7 +455,10 @@ func (def *ociFetcher) buildFromIndex(index oci.ImageIndexV2) error {
 
 // Build implements common.BuildDefinition.
 func (def *ociFetcher) buildTop() error {
-	regCtx := &ociRegistryContext{registry: def.params.Registry}
+	regCtx := &ociRegistryContext{
+		log:      def.ctx.Logger(),
+		registry: def.params.Registry,
+	}
 
 	indexDef := &registryRequestDefinition{
 		ctx: regCtx,
@@ -657,8 +660,11 @@ func (def *fetchOciImageDefinition) Tag() string {
 // Build implements common.BuildDefinition.
 func (def *fetchOciImageDefinition) Build(ctx common.BuildContext) error {
 	fetcher := &ociFetcher{
-		ctx:    ctx,
-		regCtx: &ociRegistryContext{registry: def.params.Registry},
+		ctx: ctx,
+		regCtx: &ociRegistryContext{
+			registry: def.params.Registry,
+			log:      ctx.Logger(),
+		},
 		params: def.params,
 	}
 
@@ -761,8 +767,11 @@ func (def *fetchOciImageDefinitionV2) Tag() string {
 // Build implements common.BuildDefinition.
 func (def *fetchOciImageDefinitionV2) Build(ctx common.BuildContext) error {
 	fetcher := &ociFetcher{
-		ctx:    ctx,
-		regCtx: &ociRegistryContext{registry: def.params.Registry},
+		ctx: ctx,
+		regCtx: &ociRegistryContext{
+			registry: def.params.Registry,
+			log:      ctx.Logger(),
+		},
 		params: def.params,
 
 		UseArchive2: true,

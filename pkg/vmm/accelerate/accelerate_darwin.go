@@ -4,9 +4,11 @@ package accelerate
 
 import (
 	"os/exec"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
-func SupportsAcceleration() bool {
+func SupportsAcceleration(log log.Handler) bool {
 	out, err := exec.Command("sysctl", "kern.hv.supported").Output()
 	if err != nil {
 		return false
