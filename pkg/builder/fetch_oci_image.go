@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/builder/oci"
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -102,6 +101,7 @@ func ParseJsonFromFile(f filesystem.File, out any) error {
 }
 
 type copyResponseResult struct {
+	log           log.Handler
 	body          io.ReadCloser
 	contentLength int64
 	url           string
@@ -111,7 +111,7 @@ type copyResponseResult struct {
 func (c *copyResponseResult) WriteResult(w io.Writer) error {
 	defer c.body.Close()
 
-	prog := progressbar.DefaultBytes(c.contentLength, c.url)
+	prog := c.log.NewProgressBarBytes(c.contentLength, c.url)
 	defer prog.Close()
 
 	if _, err := io.Copy(io.MultiWriter(prog, w), c.body); err != nil {
@@ -245,6 +245,7 @@ func (r *registryRequestDefinition) Build(ctx common.BuildContext) error {
 	}
 
 	return ctx.WriteDefault(&copyResponseResult{
+		log:           ctx.Logger(),
 		body:          resp.Body,
 		contentLength: resp.ContentLength,
 		url:           r.ctx.registry + r.params.Url,

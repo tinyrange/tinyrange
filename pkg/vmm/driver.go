@@ -28,7 +28,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/miekg/dns"
-	"github.com/schollz/progressbar/v3"
 	"github.com/things-go/go-socks5"
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/archive2"
@@ -1698,7 +1697,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 				return fmt.Errorf("failed to copy export filesystem: %w", err)
 			}
 		} else {
-			pb := progressbar.DefaultBytes(fsSize, "exporting filesystem")
+			pb := d.log.NewProgressBarBytes(fsSize, "exporting filesystem")
 			defer pb.Close()
 
 			if _, err := io.Copy(io.MultiWriter(pb, out), io.NewSectionReader(vmem, 0, fsSize)); err != nil {

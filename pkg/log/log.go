@@ -5,13 +5,21 @@ import (
 	"io"
 	"log/slog"
 	"os"
+
+	"github.com/schollz/progressbar/v3"
 )
+
+type ProgressBar interface {
+	io.WriteCloser
+}
 
 type Handler interface {
 	Debug(msg string, args ...any)
 	Info(msg string, args ...any)
 	Warn(msg string, args ...any)
 	Error(msg string, args ...any)
+
+	NewProgressBarBytes(total int64, title string) ProgressBar
 }
 
 var level slog.LevelVar
@@ -39,6 +47,11 @@ func init() {
 }
 
 type defaultHandler struct{}
+
+// NewProgressBarBytes implements Handler.
+func (d *defaultHandler) NewProgressBarBytes(total int64, title string) ProgressBar {
+	return progressbar.DefaultBytes(total, title)
+}
 
 // Debug implements Handler.
 func (d *defaultHandler) Debug(msg string, args ...any) {

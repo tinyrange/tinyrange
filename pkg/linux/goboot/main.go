@@ -33,7 +33,6 @@ import (
 	"github.com/insomniacslk/dhcp/netboot"
 	"github.com/jsimonetti/rtnetlink/rtnl"
 	"github.com/ramr/go-reaper"
-	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
@@ -1630,7 +1629,7 @@ func initMain() error {
 		}
 		defer resp.Body.Close()
 
-		pb := progressbar.DefaultBytes(resp.ContentLength)
+		pb := log.NewProgressBarBytes(resp.ContentLength, "")
 
 		out, err := os.Create("out.bin")
 		if err != nil {

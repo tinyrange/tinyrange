@@ -9,10 +9,10 @@ import (
 	"io/fs"
 	"time"
 
-	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type CVMFSArchiveChunk struct {
@@ -88,7 +88,7 @@ func (c *cvmfsChunk) ReadAt(p []byte, off int64) (n int, err error) {
 
 			var writer = w
 			if common.IsVerbose() {
-				pb := progressbar.DefaultBytes(c.size, c.hash)
+				pb := log.Default().NewProgressBarBytes(c.size, c.hash)
 				defer pb.Close()
 
 				writer = io.MultiWriter(w, pb)

@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
+	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 )
 
@@ -22,6 +22,8 @@ var ErrNotFound = errors.New("HTTP 404: Not Found")
 
 type fetchHttpBuildDefinition struct {
 	params FetchHttpParameters
+
+	log log.Handler
 
 	resp *http.Response
 }
@@ -70,7 +72,7 @@ func (f *fetchHttpBuildDefinition) WriteResult(w io.Writer) error {
 	}
 	defer f.resp.Body.Close()
 
-	prog := progressbar.DefaultBytes(f.resp.ContentLength, f.params.Url)
+	prog := f.log.NewProgressBarBytes(f.resp.ContentLength, f.params.Url)
 	defer prog.Close()
 
 	if _, err := io.Copy(io.MultiWriter(prog, w), f.resp.Body); err != nil {
@@ -82,7 +84,7 @@ func (f *fetchHttpBuildDefinition) WriteResult(w io.Writer) error {
 
 // Build implements BuildDefinition.
 func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext) error {
-	log := ctx.Logger()
+	f.log = ctx.Logger()
 
 	urls, err := ctx.Database().UrlsFor(f.params.Url)
 	if err != nil {
@@ -112,7 +114,7 @@ func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext) error {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Warn("failed to fetch", "url", url, "err", err)
+			f.log.Warn("failed to fetch", "url", url, "err", err)
 			onlyNotFound = false
 			continue
 		}
@@ -122,10 +124,10 @@ func (f *fetchHttpBuildDefinition) Build(ctx common.BuildContext) error {
 
 			return ctx.WriteDefault(f)
 		} else if resp.StatusCode == http.StatusNotFound {
-			log.Warn("failed to fetch", "url", url, "err", ErrNotFound)
+			f.log.Warn("failed to fetch", "url", url, "err", ErrNotFound)
 			continue
 		} else {
-			log.Warn("failed to fetch", "url", url, "err", fmt.Errorf("bad status: %s", resp.Status))
+			f.log.Warn("failed to fetch", "url", url, "err", fmt.Errorf("bad status: %s", resp.Status))
 			onlyNotFound = false
 			continue
 		}
