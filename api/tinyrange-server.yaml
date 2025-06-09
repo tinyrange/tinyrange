@@ -1,0 +1,165 @@
+openapi: 3.0.4
+info:
+  title: TinyRange Server API
+  description: HTTP service for TinyRange.
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:5123
+    description: Local TinyRange server
+
+paths:
+  # General Server Information
+  /info:
+    get:
+      summary: Server Information
+      description: Retrieve general information about the TinyRange server.
+      responses:
+        "200":
+          description: Successful response with server information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  api_version:
+                    type: string
+                    example: "0.1.0"
+                  tinyrange_version:
+                    type: string
+  /healthz:
+    get:
+      summary: Health check
+      description: Check if the server is running.
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+
+  # Build API endpoints
+  /build:
+    get:
+      summary: List all Built Definitions
+      description: Retrieve a list of all build definitions available on the server.
+      responses:
+        "200":
+          description: Successful response with a list of build definitions
+          content:
+            application/json:
+              schema:
+                # Array of strings for each hash
+                type: array
+                items:
+                  type: string
+        "500":
+          description: Internal server error
+
+  # Standard Build API endpoints
+  /build/{hash}/receipt.json:
+    get:
+      summary: Get Build Receipt
+      description: Retrieve the receipt JSON for a specific build identified by its hash.
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          description: The hash of the build to retrieve the receipt for.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response with build receipt JSON
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Build receipt data
+        "400":
+          description: Bad request - missing hash parameters
+        "404":
+          description: Build not found
+        "500":
+          description: Internal server error
+
+  /build/{hash}/definition.json:
+    get:
+      summary: Get Build Definition
+      description: Retrieve the definition JSON for a specific build identified by its hash.
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          description: The hash of the build to retrieve the definition for.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response with build definition JSON
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Build definition data
+        "400":
+          description: Bad request - missing hash parameters
+        "404":
+          description: Build not found
+        "500":
+          description: Internal server error
+
+  /build/{hash}/output.{output}:
+    get:
+      summary: Get Build Output File
+      description: Retrieve a specific output file from a build identified by its hash.
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          description: The hash of the build to retrieve the output file for.
+          schema:
+            type: string
+        - name: output
+          in: path
+          required: true
+          description: Name of the output file (prefixed with out_)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response with the requested output file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Bad request - missing parameters or invalid output prefix
+        "404":
+          description: Output file not found
+        "500":
+          description: Internal server error
+
+  /build/tinyrange-build.json:
+    get:
+      summary: Get Build System Marker
+      description: Retrieve marker information about the build system version.
+      responses:
+        "200":
+          description: Successful response with marker information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  Version:
+                    type: string
+                    description: Build system marker version
+        "500":
+          description: Internal server error
