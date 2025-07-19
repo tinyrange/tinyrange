@@ -1,5 +1,5 @@
 version: 1
-builder: alpine@3.21
+builder: alpine@3.22
 commands:
   - echo hello > /test/hello.txt
 volumes:

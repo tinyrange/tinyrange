@@ -1912,7 +1912,7 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 	fs.sb.SetMagic(61267)
 	fs.sb.SetBlocksCount(uint64(blockCount))
 	fs.sb.SetInodesCount(uint32(inodeCount))
-	fs.sb.SetRBlocksCount(3276)
+	fs.sb.SetRBlocksCount(0)
 	fs.sb.SetLogBlockSize(2)
 	fs.sb.SetLogClusterSize(2)
 	fs.sb.SetBlocksPerGroup(uint32(blocksPerGroup))

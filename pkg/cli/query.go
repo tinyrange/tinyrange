@@ -60,7 +60,7 @@ var queryCmd = &cobra.Command{
 }
 
 func init() {
-	queryCmd.PersistentFlags().StringVarP(&queryBuilder, "builder", "b", DEFAuLT_BUILDER, "the container builder to query from")
+	queryCmd.PersistentFlags().StringVarP(&queryBuilder, "builder", "b", DEFAULT_BUILDER, "the container builder to query from")
 	queryCmd.PersistentFlags().StringVarP(&queryArch, "arch", "a", string(config.HostArchitecture), "the architecture to query for")
 	queryCmd.MarkFlagRequired("builder")
 	rootCmd.AddCommand(queryCmd)

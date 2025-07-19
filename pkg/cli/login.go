@@ -15,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const DEFAuLT_BUILDER = "alpine@3.21"
+const DEFAULT_BUILDER = "alpine@3.22"
 
 var currentConfig login.Config = login.Config{Version: login.CURRENT_CONFIG_VERSION}
 
@@ -167,7 +167,7 @@ func init() {
 	loginCmd.PersistentFlags().StringVarP(&loginLoadConfig, "load-config", "c", "", "Load the config from a file and run it.")
 
 	// public flags (saved to config)
-	loginCmd.PersistentFlags().StringVarP(&currentConfig.Builder, "builder", "b", DEFAuLT_BUILDER, "The container builder used to construct the virtual machine.")
+	loginCmd.PersistentFlags().StringVarP(&currentConfig.Builder, "builder", "b", DEFAULT_BUILDER, "The container builder used to construct the virtual machine.")
 	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Commands, "exec", "E", []string{}, "Run a different command rather than dropping into a shell.")
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ServiceCommands, "start-service", []string{}, "Run a service in the background.")
 	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Layers, "layer", "L", []string{}, "Add a cached layer created by running a command to the virtual machine.")

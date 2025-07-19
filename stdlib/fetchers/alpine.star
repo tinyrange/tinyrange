@@ -1,10 +1,11 @@
 db.add_mirror("alpine", ["https://dl-cdn.alpinelinux.org/alpine"])
 db.add_mirror("wolfi", ["https://packages.wolfi.dev"])
 
-LATEST_ALPINE_VERSION = "3.21"
+LATEST_ALPINE_VERSION = "3.22"
 
 ALPINE_VERSIONS = [
     "edge",
+    "3.22",
     "3.21",
     "3.20",
     "3.19",
