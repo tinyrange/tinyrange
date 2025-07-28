@@ -23,7 +23,7 @@ require (
 	github.com/miekg/dns v1.1.67
 	github.com/moby/buildkit v0.23.2
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
-	github.com/ramr/go-reaper v0.3.0
+	github.com/ramr/go-reaper v0.3.1
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/spf13/cobra v1.9.1
 	github.com/things-go/go-socks5 v0.0.6
