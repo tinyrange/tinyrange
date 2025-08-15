@@ -162,7 +162,7 @@ func (c *cvmfsFile) ReadAt(p []byte, off int64) (n int, err error) {
 		var regionArray vm.RegionArray[vm.MemoryRegion]
 
 		for _, chunk := range c.metadata.Chunks {
-			regionArray = append(regionArray, &cvmfsChunk{
+			regionArray.Append(&cvmfsChunk{
 				ctx:  c.ctx,
 				hash: chunk.Hash,
 				url:  c.metadata.UrlFor(chunk.Hash, len(c.metadata.Chunks) > 1),

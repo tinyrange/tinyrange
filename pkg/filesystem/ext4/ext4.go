@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tinyrange/tinyrange/pkg/feature"
+	"golang.org/x/exp/constraints"
+
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
-	"golang.org/x/exp/constraints"
 )
 
 const DEFAULT_MODE = goFs.FileMode(0755)
@@ -137,7 +137,7 @@ type DirectoryEntry struct {
 }
 
 func (ent DirectoryEntry) String() string {
-	return fmt.Sprintf("\"% 30s\":0x%X:%s", ent.name, ent.offset, ent.ent.String())
+	return fmt.Sprintf("\"% 30s\":0x%X", ent.name, ent.offset)
 }
 
 func (ent DirectoryEntry) recordLength() uint16 {
@@ -151,10 +151,10 @@ func (ent DirectoryEntry) recordLength() uint16 {
 func (ent *DirectoryEntry) setRecordLength(recLen uint16) {
 	ent.ent.SetRecLen(recLen)
 
-	ent.PaddedRegion = vm.NewPaddedRegion(&vm.RegionArray[vm.MemoryRegion]{
+	ent.PaddedRegion = vm.NewPaddedRegion(vm.NewRegionArray[vm.MemoryRegion](
 		ent.ent,
 		vm.RawRegion(ent.name),
-	}, int64(recLen))
+	), int64(recLen))
 }
 
 func newDirectoryEntry(target *InodeWrapper, childNode uint32, typ uint8, name string, recLen uint16) *DirectoryEntry {
@@ -169,10 +169,10 @@ func newDirectoryEntry(target *InodeWrapper, childNode uint32, typ uint8, name s
 	ent.ent.SetFileType(typ)
 	ent.ent.SetNameLen(uint8(len(ent.name)))
 
-	ent.PaddedRegion = vm.NewPaddedRegion(&vm.RegionArray[vm.MemoryRegion]{
+	ent.PaddedRegion = vm.NewPaddedRegion(vm.NewRegionArray[vm.MemoryRegion](
 		ent.ent,
 		vm.RawRegion(name),
-	}, int64(recLen))
+	), int64(recLen))
 
 	return ent
 }
@@ -208,26 +208,42 @@ func (d *LinearDirectory) AddEntry(child *InodeWrapper, name string) error {
 
 	blockSize := child.fs.sb.blockSize()
 
-	childMode := child.Mode()
+	// For "." and "..", we need special handling
+	var typ uint8
+	if name == "." || name == ".." {
+		// Both "." and ".." always point to directories
+		typ = 0x2 // Directory type
+	} else {
+		// For regular entries, determine type from the child's mode
+		childMode := child.Mode()
 
-	typ := 0x1
+		typ = 0x1 // Default to regular file
 
-	if childMode&goFs.ModeSymlink != 0 {
-		// Check if this is a symbolic link.
-		typ = 0x7
-	} else if childMode.IsDir() {
-		typ = 0x2
+		if childMode&goFs.ModeSymlink != 0 {
+			typ = 0x7 // Symbolic link
+		} else if childMode.IsDir() {
+			typ = 0x2 // Directory
+		} else if childMode&goFs.ModeCharDevice != 0 {
+			typ = 0x3 // Character device
+		} else if childMode&goFs.ModeDevice != 0 {
+			typ = 0x4 // Block device
+		} else if childMode&goFs.ModeNamedPipe != 0 {
+			typ = 0x5 // FIFO
+		} else if childMode&goFs.ModeSocket != 0 {
+			typ = 0x6 // Socket
+		}
+		// Regular file remains as typ = 0x1
 	}
 
 	block := d.blocks[len(d.blocks)-1]
 
 	var ent *DirectoryEntry
 
-	if len(*block.ents) == 0 {
+	if block.ents.Len() == 0 {
 		ent = newDirectoryEntry(child, uint32(child.num), uint8(typ), name, uint16(blockSize))
-		*block.ents = append(*block.ents, ent)
+		block.ents.Append(ent)
 	} else {
-		lastEnt := (*block.ents)[len(*block.ents)-1]
+		lastEnt := block.ents.Get(block.ents.Len() - 1)
 		currentLen := lastEnt.ent.RecLen()
 
 		requiredLen := roundUpDiv(8+len(name), 4) * 4
@@ -247,7 +263,7 @@ func (d *LinearDirectory) AddEntry(child *InodeWrapper, name string) error {
 
 		ent = newDirectoryEntry(child, uint32(child.num), uint8(typ), name, currentLen-lastRecLen)
 
-		*block.ents = append(*block.ents, ent)
+		block.ents.Append(ent)
 
 		lastEnt.setRecordLength(lastRecLen)
 	}
@@ -262,9 +278,10 @@ func (d LinearDirectory) String() string {
 
 	for _, block := range d.blocks {
 		ret += "\n   Block ["
-		for _, ent := range *block.ents {
+		block.ents.Range(func(i int, ent *DirectoryEntry) bool {
 			ret += "\n    " + ent.String() + ","
-		}
+			return true
+		})
 		ret += "\n   ]"
 	}
 
@@ -330,14 +347,18 @@ func (d *LinearDirectory) increaseSize() error {
 	}
 
 	// Update the size in the node.
-	d.inode.node.SetNSize(uint64(len(extents)) * d.fs.sb.blockSize())
-	d.inode.node.SetBlocks((uint64(len(extents)) * d.fs.sb.blockSize()) / 512)
+	size := uint64(len(extents)) * d.fs.sb.blockSize()
+	d.inode.node.SetSizeLo(uint32(size & 0xFFFFFFFF))
+	d.inode.node.SetSizeHigh(uint32(size >> 32))
+	blocks := (uint64(len(extents)) * d.fs.sb.blockSize()) / 512
+	d.inode.node.SetBlocksLo(uint32(blocks & 0xFFFFFFFF))
+	d.inode.node.SetBlocksHigh(uint16(blocks >> 32))
 
 	return nil
 }
 
 func (dir *LinearDirectory) addBlock(extent Extent) error {
-	block := &LinearDirectoryBlock{ents: &vm.RegionArray[*DirectoryEntry]{}}
+	block := &LinearDirectoryBlock{ents: vm.NewRegionArray[*DirectoryEntry]()}
 
 	// Create a padded region to store the directory data.
 	block.paddedRegion = vm.NewPaddedRegion(
@@ -475,19 +496,25 @@ func (e *ExtentTree1) AllocateBlocks(blocks int64) error {
 }
 
 func (e ExtentTree1) Extents() ([]Extent, error) {
-	if len(e.indexNodes) != 0 {
+	if e.indexNodes.Len() != 0 {
 		return nil, fmt.Errorf("extents with index nodes not implemented")
 	}
 
 	var ret []Extent
 
-	for _, leaf := range e.leafNodes {
-		ext, err := NewExtent(leaf.Block(), leaf.Start(), leaf.Len())
+	var extError error
+	e.leafNodes.Range(func(i int, leaf *ExtentTreeNode) bool {
+		ext, err := NewExtent(leaf.Block(), uint64(leaf.Start()), leaf.Len())
 		if err != nil {
-			return nil, err
+			extError = err
+			return false
 		}
-
 		ret = append(ret, ext)
+		return true
+	})
+
+	if extError != nil {
+		return nil, extError
 	}
 
 	return ret, nil
@@ -496,12 +523,13 @@ func (e ExtentTree1) Extents() ([]Extent, error) {
 func (e ExtentTree1) String() string {
 	ret := "ExtentTree{"
 
-	ret += "header=" + e.header.String() + " "
+	ret += "header=" + fmt.Sprintf("%+v", e.header) + " "
 
 	ret += "leafs=["
-	for _, leaf := range e.leafNodes {
-		ret += leaf.String()
-	}
+	e.leafNodes.Range(func(i int, leaf *ExtentTreeNode) bool {
+		ret += fmt.Sprintf("%+v", leaf)
+		return true
+	})
 	ret += "] "
 
 	return ret + "}"
@@ -529,15 +557,16 @@ func newExtentTree1(fs *Ext4Filesystem, base uint64, blocks int64) (*ExtentTree1
 			// Set the fields on the leaf.
 			leaf.SetBlock(extent.FirstFileBlock)
 			leaf.SetLen(extent.Length)
-			leaf.SetStart(extent.StartBlock)
+			leaf.SetStartLo(uint32(extent.StartBlock))
+			leaf.SetStartHi(uint16(extent.StartBlock >> 32))
 
-			tree.leafNodes = append(tree.leafNodes, leaf)
+			tree.leafNodes.Append(leaf)
 		}
 
-		tree.arr = &vm.RegionArray[vm.MemoryRegion]{
+		tree.arr = vm.NewRegionArray[vm.MemoryRegion](
 			tree.header,
 			&tree.leafNodes,
-		}
+		)
 
 		// Make a padded region to extend the region to 60 bytes.
 		tree.region = vm.NewPaddedRegion(tree.arr, 60)
@@ -583,7 +612,8 @@ func (t *ExtentTree2) AllocateBlocks(blocks int64) error {
 		// Set the fields on the leaf.
 		t.i.node.SetBlock1Block(t.i.node.Block0Block() + uint32(t.i.node.Block0Len()) + extent.FirstFileBlock)
 		t.i.node.SetBlock1Len(extent.Length)
-		t.i.node.SetBlock1Start(extent.StartBlock)
+		t.i.node.SetBlock1StartLo(uint32(extent.StartBlock))
+		t.i.node.SetBlock1StartHi(uint16(extent.StartBlock >> 32))
 
 		t.i.node.SetBlockEntries(2)
 
@@ -597,7 +627,8 @@ func (t *ExtentTree2) AllocateBlocks(blocks int64) error {
 		// Set the fields on the leaf.
 		t.i.node.SetBlock2Block(t.i.node.Block1Block() + uint32(t.i.node.Block1Len()) + extent.FirstFileBlock)
 		t.i.node.SetBlock2Len(extent.Length)
-		t.i.node.SetBlock2Start(extent.StartBlock)
+		t.i.node.SetBlock2StartLo(uint32(extent.StartBlock))
+		t.i.node.SetBlock2StartHi(uint16(extent.StartBlock >> 32))
 
 		t.i.node.SetBlockEntries(3)
 
@@ -611,7 +642,8 @@ func (t *ExtentTree2) AllocateBlocks(blocks int64) error {
 		// Set the fields on the leaf.
 		t.i.node.SetBlock3Block(t.i.node.Block2Block() + uint32(t.i.node.Block2Len()) + extent.FirstFileBlock)
 		t.i.node.SetBlock3Len(extent.Length)
-		t.i.node.SetBlock3Start(extent.StartBlock)
+		t.i.node.SetBlock3StartLo(uint32(extent.StartBlock))
+		t.i.node.SetBlock3StartHi(uint16(extent.StartBlock >> 32))
 
 		t.i.node.SetBlockEntries(4)
 
@@ -628,7 +660,7 @@ func (t *ExtentTree2) Extents() ([]Extent, error) {
 	if t.count > 0 {
 		ext, err := NewExtent(
 			t.i.node.Block0Block(),
-			t.i.node.Block0Start(),
+			uint64(t.i.node.Block0Start()),
 			t.i.node.Block0Len(),
 		)
 		if err != nil {
@@ -640,7 +672,7 @@ func (t *ExtentTree2) Extents() ([]Extent, error) {
 	if t.count > 1 {
 		ext, err := NewExtent(
 			t.i.node.Block1Block(),
-			t.i.node.Block1Start(),
+			uint64(t.i.node.Block1Start()),
 			t.i.node.Block1Len(),
 		)
 		if err != nil {
@@ -652,7 +684,7 @@ func (t *ExtentTree2) Extents() ([]Extent, error) {
 	if t.count > 2 {
 		ext, err := NewExtent(
 			t.i.node.Block2Block(),
-			t.i.node.Block2Start(),
+			uint64(t.i.node.Block2Start()),
 			t.i.node.Block2Len(),
 		)
 		if err != nil {
@@ -664,7 +696,7 @@ func (t *ExtentTree2) Extents() ([]Extent, error) {
 	if t.count > 3 {
 		ext, err := NewExtent(
 			t.i.node.Block3Block(),
-			t.i.node.Block3Start(),
+			uint64(t.i.node.Block3Start()),
 			t.i.node.Block3Len(),
 		)
 		if err != nil {
@@ -701,7 +733,8 @@ func newExtentTree2(fs *Ext4Filesystem, i *InodeWrapper, blocks int64) (*ExtentT
 		// Set the fields on the leaf.
 		i.node.SetBlock0Block(extent.FirstFileBlock)
 		i.node.SetBlock0Len(extent.Length)
-		i.node.SetBlock0Start(extent.StartBlock)
+		i.node.SetBlock0StartLo(uint32(extent.StartBlock))
+		i.node.SetBlock0StartHi(uint16(extent.StartBlock >> 32))
 	}
 
 	if len(extents) > 1 {
@@ -710,7 +743,8 @@ func newExtentTree2(fs *Ext4Filesystem, i *InodeWrapper, blocks int64) (*ExtentT
 		// Set the fields on the leaf.
 		i.node.SetBlock1Block(extent.FirstFileBlock)
 		i.node.SetBlock1Len(extent.Length)
-		i.node.SetBlock1Start(extent.StartBlock)
+		i.node.SetBlock1StartLo(uint32(extent.StartBlock))
+		i.node.SetBlock1StartHi(uint16(extent.StartBlock >> 32))
 	}
 
 	if len(extents) > 2 {
@@ -719,7 +753,8 @@ func newExtentTree2(fs *Ext4Filesystem, i *InodeWrapper, blocks int64) (*ExtentT
 		// Set the fields on the leaf.
 		i.node.SetBlock2Block(extent.FirstFileBlock)
 		i.node.SetBlock2Len(extent.Length)
-		i.node.SetBlock2Start(extent.StartBlock)
+		i.node.SetBlock2StartLo(uint32(extent.StartBlock))
+		i.node.SetBlock2StartHi(uint16(extent.StartBlock >> 32))
 	}
 
 	if len(extents) > 3 {
@@ -728,7 +763,8 @@ func newExtentTree2(fs *Ext4Filesystem, i *InodeWrapper, blocks int64) (*ExtentT
 		// Set the fields on the leaf.
 		i.node.SetBlock3Block(extent.FirstFileBlock)
 		i.node.SetBlock3Len(extent.Length)
-		i.node.SetBlock3Start(extent.StartBlock)
+		i.node.SetBlock3StartLo(uint32(extent.StartBlock))
+		i.node.SetBlock3StartHi(uint16(extent.StartBlock >> 32))
 	}
 
 	tree.count = len(extents)
@@ -829,8 +865,8 @@ func (i InodeWrapper) Flags() InodeFlags {
 func (i InodeWrapper) String() string {
 	mode := i.Mode()
 	return fmt.Sprintf(
-		"Inode {\n  inode = %d, offset = %d, size = %d, mode = %s, isDir = %+v, blocks = %d, flags = %032b\n  tree = %+v,\n  dir = %s,\n  fields = %s\n}",
-		i.num, i.offset, i.node.NSize(), mode, mode.IsDir(), i.node.Blocks(), i.Flags(), i.extentTree, i.dir, i.node.String(),
+		"Inode {\n  inode = %d, offset = %d, size = %d, mode = %s, isDir = %+v, blocks = %d, flags = %032b\n  tree = %+v,\n  dir = %s\n}",
+		i.num, i.offset, i.node.NSize(), mode, mode.IsDir(), i.node.Blocks(), i.Flags(), i.extentTree, i.dir,
 	)
 }
 
@@ -848,11 +884,10 @@ func (i *InodeWrapper) allocateExtent(blocks int64) error {
 	return nil
 }
 
+// In allocateDirectory method, change the initial link count:
 func (i *InodeWrapper) allocateDirectory(parent *InodeWrapper) error {
 	// set the directory flag.
 	i.node.SetMode(i.node.Mode() | S_IFDIR)
-
-	// log.Default().Info("", "mode", fmt.Sprintf("%X", i.node.Mode()))
 
 	if !i.fs.deterministicTime.IsZero() {
 		i.node.SetCtime(uint32(i.fs.deterministicTime.Unix()))
@@ -869,8 +904,10 @@ func (i *InodeWrapper) allocateDirectory(parent *InodeWrapper) error {
 		return err
 	}
 
-	i.node.SetNSize(4096)
-	i.node.SetBlocks(8)
+	i.node.SetSizeLo(4096)
+	i.node.SetSizeHigh(0)
+	i.node.SetBlocksLo(8)
+	i.node.SetBlocksHigh(0)
 
 	// Map the extent as a directory.
 	dir, err := newLinearDirectory(i.fs, i, i.extentTree)
@@ -879,16 +916,25 @@ func (i *InodeWrapper) allocateDirectory(parent *InodeWrapper) error {
 	}
 	i.dir = dir
 
-	// Add the `.` and `..` directories.
-	if err := i.addDirectoryEntry(i, "."); err != nil {
+	// Directories start with link count 2 (for "." and the parent's entry)
+	if i.num == 2 {
+		i.node.SetLinksCount(2)
+	} else {
+		i.node.SetLinksCount(1)
+	}
+
+	// Add the `.` and `..` directories
+	if err := i.dir.AddEntry(i, "."); err != nil {
 		return err
 	}
-	if err := i.addDirectoryEntry(parent, ".."); err != nil {
+	if err := i.dir.AddEntry(parent, ".."); err != nil {
 		return err
 	}
 
 	// Update the directory count in the bgd.
-	i.bg.desc.SetUsedDirsCount(i.bg.desc.UsedDirsCount() + 1)
+	current := i.bg.desc.BgUsedDirsCount()
+	i.bg.desc.SetUsedDirsCountLo(uint16(current + 1))
+	i.bg.desc.SetUsedDirsCountHi(uint16((current + 1) >> 16))
 
 	return nil
 }
@@ -936,7 +982,9 @@ func (i *InodeWrapper) addContents(contents vm.MemoryRegion, symlink bool) error
 			return fmt.Errorf("failed to mapRegion: %+v", err)
 		}
 
-		i.node.SetNSize(uint64(contents.Size()))
+		size := uint64(contents.Size())
+		i.node.SetSizeLo(uint32(size & 0xFFFFFFFF))
+		i.node.SetSizeHigh(uint32(size >> 32))
 
 		i.linkTarget = string(contents.(vm.RawRegion))
 	} else {
@@ -951,8 +999,12 @@ func (i *InodeWrapper) addContents(contents vm.MemoryRegion, symlink bool) error
 			return fmt.Errorf("failed to get extents: %+v", err)
 		}
 
-		i.node.SetNSize(uint64(contents.Size()))
-		i.node.SetBlocks((uint64(blocks) * i.fs.sb.blockSize()) / 512)
+		size := uint64(contents.Size())
+		i.node.SetSizeLo(uint32(size & 0xFFFFFFFF))
+		i.node.SetSizeHigh(uint32(size >> 32))
+		blockCount := (uint64(blocks) * i.fs.sb.blockSize()) / 512
+		i.node.SetBlocksLo(uint32(blockCount & 0xFFFFFFFF))
+		i.node.SetBlocksHigh(uint16(blockCount >> 32))
 
 		for _, extent := range ext {
 			if err := i.fs.mapExtent(contents, &extent); err != nil {
@@ -1005,7 +1057,16 @@ func (i *InodeWrapper) addDirectoryEntry(child *InodeWrapper, name string) error
 		return fmt.Errorf("not a directory")
 	}
 
-	child.node.SetLinksCount(child.node.LinksCount() + 1)
+	// Only increment link count for regular entries (not "." or "..")
+	if name != "." && name != ".." {
+		child.node.SetLinksCount(child.node.LinksCount() + 1)
+
+		// If we're adding a directory as a child, increment our link count
+		// (for the ".." entry in the child directory)
+		if child.Mode().IsDir() {
+			i.node.SetLinksCount(i.node.LinksCount() + 1)
+		}
+	}
 
 	return i.dir.AddEntry(child, name)
 }
@@ -1028,16 +1089,21 @@ type BlockGroup struct {
 }
 
 func (bg *BlockGroup) allocateBlocks(blocks uint32) (*Extent, error) {
-	var start uint32 = 0
-	var noFreeBlocks = true
-
-	// Check if this block group even has a chance of fitting all the blocks.
-	if bg.desc.FreeBlocksCount() < blocks {
+	// Check if this block group even has a chance of fitting all the blocks
+	if bg.desc.BgFreeBlocksCount() < blocks {
 		return nil, nil
 	}
 
+	// Make sure we don't try to allocate beyond the actual block count
+	if bg.firstFreeBlock+blocks > bg.blockCount {
+		return nil, nil
+	}
+
+	var start uint32 = 0
+	var noFreeBlocks = true
+
 	// Check if this is a full block group allocation.
-	if blocks == bg.blockCount && bg.desc.FreeBlocksCount() == bg.blockCount {
+	if blocks == bg.blockCount && bg.desc.BgFreeBlocksCount() == bg.blockCount {
 		if bg.firstFreeBlock != 0 {
 			return nil, nil
 		}
@@ -1046,7 +1112,8 @@ func (bg *BlockGroup) allocateBlocks(blocks uint32) (*Extent, error) {
 		bg.firstFreeBlock = bg.blockCount
 
 		// Set the free block count to 0.
-		bg.desc.SetFreeBlocksCount(0)
+		bg.desc.SetFreeBlocksCountLo(0)
+		bg.desc.SetFreeBlocksCountHi(0)
 
 		// Fill the entire block bitmap.
 		if err := bg.blockBitmap.SetAll(true); err != nil {
@@ -1094,7 +1161,9 @@ func (bg *BlockGroup) allocateBlocks(blocks uint32) (*Extent, error) {
 		}
 
 		// Update the block count.
-		bg.desc.SetFreeBlocksCount(bg.desc.FreeBlocksCount() - uint32(blocks))
+		current := bg.desc.BgFreeBlocksCount() - uint32(blocks)
+		bg.desc.SetFreeBlocksCountLo(uint16(current))
+		bg.desc.SetFreeBlocksCountHi(uint16(current >> 16))
 
 		// log.Default().Info("allocated", "start", start, "blocks", blocks)
 
@@ -1117,7 +1186,7 @@ func (bg *BlockGroup) allocateBlocks(blocks uint32) (*Extent, error) {
 }
 
 func (bg *BlockGroup) allocateInode() (*InodeWrapper, error) {
-	if bg.desc.FreeInodesCount() == 0 {
+	if bg.desc.BgFreeInodesCount() == 0 {
 		return nil, nil
 	}
 
@@ -1140,7 +1209,7 @@ func (bg *BlockGroup) allocateInode() (*InodeWrapper, error) {
 
 		// Calculate the inode number and the offset into the inode table.
 		inodeNumber := (bg.inodeCount * uint32(bg.num)) + i + 1
-		inodeTableStart := bg.desc.InodeTable() * bg.fs.sb.blockSize()
+		inodeTableStart := uint64(bg.desc.InodeTable()) * bg.fs.sb.blockSize()
 		inodeOffset := inodeTableStart + uint64(i*INODE_SIZE)
 
 		// Make the wrapper.
@@ -1163,7 +1232,9 @@ func (bg *BlockGroup) allocateInode() (*InodeWrapper, error) {
 		}
 
 		// Update the inode count.
-		bg.desc.SetFreeInodesCount(bg.desc.FreeInodesCount() - 1)
+		current := bg.desc.BgFreeInodesCount() - 1
+		bg.desc.SetFreeInodesCountLo(uint16(current))
+		bg.desc.SetFreeInodesCountHi(uint16(current >> 16))
 
 		// Return the wrapper.
 		return inode, nil
@@ -1248,7 +1319,9 @@ func (fs *Ext4Filesystem) allocateBlocks(blocks int64) (*Extent, error) {
 
 		if ext != nil {
 			// Update the free block count.
-			fs.sb.SetFreeBlocksCount(fs.sb.FreeBlocksCount() - uint64(blocks))
+			current := fs.sb.FreeBlocksCount() - uint32(blocks)
+			fs.sb.SetFreeBlocksCountLo(current)
+			fs.sb.SetFreeBlocksCountHi(0) // Assuming we're not using high part for now
 
 			totalAllocateBlocks += int64(time.Since(start).Nanoseconds())
 
@@ -1629,14 +1702,14 @@ func (fs *Ext4Filesystem) mapRawExtent(region vm.MemoryRegion, extent *Extent) e
 	)
 }
 
-func (fs *Ext4Filesystem) DumpDebug(log log.Handler, filename string) {
+func (fs *Ext4Filesystem) DumpDebug(filename string) {
 	ent, err := fs.getNode(filename, true, false, false)
 	if err != nil {
-		log.Error("file does not exist", "filename", filename)
+		log.Default().Error("file does not exist", "filename", filename)
 		return
 	}
 
-	log.Info("DumpDebug", "ent", ent)
+	log.Default().Info("DumpDebug", "ent", ent)
 }
 
 func (fs *Ext4Filesystem) DumpInodeMap(out io.Writer) error {
@@ -1878,10 +1951,6 @@ func roundUpDiv[T constraints.Integer](x, y T) T {
 	return 1 + (x-1)/y
 }
 
-func (sb *Superblock) blockGroupCount() uint64 {
-	return roundUpDiv(sb.BlocksCount(), uint64(sb.BlocksPerGroup()))
-}
-
 func (sb *Superblock) blockSize() uint64 {
 	return uint64(math.Pow(2, float64(10+sb.LogBlockSize())))
 }
@@ -1910,16 +1979,20 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 
 	// Initialize the superblock.
 	fs.sb.SetMagic(61267)
-	fs.sb.SetBlocksCount(uint64(blockCount))
+	fs.sb.SetBlocksCountLo(uint32(blockCount))
+	fs.sb.SetBlocksCountHi(uint32(blockCount >> 32))
 	fs.sb.SetInodesCount(uint32(inodeCount))
-	fs.sb.SetRBlocksCount(0)
+	fs.sb.SetRBlocksCountLo(0)
+	fs.sb.SetRBlocksCountHi(0)
 	fs.sb.SetLogBlockSize(2)
 	fs.sb.SetLogClusterSize(2)
 	fs.sb.SetBlocksPerGroup(uint32(blocksPerGroup))
 	fs.sb.SetClustersPerGroup(uint32(blocksPerGroup))
 	fs.sb.SetInodesPerGroup(uint32(inodesPerGroup))
 	fs.sb.SetFreeInodesCount(uint32(inodeCount))
-	fs.sb.SetFreeBlocksCount(uint64(blockCount) - 1)
+	freeBlocks := uint32(blockCount - 1)
+	fs.sb.SetFreeBlocksCountLo(freeBlocks)
+	fs.sb.SetFreeBlocksCountHi(0)
 	fs.sb.SetMaxMntCount(65535)
 	fs.sb.SetLastcheck(uint32(time.Now().Unix()))
 	fs.sb.SetMkfsTime(uint32(time.Now().Unix()))
@@ -1937,17 +2010,9 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 	// Set uuid
 	fs.sb.WriteAt(uuid[:], 104)
 
-	// Set feature flags.
-	if feature.HasFeature(feature.FeatureExt4Resize) {
-		fs.sb.SetFeatureCompat(
-			uint32(Feature_compat_COMPAT_RESIZE_INODE),
-		)
-	} else {
-		fs.sb.SetFeatureCompat(
-			uint32(Feature_compat_COMPAT_SPARSE_SUPER2),
-		)
-	}
-
+	fs.sb.SetFeatureCompat(
+		uint32(Feature_compat_COMPAT_SPARSE_SUPER2),
+	)
 	fs.sb.SetFeatureIncompat(
 		uint32(Feature_incompat_INCOMPAT_64BIT) |
 			uint32(Feature_incompat_INCOMPAT_FILETYPE) |
@@ -1973,8 +2038,7 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 		blockBitmapSize := roundUpDiv(uint64(fs.sb.BlocksPerGroup())/8, fs.sb.blockSize()) * fs.sb.blockSize() * 8
 
 		bg := &BlockGroup{
-			fs: fs,
-
+			fs:         fs,
 			num:        i,
 			offset:     blockGroupOffset,
 			desc:       &BlockGroupDescriptor{},
@@ -1987,19 +2051,36 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 			blockCount: uint32(min(blockCount, int64(fs.sb.BlocksPerGroup()))),
 		}
 
-		for x := bg.inodeCount; x < uint32(inodeBitmapSize); x += 1 {
-			if err := bg.inodeBitmap.Set(uint64(x), true); err != nil {
+		// Set padding bits for inodes (from actual count to bitmap size) - bulk operation
+		if bg.inodeCount < uint32(inodeBitmapSize) {
+			if err := bg.inodeBitmap.SetRange(uint64(bg.inodeCount), uint64(inodeBitmapSize), true); err != nil {
 				return nil, err
 			}
 		}
 
-		for x := bg.blockCount; x < uint32(blockBitmapSize); x += 1 {
-			if err := bg.blockBitmap.Set(uint64(x), true); err != nil {
+		// Set padding bits for blocks (from actual count to bitmap size)
+		// This is the critical fix - we need to handle the last block group specially
+		actualBlockCount := bg.blockCount
+		if i == int(blockGroupCount)-1 {
+			// For the last block group, calculate actual blocks
+			totalBlocksInPreviousGroups := int64(i) * int64(blocksPerGroup)
+			actualBlockCount = uint32(blockCount - totalBlocksInPreviousGroups)
+		}
+
+		// Set all bits from actualBlockCount to the end of the bitmap - bulk operation
+		if actualBlockCount < uint32(blockBitmapSize) {
+			if err := bg.blockBitmap.SetRange(uint64(actualBlockCount), uint64(blockBitmapSize), true); err != nil {
 				return nil, err
 			}
 		}
-		bg.desc.SetFreeBlocksCount(uint32(bg.blockCount))
-		bg.desc.SetFreeInodesCount(uint32(bg.inodeCount))
+
+		// Update the block count to reflect actual blocks in this group
+		bg.blockCount = actualBlockCount
+
+		bg.desc.SetFreeBlocksCountLo(uint16(bg.blockCount))
+		bg.desc.SetFreeBlocksCountHi(uint16(bg.blockCount >> 16))
+		bg.desc.SetFreeInodesCountLo(uint16(bg.inodeCount))
+		bg.desc.SetFreeInodesCountHi(uint16(bg.inodeCount >> 16))
 		bg.desc.SetFlags(4)
 
 		fs.bgs = append(fs.bgs, bg)
@@ -2012,7 +2093,7 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 				// Ignore errors since we expect this to be a null pointer error.
 				fs.allocateBlocks(1)
 
-				_, err := fs.allocateBlocksForBytes(blockGroupCount * BlockGroupDescriptor{}.Size())
+				_, err := fs.allocateBlocksForBytes(blockGroupCount * 64) // BlockGroupDescriptor is 64 bytes
 				if err != nil {
 					return nil, fmt.Errorf("could not allocate bgd blocks: %v", err)
 				}
@@ -2032,7 +2113,8 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 		if err != nil {
 			return nil, err
 		}
-		bg.desc.SetBlockBitmap(extent.StartBlock)
+		bg.desc.SetBlockBitmapLo(uint32(extent.StartBlock))
+		bg.desc.SetBlockBitmapHi(uint32(extent.StartBlock >> 32))
 		if err := fs.mapExtent(bg.blockBitmap, extent); err != nil {
 			return nil, err
 		}
@@ -2041,7 +2123,8 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 		if err != nil {
 			return nil, err
 		}
-		bg.desc.SetInodeBitmap(extent.StartBlock)
+		bg.desc.SetInodeBitmapLo(uint32(extent.StartBlock))
+		bg.desc.SetInodeBitmapHi(uint32(extent.StartBlock >> 32))
 		if err := fs.mapExtent(bg.inodeBitmap, extent); err != nil {
 			return nil, err
 		}
@@ -2051,7 +2134,8 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 		if err != nil {
 			return nil, err
 		}
-		bg.desc.SetInodeTable(extent.StartBlock)
+		bg.desc.SetInodeTableLo(uint32(extent.StartBlock))
+		bg.desc.SetInodeTableHi(uint32(extent.StartBlock >> 32))
 
 		// log.Default().Info("", "block bitmap", bg.desc.blockBitmapBlock(), "inode bitmap", bg.desc.inodeBitmapBlock(), "inode table", bg.desc.inodeTableBlock())
 	}
@@ -2059,15 +2143,14 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 	// Create the set of default inodes and the root directory.
 	var root *InodeWrapper
 
-	for i := 0; i < 11; i++ {
+	for range 11 {
 		inode, err := fs.allocateInode()
 		if err != nil {
 			return nil, err
 		}
 
-		if inode.num == 2 {
-			// root directory.
-
+		switch inode.num {
+		case 2: // root directory.
 			err := inode.allocateDirectory(inode)
 			if err != nil {
 				return nil, err
@@ -2078,25 +2161,7 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 			if err := root.chmod(goFs.FileMode(0755)); err != nil {
 				return nil, err
 			}
-		} else if inode.num == 7 {
-			if feature.HasFeature(feature.FeatureExt4Resize) {
-				// resize inode
-				if err := inode.addContents(
-					vm.ZeroRegion(1024*blockGroupCount*BlockGroupDescriptor{}.Size()),
-					false,
-				); err != nil {
-					return nil, err
-				}
-
-				// mode should be 0o100600
-				inode.node.SetMode(0o100600)
-				inode.node.SetLinksCount(1)
-			} else {
-				inode.node.SetMode(0)
-			}
-		} else if inode.num == 11 {
-			// lost + found directory
-
+		case 11: // lost + found directory
 			err := inode.allocateDirectory(root)
 			if err != nil {
 				return nil, err
@@ -2109,7 +2174,7 @@ func CreateExt4Filesystem(_vm *vm.VirtualMemory, offset int64, size int64) (*Ext
 			if err := root.addDirectoryEntry(inode, "lost+found"); err != nil {
 				return nil, err
 			}
-		} else {
+		default:
 			inode.node.SetMode(0)
 		}
 	}
