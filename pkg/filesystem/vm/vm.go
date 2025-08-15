@@ -4,15 +4,106 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"github.com/tinyrange/tinyrange/pkg/log"
+	"log/slog"
 )
+
+type PageList [256]MemoryRegion
+
+// PageTable interface abstracts page table operations for different implementations
+type PageTable interface {
+	Get(index uint64) MemoryRegion
+	Set(index uint64, region MemoryRegion)
+	Clear()
+	ForEach(fn func(index uint64, region MemoryRegion) bool)
+}
+
+// MultiLevelPageTable implements a multi-level page table with lazy allocation
+type MultiLevelPageTable struct {
+	pageListCapacity uint64
+	totalPages       uint64
+	topLevel         []*PageList
+}
+
+// Get retrieves a MemoryRegion at the given index
+func (pt *MultiLevelPageTable) Get(index uint64) MemoryRegion {
+	if index >= pt.totalPages {
+		return nil
+	}
+
+	topIndex := index / pt.pageListCapacity
+	pageIndex := index % pt.pageListCapacity
+
+	if topIndex >= uint64(len(pt.topLevel)) || pt.topLevel[topIndex] == nil {
+		return nil
+	}
+
+	return pt.topLevel[topIndex][pageIndex]
+}
+
+// Set stores a MemoryRegion at the given index, allocating intermediate tables as needed
+func (pt *MultiLevelPageTable) Set(index uint64, region MemoryRegion) {
+	if index >= pt.totalPages {
+		return
+	}
+
+	topIndex := index / pt.pageListCapacity
+	pageIndex := index % pt.pageListCapacity
+
+	// Ensure we have enough top-level entries
+	for uint64(len(pt.topLevel)) <= topIndex {
+		pt.topLevel = append(pt.topLevel, nil)
+	}
+
+	// Allocate PageList if it doesn't exist
+	if pt.topLevel[topIndex] == nil {
+		pt.topLevel[topIndex] = &PageList{}
+	}
+
+	pt.topLevel[topIndex][pageIndex] = region
+}
+
+// Clear resets all page table entries
+func (pt *MultiLevelPageTable) Clear() {
+	for i := range pt.topLevel {
+		pt.topLevel[i] = nil
+	}
+	pt.topLevel = pt.topLevel[:0]
+}
+
+// ForEach iterates over all non-nil regions in the page table
+func (pt *MultiLevelPageTable) ForEach(fn func(index uint64, region MemoryRegion) bool) {
+	for topIndex, pageList := range pt.topLevel {
+		if pageList == nil {
+			continue
+		}
+
+		for pageIndex, region := range pageList {
+			if region == nil {
+				continue
+			}
+
+			globalIndex := uint64(topIndex)*pt.pageListCapacity + uint64(pageIndex)
+			if !fn(globalIndex, region) {
+				return
+			}
+		}
+	}
+}
+
+// NewMultiLevelPageTable creates a new multi-level page table
+func NewMultiLevelPageTable(totalPages uint64) *MultiLevelPageTable {
+	return &MultiLevelPageTable{
+		pageListCapacity: 256, // Same as PageList size
+		totalPages:       totalPages,
+		topLevel:         make([]*PageList, 0),
+	}
+}
 
 type VirtualMemory struct {
 	pageSize uint32
 	// The size of a page is always pageSize.
 	// Any pages smaller must be fragmentedRegions and any pages larger must be split into OffsetRegions.
-	pages     []MemoryRegion
+	pages     PageTable
 	totalSize int64
 
 	// stats
@@ -26,12 +117,12 @@ func (vm *VirtualMemory) PageSize() uint32 { return vm.pageSize }
 func (vm *VirtualMemory) mapFragment(region MemoryRegion, offset int64) error {
 	vm.totalMapFragments += 1
 
-	// log.Default().Info("mapFragment", "offset", offset)
+	// slog.Info("mapFragment", "offset", offset)
 	// Get the region index.
 	regionIndex := offset / int64(vm.pageSize)
 	regionOffset := offset % int64(vm.pageSize)
 
-	existingRegion := vm.pages[uint64(regionIndex)]
+	existingRegion := vm.pages.Get(uint64(regionIndex))
 	if existingRegion != nil {
 		// if a region already exists then check if it's a fragmentedRegion.
 		if frag, ok := existingRegion.(*fragmentedRegion); ok {
@@ -41,7 +132,7 @@ func (vm *VirtualMemory) mapFragment(region MemoryRegion, offset int64) error {
 		} else {
 			// Otherwise it's something else.
 
-			// log.Default().Info("map existingRegion into fragmentRegion",
+			// slog.Info("map existingRegion into fragmentRegion",
 			// 	"pageSize", vm.pageSize,
 			// 	"regionIndex", regionIndex,
 			// 	"existingRegion", existingRegion,
@@ -59,9 +150,9 @@ func (vm *VirtualMemory) mapFragment(region MemoryRegion, offset int64) error {
 				return errors.Join(fmt.Errorf("failed to map fragment"), err)
 			}
 
-			// log.Default().Info("", "newFrag", newFrag)
+			// slog.Info("", "newFrag", newFrag)
 
-			vm.pages[uint64(regionIndex)] = newFrag
+			vm.pages.Set(uint64(regionIndex), newFrag)
 
 			return nil
 		}
@@ -72,7 +163,7 @@ func (vm *VirtualMemory) mapFragment(region MemoryRegion, offset int64) error {
 			return errors.Join(fmt.Errorf("failed to map fragment"), err)
 		}
 
-		vm.pages[uint64(regionIndex)] = newFrag
+		vm.pages.Set(uint64(regionIndex), newFrag)
 
 		return nil
 	}
@@ -87,7 +178,7 @@ func (vm *VirtualMemory) mapRegion(region MemoryRegion, offset int64) error {
 
 	index := offset / int64(vm.pageSize)
 
-	vm.pages[uint64(index)] = region
+	vm.pages.Set(uint64(index), region)
 
 	return nil
 }
@@ -107,7 +198,7 @@ func (vm *VirtualMemory) Map(region MemoryRegion, offset int64) error {
 
 	vm.totalMaps += 1
 
-	// log.Default().Info("map", "region", region, "offset", offset)
+	// slog.Info("map", "region", region, "offset", offset)
 
 	// Get the size of the region.
 	regionSize := region.Size()
@@ -195,31 +286,30 @@ func (vm *VirtualMemory) Reinterpret(newRegion MemoryRegion, offset int64) error
 func (vm *VirtualMemory) DumpMap(out io.Writer) error {
 	// Dump the entire memory map to out.
 
-	var off uint64
-	for off = 0; off < uint64(vm.totalSize)/uint64(vm.pageSize); off += 1 {
-		region := vm.pages[off]
-		if region == nil {
-			continue
-		}
-
+	var dumpErr error
+	vm.pages.ForEach(func(off uint64, region MemoryRegion) bool {
 		switch region := region.(type) {
 		case *fragmentedRegion:
 			if _, err := fmt.Fprintf(out, "%016X: fragmented\n", off*uint64(vm.pageSize)); err != nil {
-				return err
+				dumpErr = err
+				return false
 			}
 			if err := region.dumpMap(out, off*uint64(vm.pageSize)); err != nil {
-				return err
+				dumpErr = err
+				return false
 			}
 		default:
 			regionStr := regionToString(region)
 
 			if _, err := fmt.Fprintf(out, "%016X: %s\n", off*uint64(vm.pageSize), regionStr); err != nil {
-				return err
+				dumpErr = err
+				return false
 			}
 		}
-	}
+		return true
+	})
 
-	return nil
+	return dumpErr
 }
 
 func (vm *VirtualMemory) getRegion(offset int64, isWrite bool) (MemoryRegion, int64, error) {
@@ -233,13 +323,13 @@ func (vm *VirtualMemory) getRegion(offset int64, isWrite bool) (MemoryRegion, in
 	regionOffset := offset % int64(vm.pageSize)
 
 	// Get the region.
-	region := vm.pages[uint64(regionIndex)]
+	region := vm.pages.Get(uint64(regionIndex))
 	if region == nil {
 		if isWrite {
 			// Create a new raw region for writing.
 			newRegion := make(RawRegion, vm.pageSize)
-			vm.pages[uint64(regionIndex)] = &newRegion
-			return vm.pages[uint64(regionIndex)], regionOffset, nil
+			vm.pages.Set(uint64(regionIndex), &newRegion)
+			return vm.pages.Get(uint64(regionIndex)), regionOffset, nil
 		} else {
 			// Reading from unmapped region returns zeros.
 			return nil, regionOffset, nil
@@ -256,8 +346,8 @@ func (vm *VirtualMemory) getRegion(offset int64, isWrite bool) (MemoryRegion, in
 				return nil, 0, err
 			}
 			// Replace region with new writable region.
-			vm.pages[uint64(regionIndex)] = &newRegion
-			return vm.pages[uint64(regionIndex)], regionOffset, nil
+			vm.pages.Set(uint64(regionIndex), &newRegion)
+			return vm.pages.Get(uint64(regionIndex)), regionOffset, nil
 		}
 	}
 
@@ -325,7 +415,7 @@ func (vm *VirtualMemory) WriteAt(p []byte, off int64) (n int, err error) {
 			// If the region exists then forward the write to the region.
 			writeSize, err = region.WriteAt(p, regionOffset)
 			if err != nil {
-				log.Default().Error("VirtualMemory WriteAt Error", "len", len(p), "off", off, "regionOffset", regionOffset)
+				slog.Error("VirtualMemory WriteAt Error", "len", len(p), "off", off, "regionOffset", regionOffset)
 				return 0, err
 			}
 		} else {
@@ -380,13 +470,13 @@ func (vm *VirtualMemory) WriteSparseTo(fh io.WriterAt) (int64, error) {
 
 func (vm *VirtualMemory) Reset() error {
 	// Clear all the old pages and write pages.
-	vm.pages = make([]MemoryRegion, len(vm.pages))
+	vm.pages.Clear()
 
 	return nil
 }
 
-func (vm *VirtualMemory) DumpStats(log log.Handler) {
-	log.Info("vm stats",
+func (vm *VirtualMemory) DumpStats() {
+	slog.Info("vm stats",
 		"totalMaps", vm.totalMaps,
 		"totalMapFragments", vm.totalMapFragments,
 		"totalMapRegions", vm.totalMapRegions,
@@ -422,9 +512,11 @@ func NewVirtualMemory(totalSize int64, pageSize uint32) *VirtualMemory {
 		panic("totalSize%int64(pageSize) != 0")
 	}
 
+	totalPages := uint64(totalSize / int64(pageSize))
+
 	return &VirtualMemory{
 		pageSize:  pageSize,
 		totalSize: totalSize,
-		pages:     make([]MemoryRegion, totalSize/int64(pageSize)),
+		pages:     NewMultiLevelPageTable(totalPages),
 	}
 }
