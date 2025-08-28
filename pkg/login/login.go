@@ -402,12 +402,23 @@ func (config *Config) addFile(filename string) (common.Directive, error) {
 			return nil, err
 		}
 
-		target := path.Unix.Join("/root", path.Native.Base(parsed.Path))
+		pathPart := parsed.Path
+		var target string
 
-		if strings.Contains(parsed.Path, ":") {
-			target = strings.SplitN(parsed.Path, ":", 2)[1]
-			// remove the target from the filename
-			filename = filename[:len(filename)-len(target)-1]
+		if idx := strings.Index(pathPart, ":"); idx != -1 {
+			target = pathPart[idx+1:]
+			pathPart = pathPart[:idx]
+			parsed.Path = pathPart
+			filename = parsed.String()
+		} else if idx := strings.Index(pathPart, ","); idx != -1 {
+			target = pathPart[idx+1:]
+			pathPart = pathPart[:idx]
+			parsed.Path = pathPart
+			filename = parsed.String()
+		}
+
+		if target == "" {
+			target = path.Unix.Join("/root", path.Native.Base(pathPart))
 		}
 
 		return common.DirectiveAddFile{
@@ -419,12 +430,14 @@ func (config *Config) addFile(filename string) (common.Directive, error) {
 			return nil, fmt.Errorf("remote configs can't include local files")
 		}
 
-		target := ""
+		var target string
 
-		if strings.Contains(filename, ":") {
-			target = strings.SplitN(filename, ":", 2)[1]
-			// remove the target from the filename
-			filename = filename[:len(filename)-len(target)-1]
+		if idx := strings.Index(filename, ":"); idx != -1 {
+			target = filename[idx+1:]
+			filename = filename[:idx]
+		} else if idx := strings.Index(filename, ","); idx != -1 {
+			target = filename[idx+1:]
+			filename = filename[:idx]
 		}
 
 		filePath := config.resolvePath(filename)
@@ -456,27 +469,39 @@ func (config *Config) addArchive(filename string) (common.Directive, error) {
 	filename = config.replaceVariables(filename)
 
 	var def common.BuildDefinition
-
-	filename, target, ok := strings.Cut(filename, ",")
-
-	if !ok {
-		if strings.HasSuffix(filename, ".archive") {
-			target = "/"
-		} else {
-			target = "/root"
-		}
-	}
+	var target string
 
 	if strings.HasPrefix(filename, "http://") || strings.HasPrefix(filename, "https://") {
-		def = builder.Factory.NewFetchHttpBuildDefinition(filename, 0, nil)
-
 		parsed, err := url.Parse(filename)
 		if err != nil {
 			return nil, err
 		}
 
-		filename = parsed.Path
+		pathPart := parsed.Path
+
+		if idx := strings.Index(pathPart, ":"); idx != -1 {
+			target = pathPart[idx+1:]
+			pathPart = pathPart[:idx]
+			parsed.Path = pathPart
+			filename = parsed.String()
+		} else if idx := strings.Index(pathPart, ","); idx != -1 {
+			target = pathPart[idx+1:]
+			pathPart = pathPart[:idx]
+			parsed.Path = pathPart
+			filename = parsed.String()
+		}
+
+		def = builder.Factory.NewFetchHttpBuildDefinition(filename, 0, nil)
+		filename = pathPart
 	} else {
+		if idx := strings.Index(filename, ":"); idx != -1 {
+			target = filename[idx+1:]
+			filename = filename[:idx]
+		} else if idx := strings.Index(filename, ","); idx != -1 {
+			target = filename[idx+1:]
+			filename = filename[:idx]
+		}
+
 		if !config.localConfig {
 			return nil, fmt.Errorf("remote configs can't include local files")
 		}
@@ -491,6 +516,14 @@ func (config *Config) addArchive(filename string) (common.Directive, error) {
 		def = builder.Factory.NewConstantHashDefinition(hash, func() (io.ReadCloser, error) {
 			return os.Open(filePath)
 		})
+	}
+
+	if target == "" {
+		if strings.HasSuffix(filename, ".archive") {
+			target = "/"
+		} else {
+			target = "/root"
+		}
 	}
 
 	ark, err := detectArchiveExtractor(def, filename)
