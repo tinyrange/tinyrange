@@ -25,10 +25,7 @@ var freezeCmd = &cobra.Command{
 		}
 
 		rootHash := hash.Hash(args[0])
-		def, err := db.Builder().GetDefinitionByHash(rootHash)
-		if err != nil {
-			return fmt.Errorf("failed to get definition: %w", err)
-		}
+		builder := db.Builder()
 
 		type serialized struct {
 			Type   string         `yaml:"type"`
@@ -38,18 +35,19 @@ var freezeCmd = &cobra.Command{
 		defs := make(map[string]serialized)
 		defDb := hash.NewDefinitionDatabase(nil)
 
-		var walk func(common.BuildDefinition) error
-		walk = func(d common.BuildDefinition) error {
-			h, err := defDb.HashDefinition(d)
-			if err != nil {
-				return err
-			}
+		var walk func(hash.Hash) error
+		walk = func(h hash.Hash) error {
 			hStr := h.String()
 			if _, ok := defs[hStr]; ok {
 				return nil
 			}
 
-			data, err := defDb.MarshalDefinition(d)
+			def, err := builder.GetDefinitionByHash(h)
+			if err != nil {
+				return fmt.Errorf("failed to get definition %s: %w", hStr, err)
+			}
+
+			data, err := defDb.MarshalDefinition(def)
 			if err != nil {
 				return err
 			}
@@ -62,19 +60,42 @@ var freezeCmd = &cobra.Command{
 			}
 			defs[hStr] = serialized{Type: tmp.TypeName, Params: tmp.Params}
 
-			deps, err := d.Dependencies()
+			deps, err := def.Dependencies()
 			if err != nil {
 				return err
 			}
 			for _, dep := range deps {
-				if err := walk(dep); err != nil {
+				depHash, err := defDb.HashDefinition(dep)
+				if err != nil {
+					return err
+				}
+				if err := walk(depHash); err != nil {
 					return err
 				}
 			}
+
+			dir, err := builder.Filesystem().GetBuildDirectory(h)
+			if err != nil {
+				return fmt.Errorf("failed to open build directory for %s: %w", hStr, err)
+			}
+			receiptBytes, err := dir.ReadReceipt()
+			if err != nil {
+				return fmt.Errorf("failed to read receipt for %s: %w", hStr, err)
+			}
+			var receipt common.BuildReceipt
+			if err := json.Unmarshal(receiptBytes, &receipt); err != nil {
+				return fmt.Errorf("failed to unmarshal receipt for %s: %w", hStr, err)
+			}
+			for _, req := range receipt.Requirements {
+				if err := walk(req); err != nil {
+					return err
+				}
+			}
+
 			return nil
 		}
 
-		if err := walk(def); err != nil {
+		if err := walk(rootHash); err != nil {
 			return err
 		}
 
