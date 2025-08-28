@@ -74,12 +74,12 @@ func (def *buildVmDefinition) Dependencies() ([]common.BuildDefinition, error) {
 			return nil, fmt.Errorf("circular buildVM dependency: %+v", def)
 		}
 
-		deps, err := dir.Dependencies()
+		childDeps, err := dir.Dependencies()
 		if err != nil {
 			return nil, err
 		}
 
-		for _, dep := range deps {
+		for _, dep := range childDeps {
 			if dep == def {
 				return nil, fmt.Errorf("circular buildVM dependency: %+v", def)
 			}

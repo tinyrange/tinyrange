@@ -390,12 +390,12 @@ func (def *buildFsDefinition) Dependencies() ([]common.BuildDefinition, error) {
 	var deps []common.BuildDefinition
 
 	for _, dir := range def.params.Directives {
-		deps, err := dir.Dependencies()
+		childDeps, err := dir.Dependencies()
 		if err != nil {
 			return nil, err
 		}
 
-		deps = append(deps, deps...)
+		deps = append(deps, childDeps...)
 	}
 
 	return deps, nil
