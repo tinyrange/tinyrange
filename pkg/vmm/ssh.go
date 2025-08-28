@@ -1,35 +1,35 @@
 package vmm
 
 import (
-    "context"
-    "encoding/base64"
-    "errors"
-    "fmt"
-    "io"
-    "net"
-    "os"
-    "strings"
-    "sync/atomic"
-    "time"
+	"context"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"strings"
+	"sync/atomic"
+	"time"
 
-    "github.com/gorilla/websocket"
-    "golang.org/x/crypto/ssh"
-    "golang.org/x/crypto/ssh/agent"
-    "golang.org/x/term"
+	"github.com/gorilla/websocket"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/term"
 
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/netstack/ns"
 )
 
 type SecureSSHConfig struct {
-    HostKey   string `json:"ssh_host_key"`
-    PublicKey string `json:"ssh_public_key"`
-    Password  string `json:"ssh_password"`
-    // AuthorizedKey is the user's public key allowed to access the guest.
-    AuthorizedKey string `json:"ssh_authorized_key"`
-    // ClientPrivateKey is the private key used by the host client to connect.
-    // Not written to the guest init args; only persisted locally when using --secure-ssh or --name.
-    ClientPrivateKey string `json:"ssh_client_private_key"`
+	HostKey   string `json:"ssh_host_key"`
+	PublicKey string `json:"ssh_public_key"`
+	Password  string `json:"ssh_password"`
+	// AuthorizedKey is the user's public key allowed to access the guest.
+	AuthorizedKey string `json:"ssh_authorized_key"`
+	// ClientPrivateKey is the private key used by the host client to connect.
+	// Not written to the guest init args; only persisted locally when using --secure-ssh or --name.
+	ClientPrivateKey string `json:"ssh_client_private_key"`
 }
 
 var ErrInterrupt = errors.New("Interrupt")
@@ -89,52 +89,52 @@ func (e *exitNotify) Get() bool {
 }
 
 func connectOverSsh(
-    ns ns.NetStack,
-    log log.Handler,
-    address string,
-    username string,
-    secureSSH SecureSSHConfig,
-    exited *exitNotify,
+	ns ns.NetStack,
+	log log.Handler,
+	address string,
+	username string,
+	secureSSH SecureSSHConfig,
+	exited *exitNotify,
 ) error {
 	start := time.Now()
 
-    config := &ssh.ClientConfig{
-        User:            username,
-        HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-    }
+	config := &ssh.ClientConfig{
+		User:            username,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
 
-    // Prefer key-based auth if a client private key is available.
-    var auth []ssh.AuthMethod
-    if secureSSH.ClientPrivateKey != "" {
-        if signer, err := ssh.ParsePrivateKey([]byte(secureSSH.ClientPrivateKey)); err == nil {
-            auth = append(auth, ssh.PublicKeys(signer))
-        } else {
-            log.Warn("failed to parse client private key; falling back if password present", "err", err)
-        }
-    }
-    // Try SSH agent if available (works with user-provided .pub keys and encrypted keys).
-    if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
-        if conn, err := net.Dial("unix", sock); err == nil {
-            ag := agent.NewClient(conn)
-            auth = append(auth, ssh.PublicKeysCallback(ag.Signers))
-            // Do not close conn here; callback may need it during handshake.
-        } else {
-            log.Debug("ssh-agent not available", "err", err)
-        }
-    }
-    if secureSSH.Password != "" {
-        auth = append(auth, ssh.Password(secureSSH.Password))
-    }
-    // Avoid empty auth which would fail fast; leave it empty if truly none are provided.
-    if len(auth) > 0 {
-        config.Auth = auth
-    }
+	// Prefer key-based auth if a client private key is available.
+	var auth []ssh.AuthMethod
+	if secureSSH.ClientPrivateKey != "" {
+		if signer, err := ssh.ParsePrivateKey([]byte(secureSSH.ClientPrivateKey)); err == nil {
+			auth = append(auth, ssh.PublicKeys(signer))
+		} else {
+			log.Warn("failed to parse client private key; falling back if password present", "err", err)
+		}
+	}
+	// Try SSH agent if available (works with user-provided .pub keys and encrypted keys).
+	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
+		if conn, err := net.Dial("unix", sock); err == nil {
+			ag := agent.NewClient(conn)
+			auth = append(auth, ssh.PublicKeysCallback(ag.Signers))
+			// Do not close conn here; callback may need it during handshake.
+		} else {
+			log.Debug("ssh-agent not available", "err", err)
+		}
+	}
+	if secureSSH.Password != "" {
+		auth = append(auth, ssh.Password(secureSSH.Password))
+	}
+	// Avoid empty auth which would fail fast; leave it empty if truly none are provided.
+	if len(auth) > 0 {
+		config.Auth = auth
+	}
 
-    if secureSSH.PublicKey != "" {
-        public, _, _, _, err := ssh.ParseAuthorizedKey([]byte(secureSSH.PublicKey))
-        if err != nil {
-            return fmt.Errorf("failed to parse public key: %v", err)
-        }
+	if secureSSH.PublicKey != "" {
+		public, _, _, _, err := ssh.ParseAuthorizedKey([]byte(secureSSH.PublicKey))
+		if err != nil {
+			return fmt.Errorf("failed to parse public key: %v", err)
+		}
 
 		config.HostKeyCallback = ssh.FixedHostKey(public)
 	}
@@ -303,34 +303,34 @@ var (
 )
 
 func newWebSocketSSH(ws *websocket.Conn, ns ns.NetStack, log log.Handler, address string, username string, secureSSH SecureSSHConfig) error {
-    config := &ssh.ClientConfig{
-        User:            username,
-        HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-    }
+	config := &ssh.ClientConfig{
+		User:            username,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
 
-    var auth []ssh.AuthMethod
-    if secureSSH.ClientPrivateKey != "" {
-        if signer, err := ssh.ParsePrivateKey([]byte(secureSSH.ClientPrivateKey)); err == nil {
-            auth = append(auth, ssh.PublicKeys(signer))
-        } else {
-            log.Warn("failed to parse client private key; falling back if password present", "err", err)
-        }
-    }
-    // Agent support for webssh, same as terminal client.
-    if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
-        if conn, err := net.Dial("unix", sock); err == nil {
-            ag := agent.NewClient(conn)
-            auth = append(auth, ssh.PublicKeysCallback(ag.Signers))
-        } else {
-            log.Debug("ssh-agent not available", "err", err)
-        }
-    }
-    if secureSSH.Password != "" {
-        auth = append(auth, ssh.Password(secureSSH.Password))
-    }
-    if len(auth) > 0 {
-        config.Auth = auth
-    }
+	var auth []ssh.AuthMethod
+	if secureSSH.ClientPrivateKey != "" {
+		if signer, err := ssh.ParsePrivateKey([]byte(secureSSH.ClientPrivateKey)); err == nil {
+			auth = append(auth, ssh.PublicKeys(signer))
+		} else {
+			log.Warn("failed to parse client private key; falling back if password present", "err", err)
+		}
+	}
+	// Agent support for webssh, same as terminal client.
+	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
+		if conn, err := net.Dial("unix", sock); err == nil {
+			ag := agent.NewClient(conn)
+			auth = append(auth, ssh.PublicKeysCallback(ag.Signers))
+		} else {
+			log.Debug("ssh-agent not available", "err", err)
+		}
+	}
+	if secureSSH.Password != "" {
+		auth = append(auth, ssh.Password(secureSSH.Password))
+	}
+	if len(auth) > 0 {
+		config.Auth = auth
+	}
 
 	if secureSSH.PublicKey != "" {
 		public, _, _, _, err := ssh.ParseAuthorizedKey([]byte(secureSSH.PublicKey))

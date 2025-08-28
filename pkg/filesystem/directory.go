@@ -43,25 +43,25 @@ func (m *memoryDirectory) Sys() any {
 
 // Unlink implements MutableDirectory.
 func (m *memoryDirectory) Unlink(name string) error {
-    m.mtx.Lock()
-    defer m.mtx.Unlock()
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 
 	if path.Unix.Base(name) != name {
 		return fmt.Errorf("MutableDirectory methods can not handle paths: %s", name)
 	}
 
-    // Remove from map
-    delete(m.entries, name)
-    // Remove from ordered names slice
-    for i, n := range m.names {
-        if n == name {
-            // compact without preserving order strictly
-            m.names = append(m.names[:i], m.names[i+1:]...)
-            break
-        }
-    }
+	// Remove from map
+	delete(m.entries, name)
+	// Remove from ordered names slice
+	for i, n := range m.names {
+		if n == name {
+			// compact without preserving order strictly
+			m.names = append(m.names[:i], m.names[i+1:]...)
+			break
+		}
+	}
 
-    return nil
+	return nil
 }
 
 // Create implements MutableDirectory.
@@ -90,18 +90,18 @@ func (m *memoryDirectory) create(name string, f File) (File, error) {
 		f = m.fac.NewMemoryFile()
 	}
 
-    // If an entry already exists, replace it and avoid duplicate names entries.
-    if _, exists := m.entries[name]; exists {
-        // Remove first occurrence from names to avoid duplicates.
-        for i, n := range m.names {
-            if n == name {
-                m.names = append(m.names[:i], m.names[i+1:]...)
-                break
-            }
-        }
-    }
-    m.names = append(m.names, name)
-    m.entries[name] = f
+	// If an entry already exists, replace it and avoid duplicate names entries.
+	if _, exists := m.entries[name]; exists {
+		// Remove first occurrence from names to avoid duplicates.
+		for i, n := range m.names {
+			if n == name {
+				m.names = append(m.names[:i], m.names[i+1:]...)
+				break
+			}
+		}
+	}
+	m.names = append(m.names, name)
+	m.entries[name] = f
 
 	return m.entries[name], nil
 }
