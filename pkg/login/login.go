@@ -299,7 +299,12 @@ type Config struct {
 	NetHostGateway string `json:"-" yaml:"-"`
 	NetHostService string `json:"-" yaml:"-"`
 	NoInternet     bool   `json:"-" yaml:"-"`
-	NetGuestMAC    string `json:"-" yaml:"-"`
+    NetGuestMAC    string `json:"-" yaml:"-"`
+
+    // SSH exposure and identity (CLI only)
+    InstanceName string `json:"-" yaml:"-"`
+    SSHKey       string `json:"-" yaml:"-"`
+    ExposeSSH    string `json:"-" yaml:"-"`
 
 	localConfig bool
 	basePath    string
@@ -625,7 +630,24 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		return nil
 	}
 
-	var directives []common.Directive
+    var directives []common.Directive
+
+    // Pass through SSH flags via environment for the VMM driver.
+    if config.InstanceName != "" {
+        if err := os.Setenv("TINYRANGE_NAME", config.InstanceName); err != nil {
+            return err
+        }
+    }
+    if config.SSHKey != "" {
+        if err := os.Setenv("TINYRANGE_SSH_KEY", config.SSHKey); err != nil {
+            return err
+        }
+    }
+    if config.ExposeSSH != "" {
+        if err := os.Setenv("TINYRANGE_EXPOSE_SSH", config.ExposeSSH); err != nil {
+            return err
+        }
+    }
 
 	if config.Builder == "" {
 		return fmt.Errorf("please specify a builder")

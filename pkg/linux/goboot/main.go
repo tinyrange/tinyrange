@@ -172,11 +172,12 @@ func SetWinsize(fd uintptr, w, h uint32) error {
 }
 
 type sshServer struct {
-	log      log.Handler
-	callable starlark.Callable
-	command  []string
-	hostKey  string
-	password string
+	log           log.Handler
+	callable      starlark.Callable
+	command       []string
+	hostKey       string
+	password      string
+	authorizedKey string
 }
 
 // Attr implements starlark.HasAttrs.
@@ -460,13 +461,28 @@ func (s *sshServer) run(callable starlark.Callable) error {
 		return fmt.Errorf("ssh: failed to listen for connection: %v", err)
 	}
 
-	config := &ssh.ServerConfig{
-		PasswordCallback: func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
+	config := &ssh.ServerConfig{}
+
+	if s.password != "" {
+		config.PasswordCallback = func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
 			if subtle.ConstantTimeCompare(pass, []byte(s.password)) == 1 {
 				return nil, nil
 			}
 			return nil, fmt.Errorf("password rejected for %q", c.User())
-		},
+		}
+	}
+
+	if s.authorizedKey != "" {
+		parsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(s.authorizedKey))
+		if err != nil {
+			return fmt.Errorf("ssh: failed to parse authorized key: %v", err)
+		}
+		config.PublicKeyCallback = func(c ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			if string(key.Marshal()) == string(parsed.Marshal()) {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("public key rejected for %q", c.User())
+		}
 	}
 
 	if s.hostKey == "" {
@@ -1146,27 +1162,28 @@ func getStarlarkGlobals(log log.Handler) (starlark.StringDict, error) {
 		kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
 		var (
-			callable starlark.Callable
-			password string
-			hostKey  string
+			callable      starlark.Callable
+			password      string
+			hostKey       string
+			authorizedKey string
 		)
 
 		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
 			"callable", &callable,
 			"password?", &password,
 			"host_key?", &hostKey,
+			"authorized_key?", &authorizedKey,
 		); err != nil {
 			return starlark.None, err
 		}
 
-		if password == "" {
-			password = config.INSECURE_SSH_PASSWORD
-		}
+		// When no password is provided, password auth is disabled.
 
 		sshServer := &sshServer{
-			log:      log,
-			hostKey:  hostKey,
-			password: password,
+			log:           log,
+			hostKey:       hostKey,
+			password:      password,
+			authorizedKey: authorizedKey,
 		}
 
 		err := sshServer.run(callable)
@@ -1604,11 +1621,17 @@ func runSSHServer(log log.Handler) error {
 		return fmt.Errorf("failed to get ssh_password: %s", err)
 	}
 
+	sshAuthorizedKey, err := getString(argsDict, "ssh_authorized_key")
+	if err != nil {
+		return fmt.Errorf("failed to get ssh_authorized_key: %s", err)
+	}
+
 	server := &sshServer{
-		log:      log,
-		hostKey:  sshHostKey,
-		password: sshPassword,
-		command:  commandArgs,
+		log:           log,
+		hostKey:       sshHostKey,
+		password:      sshPassword,
+		authorizedKey: sshAuthorizedKey,
+		command:       commandArgs,
 	}
 
 	log.Info("starting ssh server")

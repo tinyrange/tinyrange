@@ -195,7 +195,11 @@ func init() {
 	loginCmd.PersistentFlags().StringVar(&currentConfig.WebSSH, "web", "", "Start a web interface on the given port.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.WriteTemplate, "template", false, "If true then just generate the config and don't run the VM.")
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ReadOnlyMounts, "mount", []string{}, "Mount a host directory into the VM using 9P.")
-	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ReadWriteMounts, "mount-rw", []string{}, "Mount a host directory into the VM using 9P with read-write access.")
+    loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ReadWriteMounts, "mount-rw", []string{}, "Mount a host directory into the VM using 9P with read-write access.")
+    // SSH exposure and identity passthrough to VMM
+    loginCmd.PersistentFlags().StringVar(&currentConfig.InstanceName, "name", "", "Instance name used to derive persistent SSH keys and state.")
+    loginCmd.PersistentFlags().StringVar(&currentConfig.SSHKey, "ssh-key", "", "Path to SSH identity (private key or .pub) to authorize and use for SSH.")
+    loginCmd.PersistentFlags().StringVar(&currentConfig.ExposeSSH, "expose-ssh", "", "Expose guest SSH. Accepts '<host>:<port>' or '<port>' (defaults to localhost). Forwards to guest 2222.")
 	// Network addressing and policy
 	loginCmd.PersistentFlags().StringVar(&currentConfig.NetGuestCIDR, "net-guest-cidr", "", "Set guest IP with CIDR (e.g., 192.168.76.2/24).")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.NetHostGateway, "net-gateway", "", "Set host gateway IP reachable from the guest.")

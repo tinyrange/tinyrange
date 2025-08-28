@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/csv"
@@ -22,11 +23,11 @@ import (
 	"os/signal"
 	"runtime"
 	goDebug "runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/miekg/dns"
 	"github.com/things-go/go-socks5"
 	"golang.org/x/crypto/ssh"
@@ -407,6 +408,12 @@ type driver struct {
 	deletedFiles map[string]bool
 
 	simpleCache map[string][]byte
+
+	// Convenience flags
+	name             string
+	sshKey           string
+	sshListenAddress string
+	sshPort          int
 }
 
 // Logger implements Driver.
@@ -944,35 +951,110 @@ func (tr *driver) generateOrLoadSecureSSH() (SecureSSHConfig, error) {
 		if err := json.NewDecoder(f).Decode(&secureSSH); err != nil {
 			return SecureSSHConfig{}, fmt.Errorf("failed to decode secure ssh config: %w", err)
 		}
+
+		// Upgrade older files missing keys.
+		needsWrite := false
+		if secureSSH.HostKey == "" {
+			hostKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			if err != nil {
+				return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate server host key: %v", err)
+			}
+			hostBlock, err := ssh.MarshalPrivateKey(hostKey, "")
+			if err != nil {
+				return SecureSSHConfig{}, fmt.Errorf("ssh: failed to marshal server host key: %v", err)
+			}
+			hostPem := pem.EncodeToMemory(hostBlock)
+			if hostPem == nil {
+				return SecureSSHConfig{}, fmt.Errorf("ssh: failed to encode server host key")
+			}
+			secureSSH.HostKey = string(hostPem)
+
+			hostPub, err := ssh.NewPublicKey(&hostKey.PublicKey)
+			if err != nil {
+				return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate server public key: %v", err)
+			}
+			secureSSH.PublicKey = string(ssh.MarshalAuthorizedKey(hostPub))
+			needsWrite = true
+		}
+		if secureSSH.ClientPrivateKey == "" || secureSSH.AuthorizedKey == "" {
+			_, clientPrivRaw, err := ed25519.GenerateKey(rand.Reader)
+			if err != nil {
+				return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate client key: %v", err)
+			}
+			clientBlock, err := ssh.MarshalPrivateKey(clientPrivRaw, "")
+			if err != nil {
+				return SecureSSHConfig{}, fmt.Errorf("ssh: failed to marshal client private key: %v", err)
+			}
+			clientPem := pem.EncodeToMemory(clientBlock)
+			if clientPem == nil {
+				return SecureSSHConfig{}, fmt.Errorf("ssh: failed to encode client private key")
+			}
+			secureSSH.ClientPrivateKey = string(clientPem)
+			clientPub, err := ssh.NewPublicKey(clientPrivRaw.Public())
+			if err != nil {
+				return SecureSSHConfig{}, fmt.Errorf("ssh: failed to derive client public key: %v", err)
+			}
+			secureSSH.AuthorizedKey = string(ssh.MarshalAuthorizedKey(clientPub))
+			needsWrite = true
+		}
+		if needsWrite {
+			// overwrite existing file
+			_ = f.Close()
+			wf, err := os.Create(tr.secureSSH)
+			if err != nil {
+				return SecureSSHConfig{}, fmt.Errorf("failed to update secure ssh config: %w", err)
+			}
+			defer wf.Close()
+			if err := json.NewEncoder(wf).Encode(secureSSH); err != nil {
+				return SecureSSHConfig{}, fmt.Errorf("failed to encode secure ssh config: %w", err)
+			}
+		}
 	} else {
-		secureSSH.Password = uuid.NewString()
-
-		// Generate a new host key.
-		privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		// Generate a new server host key (ECDSA P-256).
+		hostKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
-			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate key: %v", err)
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate server host key: %v", err)
 		}
 
-		block, err := ssh.MarshalPrivateKey(privateKey, "")
+		hostBlock, err := ssh.MarshalPrivateKey(hostKey, "")
 		if err != nil {
-			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to marshal private key: %v", err)
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to marshal server host key: %v", err)
 		}
-
-		blockBytes := pem.EncodeToMemory(block)
-		if blockBytes == nil {
-			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to encode private key")
+		hostPem := pem.EncodeToMemory(hostBlock)
+		if hostPem == nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to encode server host key")
 		}
+		secureSSH.HostKey = string(hostPem)
 
-		secureSSH.HostKey = string(blockBytes)
-
-		publicKey, err := ssh.NewPublicKey(&privateKey.PublicKey)
+		hostPub, err := ssh.NewPublicKey(&hostKey.PublicKey)
 		if err != nil {
-			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate public key: %v", err)
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate server public key: %v", err)
 		}
+		secureSSH.PublicKey = string(ssh.MarshalAuthorizedKey(hostPub))
 
-		secureSSH.PublicKey = string(ssh.MarshalAuthorizedKey(publicKey))
+		// Generate a client keypair (ed25519 preferred if available via ssh.MarshalPrivateKey).
+		// Use ed25519 from the standard library for key material; ssh will handle marshaling.
+		_, clientPrivRaw, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate client key: %v", err)
+		}
+		clientBlock, err := ssh.MarshalPrivateKey(clientPrivRaw, "")
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to marshal client private key: %v", err)
+		}
+		clientPem := pem.EncodeToMemory(clientBlock)
+		if clientPem == nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to encode client private key")
+		}
+		secureSSH.ClientPrivateKey = string(clientPem)
 
-		// Write the config to disk.
+		clientPub, err := ssh.NewPublicKey(clientPrivRaw.Public())
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to derive client public key: %v", err)
+		}
+		secureSSH.AuthorizedKey = string(ssh.MarshalAuthorizedKey(clientPub))
+
+		// Write the config to disk for persistence.
 		f, err := os.Create(tr.secureSSH)
 		if err != nil {
 			return SecureSSHConfig{}, fmt.Errorf("failed to create secure ssh config: %w", err)
@@ -1066,6 +1148,7 @@ func (tr *driver) createNbdListener(tryUnix bool) (net.Addr, net.Listener, error
 type portInformation struct {
 	listenAddress string
 	port          int
+	guestPort     int
 }
 
 func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []portInformation, []mountInfo, []volumeInfo, error) {
@@ -1088,6 +1171,7 @@ func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []portIn
 				exportedPorts = append(exportedPorts, portInformation{
 					listenAddress: port.ListenAddress,
 					port:          port.Port,
+					guestPort:     port.Port,
 				})
 			} else if mount := frag.MountHostDirectory; mount != nil {
 				mountedHostDirectories = append(mountedHostDirectories, mountInfo{
@@ -1116,37 +1200,162 @@ func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []portIn
 func (tr *driver) configureSecureSSH(root filesystem.Directory) (SecureSSHConfig, error) {
 	var secureSSH SecureSSHConfig
 
+	// Helper to write a filtered guest JSON (no client private key).
+	type guestSSHArgs struct {
+		HostKey       string `json:"ssh_host_key"`
+		AuthorizedKey string `json:"ssh_authorized_key"`
+		Password      string `json:"ssh_password,omitempty"`
+	}
+
+	writeGuest := func(args guestSSHArgs) error {
+		secureConfig, err := json.Marshal(args)
+		if err != nil {
+			return fmt.Errorf("failed to marshal guest ssh config: %w", err)
+		}
+
+		memFile := filesystem.Factory.NewMemoryFile()
+		if err := memFile.Overwrite(secureConfig); err != nil {
+			return fmt.Errorf("failed to overwrite secure ssh config: %w", err)
+		}
+		if err := memFile.Chmod(0600); err != nil {
+			return fmt.Errorf("failed to chmod secure ssh config: %w", err)
+		}
+		// Overwrite if the file already exists.
+		if fsutil.Exists(root, "/init.d/secure_ssh.json") {
+			if err := fsutil.DeleteChild(root, "/init.d/secure_ssh.json"); err != nil {
+				return fmt.Errorf("failed to delete existing secure ssh config: %w", err)
+			}
+		}
+		if _, err := fsutil.CreateChild(root, "/init.d/secure_ssh.json", memFile); err != nil {
+			return fmt.Errorf("failed to create secure ssh config: %w", err)
+		}
+		return nil
+	}
+
 	// Configure secure SSH.
 	if tr.secureSSH != "" {
 		var err error
-
 		secureSSH, err = tr.generateOrLoadSecureSSH()
 		if err != nil {
 			return SecureSSHConfig{}, fmt.Errorf("failed to generate or load secure ssh: %w", err)
 		}
-
-		secureConfig, err := json.Marshal(secureSSH)
+	} else {
+		// Generate ephemeral server host key and client keypair for this run only.
+		hostKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
-			return SecureSSHConfig{}, fmt.Errorf("failed to marshal secure ssh config: %w", err)
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate server host key: %v", err)
+		}
+		hostBlock, err := ssh.MarshalPrivateKey(hostKey, "")
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to marshal server host key: %v", err)
+		}
+		hostPem := pem.EncodeToMemory(hostBlock)
+		if hostPem == nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to encode server host key")
+		}
+		secureSSH.HostKey = string(hostPem)
+
+		hostPub, err := ssh.NewPublicKey(&hostKey.PublicKey)
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate server public key: %v", err)
+		}
+		secureSSH.PublicKey = string(ssh.MarshalAuthorizedKey(hostPub))
+
+		_, clientPrivRaw, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to generate client key: %v", err)
+		}
+		clientBlock, err := ssh.MarshalPrivateKey(clientPrivRaw, "")
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to marshal client private key: %v", err)
+		}
+		clientPem := pem.EncodeToMemory(clientBlock)
+		if clientPem == nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to encode client private key")
+		}
+		secureSSH.ClientPrivateKey = string(clientPem)
+		clientPub, err := ssh.NewPublicKey(clientPrivRaw.Public())
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("ssh: failed to derive client public key: %v", err)
+		}
+		secureSSH.AuthorizedKey = string(ssh.MarshalAuthorizedKey(clientPub))
+	}
+
+	// If a user-provided SSH identity is specified, authorize it on the guest and prefer it for client auth.
+	if tr.sshKey != "" {
+		keyBytes, err := os.ReadFile(tr.sshKey)
+		if err != nil {
+			return SecureSSHConfig{}, fmt.Errorf("failed to read --ssh-key: %w", err)
 		}
 
-		memFile := filesystem.Factory.NewMemoryFile()
+		keyStr := strings.TrimSpace(string(keyBytes))
 
-		if err := memFile.Overwrite(secureConfig); err != nil {
-			return SecureSSHConfig{}, fmt.Errorf("failed to overwrite secure ssh config: %w", err)
+		// Try private key first.
+		var privSigner ssh.Signer
+		if signer, err := ssh.ParsePrivateKey([]byte(keyStr)); err == nil {
+			privSigner = signer
+		} else {
+			// If it's a .pub, parse authorized key.
+			if pub, _, _, _, perr := ssh.ParseAuthorizedKey([]byte(keyStr)); perr == nil {
+				// Try to find matching private key by stripping .pub
+				if strings.HasSuffix(tr.sshKey, ".pub") {
+					if privBytes, rerr := os.ReadFile(strings.TrimSuffix(tr.sshKey, ".pub")); rerr == nil {
+						if signer2, perr2 := ssh.ParsePrivateKey(privBytes); perr2 == nil {
+							privSigner = signer2
+							// Use the original private key content for client auth.
+							secureSSH.ClientPrivateKey = string(privBytes)
+						}
+					}
+				}
+				// Use provided public key line.
+				secureSSH.AuthorizedKey = string(ssh.MarshalAuthorizedKey(pub))
+			} else {
+				return SecureSSHConfig{}, fmt.Errorf("--ssh-key is neither a valid private key nor a valid public key")
+			}
 		}
 
-		if err := memFile.Chmod(0600); err != nil {
-			return SecureSSHConfig{}, fmt.Errorf("failed to chmod secure ssh config: %w", err)
+		if privSigner != nil {
+			// Set client private key for internal SSH client.
+			// If the user provided a private key file (not .pub), override any previously generated key.
+			if !strings.HasSuffix(tr.sshKey, ".pub") {
+				secureSSH.ClientPrivateKey = keyStr
+			}
+			// Derive authorized_key from the private key's public component to ensure match.
+			pub := privSigner.PublicKey()
+			secureSSH.AuthorizedKey = string(ssh.MarshalAuthorizedKey(pub))
 		}
 
-		if _, err := fsutil.CreateChild(root, "/init.d/secure_ssh.json", memFile); err != nil {
-			return SecureSSHConfig{}, fmt.Errorf("failed to create secure ssh config: %w", err)
+		// Write updated guest args with the user-authorized key.
+		if err := writeGuest(guestSSHArgs{
+			HostKey:       secureSSH.HostKey,
+			AuthorizedKey: secureSSH.AuthorizedKey,
+			Password:      secureSSH.Password,
+		}); err != nil {
+			return SecureSSHConfig{}, err
+		}
+
+		// If persisting, update the persisted JSON but never store the user's private key.
+		if tr.secureSSH != "" {
+			persisted := secureSSH
+			persisted.ClientPrivateKey = ""
+			f, err := os.Create(tr.secureSSH)
+			if err != nil {
+				return SecureSSHConfig{}, fmt.Errorf("failed to update secure ssh config: %w", err)
+			}
+			if err := json.NewEncoder(f).Encode(persisted); err != nil {
+				_ = f.Close()
+				return SecureSSHConfig{}, fmt.Errorf("failed to encode secure ssh config: %w", err)
+			}
+			_ = f.Close()
 		}
 	} else {
-		secureSSH.HostKey = ""
-		secureSSH.PublicKey = ""
-		secureSSH.Password = config.INSECURE_SSH_PASSWORD
+		if err := writeGuest(guestSSHArgs{
+			HostKey:       secureSSH.HostKey,
+			AuthorizedKey: secureSSH.AuthorizedKey,
+			Password:      secureSSH.Password,
+		}); err != nil {
+			return SecureSSHConfig{}, err
+		}
 	}
 
 	return secureSSH, nil
@@ -1430,7 +1639,16 @@ func (d *driver) exportPort(port portInformation) error {
 		port.listenAddress = "localhost"
 	}
 
-	d.log.Info("exporting port", "address", fmt.Sprintf("%s:%d", port.listenAddress, port.port))
+	targetPort := port.port
+	if port.guestPort != 0 {
+		targetPort = port.guestPort
+	}
+
+	if targetPort != port.port {
+		d.log.Info("exporting port", "address", fmt.Sprintf("%s:%d -> %d", port.listenAddress, port.port, targetPort))
+	} else {
+		d.log.Info("exporting port", "address", fmt.Sprintf("%s:%d", port.listenAddress, port.port))
+	}
 
 	portListen, err := net.Listen("tcp", fmt.Sprintf("%s:%d", port.listenAddress, port.port))
 	if err != nil {
@@ -1448,7 +1666,7 @@ func (d *driver) exportPort(port portInformation) error {
 			go func() {
 				defer conn.Close()
 
-				clientConn, err := d.ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("%s:%d", d.networkGuestIP(), port.port))
+				clientConn, err := d.ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("%s:%d", d.networkGuestIP(), targetPort))
 				if err != nil {
 					// silence these errors since they are exposed to the client anyway.
 					d.log.Debug("failed to dial vm port", "err", err)
@@ -1907,6 +2125,17 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 		}
 	}
 
+	// Expose SSH if requested (listen <addr>:<port> -> guest:2222).
+	if d.sshPort > 0 {
+		addr := d.sshListenAddress
+		if addr == "" {
+			addr = "localhost"
+		}
+		if err := d.exportPort(portInformation{listenAddress: addr, port: d.sshPort, guestPort: 2222}); err != nil {
+			return fmt.Errorf("failed to export ssh port: %w", err)
+		}
+	}
+
 	// Set the kernel.
 	if topConfig.Kernel != nil {
 		kernelFile, err := d.ResolveReference(*topConfig.Kernel)
@@ -2221,6 +2450,9 @@ var (
 	verbose                    = DriverFlags.Bool("verbose", false, "enable verbose mode")
 	experimental               = DriverFlags.String("experimental", "", "enable comma separated experimental features")
 	secureSSH                  = DriverFlags.String("secure-ssh", "", "Specify a local file to save a secure SSH config to. This will set a random persistent host key and root password.")
+	instanceName               = DriverFlags.String("name", "", "Instance name used to derive persistent SSH keys and state.")
+	exposeSSHFlag              = DriverFlags.String("expose-ssh", "", "Expose guest SSH. Accepts '<host>:<port>' or '<port>' (defaults to localhost). Forwards to guest 2222.")
+	sshKeyPath                 = DriverFlags.String("ssh-key", "", "Path to SSH identity (private key or .pub) to authorize and use for internal SSH.")
 	persistPath                = DriverFlags.String("persist-path", "", "Specify a path to save VM files to.")
 	exportFsPath               = DriverFlags.String("exportfs", "", "Export the filesystem to a file.")
 	dumpFsPath                 = DriverFlags.String("dumpfs", "", "Dump the filename and offset of any reads from the filesystem to a CSV file.")
@@ -2258,6 +2490,8 @@ func initCommon(
 		buildDir:                   *buildDir,
 		debug:                      *debug,
 		secureSSH:                  *secureSSH,
+		name:                       *instanceName,
+		sshKey:                     *sshKeyPath,
 		persistPath:                *persistPath,
 		exportFsPath:               *exportFsPath,
 		dumpFsPath:                 *dumpFsPath,
@@ -2267,6 +2501,64 @@ func initCommon(
 		socks5Proxy:                *socks5Proxy,
 		noValidateTinyRangeVersion: *noValidateTinyRangeVersion,
 		driverUrl:                  driverUrl,
+	}
+
+	// If a name is provided and no secure-ssh path, derive a persistent path from the build directory.
+	if driver.secureSSH == "" && driver.name != "" {
+		persistDir := path.Native.Join(driver.buildDir, "secure-ssh")
+		if err := os.MkdirAll(persistDir, 0o700); err != nil {
+			return nil, fmt.Errorf("failed to create secure-ssh dir: %w", err)
+		}
+
+		driver.secureSSH = path.Native.Join(persistDir, driver.name+".json")
+	}
+
+	// Environment overrides for automation and login passthrough
+	if driver.name == "" {
+		if v := os.Getenv("TINYRANGE_NAME"); v != "" {
+			driver.name = v
+			if driver.secureSSH == "" {
+				persistDir := path.Native.Join(driver.buildDir, "secure-ssh")
+				if err := os.MkdirAll(persistDir, 0o700); err != nil {
+					return nil, fmt.Errorf("failed to create secure-ssh dir: %w", err)
+				}
+
+				driver.secureSSH = path.Native.Join(persistDir, driver.name+".json")
+			}
+		}
+	}
+	if driver.sshKey == "" {
+		if v := os.Getenv("TINYRANGE_SSH_KEY"); v != "" {
+			driver.sshKey = v
+		}
+	}
+
+	// Parse expose-ssh from flag or env
+	expose := *exposeSSHFlag
+	if expose == "" {
+		if v := os.Getenv("TINYRANGE_EXPOSE_SSH"); v != "" {
+			expose = v
+		}
+	}
+	if expose != "" {
+		host := "localhost"
+		portStr := expose
+		if strings.Contains(portStr, ":") {
+			parts := strings.SplitN(portStr, ":", 2)
+			if len(parts) != 2 || parts[1] == "" {
+				return nil, fmt.Errorf("invalid --expose-ssh value: %s", expose)
+			}
+			host, portStr = parts[0], parts[1]
+			if host == "" {
+				host = "localhost"
+			}
+		}
+		p, err := strconv.Atoi(portStr)
+		if err != nil || p <= 0 || p > 65535 {
+			return nil, fmt.Errorf("invalid --expose-ssh port: %s", portStr)
+		}
+		driver.sshListenAddress = host
+		driver.sshPort = p
 	}
 
 	if *doPrepare {

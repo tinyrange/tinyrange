@@ -70,14 +70,18 @@ def main():
         # Run the SSH server.
         password = ""
         host_key = ""
+        authorized_key = ""
 
         if "ssh_password" in args:
             password = args["ssh_password"]
 
         if "ssh_host_key" in args:
             host_key = args["ssh_host_key"]
+
+        if "ssh_authorized_key" in args:
+            authorized_key = args["ssh_authorized_key"]
         
-        run_ssh_server(ssh_connect, host_key = host_key, password = password)
+        run_ssh_server(ssh_connect, host_key = host_key, password = password, authorized_key = authorized_key)
     else:
         print("detected unhosted environment, dropping to shell")
         run_shell()
