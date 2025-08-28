@@ -476,8 +476,8 @@ func splitExtentIntoBlocks(ext []Extent) []Extent {
 }
 
 type ExtentTree interface {
-	Extents() ([]Extent, error)
-	AllocateBlocks(blocks int64) error
+    Extents() ([]Extent, error)
+    AllocateBlocks(blocks int64) error
 }
 
 type ExtentTree1 struct {
@@ -773,22 +773,139 @@ func newExtentTree2(fs *Ext4Filesystem, i *InodeWrapper, blocks int64) (*ExtentT
 }
 
 var (
-	_ ExtentTree = &ExtentTree1{}
-	_ ExtentTree = &ExtentTree2{}
+    _ ExtentTree = &ExtentTree1{}
+    _ ExtentTree = &ExtentTree2{}
 )
 
+// ExtentTreeIdxDepth1 implements a single-level indexed extent tree (depth=1).
+// The inode stores an index entry pointing to a leaf block that contains all
+// the extents for the file.
+type ExtentTreeIdxDepth1 struct {
+    i       *InodeWrapper
+    leafBlk uint64
+    ext     []Extent
+}
+
+func (t *ExtentTreeIdxDepth1) Extents() ([]Extent, error) {
+    return append([]Extent(nil), t.ext...), nil
+}
+
+func (t *ExtentTreeIdxDepth1) AllocateBlocks(blocks int64) error {
+    // Allocate additional data extents and rebuild the leaf block mapping.
+    exts, err := t.i.fs.allocateMultiExtentBlocks(blocks)
+    if err != nil {
+        return err
+    }
+    t.ext = append(t.ext, func(in []*Extent) []Extent {
+        out := make([]Extent, 0, len(in))
+        for _, e := range in {
+            out = append(out, *e)
+        }
+        return out
+    }(exts)...)
+
+    return mapExtentLeafBlock(t.i.fs, t.leafBlk, t.ext)
+}
+
+// mapExtentLeafBlock creates or updates a leaf extent block on disk at the
+// given block number with the provided extents.
+func mapExtentLeafBlock(fs *Ext4Filesystem, leafBlk uint64, exts []Extent) error {
+    // Build header for a leaf node.
+    hdr := &ExtentTreeHeader{}
+    hdr.SetMagic(0xF30A)
+    hdr.SetDepth(0)
+    hdr.SetEntries(uint16(len(exts)))
+    // Calculate capacity for a full block of entries.
+    // Each entry is 12 bytes; header is 12 bytes.
+    max := (fs.sb.blockSize() - uint64(hdr.Size())) / uint64(NewExtentTreeNode().Size())
+    if max > 0xFFFF {
+        max = 0xFFFF
+    }
+    hdr.SetMax(uint16(max))
+
+    // Build entries
+    var nodes vm.RegionArray[*ExtentTreeNode]
+    for _, e := range exts {
+        n := &ExtentTreeNode{}
+        n.SetBlock(e.FirstFileBlock)
+        n.SetLen(e.Length)
+        n.SetStartLo(uint32(e.StartBlock))
+        n.SetStartHi(uint16(e.StartBlock >> 32))
+        nodes.Append(n)
+    }
+
+    arr := vm.NewRegionArray[vm.MemoryRegion](hdr, &nodes)
+    padded := vm.NewPaddedRegion(arr, int64(fs.sb.blockSize()))
+
+    // Map to disk at leafBlk
+    return fs.mapRegion(padded, int64(leafBlk*fs.sb.blockSize()))
+}
+
+func newExtentTreeIdxDepth1(fs *Ext4Filesystem, i *InodeWrapper, blocks int64) (*ExtentTreeIdxDepth1, error) {
+    // Allocate file data extents across block groups.
+    exts, err := fs.allocateMultiExtentBlocks(blocks)
+    if err != nil {
+        return nil, err
+    }
+
+    // Convert to value slice for storage.
+    vals := make([]Extent, 0, len(exts))
+    for _, e := range exts {
+        vals = append(vals, *e)
+    }
+
+    // Allocate one block for the leaf node (more than enough for our extents).
+    leaf, err := fs.allocateBlocks(1)
+    if err != nil {
+        return nil, err
+    }
+
+    // Map the leaf block contents with all extents.
+    if err := mapExtentLeafBlock(fs, leaf.StartBlock, vals); err != nil {
+        return nil, err
+    }
+
+    // Point inode header at the leaf via an index entry.
+    i.node.SetBlockMagic(0xF30A)
+    i.node.SetBlockDepth(1)
+    i.node.SetBlockMax(4)   // inode can store up to 4 index entries
+    i.node.SetBlockEntries(1)
+
+    // index entry 0 encoding in inode (12 bytes):
+    // [0..4)  ei_block (first logical file block covered)
+    // [4..8)  ei_leaf_lo (low 32 bits of leaf physical block)
+    // [8..10) ei_leaf_hi (high 16 bits)
+    // [10..12) ei_unused
+    first := uint32(0)
+    if len(vals) > 0 {
+        first = vals[0].FirstFileBlock
+    }
+    leafLo := uint32(leaf.StartBlock)
+    leafHi := uint16(leaf.StartBlock >> 32)
+
+    i.node.SetBlock0Block(first)
+    // Write ei_leaf_lo across the 4 bytes starting at offset 56.
+    i.node.SetBlock0Len(uint16(leafLo & 0xFFFF))
+    i.node.SetBlock0StartHi(uint16((leafLo >> 16) & 0xFFFF))
+    // Write ei_leaf_hi in low 16 bits at offset 60; high 16 bits (unused) = 0.
+    i.node.SetBlock0StartLo(uint32(leafHi))
+
+    return &ExtentTreeIdxDepth1{i: i, leafBlk: leaf.StartBlock, ext: vals}, nil
+}
+
 func newExtentTree(fs *Ext4Filesystem, i *InodeWrapper, blocks int64) (ExtentTree, error) {
-	blockGroupSize := int64(fs.sb.BlocksPerGroup())
+    blockGroupSize := int64(fs.sb.BlocksPerGroup())
 
-	requiredBlockGroups := roundUpDiv(blocks, blockGroupSize)
+    requiredBlockGroups := roundUpDiv(blocks, blockGroupSize)
 
-	// log.Default().Info("", "requiredBlockGroups", requiredBlockGroups)
+    // log.Default().Info("", "requiredBlockGroups", requiredBlockGroups)
 
-	if requiredBlockGroups <= 4 {
-		return newExtentTree2(fs, i, blocks)
-	} else {
-		return nil, fmt.Errorf("extent tree is over 4 extents in length")
-	}
+    if requiredBlockGroups <= 4 {
+        return newExtentTree2(fs, i, blocks)
+    } else {
+        // Use a depth-1 indexed extent tree for larger files.
+        return newExtentTreeIdxDepth1(fs, i, blocks)
+    }
 }
 
 type InodeWrapper struct {
@@ -999,12 +1116,16 @@ func (i *InodeWrapper) addContents(contents vm.MemoryRegion, symlink bool) error
 			return fmt.Errorf("failed to get extents: %+v", err)
 		}
 
-		size := uint64(contents.Size())
-		i.node.SetSizeLo(uint32(size & 0xFFFFFFFF))
-		i.node.SetSizeHigh(uint32(size >> 32))
-		blockCount := (uint64(blocks) * i.fs.sb.blockSize()) / 512
-		i.node.SetBlocksLo(uint32(blockCount & 0xFFFFFFFF))
-		i.node.SetBlocksHigh(uint16(blockCount >> 32))
+        size := uint64(contents.Size())
+        i.node.SetSizeLo(uint32(size & 0xFFFFFFFF))
+        i.node.SetSizeHigh(uint32(size >> 32))
+        blockCount := (uint64(blocks) * i.fs.sb.blockSize()) / 512
+        // Include extent metadata blocks (e.g., one leaf block for depth=1 trees).
+        if _, ok := i.extentTree.(*ExtentTreeIdxDepth1); ok {
+            blockCount += i.fs.sb.blockSize() / 512
+        }
+        i.node.SetBlocksLo(uint32(blockCount & 0xFFFFFFFF))
+        i.node.SetBlocksHigh(uint16(blockCount >> 32))
 
 		for _, extent := range ext {
 			if err := i.fs.mapExtent(contents, &extent); err != nil {
