@@ -26,7 +26,7 @@ require (
 	github.com/ramr/go-reaper v0.3.1
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/spf13/cobra v1.9.1
-	github.com/things-go/go-socks5 v0.0.6
+	github.com/things-go/go-socks5 v0.1.0
 	github.com/tinyrange/wireguard v0.1.0
 	github.com/wader/readline v0.0.0-20230307172220-bcb7158e7448
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
