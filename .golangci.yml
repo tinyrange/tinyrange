@@ -1,0 +1,43 @@
+version: "2"
+
+run:
+  tests: true
+
+linters:
+  default: none
+
+  enable:
+    - govet
+    - ineffassign
+    - staticcheck
+    - unparam
+
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - experimental$
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/tinyrange/tinyrange
+
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - experimental$

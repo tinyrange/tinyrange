@@ -33,3 +33,6 @@ env/
 .DS_Store
 
 .flatpak-builder/
+
+.gomodcache/
+.gocache/
