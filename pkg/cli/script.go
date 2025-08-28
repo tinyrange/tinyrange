@@ -7,6 +7,7 @@ import (
 	"runtime/pprof"
 
 	"github.com/spf13/cobra"
+
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"

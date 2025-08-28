@@ -40,7 +40,7 @@ func appMain() error {
 	}
 
 	if *outputFilename == "" {
-		if err := generator.WriteTo(os.Stdout); err != nil {
+		if _, err := generator.WriteTo(os.Stdout); err != nil {
 			return fmt.Errorf("failed to write output: %w", err)
 		}
 	} else {
@@ -50,7 +50,7 @@ func appMain() error {
 		}
 		defer outFile.Close()
 
-		if err := generator.WriteTo(outFile); err != nil {
+		if _, err := generator.WriteTo(outFile); err != nil {
 			return fmt.Errorf("failed to write output: %w", err)
 		}
 	}

@@ -9,11 +9,12 @@ import (
 	"io/fs"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/ssh"
+
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
-	"golang.org/x/crypto/ssh"
 )
 
 const (
@@ -329,8 +330,6 @@ func (s *SSHFSServer) PktRead(ctx sftpContext, pkt *pktRead) (ResponsePacket, er
 				Message:  "EOF",
 				Language: "en",
 			}, nil
-		} else {
-			// fallthrough
 		}
 	} else if err != nil {
 		return nil, err

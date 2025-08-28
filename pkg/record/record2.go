@@ -8,8 +8,9 @@ import (
 	"io"
 	"math"
 
-	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 var endian = binary.LittleEndian

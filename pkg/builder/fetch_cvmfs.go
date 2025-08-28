@@ -9,12 +9,13 @@ import (
 	"io/fs"
 	"time"
 
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/archive2"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/cvmfs"
 	"github.com/tinyrange/tinyrange/pkg/hash"
-	"go.starlark.net/starlark"
 )
 
 type fetchCvmfsDefinition struct {

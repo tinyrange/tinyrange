@@ -176,7 +176,8 @@ func main() {
 			args = append(args, "-device", fmt.Sprintf("virtio-net,netdev=net,mac=%s,romfile=", macAddr.String()))
 		}
 
-		if guestOs == OperatingSystemLinux {
+		switch guestOs {
+		case OperatingSystemLinux:
 			// Disable the default panic handler and change reboot behavior.
 			kernelCmdline = append(kernelCmdline, "reboot=k", "panic=-1")
 
@@ -264,7 +265,7 @@ func main() {
 
 				args = append(args, "-bios", filename)
 			}
-		} else if guestOs == OperatingSystemOther {
+		case OperatingSystemOther:
 			if *cdRomPath != "" {
 				args = append(args, "-cdrom", *cdRomPath)
 			}

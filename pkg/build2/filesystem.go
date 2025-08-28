@@ -85,7 +85,7 @@ func (f *readOnlyFilesystemBuildDirectory) ReadDefinition() ([]byte, error) {
 		return nil, err
 	}
 
-	file, err := dh.File.Open()
+	file, err := dh.Open()
 	if err != nil {
 		return nil, err
 	}

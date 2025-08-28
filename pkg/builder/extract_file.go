@@ -3,10 +3,11 @@ package builder
 import (
 	"fmt"
 
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/hash"
-	"go.starlark.net/starlark"
 )
 
 func init() {

@@ -6,10 +6,11 @@ import (
 	"os"
 	"strings"
 
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/path"
-	"go.starlark.net/starlark"
 )
 
 type outputFile struct {
@@ -18,7 +19,8 @@ type outputFile struct {
 
 // Attr implements starlark.HasAttrs.
 func (o *outputFile) Attr(name string) (starlark.Value, error) {
-	if name == "write" {
+	switch name {
+	case "write":
 		return starlark.NewBuiltin("OutputFile.write", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -41,7 +43,7 @@ func (o *outputFile) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
-	} else {
+	default:
 		return nil, nil
 	}
 }
@@ -53,7 +55,7 @@ func (o *outputFile) AttrNames() []string {
 
 func (*outputFile) String() string        { return "OutputFile" }
 func (*outputFile) Type() string          { return "OutputFile" }
-func (*outputFile) Hash() (uint32, error) { return 0, fmt.Errorf("OutputFile is not hashable") }
+func (*outputFile) Hash() (uint32, error) { return 0, fmt.Errorf("outputfile is not hashable") }
 func (*outputFile) Truth() starlark.Bool  { return starlark.True }
 func (*outputFile) Freeze()               {}
 
@@ -70,7 +72,8 @@ type scriptArguments struct {
 
 // Attr implements starlark.HasAttrs.
 func (s *scriptArguments) Attr(name string) (starlark.Value, error) {
-	if name == "output" {
+	switch name {
+	case "output":
 		return starlark.NewBuiltin("Arguments.output", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -88,7 +91,7 @@ func (s *scriptArguments) Attr(name string) (starlark.Value, error) {
 
 			return &outputFile{f: f}, nil
 		}), nil
-	} else if name == "create_output" {
+	case "create_output":
 		return starlark.NewBuiltin("Arguments.create_output", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -118,7 +121,7 @@ func (s *scriptArguments) Attr(name string) (starlark.Value, error) {
 
 			return &outputFile{f: f}, nil
 		}), nil
-	} else if name == "args" {
+	case "args":
 		var ret []starlark.Value
 
 		for _, arg := range s.additionalArgs {
@@ -126,7 +129,7 @@ func (s *scriptArguments) Attr(name string) (starlark.Value, error) {
 		}
 
 		return starlark.NewList(ret), nil
-	} else {
+	default:
 		return nil, nil
 	}
 }
@@ -153,7 +156,7 @@ func (s *scriptArguments) Get(k starlark.Value) (v starlark.Value, found bool, e
 
 func (*scriptArguments) String() string        { return "Arguments" }
 func (*scriptArguments) Type() string          { return "Arguments" }
-func (*scriptArguments) Hash() (uint32, error) { return 0, fmt.Errorf("Arguments is not hashable") }
+func (*scriptArguments) Hash() (uint32, error) { return 0, fmt.Errorf("arguments is not hashable") }
 func (*scriptArguments) Truth() starlark.Bool  { return starlark.True }
 func (*scriptArguments) Freeze()               {}
 
@@ -169,7 +172,8 @@ type packageDatabaseValue struct {
 
 // Attr implements starlark.HasAttrs.
 func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
-	if name == "add_mirror" {
+	switch name {
+	case "add_mirror":
 		return starlark.NewBuiltin("Database.add_mirror", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -195,7 +199,7 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, db.AddMirror(name, mirrors)
 		}), nil
-	} else if name == "add_container_builder" {
+	case "add_container_builder":
 		return starlark.NewBuiltin("Database.add_container_builder", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -214,7 +218,7 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, db.AddContainerBuilder(builder)
 		}), nil
-	} else if name == "build" {
+	case "build":
 		return starlark.NewBuiltin("Database.build", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -242,7 +246,7 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 
 			return def.ToStarlark(result)
 		}), nil
-	} else if name == "builder" {
+	case "builder":
 		return starlark.NewBuiltin("Database.builder", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -273,7 +277,7 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 
 			return builder, nil
 		}), nil
-	} else if name == "urls_for" {
+	case "urls_for":
 		return starlark.NewBuiltin("Database.urls_for", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -297,7 +301,7 @@ func (db *packageDatabaseValue) Attr(name string) (starlark.Value, error) {
 
 			return starlark.String(urls[0]), nil
 		}), nil
-	} else {
+	default:
 		return nil, nil
 	}
 }
@@ -309,7 +313,7 @@ func (db *packageDatabaseValue) AttrNames() []string {
 
 func (*packageDatabaseValue) String() string        { return "Database" }
 func (*packageDatabaseValue) Type() string          { return "Database" }
-func (*packageDatabaseValue) Hash() (uint32, error) { return 0, fmt.Errorf("Database is not hashable") }
+func (*packageDatabaseValue) Hash() (uint32, error) { return 0, fmt.Errorf("database is not hashable") }
 func (*packageDatabaseValue) Truth() starlark.Bool  { return starlark.True }
 func (*packageDatabaseValue) Freeze()               {}
 

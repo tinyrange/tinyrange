@@ -5,6 +5,7 @@ import (
 	"os/exec"
 
 	"github.com/pkg/browser"
+
 	"github.com/tinyrange/tinyrange/pkg/common"
 )
 

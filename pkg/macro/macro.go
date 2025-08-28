@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tinyrange/tinyrange/pkg/common"
 	"go.starlark.net/starlark"
+
+	"github.com/tinyrange/tinyrange/pkg/common"
 )
 
 type DefinitionMacro struct {

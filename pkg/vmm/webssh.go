@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/websocket"
+
 	"github.com/tinyrange/tinyrange/pkg/browser/browser"
 	"github.com/tinyrange/tinyrange/pkg/htm"
 	"github.com/tinyrange/tinyrange/pkg/htm/bootstrap"

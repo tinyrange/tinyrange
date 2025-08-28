@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -17,7 +19,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	initExec "github.com/tinyrange/tinyrange/pkg/init"
-	"go.starlark.net/starlark"
 )
 
 func init() {
@@ -430,13 +431,14 @@ func (def *buildFsDefinition) Build(ctx common.BuildContext) error {
 		def.frags = append(def.frags, frags...)
 	}
 
-	if def.params.Kind == "initramfs" {
+	switch def.params.Kind {
+	case "initramfs":
 		return ctx.WriteDefault(&initRamFsBuilderResult{ctx: ctx, frags: def.frags})
-	} else if def.params.Kind == "tar" {
+	case "tar":
 		return ctx.WriteDefault(&tarBuilderResult{ctx: ctx, frags: def.frags})
-	} else if def.params.Kind == "archive" {
+	case "archive":
 		return ctx.WriteDefault(&fragmentsToArchiveResult{ctx: ctx, frags: def.frags})
-	} else {
+	default:
 		return fmt.Errorf("kind not implemented: %s", def.params.Kind)
 	}
 }

@@ -6,8 +6,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/tinyrange/tinyrange/pkg/log"
 	"golang.org/x/sys/windows"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 const WHvCapabilityCodeHypervisorPresent = 0x00000000

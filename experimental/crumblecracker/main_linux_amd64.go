@@ -15,13 +15,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tinyrange/tinyrange/experimental/crumblecracker/kvm"
-	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
-	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 	"golang.org/x/arch/x86/x86asm"
 	"golang.org/x/term"
+
+	"github.com/tinyrange/tinyrange/experimental/crumblecracker/kvm"
+	"github.com/tinyrange/tinyrange/pkg/filesystem/vm"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 var START_TIME = time.Now()
@@ -205,7 +206,7 @@ func (vm *VirtualMachine) loadLinux(imagePath string, initrdPath string, cmdline
 	var newHdr BootParams
 
 	var setupHdrStart int64 = 0x1f1
-	var setupHdrEnd int64 = 0x202 + int64(hdr[0x201])
+	setupHdrEnd := int64(0x202) + int64(hdr[0x201])
 
 	// copy the setup header
 	if _, err := io.Copy(
@@ -278,7 +279,8 @@ func (vm *VirtualMachine) loadLinux(imagePath string, initrdPath string, cmdline
 
 // Attr implements starlark.HasAttrs.
 func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
-	if name == "load_linux" {
+	switch name {
+	case "load_linux":
 		return starlark.NewBuiltin("VirtualMachine.load_linux", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -301,7 +303,7 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, vm.loadLinux(imagePath, initrdPath, cmdline)
 		}), nil
-	} else if name == "add_devices" {
+	case "add_devices":
 		return starlark.NewBuiltin("VirtualMachine.add_devices", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -326,7 +328,7 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
-	} else if name == "new_cpu" {
+	case "new_cpu":
 		return starlark.NewBuiltin("VirtualMachine.new_cpu", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -373,7 +375,7 @@ func (vm *VirtualMachine) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
-	} else {
+	default:
 		return nil, nil
 	}
 }
@@ -644,17 +646,13 @@ func (cpu *VirtualCPU) Run() error {
 
 	log.Default().Info("running", "initTime", time.Since(START_TIME))
 
-	for {
-		if cpu.vm.shutdown.Load() || exit.Load() {
-			break
-		}
-
-		exit, err := cpu.cpu.RunOnce()
+	for !cpu.vm.shutdown.Load() && !exit.Load() {
+		exitReason, err := cpu.cpu.RunOnce()
 		if err != nil {
 			return fmt.Errorf("failed to run CPU: %w", err)
 		}
 
-		switch exit {
+		switch exitReason {
 		case kvm.ExitIo:
 			io := cpu.cpu.ExitIo()
 
@@ -718,7 +716,7 @@ func (cpu *VirtualCPU) Run() error {
 				return fmt.Errorf("failed to write instruction: %w", err)
 			}
 		default:
-			return fmt.Errorf("unexpected exit: %s", exit)
+			return fmt.Errorf("unexpected exit: %v", exitReason)
 		}
 	}
 

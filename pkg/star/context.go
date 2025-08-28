@@ -3,16 +3,18 @@ package star
 import (
 	"fmt"
 
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/record"
-	"go.starlark.net/starlark"
 )
 
 // Attr implements starlark.HasAttrs.
 func BuildContextAttr(ctx common.BuildContext, name string) (starlark.Value, error) {
-	if name == "recordwriter" {
+	switch name {
+	case "recordwriter":
 		return starlark.NewBuiltin("BuildContext.recordwriter", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -26,7 +28,7 @@ func BuildContextAttr(ctx common.BuildContext, name string) (starlark.Value, err
 
 			return record.NewWriter2(f), nil
 		}), nil
-	} else if name == "archive" {
+	case "archive":
 		return starlark.NewBuiltin("BuildContext.archive", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -47,11 +49,10 @@ func BuildContextAttr(ctx common.BuildContext, name string) (starlark.Value, err
 
 			if kind == "" {
 				return builder.NewDirectoryToArchiveBuildResult(dir), nil
-			} else {
-				return starlark.None, fmt.Errorf("BuildContext.archive kind not implemented: %s", kind)
 			}
+			return starlark.None, fmt.Errorf("BuildContext.archive kind not implemented: %s", kind)
 		}), nil
-	} else if name == "build" {
+	case "build":
 		return starlark.NewBuiltin("BuildContext.build", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -83,7 +84,7 @@ func BuildContextAttr(ctx common.BuildContext, name string) (starlark.Value, err
 
 			return buildDef.ToStarlark(result)
 		}), nil
-	} else {
+	default:
 		return nil, nil
 	}
 }

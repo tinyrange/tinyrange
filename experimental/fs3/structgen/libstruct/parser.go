@@ -124,7 +124,7 @@ func (p *sysIL4Parser) parseExpression() (Expression, error) {
 		return nil, err
 	}
 
-	var ret Expression = frag
+	ret := frag
 
 outer:
 	for {

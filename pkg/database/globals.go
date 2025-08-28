@@ -12,6 +12,10 @@ import (
 	"math/rand/v2"
 
 	"github.com/anmitsu/go-shlex"
+	starlarkjson "go.starlark.net/lib/json"
+	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
+
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -22,9 +26,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"github.com/tinyrange/tinyrange/pkg/planner"
 	"github.com/tinyrange/tinyrange/third_party/regexp"
-	starlarkjson "go.starlark.net/lib/json"
-	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 )
 
 var startTime = time.Now()
@@ -1318,7 +1319,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 
 		i, err := strconv.ParseInt(val, 10, 64)
 		if err != nil {
-			var new string = ""
+			newStr := ""
 
 			for i, c := range val {
 				if i == 0 && c == '-' {
@@ -1330,15 +1331,15 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 				if i == 0 {
 					break
 				}
-				new = val[:i-1]
+				newStr = val[:i-1]
 				break
 			}
 
-			if new == "" {
+			if newStr == "" {
 				return starlark.MakeInt64(0), nil
 			}
 
-			i, err = strconv.ParseInt(new, 10, 64)
+			i, err = strconv.ParseInt(newStr, 10, 64)
 			if err != nil {
 				return starlark.None, err
 			}

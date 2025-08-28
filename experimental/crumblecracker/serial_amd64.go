@@ -63,6 +63,13 @@ func (s *SerialDevice) Init(dev VMDevice) error {
 }
 
 func (s *SerialDevice) Write(data []byte) (int, error) {
+	// If an external writer is provided, forward the data as well.
+	if s.Writer != nil {
+		if _, err := s.Writer.Write(data); err != nil {
+			return 0, err
+		}
+	}
+
 	for _, b := range data {
 		s.Input <- b
 	}

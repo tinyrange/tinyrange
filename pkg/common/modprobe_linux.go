@@ -11,9 +11,10 @@ import (
 	"strings"
 	"syscall"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
-	"golang.org/x/sys/unix"
 )
 
 func parseDeps(filename string) (map[string][]string, error) {

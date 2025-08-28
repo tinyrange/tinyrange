@@ -8,14 +8,15 @@ import (
 	"strings"
 
 	xj "github.com/basgys/goxml2json"
+	starlarkjson "go.starlark.net/lib/json"
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
-	starlarkjson "go.starlark.net/lib/json"
-	"go.starlark.net/starlark"
 )
 
 var starlarkJsonDecode = starlarkjson.Module.Members["decode"].(*starlark.Builtin).CallInternal
@@ -74,7 +75,8 @@ func (f *StarFile) AsSerializableValue() (hash.SerializableValue, error) {
 
 // Attr implements starlark.HasAttrs.
 func (f *StarFile) Attr(name string) (starlark.Value, error) {
-	if name == "read" {
+	switch name {
+	case "read":
 		return starlark.NewBuiltin("File.read", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -93,7 +95,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 			return starlark.String(contents), nil
 		}), nil
-	} else if name == "read_archive" {
+	case "read_archive":
 		return starlark.NewBuiltin("File.read_archive", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -107,7 +109,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 			return NewStarArchive(ark, nil, f.Name), nil
 		}), nil
-	} else if name == "read_compressed" {
+	case "read_compressed":
 		return starlark.NewBuiltin("File.read_compressed", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -146,7 +148,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 				return starlark.None, fmt.Errorf("read_compressed does not support kind: %s", kind)
 			}
 		}), nil
-	} else if name == "read_xml" {
+	case "read_xml":
 		return starlark.NewBuiltin("File.read_xml", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -170,7 +172,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 				[]starlark.Tuple{},
 			)
 		}), nil
-	} else if name == "read_rpm_xml" {
+	case "read_rpm_xml":
 		return starlark.NewBuiltin("File.read_rpm_xml", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -185,7 +187,7 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 			return rpmReadXml(fh)
 		}), nil
-	} else if name == "read_rpm" {
+	case "read_rpm":
 		return starlark.NewBuiltin("File.read_rpm", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -199,11 +201,11 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 
 			return parseRpm(fh)
 		}), nil
-	} else if name == "name" {
+	case "name":
 		return starlark.String(f.Name), nil
-	} else if name == "base" {
+	case "base":
 		return starlark.String(path.Unix.Base(f.Name)), nil
-	} else if name == "dir" {
+	case "dir":
 		return starlark.String(path.Unix.Dir(f.Name)), nil
 	}
 
@@ -218,16 +220,12 @@ func (f *StarFile) Attr(name string) (starlark.Value, error) {
 func (f *StarFile) AttrNames() []string {
 	ret := []string{"read", "read_archive", "name", "base", "dir"}
 
-	if _, ok := f.File.(filesystem.MutableFile); ok {
-		ret = append(ret, []string{}...)
-	}
-
 	return ret
 }
 
 func (f *StarFile) String() string      { return fmt.Sprintf("File{%s}", f.Name) }
 func (*StarFile) Type() string          { return "File" }
-func (*StarFile) Hash() (uint32, error) { return 0, fmt.Errorf("File is not hashable") }
+func (*StarFile) Hash() (uint32, error) { return 0, fmt.Errorf("file is not hashable") }
 func (*StarFile) Truth() starlark.Bool  { return starlark.True }
 func (*StarFile) Freeze()               {}
 
@@ -313,7 +311,7 @@ func (f *StarArchive) Get(k starlark.Value) (v starlark.Value, found bool, err e
 
 func (f *StarArchive) String() string      { return fmt.Sprintf("Archive{%s}", f.Name) }
 func (*StarArchive) Type() string          { return "Archive" }
-func (*StarArchive) Hash() (uint32, error) { return 0, fmt.Errorf("Archive is not hashable") }
+func (*StarArchive) Hash() (uint32, error) { return 0, fmt.Errorf("archive is not hashable") }
 func (*StarArchive) Truth() starlark.Bool  { return starlark.True }
 func (*StarArchive) Freeze()               {}
 
@@ -445,11 +443,12 @@ func (f *StarDirectory) SetKey(k starlark.Value, v starlark.Value) error {
 
 // Attr implements starlark.HasAttrs.
 func (f *StarDirectory) Attr(name string) (starlark.Value, error) {
-	if name == "name" {
+	switch name {
+	case "name":
 		return starlark.String(f.Name), nil
-	} else if name == "base" {
+	case "base":
 		return starlark.String(path.Unix.Base(f.Name)), nil
-	} else {
+	default:
 		return nil, nil
 	}
 }
@@ -470,7 +469,7 @@ func (f *StarDirectory) AsMutableDirectory() filesystem.MutableDirectory {
 
 func (f *StarDirectory) String() string      { return fmt.Sprintf("Directory{%s}", f.Name) }
 func (*StarDirectory) Type() string          { return "Directory" }
-func (*StarDirectory) Hash() (uint32, error) { return 0, fmt.Errorf("Directory is not hashable") }
+func (*StarDirectory) Hash() (uint32, error) { return 0, fmt.Errorf("directory is not hashable") }
 func (*StarDirectory) Truth() starlark.Bool  { return starlark.True }
 func (*StarDirectory) Freeze()               {}
 

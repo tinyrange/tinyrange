@@ -1394,8 +1394,8 @@ func (fs *Ext4Filesystem) allocateInode() (*InodeWrapper, error) {
 	return inode, nil
 }
 
-func (fs *Ext4Filesystem) root() (*InodeWrapper, error) {
-	return fs.inodes[2], nil
+func (fs *Ext4Filesystem) root() *InodeWrapper {
+	return fs.inodes[2]
 }
 
 func (fs *Ext4Filesystem) resolveSymlink(node *InodeWrapper, name string) (*InodeWrapper, error) {
@@ -1479,10 +1479,7 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool, resol
 		log.Default().Debug("", "tokens", tokens)
 	}
 
-	currentNode, err := fs.root()
-	if err != nil {
-		return nil, err
-	}
+	currentNode := fs.root()
 
 	for _, token := range tokens[1:] {
 		if token == "" {
@@ -1786,7 +1783,7 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 	}
 
 	for _, ent := range ents {
-		info, err := ent.File.Stat()
+		info, err := ent.Stat()
 		if err != nil {
 			return fmt.Errorf("failed to stat: %w", err)
 		}
@@ -1888,7 +1885,7 @@ func (fs *Ext4Filesystem) addDirectory(ctx *filesystemCreationContext, dir files
 					return fmt.Errorf("failed to open region for guest: %T %w", ent.File, err)
 				}
 			} else {
-				f, err := ent.File.Open()
+				f, err := ent.Open()
 				if err != nil {
 					return fmt.Errorf("failed to open file for guest: %T %w", ent.File, err)
 				}

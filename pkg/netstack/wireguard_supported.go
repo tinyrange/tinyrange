@@ -5,8 +5,9 @@ package netstack
 import (
 	"context"
 
-	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/wireguard"
+
+	"github.com/tinyrange/tinyrange/pkg/common"
 )
 
 func (ns *NetStack) SetupWireguard(config string, mtu int) error {

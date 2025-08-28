@@ -10,9 +10,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/tinyrange/tinyrange/pkg/log"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 func getAndWatchSize(fd int, sess *ssh.Session) (int, int, error) {

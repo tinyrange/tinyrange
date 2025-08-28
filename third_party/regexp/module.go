@@ -369,7 +369,7 @@ func replaceAll(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tupl
 func split(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
 		src string
-		max int = -1
+		max = -1
 	)
 
 	if err := starlark.UnpackArgs(b.Name(), args, kwargs, "src", &src, "max?", &max); err != nil {

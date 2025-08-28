@@ -8,9 +8,10 @@ package vmm
 import (
 	"time"
 
-	"github.com/tinyrange/tinyrange/pkg/log"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/sys/windows"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 func getAndWatchSize(_ int, sess *ssh.Session) (int, int, error) {

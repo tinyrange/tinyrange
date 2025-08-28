@@ -46,8 +46,7 @@ func (r BinaryReader) decodeVarint(off int64, slice []byte) (uint64, int64) {
 }
 
 func (r BinaryReader) varint(off int64) (uint64, int64) {
-	var i int64 = 0
-
+	var i int64
 	for i = 0; i < 9; i++ {
 		if off+i >= int64(len(r)) {
 			return 0, -1 // overflow
@@ -98,10 +97,7 @@ func (t *Table) Read(cb func(val []any) error) error {
 			typ   uint64
 		)
 
-		for {
-			if payloadOff >= int64(hdrLen) {
-				break
-			}
+		for payloadOff < int64(hdrLen) {
 
 			typ, payloadOff = payload.varint(payloadOff)
 			if payloadOff == -1 {
@@ -186,7 +182,7 @@ func (db *SQLiteDatabase) reader(off int64, len int64) (BinaryReader, error) {
 }
 
 func (db *SQLiteDatabase) readPage(page int, cbCell func(rowId uint64, r BinaryReader) error) error {
-	var rawPageOffset int64 = (int64(page) - 1) * int64(db.pageSize)
+	rawPageOffset := (int64(page) - 1) * int64(db.pageSize)
 
 	pageReader, err := db.reader(rawPageOffset, int64(db.pageSize))
 	if err != nil {
@@ -233,7 +229,8 @@ func (db *SQLiteDatabase) readPage(page int, cbCell func(rowId uint64, r BinaryR
 			// Read the 4-byte left pointer and ignore the rowid/key here.
 			leftPointer := pageReader.u32(off)
 			off += 4
-			_, off = pageReader.varint(off)
+			// skip over rowid/key varint (offset not used afterward)
+			_, _ = pageReader.varint(off)
 
 			if leftPointer == uint32(page) {
 				return fmt.Errorf("attempt to re-read own page")

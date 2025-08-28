@@ -5,10 +5,11 @@ import (
 	"slices"
 	"time"
 
+	"go.starlark.net/starlark"
+
 	build "github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
-	"go.starlark.net/starlark"
 )
 
 type containerBuilder struct {
@@ -56,7 +57,8 @@ func (builder *containerBuilder) DisplayName() string {
 
 // Attr implements starlark.HasAttrs.
 func (builder *containerBuilder) Attr(name string) (starlark.Value, error) {
-	if name == "plan" {
+	switch name {
+	case "plan":
 		return starlark.NewBuiltin("ContainerBuilder.plan", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -114,7 +116,7 @@ func (builder *containerBuilder) Attr(name string) (starlark.Value, error) {
 
 			return plan, nil
 		}), nil
-	} else if name == "packages" {
+	case "packages":
 		packages := make(map[string]*common.Package)
 		for _, pkg := range builder.packages.RawPackages {
 			packages[pkg.Name.Key()] = pkg
@@ -135,11 +137,11 @@ func (builder *containerBuilder) Attr(name string) (starlark.Value, error) {
 		}
 
 		return starlark.NewList(ret), nil
-	} else if name == "metadata" {
+	case "metadata":
 		return builder.metadata, nil
-	} else if name == "arch" {
+	case "arch":
 		return starlark.String(builder.architecture), nil
-	} else {
+	default:
 		return nil, nil
 	}
 }

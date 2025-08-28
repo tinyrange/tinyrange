@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/hash"
-	"go.starlark.net/starlark"
 )
 
 func init() {
@@ -99,7 +100,7 @@ func (d DirectiveRunStarlarkScript) AsFragments(ctx BuildContext, special Specia
 
 // Tag implements Directive.
 func (d DirectiveRunStarlarkScript) Tag() string {
-	return fmt.Sprintf("RunStarlarkScript")
+	return "RunStarlarkScript"
 }
 
 type DirectiveAddFile struct {

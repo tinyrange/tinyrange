@@ -5,8 +5,9 @@ import (
 	"io"
 
 	"github.com/fatih/color"
-	"github.com/tinyrange/tinyrange/pkg/common"
 	"go.starlark.net/starlark"
+
+	"github.com/tinyrange/tinyrange/pkg/common"
 )
 
 var (
@@ -116,7 +117,8 @@ func (plan *installationPlan) Directives() []common.Directive {
 
 // Attr implements starlark.HasAttrs.
 func (plan *installationPlan) Attr(name string) (starlark.Value, error) {
-	if name == "packages" {
+	switch name {
+	case "packages":
 		var elems []starlark.Value
 
 		for _, tree := range plan.trees {
@@ -127,7 +129,7 @@ func (plan *installationPlan) Attr(name string) (starlark.Value, error) {
 		}
 
 		return starlark.NewList(elems), nil
-	} else if name == "directives" {
+	case "directives":
 		var elems []starlark.Value
 
 		for _, directive := range plan.directives {
@@ -139,7 +141,7 @@ func (plan *installationPlan) Attr(name string) (starlark.Value, error) {
 		}
 
 		return starlark.NewList(elems), nil
-	} else if name == "base_directives" {
+	case "base_directives":
 		var elems []starlark.Value
 
 		for _, directive := range plan.baseDirectives {
@@ -151,9 +153,9 @@ func (plan *installationPlan) Attr(name string) (starlark.Value, error) {
 		}
 
 		return starlark.NewList(elems), nil
-	} else if name == "tags" {
+	case "tags":
 		return plan.tags, nil
-	} else {
+	default:
 		return nil, nil
 	}
 }

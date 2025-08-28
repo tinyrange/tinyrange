@@ -18,14 +18,15 @@ import (
 	"time"
 
 	"github.com/anmitsu/go-shlex"
+	"go.starlark.net/starlark"
+	"golang.org/x/sys/unix"
+
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
-	"go.starlark.net/starlark"
-	"golang.org/x/sys/unix"
 )
 
 type Builder struct {

@@ -304,21 +304,21 @@ func buildVMMForTarget(buildDir string, buildOs string, buildArch string, name s
 	return outputFilename, nil
 }
 
-func getTargetDir(buildDir string, targetOs string, targetArch string) (newBuildDir string, targetName string, err error) {
+func getTargetDir(buildDir string, targetOs string, targetArch string) (newBuildDir string, err error) {
 	if targetOs == runtime.GOOS && targetArch == runtime.GOARCH {
-		return buildDir, "", nil
+		return buildDir, nil
 	}
 
-	targetName = fmt.Sprintf("cross-%s-%s", targetOs, targetArch)
+	targetName := fmt.Sprintf("cross-%s-%s", targetOs, targetArch)
 
 	newDir := filepath.Join(buildDir, targetName)
 
 	err = os.MkdirAll(newDir, os.ModePerm)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create directory: %v", err)
+		return "", fmt.Errorf("failed to create directory: %v", err)
 	}
 
-	return newDir, targetName, nil
+	return newDir, nil
 }
 
 func copyFile(source string, target string) error {
@@ -478,7 +478,7 @@ func buildRelease(buildOs string, buildArch string, cgo bool) error {
 		exeSuffix = ".exe"
 	}
 
-	targetDir, _, err := getTargetDir(*buildDir, buildOs, buildArch)
+	targetDir, err := getTargetDir(*buildDir, buildOs, buildArch)
 	if err != nil {
 		return err
 	}
@@ -670,17 +670,17 @@ func getBasePath() (string, error) {
 		return "", err
 	}
 
-	// check if go.mod exists and if not, go up one directory
+	// check if go.mod exists and if not, go up one directory until found
 	for {
-		if _, err := os.Stat(filepath.Join(basePath, "go.mod")); err != nil {
-			if basePath == filepath.Dir(basePath) {
-				return "", fmt.Errorf("could not find go.mod")
-			}
-
-			basePath = filepath.Dir(basePath)
+		if _, err := os.Stat(filepath.Join(basePath, "go.mod")); err == nil {
+			break
 		}
 
-		break
+		if basePath == filepath.Dir(basePath) {
+			return "", fmt.Errorf("could not find go.mod")
+		}
+
+		basePath = filepath.Dir(basePath)
 	}
 
 	return basePath, nil
@@ -785,7 +785,7 @@ func main() {
 		}
 	}
 
-	target, _, err := getTargetDir(*buildDir, *buildOs, *buildArch)
+	target, err := getTargetDir(*buildDir, *buildOs, *buildArch)
 	if err != nil {
 		log.Fatal(err)
 	}

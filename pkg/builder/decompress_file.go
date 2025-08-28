@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/xi2/xz"
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
-	"github.com/xi2/xz"
-	"go.starlark.net/starlark"
 )
 
 func init() {

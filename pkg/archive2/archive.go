@@ -216,6 +216,9 @@ const (
 var _ [0]struct{} = [(hashOffset + hashSize + 1) - staticSize]struct{}{}
 
 func (e *EntryFactory) encode(s *staticPrintf, hashBytes []byte, offset int64) error {
+	if strings.ContainsAny(e.name, "\n\t") || strings.ContainsAny(e.linkname, "\n\t") {
+		return fmt.Errorf("invalid entry name or linkname contains control characters")
+	}
 	lineLength := staticSize + len(e.name) + len(e.linkname) + terminatorSize
 	s.Grow(8 + 1 + lineLength)
 

@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/fatih/color"
+
 	"github.com/tinyrange/tinyrange/pkg/log"
 )
 

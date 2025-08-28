@@ -92,7 +92,7 @@ func (p *PciDevice) setIOHandler(
 
 func (p *PciDevice) addCapability(cap []byte) error {
 	offset := p.nextCapOffset
-	if offset+uint8(len(cap)) > 255 { // TODO(joshua): not sure if this overflows
+	if int(offset)+len(cap) > 255 {
 		return fmt.Errorf("capability too large")
 	}
 	p.nextCapOffset += uint8(len(cap))
@@ -185,7 +185,7 @@ func (p *PciDevice) registerBar(
 	size uint32,
 	typ uint8,
 	barSet pciBarSetFunc,
-) error {
+) {
 	p.ioRegions[index] = pciIORegion{
 		size:    size,
 		typ:     typ,
@@ -202,8 +202,6 @@ func (p *PciDevice) registerBar(
 		configAddr = 0x10 + index*4
 	}
 	p.writeU32(uint32(configAddr), val)
-
-	return nil
 }
 
 func (p *PciDevice) writeBar(addr uint32, val uint32) (bool, error) {

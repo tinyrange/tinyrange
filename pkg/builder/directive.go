@@ -3,9 +3,10 @@ package builder
 import (
 	"fmt"
 
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
-	"go.starlark.net/starlark"
 )
 
 func AsDirective(val starlark.Value) (common.Directive, error) {

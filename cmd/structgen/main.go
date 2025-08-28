@@ -29,7 +29,7 @@ func formatFile(filename string) error {
 }
 
 func writeFile(filename string, gen *codegen.StructureCodeGenerator) error {
-	out, err := os.Create(*output)
+	out, err := os.Create(filename)
 	if err != nil {
 		return err
 	}

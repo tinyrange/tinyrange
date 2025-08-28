@@ -11,15 +11,10 @@ import (
 	"github.com/tinyrange/tinyrange/cmd/structgen/sysil2/parser"
 )
 
-func makeGoName(s string, public bool) emitgo.Identifier {
+func makeGoName(s string) emitgo.Identifier {
 	s = ToLowerCamel(s)
-
-	if public {
-		first := s[0]
-		return emitgo.Identifier(strings.ToUpper(string(first)) + s[1:])
-	} else {
-		return emitgo.Identifier(s)
-	}
+	first := s[0]
+	return emitgo.Identifier(strings.ToUpper(string(first)) + s[1:])
 }
 
 type Value interface {
@@ -101,7 +96,7 @@ func (st *StructureType) GoType() emitgo.Identifier {
 		panic("name not set")
 	}
 
-	return makeGoName(st.name, true)
+	return makeGoName(st.name)
 }
 
 func (st *StructureType) Encoder(target emitgo.Node, value emitgo.Identifier) emitgo.Node {
@@ -138,7 +133,7 @@ func (st *StructureType) GenerateCode() (emitgo.Block, error) {
 
 	fieldStrings = append(fieldStrings, emitgo.StringLiteral(st.name+"{"))
 
-	goName := makeGoName(st.name, true)
+	goName := makeGoName(st.name)
 
 	binding := emitgo.Identifier("t")
 
@@ -147,7 +142,7 @@ func (st *StructureType) GenerateCode() (emitgo.Block, error) {
 	for _, member := range st.Members {
 		switch typ := member.Type.(type) {
 		case *BasicType:
-			name := makeGoName(member.Name, true)
+			name := makeGoName(member.Name)
 
 			slice := emitgo.ArrayAccessRangeExpression{
 				Target: binding,
@@ -191,7 +186,7 @@ func (st *StructureType) GenerateCode() (emitgo.Block, error) {
 
 			memberTypes[member.Name] = typ
 		case *StaticArrayType:
-			name := makeGoName(member.Name, true)
+			name := makeGoName(member.Name)
 
 			// Generate a length method.
 			ret = append(ret, emitgo.FunctionDeclaration{
@@ -375,7 +370,7 @@ func (st *StructureType) GenerateCode() (emitgo.Block, error) {
 				return nil, fmt.Errorf("member type not implemented: %T %+v", member, member)
 			}
 		case *StructureType:
-			name := makeGoName(member.Name, true)
+			name := makeGoName(member.Name)
 
 			slice := emitgo.ArrayAccessRangeExpression{
 				Target: binding,
@@ -384,7 +379,7 @@ func (st *StructureType) GenerateCode() (emitgo.Block, error) {
 			}
 
 			if typ.name != "" {
-				typeName := makeGoName(typ.name, true)
+				typeName := makeGoName(typ.name)
 
 				// Generate a Getter
 				ret = append(ret, emitgo.FunctionDeclaration{
@@ -417,10 +412,10 @@ func (st *StructureType) GenerateCode() (emitgo.Block, error) {
 			return nil, fmt.Errorf("type not implemented: %T %+v", field.Type, field.Type)
 		}
 
-		fieldName := makeGoName(field.Name, true)
+		fieldName := makeGoName(field.Name)
 
-		lhsName := makeGoName(field.LhsName, true)
-		rhsName := makeGoName(field.RhsName, true)
+		lhsName := makeGoName(field.LhsName)
+		rhsName := makeGoName(field.RhsName)
 
 		lhsType, ok := memberTypes[field.LhsName]
 		if !ok {

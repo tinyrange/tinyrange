@@ -10,6 +10,9 @@ import (
 	"strings"
 	"sync"
 
+	"go.starlark.net/starlark"
+	"go.starlark.net/syntax"
+
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -18,8 +21,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/macro"
 	"github.com/tinyrange/tinyrange/stdlib"
-	"go.starlark.net/starlark"
-	"go.starlark.net/syntax"
 )
 
 type macroContext struct {

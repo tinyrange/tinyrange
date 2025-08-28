@@ -8,10 +8,11 @@ import (
 	"strconv"
 	"strings"
 
+	"mvdan.cc/sh/v3/syntax"
+
 	"github.com/tinyrange/tinyrange/pkg/emulator/shared"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/log"
-	"mvdan.cc/sh/v3/syntax"
 )
 
 type shellProgram struct {
@@ -395,6 +396,7 @@ func (sh *shellProgram) init() {
 }
 
 func (sh *shellProgram) sourceFile(filename string, args []string) error {
+	_ = args
 	fh, err := sh.proc.Open(filename)
 	if err != nil {
 		return err

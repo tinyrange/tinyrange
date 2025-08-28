@@ -11,12 +11,13 @@ import (
 	"strconv"
 	"strings"
 
+	"go.starlark.net/starlark"
+	"go.starlark.net/syntax"
+
 	"github.com/tinyrange/tinyrange/experimental/fs3/structgen/libstruct"
 	"github.com/tinyrange/tinyrange/pkg/htm"
 	"github.com/tinyrange/tinyrange/pkg/htm/html"
 	"github.com/tinyrange/tinyrange/pkg/log"
-	"go.starlark.net/starlark"
-	"go.starlark.net/syntax"
 )
 
 func randomColor() string {
@@ -364,20 +365,32 @@ func (b *BinaryAnnotator) WriteHTML(w io.Writer) error {
 
 var builtinConverters = map[libstruct.TypeInstanceBuiltin]func([]byte) (starlark.Value, error){
 	libstruct.TypeInstanceBuiltinUint8: func(bytes []byte) (starlark.Value, error) {
+		if len(bytes) < 1 {
+			return nil, fmt.Errorf("not enough bytes: need 1, got %d", len(bytes))
+		}
 		return starlark.MakeInt(int(bytes[0])), nil
 	},
 
 	libstruct.TypeInstanceBuiltinUint16LE: func(bytes []byte) (starlark.Value, error) {
+		if len(bytes) < 2 {
+			return nil, fmt.Errorf("not enough bytes: need 2, got %d", len(bytes))
+		}
 		val := binary.LittleEndian.Uint16(bytes)
 		return starlark.MakeInt(int(val)), nil
 	},
 
 	libstruct.TypeInstanceBuiltinUint32LE: func(bytes []byte) (starlark.Value, error) {
+		if len(bytes) < 4 {
+			return nil, fmt.Errorf("not enough bytes: need 4, got %d", len(bytes))
+		}
 		val := binary.LittleEndian.Uint32(bytes)
 		return starlark.MakeInt(int(val)), nil
 	},
 
 	libstruct.TypeInstanceBuiltinChar: func(bytes []byte) (starlark.Value, error) {
+		if len(bytes) == 0 {
+			return nil, fmt.Errorf("not enough bytes: need >=1, got %d", len(bytes))
+		}
 		return starlark.String(bytes), nil
 	},
 }
@@ -387,9 +400,10 @@ func starlarkValueFromType(name string, typ libstruct.TypeInstance, bytes *Binar
 	case *libstruct.TypeInstanceArray:
 		var ret []starlark.Value
 
-		if typ.ElementType == libstruct.TypeInstanceBuiltinChar {
+		switch typ.ElementType {
+		case libstruct.TypeInstanceBuiltinChar:
 			return starlark.String(bytes.bytes), nil
-		} else if typ.ElementType == libstruct.TypeInstanceBuiltinUint8 {
+		case libstruct.TypeInstanceBuiltinUint8:
 			return starlark.Bytes(bytes.bytes), nil
 		}
 

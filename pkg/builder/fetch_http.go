@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"time"
 
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/log"
-	"go.starlark.net/starlark"
 )
 
 func init() {

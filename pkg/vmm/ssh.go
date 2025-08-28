@@ -13,10 +13,11 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/tinyrange/tinyrange/pkg/log"
-	"github.com/tinyrange/tinyrange/pkg/netstack/ns"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
+	"github.com/tinyrange/tinyrange/pkg/netstack/ns"
 )
 
 type SecureSSHConfig struct {

@@ -12,7 +12,6 @@ import (
 
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/config"
 	cfg "github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/path"
@@ -206,15 +205,14 @@ func (config *Config) SetVmSpec() {
 	}
 }
 
-func (config *Config) resolvePath(filename string) (string, error) {
+func (config *Config) resolvePath(filename string) string {
 	if path.Native.IsAbs(filename) {
-		return filename, nil
+		return filename
 	}
-
-	return path.Native.Join(config.basePath, filename), nil
+	return path.Native.Join(config.basePath, filename)
 }
 
-func (config *Config) writeRoot(db common.PackageDatabase, directives []common.Directive, arch config.CPUArchitecture) error {
+func (config *Config) writeRoot(db common.PackageDatabase, directives []common.Directive, arch cfg.CPUArchitecture) error {
 	directives = append(directives, common.DirectiveBuiltin{
 		Name:          "init",
 		Architecture:  string(arch),
@@ -287,10 +285,7 @@ func (config *Config) addFile(filename string) (common.Directive, error) {
 			filename = filename[:len(filename)-len(target)-1]
 		}
 
-		filePath, err := config.resolvePath(filename)
-		if err != nil {
-			return nil, err
-		}
+		filePath := config.resolvePath(filename)
 
 		if target == "" {
 			target = path.Unix.Join("/root", path.Native.Base(filePath))
@@ -344,10 +339,7 @@ func (config *Config) addArchive(filename string) (common.Directive, error) {
 			return nil, fmt.Errorf("remote configs can't include local files")
 		}
 
-		filePath, err := config.resolvePath(filename)
-		if err != nil {
-			return nil, err
-		}
+		filePath := config.resolvePath(filename)
 
 		hash, err := common.Sha256HashFromFile(filePath)
 		if err != nil {
@@ -367,17 +359,14 @@ func (config *Config) addArchive(filename string) (common.Directive, error) {
 	return common.DirectiveArchive{Definition: ark, Target: target}, nil
 }
 
-func (config *Config) addOCIImage(image string, arch config.CPUArchitecture) (common.Directive, error) {
+func (config *Config) addOCIImage(image string, arch cfg.CPUArchitecture) (common.Directive, error) {
 	if strings.HasPrefix(image, "./") {
 		// assume this is a local archive which needs to be imported.
 		if !config.localConfig {
 			return nil, fmt.Errorf("remote configs can't include local files")
 		}
 
-		filePath, err := config.resolvePath(image)
-		if err != nil {
-			return nil, err
-		}
+		filePath := config.resolvePath(image)
 
 		hash, err := common.Sha256HashFromFile(filePath)
 		if err != nil {
@@ -433,8 +422,8 @@ func (config *Config) addMacro(db common.PackageDatabase, macro string, macroCtx
 }
 
 func (config *Config) addLayer(directives []common.Directive,
-	vmArch config.CPUArchitecture,
-	arch config.CPUArchitecture,
+	vmArch cfg.CPUArchitecture,
+	arch cfg.CPUArchitecture,
 	layer string,
 ) (common.Directive, error) {
 	vmDef, err := config.makeBuildVMDefinition(
@@ -452,8 +441,8 @@ func (config *Config) addLayer(directives []common.Directive,
 
 func (config *Config) makeBuildVMDefinition(
 	directives []common.Directive,
-	vmArch config.CPUArchitecture,
-	arch config.CPUArchitecture,
+	vmArch cfg.CPUArchitecture,
+	arch cfg.CPUArchitecture,
 	outputName string,
 	interaction string,
 ) (common.BuildVmDefinition, error) {

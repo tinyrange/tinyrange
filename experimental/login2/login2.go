@@ -10,9 +10,10 @@ import (
 
 	"slices"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -95,6 +96,7 @@ func (ctx *evaluationContext) getStage(name string) (*stageInfo, error) {
 }
 
 func (ctx *evaluationContext) declareFile(name, contents string) error {
+	_ = contents
 	if name == "" {
 		return fmt.Errorf("file name cannot be empty")
 	}
@@ -213,6 +215,7 @@ func (b *ByteQuantity) Parse() (uint64, error) {
 }
 
 func (b *ByteQuantity) validate(ctx *evaluationContext) error {
+	_ = ctx
 	if b == nil {
 		return fmt.Errorf("byte quantity cannot be nil")
 	}
@@ -279,6 +282,7 @@ type PlanDirective struct {
 }
 
 func (p *PlanDirective) validate(ctx *evaluationContext) error {
+	_ = ctx
 	if p.Version != PLAN_DIRECTIVE_VERSION {
 		return fmt.Errorf("unsupported plan directive version %d, expected %d", p.Version, PLAN_DIRECTIVE_VERSION)
 	}
@@ -289,6 +293,7 @@ func (p *PlanDirective) validate(ctx *evaluationContext) error {
 type FromDirective string
 
 func (f *FromDirective) validate(ctx *evaluationContext) error {
+	_ = ctx
 	if f == nil {
 		return fmt.Errorf("from directive cannot be nil")
 	}
@@ -373,6 +378,7 @@ func (s *StageDirective) validate(ctx *evaluationContext) error {
 type EnvironmentDirective map[string]string
 
 func (e *EnvironmentDirective) validate(ctx *evaluationContext) error {
+	_ = ctx
 	if e == nil {
 		return fmt.Errorf("environment directive cannot be nil")
 	}
@@ -419,6 +425,7 @@ func (r *RunDirective) validate(ctx *evaluationContext) error {
 type WorkingDirectoryDirective string
 
 func (w *WorkingDirectoryDirective) validate(ctx *evaluationContext) error {
+	_ = ctx
 	if w == nil {
 		return fmt.Errorf("working directory directive cannot be nil")
 	}
@@ -508,6 +515,7 @@ func (o *OutputDirective) validate(ctx *evaluationContext) error {
 type EntrypointDirective []string
 
 func (e *EntrypointDirective) validate(ctx *evaluationContext) error {
+	_ = ctx
 	if e == nil {
 		return fmt.Errorf("entrypoint directive cannot be nil")
 	}

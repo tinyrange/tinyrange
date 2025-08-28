@@ -29,6 +29,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/miekg/dns"
 	"github.com/things-go/go-socks5"
+	"golang.org/x/crypto/ssh"
+	"gopkg.in/yaml.v3"
+
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/archive2"
 	"github.com/tinyrange/tinyrange/pkg/build2"
@@ -55,8 +58,6 @@ import (
 	gonbd "github.com/tinyrange/tinyrange/third_party/go-nbd"
 	"github.com/tinyrange/tinyrange/third_party/go-nbd/backend"
 	"github.com/tinyrange/tinyrange/third_party/memory"
-	"golang.org/x/crypto/ssh"
-	"gopkg.in/yaml.v3"
 )
 
 type Filesystem interface {
@@ -642,7 +643,7 @@ func (tr *driver) HttpClient() (*http.Client, error) {
 	return http.DefaultClient, nil
 }
 
-func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.Fragment, dir filesystem.MutableDirectory) error {
+func (tr *driver) fragmentToFilesystem(frag config.Fragment, dir filesystem.MutableDirectory) error {
 	if localFile := frag.LocalFile; localFile != nil {
 		// The local file is a path to a file on the host. It is guaranteed to be absolute.
 		file := filesystem.Factory.NewLocalFile(localFile.HostFilename, nil)
@@ -719,7 +720,8 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 
 		return nil
 	} else if builtin := frag.Builtin; builtin != nil {
-		if builtin.Name == "init" {
+		switch builtin.Name {
+		case "init":
 			exec, err := initExec.GetInitExecutable(builtin.Architecture)
 			if err != nil {
 				return err
@@ -740,7 +742,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 			}
 
 			return nil
-		} else if builtin.Name == "tinyrange" {
+		case "tinyrange":
 			exe, err := os.Executable()
 			if err != nil {
 				return fmt.Errorf("failed to get executable: %w", err)
@@ -753,7 +755,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 			}
 
 			return nil
-		} else if builtin.Name == "tinyrange_qemu" {
+		case "tinyrange_qemu":
 			local, err := common.GetAdjacentExecutable("tinyrange_qemu", "tinyqemu/tinyrange_qemu")
 			if err != nil {
 				return fmt.Errorf("failed to get tinyrange_qemu: %w", err)
@@ -766,7 +768,7 @@ func (tr *driver) fragmentToFilesystem(cfg config.TinyRangeConfig, frag config.F
 			}
 
 			return nil
-		} else {
+		default:
 			return fmt.Errorf("unknown builtin: %s", builtin.Name)
 		}
 	} else if ark := frag.Archive; ark != nil {
@@ -1101,7 +1103,7 @@ func (tr *driver) fragmentsToConfig(name string) (filesystem.Directory, []portIn
 					Persist:       volume.Persist,
 				})
 			} else {
-				if err := tr.fragmentToFilesystem(config, frag, root); err != nil {
+				if err := tr.fragmentToFilesystem(frag, root); err != nil {
 					return nil, nil, nil, nil, fmt.Errorf("failed to extract fragment to filesystem: %w", err)
 				}
 			}
@@ -1379,9 +1381,10 @@ func (d *driver) startDNSServer() error {
 	dnsServer := &dnsServer{
 		log: d.log,
 		dnsLookup: func(name string) (string, error) {
-			if name == "tinyrange." {
+			switch name {
+			case "tinyrange.":
 				return "10.42.0.2", nil
-			} else if name == "host.internal." {
+			case "host.internal.":
 				return "10.42.0.1", nil
 			}
 
@@ -1543,6 +1546,9 @@ func (d *driver) startFileShare(mountedHostDirectories []mountInfo) error {
 }
 
 func (d *driver) startSocks5Proxy(listener net.Listener) error {
+	if d.ns == nil {
+		return fmt.Errorf("netstack not initialized")
+	}
 	server := socks5.NewServer(
 		socks5.WithDialAndRequest(func(ctx context.Context, network, addr string, request *socks5.Request) (net.Conn, error) {
 			if network != "tcp" {

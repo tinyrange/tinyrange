@@ -349,7 +349,7 @@ type Filesystem struct {
 	root *directory
 }
 
-func (fs *Filesystem) openPath(p string, mkdir bool) (*directory, string, error) {
+func (fs *Filesystem) openPath(p string) (*directory, string, error) {
 	tokens := strings.Split(p, "/")
 
 	current := fs.root
@@ -359,17 +359,13 @@ func (fs *Filesystem) openPath(p string, mkdir bool) (*directory, string, error)
 	} else if len(tokens) == 1 {
 		return current, tokens[0], nil
 	} else if len(tokens) > 1 {
-		for i, tk := range tokens[:len(tokens)-1] {
+		for _, tk := range tokens[:len(tokens)-1] {
 			child, ok := current.entries[tk]
 			if !ok {
-				if mkdir {
-					var err error
-					child, err = current.mkdir(tk)
-					if err != nil {
-						return nil, "", err
-					}
-				} else {
-					return nil, "", fmt.Errorf("child %s not found in %s", tk, strings.Join(tokens[:i], "/"))
+				var err error
+				child, err = current.mkdir(tk)
+				if err != nil {
+					return nil, "", err
 				}
 			}
 
@@ -388,7 +384,7 @@ func (fs *Filesystem) openPath(p string, mkdir bool) (*directory, string, error)
 }
 
 func (fs *Filesystem) AddSimpleFile(filename string, contents []byte, executable bool) error {
-	parent, name, err := fs.openPath(filename, true)
+	parent, name, err := fs.openPath(filename)
 	if err != nil {
 		return err
 	}
@@ -414,7 +410,7 @@ func (fs *Filesystem) AddFromEntry(prefix string, hdr filesystem.Entry) error {
 
 	switch hdr.Typeflag() {
 	case filesystem.TypeRegular:
-		parent, name, err := fs.openPath(cleanedName, true)
+		parent, name, err := fs.openPath(cleanedName)
 		if err != nil {
 			return err
 		}
@@ -439,7 +435,7 @@ func (fs *Filesystem) AddFromEntry(prefix string, hdr filesystem.Entry) error {
 
 		ent = f
 	case filesystem.TypeSymlink:
-		parent, name, err := fs.openPath(cleanedName, true)
+		parent, name, err := fs.openPath(cleanedName)
 		if err != nil {
 			return err
 		}
@@ -453,7 +449,7 @@ func (fs *Filesystem) AddFromEntry(prefix string, hdr filesystem.Entry) error {
 
 		ent = f
 	case filesystem.TypeDirectory:
-		parent, name, err := fs.openPath(cleanedName, true)
+		parent, name, err := fs.openPath(cleanedName)
 		if err != nil {
 			return err
 		}

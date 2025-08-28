@@ -695,7 +695,7 @@ func (s *Superblock) FreeBlocksCount() uint32 {
 	return uint32(uint64(s.FreeBlocksCountLo()) | uint64(s.FreeBlocksCountHi())<<32)
 }
 func (s *Superblock) Validate() error {
-	if !(s.Magic() == EXT4_SUPERBLOCK_MAGIC) {
+	if s.Magic() != EXT4_SUPERBLOCK_MAGIC {
 		return fmt.Errorf("validation failed: check condition not met")
 	}
 	return nil
@@ -1321,7 +1321,7 @@ func (s *ExtentTreeHeader) SetGeneration(value uint32) {
 	binary.LittleEndian.PutUint32((*s)[8:], value)
 }
 func (s *ExtentTreeHeader) Validate() error {
-	if !(s.Magic() == EXT4_EXTENT_MAGIC) {
+	if s.Magic() != EXT4_EXTENT_MAGIC {
 		return fmt.Errorf("validation failed: check condition not met")
 	}
 	return nil

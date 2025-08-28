@@ -12,9 +12,10 @@ import (
 	"time"
 
 	"github.com/anmitsu/go-shlex"
+	"github.com/wader/readline"
+
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
-	"github.com/wader/readline"
 )
 
 type shellInstance struct {

@@ -7,10 +7,11 @@ import (
 	"io"
 	"os"
 
-	"github.com/tinyrange/tinyrange/pkg/log"
 	"go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
+
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 func simpleBuiltin(name string, f func() (starlark.Value, error)) *starlark.Builtin {
@@ -30,7 +31,8 @@ type BinaryReader struct {
 }
 
 func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
-	if name == "bytes" {
+	switch name {
+	case "bytes":
 		return starlark.NewBuiltin("BinaryReader.bytes", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -56,7 +58,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.Bytes(string(buf)), nil
 		}), nil
-	} else if name == "ascii" {
+	case "ascii":
 		return starlark.NewBuiltin("BinaryReader.ascii", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -82,7 +84,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.String(string(buf)), nil
 		}), nil
-	} else if name == "seek" {
+	case "seek":
 		return starlark.NewBuiltin("BinaryReader.seek", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -103,7 +105,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
-	} else if name == "skip" {
+	case "skip":
 		return starlark.NewBuiltin("BinaryReader.skip", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -124,7 +126,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return b, nil
 		}), nil
-	} else if name == "tell" {
+	case "tell":
 		return starlark.NewBuiltin("BinaryReader.tell", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -133,7 +135,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 		) (starlark.Value, error) {
 			return starlark.MakeInt(int(b.offset)), nil
 		}), nil
-	} else if name == "u64le" {
+	case "u64le":
 		return simpleBuiltin("BinaryReader.u64le", func() (starlark.Value, error) {
 			buf := make([]byte, 8)
 			if _, err := b.file.ReadAt(buf, b.offset); err != nil {
@@ -143,7 +145,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.MakeUint(uint(binary.LittleEndian.Uint64(buf))), nil
 		}), nil
-	} else if name == "u32le" {
+	case "u32le":
 		return simpleBuiltin("BinaryReader.u32le", func() (starlark.Value, error) {
 			buf := make([]byte, 4)
 			if _, err := b.file.ReadAt(buf, b.offset); err != nil {
@@ -153,7 +155,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.MakeUint(uint(binary.LittleEndian.Uint32(buf))), nil
 		}), nil
-	} else if name == "u24le" {
+	case "u24le":
 		return simpleBuiltin("BinaryReader.u24le", func() (starlark.Value, error) {
 			buf := make([]byte, 3)
 			if _, err := b.file.ReadAt(buf, b.offset); err != nil {
@@ -163,7 +165,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.MakeUint(uint(binary.LittleEndian.Uint32(append(buf, 0)))), nil
 		}), nil
-	} else if name == "u16le" {
+	case "u16le":
 		return simpleBuiltin("BinaryReader.u16le", func() (starlark.Value, error) {
 			buf := make([]byte, 2)
 			if _, err := b.file.ReadAt(buf, b.offset); err != nil {
@@ -173,7 +175,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.MakeUint(uint(binary.LittleEndian.Uint16(buf))), nil
 		}), nil
-	} else if name == "u8" {
+	case "u8":
 		return simpleBuiltin("BinaryReader.u8", func() (starlark.Value, error) {
 			buf := make([]byte, 1)
 			if _, err := b.file.ReadAt(buf, b.offset); err != nil {
@@ -183,7 +185,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.MakeUint(uint(buf[0])), nil
 		}), nil
-	} else if name == "i64le" {
+	case "i64le":
 		return simpleBuiltin("BinaryReader.i64le", func() (starlark.Value, error) {
 			buf := make([]byte, 8)
 			if _, err := b.file.ReadAt(buf, b.offset); err != nil {
@@ -193,7 +195,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.MakeInt(int(binary.LittleEndian.Uint64(buf))), nil
 		}), nil
-	} else if name == "i32le" {
+	case "i32le":
 		return simpleBuiltin("BinaryReader.i32le", func() (starlark.Value, error) {
 			buf := make([]byte, 4)
 			if _, err := b.file.ReadAt(buf, b.offset); err != nil {
@@ -203,7 +205,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.MakeInt(int(binary.LittleEndian.Uint32(buf))), nil
 		}), nil
-	} else if name == "i24le" {
+	case "i24le":
 		return simpleBuiltin("BinaryReader.i24le", func() (starlark.Value, error) {
 			buf := make([]byte, 3)
 			if _, err := b.file.ReadAt(buf, b.offset); err != nil {
@@ -213,7 +215,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.MakeInt(int(binary.LittleEndian.Uint32(append(buf, 0)))), nil
 		}), nil
-	} else if name == "i16le" {
+	case "i16le":
 		return simpleBuiltin("BinaryReader.i16le", func() (starlark.Value, error) {
 			buf := make([]byte, 2)
 			if _, err := b.file.ReadAt(buf, b.offset); err != nil {
@@ -223,7 +225,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.MakeInt(int(binary.LittleEndian.Uint16(buf))), nil
 		}), nil
-	} else if name == "i8" {
+	case "i8":
 		return simpleBuiltin("BinaryReader.i8", func() (starlark.Value, error) {
 			buf := make([]byte, 1)
 			if _, err := b.file.ReadAt(buf, b.offset); err != nil {
@@ -233,7 +235,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return starlark.MakeInt(int(int8(buf[0]))), nil
 		}), nil
-	} else if name == "slice" {
+	case "slice":
 		return starlark.NewBuiltin("BinaryReader.slice", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -256,7 +258,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 
 			return newBinaryReader(sliceReader), nil
 		}), nil
-	} else if name == "clone" {
+	case "clone":
 		return starlark.NewBuiltin("BinaryReader.clone", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -265,7 +267,7 @@ func (b *BinaryReader) Attr(name string) (starlark.Value, error) {
 		) (starlark.Value, error) {
 			return newBinaryReader(b.file), nil
 		}), nil
-	} else {
+	default:
 		return nil, nil
 	}
 }
@@ -275,7 +277,7 @@ func (b *BinaryReader) AttrNames() []string {
 }
 
 func (b *BinaryReader) Freeze()               {}
-func (b *BinaryReader) Hash() (uint32, error) { return 0, fmt.Errorf("BinaryReader is not hashable") }
+func (b *BinaryReader) Hash() (uint32, error) { return 0, fmt.Errorf("binaryReader is not hashable") }
 func (b *BinaryReader) Truth() starlark.Bool  { return starlark.True }
 func (b *BinaryReader) Type() string          { return "BinaryReader" }
 func (b *BinaryReader) String() string {

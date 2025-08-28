@@ -359,13 +359,10 @@ func validNumberChar(chr rune) bool {
 }
 
 func validWhitespaceChar(chr rune) bool {
-	if chr == ' ' {
+	switch chr {
+	case ' ', '\t', '\n':
 		return true
-	} else if chr == '\t' {
-		return true
-	} else if chr == '\n' {
-		return true
-	} else {
+	default:
 		return false
 	}
 }
@@ -711,42 +708,33 @@ func (p *parser) parseMatchArm() (MatchArm, error) {
 		return nil, e.e
 	}
 
-	if lhsTk == tokenSpecialCloseCurlyBracket {
+	switch lhsTk {
+	case tokenSpecialCloseCurlyBracket:
 		return nil, nil
-	} else if lhsTk == tokenKeywordEmpty {
+	case tokenKeywordEmpty:
 		if err := p.matchSpecial(tokenSpecialLambda); err != nil {
 			return nil, err
 		}
-
 		rhs, err := p.parseExpression()
 		if err != nil {
 			return nil, err
 		}
-
-		return &DefaultMatchArm{
-			Value: rhs,
-		}, nil
-	} else {
+		return &DefaultMatchArm{Value: rhs}, nil
+	default:
 		p.pushToken(lhsTk)
 
 		lhs, err := p.parseExpression()
 		if err != nil {
 			return nil, err
 		}
-
 		if err := p.matchSpecial(tokenSpecialLambda); err != nil {
 			return nil, err
 		}
-
 		rhs, err := p.parseExpression()
 		if err != nil {
 			return nil, err
 		}
-
-		return &SimpleMatchArm{
-			Test:  lhs,
-			Value: rhs,
-		}, nil
+		return &SimpleMatchArm{Test: lhs, Value: rhs}, nil
 	}
 }
 

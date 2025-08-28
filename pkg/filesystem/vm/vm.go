@@ -220,11 +220,7 @@ func (vm *VirtualMemory) Map(region MemoryRegion, offset int64) error {
 		offset += fragmentSize
 	}
 
-	for {
-		// If we have no full sized regions left then break.
-		if (regionSize - regionOffset) < int64(vm.pageSize) {
-			break
-		}
+	for (regionSize - regionOffset) >= int64(vm.pageSize) {
 
 		// Map a region.
 		if regionOffset == 0 {

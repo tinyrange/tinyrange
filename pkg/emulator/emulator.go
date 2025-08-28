@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/emulator/programs/shell"
 	"github.com/tinyrange/tinyrange/pkg/emulator/shared"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -17,7 +19,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
-	"go.starlark.net/starlark"
 )
 
 type starProgram struct {
@@ -179,7 +180,8 @@ func (p *process) Fork() (shared.Process, error) {
 
 // Attr implements starlark.HasAttrs.
 func (p *process) Attr(name string) (starlark.Value, error) {
-	if name == "write" {
+	switch name {
+	case "write":
 		return starlark.NewBuiltin("Process.write", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -202,7 +204,7 @@ func (p *process) Attr(name string) (starlark.Value, error) {
 
 			return starlark.None, nil
 		}), nil
-	} else if name == "env" {
+	case "env":
 		return starlark.NewBuiltin("Process.env", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -221,7 +223,7 @@ func (p *process) Attr(name string) (starlark.Value, error) {
 
 			return starlark.String(p.Getenv(key)), nil
 		}), nil
-	} else {
+	default:
 		return nil, nil
 	}
 }
@@ -294,7 +296,7 @@ func (p *process) Kernel() shared.Kernel {
 
 func (*process) String() string        { return "Process" }
 func (*process) Type() string          { return "Process" }
-func (*process) Hash() (uint32, error) { return 0, fmt.Errorf("Process is not hashable") }
+func (*process) Hash() (uint32, error) { return 0, fmt.Errorf("process is not hashable") }
 func (*process) Truth() starlark.Bool  { return starlark.True }
 func (*process) Freeze()               {}
 

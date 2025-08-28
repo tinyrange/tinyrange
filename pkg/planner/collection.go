@@ -9,10 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/record"
-	"go.starlark.net/starlark"
 )
 
 type packageCollection struct {

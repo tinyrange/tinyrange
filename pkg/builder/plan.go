@@ -7,13 +7,14 @@ import (
 	"os"
 	"strings"
 
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
-	"go.starlark.net/starlark"
 )
 
 func init() {
@@ -94,7 +95,8 @@ func (def *planDefinition) ToStarlark(artifact common.BuildArtifact) (starlark.V
 
 // Attr implements starlark.HasAttrs.
 func (def *planDefinition) Attr(name string) (starlark.Value, error) {
-	if name == "filesystem" {
+	switch name {
+	case "filesystem":
 		return starlark.NewBuiltin("PlanDefinition.filesystem", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -145,7 +147,7 @@ func (def *planDefinition) Attr(name string) (starlark.Value, error) {
 				starlark.NewList(commands),
 			}, nil
 		}), nil
-	} else if name == "add_packages" {
+	case "add_packages":
 		return starlark.NewBuiltin("PlanDefinition.add_packages", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -189,7 +191,7 @@ func (def *planDefinition) Attr(name string) (starlark.Value, error) {
 				},
 			}, nil
 		}), nil
-	} else if name == "with_packages" {
+	case "with_packages":
 		return starlark.NewBuiltin("PlanDefinition.with_packages", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -233,7 +235,7 @@ func (def *planDefinition) Attr(name string) (starlark.Value, error) {
 				},
 			}, nil
 		}), nil
-	} else if name == "set_tags" {
+	case "set_tags":
 		return starlark.NewBuiltin("PlanDefinition.add_packages", func(
 			thread *starlark.Thread,
 			fn *starlark.Builtin,
@@ -262,7 +264,7 @@ func (def *planDefinition) Attr(name string) (starlark.Value, error) {
 				},
 			}, nil
 		}), nil
-	} else {
+	default:
 		return nil, nil
 	}
 }

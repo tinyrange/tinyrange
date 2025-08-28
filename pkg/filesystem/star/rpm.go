@@ -10,9 +10,10 @@ import (
 	"time"
 
 	"github.com/cavaliergopher/rpm"
-	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
+
+	"github.com/tinyrange/tinyrange/pkg/filesystem"
 )
 
 type rpmPackage struct {
@@ -243,16 +244,17 @@ func (s *starRpm) Stat() (filesystem.FileInfo, error) {
 
 // Attr implements starlark.HasAttrs.
 func (s *starRpm) Attr(name string) (starlark.Value, error) {
-	if name == "payload" {
+	switch name {
+	case "payload":
 		if s.openedPayload {
 			return nil, fmt.Errorf("attempt to open payload twice")
 		}
 
 		s.openedPayload = true
 		return NewStarFile(s, "payload"), nil
-	} else if name == "payload_compression" {
+	case "payload_compression":
 		return starlark.String(s.pkg.PayloadCompression()), nil
-	} else if name == "metadata" {
+	case "metadata":
 		var metadata = struct {
 			Name                     string
 			Version                  string
@@ -327,8 +329,9 @@ func (s *starRpm) Attr(name string) (starlark.Value, error) {
 		}
 
 		return starlark.String(bytes), nil
+	default:
+		return nil, nil
 	}
-	return nil, nil
 }
 
 // AttrNames implements starlark.HasAttrs.

@@ -12,6 +12,9 @@ import (
 	"github.com/blakesmith/ar"
 	"github.com/cavaliergopher/cpio"
 	"github.com/klauspost/compress/zstd"
+	"github.com/xi2/xz"
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/archive2"
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -20,8 +23,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/path"
-	"github.com/xi2/xz"
-	"go.starlark.net/starlark"
 )
 
 func init() {

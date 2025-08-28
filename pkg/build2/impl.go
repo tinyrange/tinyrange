@@ -17,6 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.starlark.net/starlark"
+
 	builderFactory "github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -26,7 +28,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"github.com/tinyrange/tinyrange/pkg/star"
-	"go.starlark.net/starlark"
 )
 
 const (

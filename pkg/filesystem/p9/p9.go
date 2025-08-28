@@ -173,11 +173,12 @@ func (s *Server) getQid(info filesystem.FileInfo) QID {
 
 	qid := QID{}
 
-	if kind == filesystem.TypeRegular {
+	switch kind {
+	case filesystem.TypeRegular:
 		qid.Type = TypeRegular
-	} else if kind == filesystem.TypeDirectory {
+	case filesystem.TypeDirectory:
 		qid.Type = TypeDir
-	} else if kind == filesystem.TypeSymlink {
+	case filesystem.TypeSymlink:
 		qid.Type = TypeSymlink
 	}
 
@@ -717,9 +718,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 				return nil, err
 			}
 		}
-		if body.Valid&P9_SETATTR_ATIME != 0 {
-			// Ignored
-		}
+		// P9_SETATTR_ATIME is intentionally ignored
 		if body.Valid&P9_SETATTR_MTIME != 0 {
 			mut, ok := fid.file.(filesystem.MutableFile)
 			if !ok {
@@ -741,12 +740,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 				return nil, err
 			}
 		}
-		if body.Valid&P9_SETATTR_ATIME_SET != 0 {
-			// log.Default().Warn("p9: unimplemented P9_SETATTR_ATIME_SET")
-		}
-		if body.Valid&P9_SETATTR_MTIME_SET != 0 {
-			// log.Default().Warn("p9: unimplemented P9_SETATTR_MTIME_SET")
-		}
+		// P9_SETATTR_ATIME_SET and P9_SETATTR_MTIME_SET are intentionally ignored
 
 		_ = fid
 
@@ -803,7 +797,7 @@ func (s *Server) handleMessage(msg *Message) (*Message, error) {
 		for _, ent := range ents {
 			dirent := Dirent{}
 
-			stat, err := ent.File.Stat()
+			stat, err := ent.Stat()
 			if err != nil {
 				return nil, err
 			}

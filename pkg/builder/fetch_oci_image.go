@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/builder/oci"
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -17,7 +19,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/log"
-	"go.starlark.net/starlark"
 )
 
 func init() {
@@ -144,9 +145,10 @@ func (ctx *ociRegistryContext) makeRequest(method string, url string) (*http.Req
 }
 
 func (ctx *ociRegistryContext) responseHandler(resp *http.Response) (bool, error) {
-	if resp.StatusCode == http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
 		return true, nil
-	} else if resp.StatusCode == http.StatusUnauthorized {
+	case http.StatusUnauthorized:
 		// Check for a header that describes the authorization needed so we can get a new token.
 		authenticate, err := oci.ParseAuthenticate(resp.Header.Get("www-authenticate"))
 		if err != nil {
@@ -176,7 +178,7 @@ func (ctx *ociRegistryContext) responseHandler(resp *http.Response) (bool, error
 
 		// Remake the request with the new token.
 		return false, nil
-	} else {
+	default:
 		ctx.log.Error("failed to handle response code", "url", resp.Request.URL.String(), "status", resp.Status, "headers", resp.Header)
 		return false, fmt.Errorf("failed to handle response code %s: %s", resp.Request.URL.String(), resp.Status)
 	}

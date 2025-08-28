@@ -3,6 +3,8 @@ package builder
 import (
 	"fmt"
 
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/archive"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/config"
@@ -11,7 +13,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem/fsutil"
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
-	"go.starlark.net/starlark"
 )
 
 func init() {
@@ -29,12 +30,12 @@ func (def *buildEmulatorDefinition) Dependencies() ([]common.BuildDefinition, er
 	var deps []common.BuildDefinition
 
 	for _, dir := range def.params.Directives {
-		deps, err := dir.Dependencies()
+		d, err := dir.Dependencies()
 		if err != nil {
 			return nil, err
 		}
 
-		deps = append(deps, deps...)
+		deps = append(deps, d...)
 	}
 
 	return deps, nil
@@ -148,7 +149,7 @@ func (def *buildEmulatorDefinition) NeedsBuild(ctx common.BuildContext) (bool, e
 func (def *buildEmulatorDefinition) String() string { return "BuildEmulator" }
 func (*buildEmulatorDefinition) Type() string       { return "BuildEmulatorDefinition" }
 func (*buildEmulatorDefinition) Hash() (uint32, error) {
-	return 0, fmt.Errorf("BuildEmulatorDefinition is not hashable")
+	return 0, fmt.Errorf("buildEmulatorDefinition is not hashable")
 }
 func (*buildEmulatorDefinition) Truth() starlark.Bool { return starlark.True }
 func (*buildEmulatorDefinition) Freeze()              {}

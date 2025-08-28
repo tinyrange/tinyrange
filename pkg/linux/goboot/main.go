@@ -32,17 +32,18 @@ import (
 	"github.com/insomniacslk/dhcp/netboot"
 	"github.com/jsimonetti/rtnetlink/rtnl"
 	"github.com/ramr/go-reaper"
-	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/config"
-	"github.com/tinyrange/tinyrange/pkg/feature"
-	"github.com/tinyrange/tinyrange/pkg/log"
-	"github.com/tinyrange/tinyrange/pkg/path"
 	starlarkjson "go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
+
+	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/config"
+	"github.com/tinyrange/tinyrange/pkg/feature"
+	"github.com/tinyrange/tinyrange/pkg/log"
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 //go:embed init.star
@@ -217,6 +218,7 @@ func (s *sshServer) AttrNames() []string {
 }
 
 func (s *sshServer) attachShell(conn ssh.Conn, connection ssh.Channel, nonInteractive bool, env []string, resizes <-chan []byte) error {
+	_ = conn
 	if s.callable != nil {
 		if _, err := starlark.Call(&starlark.Thread{}, s.callable, starlark.Tuple{s}, []starlark.Tuple{}); err != nil {
 			return err
@@ -312,6 +314,7 @@ func (s *sshServer) handleChannel(conn ssh.Conn, newChannel ssh.NewChannel) {
 }
 
 func (s *sshServer) handleExec(conn ssh.Conn, ch ssh.Channel, req *ssh.Request, env []string) error {
+	_ = conn
 	// Parse the command
 	command := string(req.Payload[4:])
 
@@ -349,10 +352,10 @@ func (s *sshServer) handleExec(conn ssh.Conn, ch ssh.Channel, req *ssh.Request, 
 	var code = 0
 
 	if err := cmd.Wait(); err != nil {
-		if err, ok := err.(*exec.ExitError); ok {
-			code = err.ExitCode()
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			code = exitErr.ExitCode()
 		} else {
-			return fmt.Errorf("failed to wait for command: %s", err)
+			return fmt.Errorf("failed to wait for command: %w", err)
 		}
 	}
 

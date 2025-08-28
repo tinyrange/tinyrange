@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"net"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
 	"github.com/tinyrange/tinyrange/pkg/log"
-	"golang.org/x/crypto/ssh"
 )
 
 type SSHFSInternalServer struct {

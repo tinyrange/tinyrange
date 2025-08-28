@@ -14,6 +14,7 @@ import (
 	"github.com/jezek/xgbutil/xevent"
 	"github.com/jezek/xgbutil/xgraphics"
 	"github.com/jezek/xgbutil/xwindow"
+
 	"github.com/tinyrange/tinyrange/pkg/log"
 )
 

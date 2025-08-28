@@ -12,12 +12,13 @@ import (
 	"strings"
 
 	"github.com/anmitsu/go-shlex"
+	starlarkjson "go.starlark.net/lib/json"
+	"go.starlark.net/starlark"
+
 	"github.com/tinyrange/tinyrange/pkg/feature"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/path"
 	"github.com/tinyrange/tinyrange/third_party/memory"
-	starlarkjson "go.starlark.net/lib/json"
-	"go.starlark.net/starlark"
 )
 
 var StarlarkJsonEncode = starlarkjson.Module.Members["encode"].(*starlark.Builtin).CallInternal

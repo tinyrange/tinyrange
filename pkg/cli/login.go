@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
+
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/login"
 	"github.com/tinyrange/tinyrange/pkg/path"
-	"gopkg.in/yaml.v3"
 )
 
 const DEFAULT_BUILDER = "alpine@3.22"

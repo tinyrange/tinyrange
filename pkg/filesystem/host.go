@@ -68,15 +68,10 @@ type localFile struct {
 	source   hash.SerializableValue
 }
 
-func (l *localFile) log(action string, args ...interface{}) {
+func (l *localFile) log(action string) {
 	l.fac.LogEvent("localFile",
-		append(
-			[]any{
-				"filename", l.filename,
-				"action", action,
-			},
-			args...,
-		)...,
+		"filename", l.filename,
+		"action", action,
 	)
 }
 

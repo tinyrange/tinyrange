@@ -15,8 +15,6 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
-	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/log"
 	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
@@ -30,6 +28,9 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 	"gvisor.dev/gvisor/pkg/waiter"
+
+	"github.com/tinyrange/tinyrange/pkg/common"
+	"github.com/tinyrange/tinyrange/pkg/log"
 )
 
 type Wireguard interface {
@@ -309,12 +310,13 @@ func (ns *NetStack) DialInternalContext(ctx context.Context, network string, add
 		return nil, err
 	}
 
-	if network == "tcp" || network == "tcp4" || network == "tcp6" {
+	switch network {
+	case "tcp", "tcp4", "tcp6":
 		return gonet.DialContextTCP(ctx, ns.nStack, addr, ipv4.ProtocolNumber)
-	} else if network == "udp" {
+	case "udp":
 		// log.Printf("Dial UDP %+v", addr)
 		return gonet.DialUDP(ns.nStack, nil, &addr, ipv4.ProtocolNumber)
-	} else {
+	default:
 		return nil, fmt.Errorf("DialInternal not implemented for network: %v", network)
 	}
 }

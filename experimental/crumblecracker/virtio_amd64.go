@@ -362,17 +362,7 @@ func (v *virtIODevice) barSet(index uint8, addr uint32, enabled bool) error {
 		v.ioBase = uint16(addr & 0xFFFC)
 		log.Default().Info("virtio I/O base set", "base", v.ioBase)
 
-		if v.handleIORead == nil || v.handleIOWrite == nil {
-			log.Default().Error("virtio I/O handlers not set!")
-			return fmt.Errorf("I/O handlers not configured")
-		}
-		log.Default().Info(
-			"virtio I/O handlers confirmed",
-			"read",
-			v.handleIORead != nil,
-			"write",
-			v.handleIOWrite != nil,
-		)
+		// I/O handlers are methods and always non-nil when set on the device.
 	} else if index == 0 && !enabled {
 		log.Default().Info("virtio I/O disabled")
 		v.ioBase = 0
@@ -402,9 +392,7 @@ func (v *virtIODevice) toPCIDevice() (*PciDevice, error) {
 	dev.writeU8(0x08, 0x00)
 
 	// Register legacy I/O BAR (BAR0)
-	if err := dev.registerBar(0, 64, PCI_ADDRESS_SPACE_IO, v.barSet); err != nil {
-		return nil, err
-	}
+	dev.registerBar(0, 64, PCI_ADDRESS_SPACE_IO, v.barSet)
 
 	// Set up I/O handlers
 	dev.setIOHandler(v.handleIORead, v.handleIOWrite)

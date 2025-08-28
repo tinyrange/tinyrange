@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
 	"github.com/tinyrange/tinyrange/pkg/build2"
 	"github.com/tinyrange/tinyrange/pkg/builder"
 	"github.com/tinyrange/tinyrange/pkg/common"
@@ -125,7 +126,8 @@ func parseCacheToDirectory(db common.PackageDatabase, cache string) (filesystem.
 		return nil, dbconfig.BuildDatabaseConfig{}, fmt.Errorf("failed to parse cache URL: %w", err)
 	}
 
-	if url.Scheme == "file" {
+	switch url.Scheme {
+	case "file":
 		absPath, err := path.Native.Abs(url.Host + url.Path)
 		if err != nil {
 			return nil, dbconfig.BuildDatabaseConfig{}, fmt.Errorf("failed to get absolute path: %w", err)
@@ -164,7 +166,7 @@ func parseCacheToDirectory(db common.PackageDatabase, cache string) (filesystem.
 				return nil, dbconfig.BuildDatabaseConfig{}, fmt.Errorf("cache is not a directory or archive: %s", absPath)
 			}
 		}
-	} else if url.Scheme == "http+cvmfs" {
+	case "http+cvmfs":
 		// assume it's CVMFS
 		pathString := url.Query().Get("path")
 
@@ -181,7 +183,7 @@ func parseCacheToDirectory(db common.PackageDatabase, cache string) (filesystem.
 		def := builder.Factory.NewFetchCvmfsDefinition(mirror, repo, pathString)
 
 		return defToFilesystemAndConfig(db, def, "")
-	} else {
+	default:
 		return nil, dbconfig.BuildDatabaseConfig{}, fmt.Errorf("unsupported cache type: %s", url.Scheme)
 	}
 }
