@@ -203,7 +203,7 @@ func (d *LinearDirectory) GetChild(name string) (*InodeWrapper, error) {
 // AddEntry implements Directory.
 func (d *LinearDirectory) AddEntry(child *InodeWrapper, name string) error {
 	if _, exists := d.ents[name]; exists {
-		return fmt.Errorf("entry %s already exists", name)
+		return filesystem.ErrExist{Name: name}
 	}
 
 	blockSize := child.fs.sb.blockSize()
@@ -1075,6 +1075,10 @@ func (i *InodeWrapper) addDirectoryEntry(child *InodeWrapper, name string) error
 		return fmt.Errorf("not a directory")
 	}
 
+	if err := i.dir.AddEntry(child, name); err != nil {
+		return err
+	}
+
 	// Only increment link count for regular entries (not "." or "..")
 	if name != "." && name != ".." {
 		child.node.SetLinksCount(child.node.LinksCount() + 1)
@@ -1086,7 +1090,7 @@ func (i *InodeWrapper) addDirectoryEntry(child *InodeWrapper, name string) error
 		}
 	}
 
-	return i.dir.AddEntry(child, name)
+	return nil
 }
 
 type BlockGroup struct {
@@ -1528,6 +1532,11 @@ func (fs *Ext4Filesystem) getNode(filename string, debug bool, mkdir bool, resol
 func (fs *Ext4Filesystem) mkdir(filename string, all bool) (*InodeWrapper, error) {
 	parentName := path.Unix.Dir(filename)
 	newDirName := path.Unix.Base(filename)
+
+	// check if it already exists
+	if _, err := fs.getNode(filename, false, false, false); err == nil {
+		return nil, filesystem.ErrExist{Name: filename}
+	}
 
 	node, err := fs.getNode(parentName, false, all, false)
 	if err != nil {

@@ -8,6 +8,19 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
+type ErrExist struct {
+	Name string
+}
+
+func (m ErrExist) Is(target error) bool {
+	_, ok := target.(ErrExist)
+	return ok
+}
+
+func (e ErrExist) Error() string {
+	return fmt.Sprintf("file or directory exists: %s", e.Name)
+}
+
 func GetMutableDirectory(dir Directory) MutableDirectory {
 	switch dir := dir.(type) {
 	case AsMutableDirectory:

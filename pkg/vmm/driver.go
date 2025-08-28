@@ -2036,7 +2036,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 
 	if rootFilesystem != nil && len(volumes) > 0 {
 		if true { // guest os Linux
-			if err := rootFilesystem.EnsurePath("/init.d"); err != nil {
+			if err := rootFilesystem.EnsurePath("/init.d"); err != nil && !errors.Is(err, filesystem.ErrExist{}) {
 				return fmt.Errorf("failed to ensure path: %w", err)
 			}
 
