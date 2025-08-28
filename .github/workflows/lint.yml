@@ -20,9 +20,9 @@ jobs:
         with:
           go-version: stable
 
-      - name: Build
+      - name: Add init stub
         run: |
-          go run ./tools/build.go
+          touch pkg/init/init
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
