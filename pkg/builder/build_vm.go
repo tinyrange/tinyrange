@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime/debug"
 	"strings"
@@ -212,6 +213,21 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 	vmCfg.Interaction = vmInteraction
 	vmCfg.Debug = def.params.Debug
 
+	// Configure network defaults with optional environment overrides.
+	// This enables changing addresses without altering all call sites immediately.
+	vmCfg.Network = config.NetworkConfig{}
+	vmCfg.Network.GuestCIDR = getenvOr("TINYRANGE_GUEST_CIDR", "10.42.0.2/16")
+	vmCfg.Network.HostGateway = getenvOr("TINYRANGE_HOST_GATEWAY", "10.42.0.1")
+	vmCfg.Network.HostService = getenvOr("TINYRANGE_HOST_SERVICE", "10.42.0.100")
+	if mac := os.Getenv("TINYRANGE_GUEST_MAC"); mac != "" {
+		vmCfg.Network.GuestMAC = mac
+	}
+	if os.Getenv("TINYRANGE_ALLOW_INTERNET") != "" {
+		vmCfg.Network.AllowInternet = os.Getenv("TINYRANGE_ALLOW_INTERNET") != "0" && strings.ToLower(os.Getenv("TINYRANGE_ALLOW_INTERNET")) != "false"
+	} else {
+		vmCfg.Network.AllowInternet = true
+	}
+
 	if def.params.InitRamFs != nil {
 		// bypass the default init logic.
 		// The user code is expected to call `/init -run-config /builder.json` some how.
@@ -291,6 +307,12 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		return config.TinyRangeConfig{}, fmt.Errorf("failed to marshal builder config: %w", err)
 	}
 
+	// Pass network details to the guest init via environment variables.
+	builderCfg.Environment = append(builderCfg.Environment,
+		fmt.Sprintf("TINYRANGE_GUEST_CIDR=%s", vmCfg.Network.GuestCIDR),
+		fmt.Sprintf("TINYRANGE_HOST_IP=%s", vmCfg.Network.HostGateway),
+	)
+
 	rootFsFragments = append(rootFsFragments,
 		config.Fragment{FileContents: &config.FileContentsFragment{
 			Contents:      buildConfig,
@@ -336,7 +358,9 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 		return err
 	}
 
-	hostAddress := fmt.Sprintf("10.42.0.100:%d", listener.Addr().(*net.TCPAddr).Port)
+	// Allow overriding the host service address via environment variable.
+	serviceIP := getenvOr("TINYRANGE_HOST_SERVICE", "10.42.0.100")
+	hostAddress := fmt.Sprintf("%s:%d", serviceIP, listener.Addr().(*net.TCPAddr).Port)
 
 	vmCfg, err := def.BuildTemplate(ctx, hostAddress)
 	if err != nil {
@@ -461,4 +485,11 @@ func newBuildVmDefinition(
 			Debug:            debug,
 		},
 	}
+}
+
+func getenvOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }

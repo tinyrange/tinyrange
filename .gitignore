@@ -36,3 +36,4 @@ env/
 
 .gomodcache/
 .gocache/
+.gobuildcache/

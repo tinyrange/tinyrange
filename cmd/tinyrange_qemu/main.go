@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
 
@@ -215,6 +216,26 @@ func main() {
 			}
 
 			kernelCmdline = append(kernelCmdline, "tinyrange.interaction="+string(driver.Interaction()))
+
+			// Pass network settings via kernel cmdline so init can pick them up early.
+			if v := os.Getenv("TINYRANGE_GUEST_CIDR"); v != "" {
+				kernelCmdline = append(kernelCmdline, "tinyrange.net.guest="+v)
+			}
+			if v := os.Getenv("TINYRANGE_HOST_GATEWAY"); v != "" {
+				kernelCmdline = append(kernelCmdline, "tinyrange.net.gateway="+v)
+			}
+			if v := os.Getenv("TINYRANGE_HOST_SERVICE"); v != "" {
+				kernelCmdline = append(kernelCmdline, "tinyrange.net.service="+v)
+			}
+			if v := os.Getenv("TINYRANGE_ALLOW_INTERNET"); v != "" {
+				vv := strings.ToLower(v)
+				allow := vv != "0" && vv != "false" && vv != "no"
+				if allow {
+					kernelCmdline = append(kernelCmdline, "tinyrange.net.allow=yes")
+				} else {
+					kernelCmdline = append(kernelCmdline, "tinyrange.net.allow=no")
+				}
+			}
 
 			if *kernelPath != "" {
 				args = append(args, "-kernel", *kernelPath)

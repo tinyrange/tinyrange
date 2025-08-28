@@ -13,7 +13,10 @@ def main():
     if get_env("TINYRANGE_NONET") == "":
         network_interface_up("lo")
         network_interface_up("eth0")
-        network_interface_configure("eth0", ip = "10.42.0.2/16", router = "10.42.0.1")
+        guest_cidr = get_env("TINYRANGE_GUEST_CIDR") or "10.42.0.2/16"
+        host_ip = get_env("TINYRANGE_HOST_IP") or "10.42.0.1"
+        network_interface_configure("eth0", ip = guest_cidr, router = host_ip)
+        print("configured network interface eth0 with IP {}".format(guest_cidr))
     else:
         nonet = True
 
@@ -35,7 +38,8 @@ def main():
     # Write /etc/resolv.conf
     if not nonet:
         path_ensure("/etc", make_symlink_target = True)
-        file_write("/etc/resolv.conf", "nameserver 10.42.0.1\n", remove_symlink = True)
+        host_ip = get_env("TINYRANGE_HOST_IP") or "10.42.0.1"
+        file_write("/etc/resolv.conf", "nameserver {}\n".format(host_ip), remove_symlink = True)
 
     # Write a custom MOTD since the default one might link to distribution
     # documentation which may not work inside TinyRange.
@@ -52,7 +56,8 @@ def main():
     # If the nbd_test flag is set then mount a test filesystem at /mnt.
     if has_experimental_flag("nbd_test"):
         path_ensure("/mnt")
-        dev = connect_nbd("10.42.0.1", 10809, "nbd_test")
+        host_ip = get_env("TINYRANGE_HOST_IP") or "10.42.0.1"
+        dev = connect_nbd(host_ip, 10809, "nbd_test")
         mount("ext4", dev, "/mnt")
 
     interaction = get_env("TINYRANGE_INTERACTION")

@@ -271,6 +271,14 @@ type NetStack struct {
 	wg         Wireguard
 	hostMac    net.HardwareAddr
 	log        log.Handler
+
+	// Configurable addressing (defaults to 10.42.0.{1,2,100}).
+	hostGatewayIPv4 [4]byte
+	guestIPv4       [4]byte
+	serviceIPv4     [4]byte
+	allowInternet   bool
+
+	guestMacOverride net.HardwareAddr
 }
 
 func (ns *NetStack) splitAddress(addr string) (tcpip.FullAddress, error) {
@@ -290,7 +298,7 @@ func (ns *NetStack) splitAddress(addr string) (tcpip.FullAddress, error) {
 			}
 		}
 	} else {
-		ip = netip.AddrFrom4([4]byte{10, 42, 0, 1})
+		ip = netip.AddrFrom4(ns.hostGatewayIPv4)
 	}
 
 	port, err := strconv.Atoi(tokens[1])
@@ -440,12 +448,15 @@ func (ns *NetStack) AttachNetworkInterface() (*NetworkInterface, error) {
 		return nil, fmt.Errorf("failed to set spoofing mode: %s", err)
 	}
 
-	deviceMac, err := generateMacAddress()
-	if err != nil {
-		return nil, err
+	if ns.guestMacOverride != nil {
+		nic.MacAddress = ns.guestMacOverride
+	} else {
+		deviceMac, err := generateMacAddress()
+		if err != nil {
+			return nil, err
+		}
+		nic.MacAddress = deviceMac
 	}
-
-	nic.MacAddress = deviceMac
 
 	ns.interfaces = append(ns.interfaces, nic)
 
@@ -477,7 +488,7 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 		return
 	}
 
-	if id.LocalAddress.As4() == [4]byte{10, 42, 0, 1} {
+	if id.LocalAddress.As4() == ns.hostGatewayIPv4 {
 		// Connections to the host should have already been handled.
 		r.Complete(true)
 		return
@@ -505,8 +516,18 @@ func (ns *NetStack) handleTcpForward(r *tcp.ForwarderRequest) {
 			outbound, err = ns.wg.Dial("tcp", loc.String())
 		} else {
 			// Proxy connections to 10.42.0.100 to localhost.
-			if id.LocalAddress.As4() == [4]byte{10, 42, 0, 100} {
+			if id.LocalAddress.As4() == ns.serviceIPv4 {
 				loc.IP = net.IPv4(127, 0, 0, 1)
+			}
+
+			// Enforce internet access policy: if disabled, only allow host gateway and service IP.
+			if !ns.allowInternet {
+				dst := id.LocalAddress.As4()
+				if dst != ns.hostGatewayIPv4 && dst != ns.serviceIPv4 {
+					// Close without dialing out; connection will reset/close.
+					_ = conn.Close()
+					return
+				}
 			}
 
 			outbound, err = net.DialTCP("tcp", nil, loc)
@@ -530,6 +551,12 @@ func New(log log.Handler) *NetStack {
 	ns := NetStack{
 		log: log,
 	}
+
+	// Default addressing compatible with previous behavior.
+	ns.hostGatewayIPv4 = [4]byte{10, 42, 0, 1}
+	ns.guestIPv4 = [4]byte{10, 42, 0, 2}
+	ns.serviceIPv4 = [4]byte{10, 42, 0, 100}
+	ns.allowInternet = true
 
 	ns.nStack = stack.New(stack.Options{
 		NetworkProtocols: []stack.NetworkProtocolFactory{
@@ -555,4 +582,59 @@ func New(log log.Handler) *NetStack {
 	// ns.nStack.SetTransportProtocolHandler(udp.ProtocolNumber, fwdUdp.HandlePacket)
 
 	return &ns
+}
+
+// SetNetworkParams sets the host/guest/service IPv4 addresses and internet policy.
+// Inputs must be dotted-quad IPv4 strings.
+func (ns *NetStack) SetNetworkParams(hostGateway, guest, service string, allowInternet bool) error {
+	parse4 := func(s string) ([4]byte, error) {
+		ip := net.ParseIP(s)
+		if ip == nil {
+			return [4]byte{}, fmt.Errorf("invalid ipv4: %s", s)
+		}
+		ip4 := ip.To4()
+		if ip4 == nil {
+			return [4]byte{}, fmt.Errorf("not an ipv4 address: %s", s)
+		}
+		return [4]byte{ip4[0], ip4[1], ip4[2], ip4[3]}, nil
+	}
+
+	var err error
+	if hostGateway != "" {
+		ns.hostGatewayIPv4, err = parse4(hostGateway)
+		if err != nil {
+			return err
+		}
+	}
+	if guest != "" {
+		ns.guestIPv4, err = parse4(guest)
+		if err != nil {
+			return err
+		}
+	}
+	if service != "" {
+		ns.serviceIPv4, err = parse4(service)
+		if err != nil {
+			return err
+		}
+	}
+	ns.allowInternet = allowInternet
+	return nil
+}
+
+// SetGuestMAC sets a specific MAC address for the guest NIC.
+func (ns *NetStack) SetGuestMAC(mac string) error {
+	if mac == "" {
+		ns.guestMacOverride = nil
+		return nil
+	}
+	m, err := net.ParseMAC(mac)
+	if err != nil {
+		return err
+	}
+	if len(m) != 6 {
+		return fmt.Errorf("invalid MAC address length: %d", len(m))
+	}
+	ns.guestMacOverride = m
+	return nil
 }

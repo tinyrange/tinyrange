@@ -4,6 +4,7 @@ package netstack
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/tinyrange/wireguard"
 
@@ -28,7 +29,7 @@ func (ns *NetStack) SetupWireguard(config string, mtu int) error {
 		}
 	}()
 
-	listen, err := handler.ListenTCPAddr("10.42.0.2:0")
+	listen, err := handler.ListenTCPAddr(fmt.Sprintf("%d.%d.%d.%d:0", ns.guestIPv4[0], ns.guestIPv4[1], ns.guestIPv4[2], ns.guestIPv4[3]))
 	if err != nil {
 		return err
 	}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"os"
 	"runtime"
@@ -125,6 +126,132 @@ func parseVolume(volume string) (common.DirectiveAddVolume, error) {
 	}
 }
 
+// deriveAddressesFromGuestCIDR picks a sensible host gateway and service IP
+// within the guest CIDR. It prefers network+1 for gateway and network+100 for service
+// when available, avoiding collision with the guest IP.
+func deriveAddressesFromGuestCIDR(guestCIDR string) (gateway string, service string, err error) {
+	ip, ipNet, parseErr := net.ParseCIDR(guestCIDR)
+	if parseErr != nil {
+		return "", "", fmt.Errorf("invalid --net-guest-cidr: %w", parseErr)
+	}
+
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return "", "", fmt.Errorf("--net-guest-cidr must be IPv4")
+	}
+
+	// Compute network and broadcast.
+	mask := ipNet.Mask
+	network := make(net.IP, len(ip4))
+	broadcast := make(net.IP, len(ip4))
+	for i := 0; i < 4; i++ {
+		network[i] = ip4[i] & mask[i]
+		broadcast[i] = ip4[i] | ^mask[i]
+	}
+
+	// Helpers
+	inRange := func(candidate net.IP) bool {
+		return bytesCompare(candidate, network) > 0 && bytesCompare(candidate, broadcast) < 0
+	}
+	isGuest := func(candidate net.IP) bool { return candidate.Equal(ip4) }
+
+	// Choose gateway: first usable host (network+1), skipping guest if needed.
+	gw := addIPv4(network, 1)
+	if !inRange(gw) {
+		return "", "", fmt.Errorf("no usable host addresses in %s", ipNet.String())
+	}
+	if isGuest(gw) {
+		gw = addIPv4(gw, 1)
+		if !inRange(gw) {
+			return "", "", fmt.Errorf("no alternate gateway available in %s", ipNet.String())
+		}
+	}
+
+	// Choose service: network+100 if possible, else next available after gateway.
+	svc := addIPv4(network, 100)
+	if !inRange(svc) || isGuest(svc) || svc.Equal(gw) {
+		svc = addIPv4(gw, 1)
+		if !inRange(svc) || isGuest(svc) {
+			// Try next again
+			svc = addIPv4(svc, 1)
+			if !inRange(svc) || isGuest(svc) {
+				return "", "", fmt.Errorf("no suitable service address available in %s", ipNet.String())
+			}
+		}
+	}
+
+	return gw.String(), svc.String(), nil
+}
+
+// normalizeGuestCIDR ensures the guest CIDR contains a usable host IP inside the subnet.
+// If the provided IP equals the network or broadcast address, it picks network+2.
+// It also ensures /31 and /32 networks are rejected.
+func normalizeGuestCIDR(guestCIDR string) (string, error) {
+	ip, ipNet, err := net.ParseCIDR(guestCIDR)
+	if err != nil {
+		return "", fmt.Errorf("invalid --net-guest-cidr: %w", err)
+	}
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return "", fmt.Errorf("--net-guest-cidr must be IPv4")
+	}
+	ones, bits := ipNet.Mask.Size()
+	// /31 and /32 have no usable host addresses for our model.
+	if bits != 32 || ones >= 31 {
+		return "", fmt.Errorf("guest_cidr needs at least 2 usable hosts (prefix < 31)")
+	}
+
+	mask := ipNet.Mask
+	network := make(net.IP, len(ip4))
+	broadcast := make(net.IP, len(ip4))
+	for i := 0; i < 4; i++ {
+		network[i] = ip4[i] & mask[i]
+		broadcast[i] = ip4[i] | ^mask[i]
+	}
+
+	// If chosen IP is network/broadcast, pick network+2 to leave +1 for gateway.
+	if ip4.Equal(network) || ip4.Equal(broadcast) {
+		ip4 = addIPv4(network, 2)
+	}
+
+	// Re-check it's within usable range.
+	if bytesCompare(ip4, network) <= 0 || bytesCompare(ip4, broadcast) >= 0 {
+		return "", fmt.Errorf("no usable guest IP available in %s", ipNet.String())
+	}
+
+	return fmt.Sprintf("%s/%d", ip4.String(), ones), nil
+}
+
+func addIPv4(ip net.IP, delta int) net.IP {
+	out := make(net.IP, len(ip))
+	copy(out, ip)
+	v := (int(out[0])<<24 | int(out[1])<<16 | int(out[2])<<8 | int(out[3])) + delta
+	out[0] = byte(v >> 24)
+	out[1] = byte((v >> 16) & 0xff)
+	out[2] = byte((v >> 8) & 0xff)
+	out[3] = byte(v & 0xff)
+	return out
+}
+
+func bytesCompare(a, b net.IP) int {
+	for i := 0; i < 4; i++ {
+		if a[i] < b[i] {
+			return -1
+		} else if a[i] > b[i] {
+			return 1
+		}
+	}
+	return 0
+}
+
+func incrementIPv4(s string) string {
+	ip := net.ParseIP(s)
+	if ip == nil {
+		return s
+	}
+	return addIPv4(ip.To4(), 1).String()
+}
+
 var CURRENT_CONFIG_VERSION = 1
 
 type VMSpec struct {
@@ -166,6 +293,13 @@ type Config struct {
 	WriteTemplate   bool     `json:"-" yaml:"-"`
 	ReadOnlyMounts  []string `json:"-" yaml:"-"`
 	ReadWriteMounts []string `json:"-" yaml:"-"`
+
+	// Network options (CLI only)
+	NetGuestCIDR   string `json:"-" yaml:"-"`
+	NetHostGateway string `json:"-" yaml:"-"`
+	NetHostService string `json:"-" yaml:"-"`
+	NoInternet     bool   `json:"-" yaml:"-"`
+	NetGuestMAC    string `json:"-" yaml:"-"`
 
 	localConfig bool
 	basePath    string
@@ -497,6 +631,63 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		return fmt.Errorf("please specify a builder")
 	}
 
+	// Apply network CLI flags to host-side configuration via environment.
+	if config.NetGuestCIDR != "" {
+		// Normalize guest CIDR to a valid host address inside the subnet.
+		normalizedCIDR, err := normalizeGuestCIDR(config.NetGuestCIDR)
+		if err != nil {
+			return err
+		}
+		config.NetGuestCIDR = normalizedCIDR
+
+		if err := os.Setenv("TINYRANGE_GUEST_CIDR", config.NetGuestCIDR); err != nil {
+			return err
+		}
+
+		// Auto-derive gateway/service if not explicitly provided.
+		if config.NetHostGateway == "" || config.NetHostService == "" {
+			gw, svc, err := deriveAddressesFromGuestCIDR(config.NetGuestCIDR)
+			if err != nil {
+				return err
+			}
+			if config.NetHostGateway == "" {
+				config.NetHostGateway = gw
+			}
+			if config.NetHostService == "" {
+				// Avoid accidentally colliding with gateway.
+				if svc == config.NetHostGateway {
+					// Pick the next available after gateway if needed.
+					svc = incrementIPv4(gw)
+				}
+				config.NetHostService = svc
+			}
+		}
+	}
+	if config.NetHostGateway != "" {
+		if err := os.Setenv("TINYRANGE_HOST_GATEWAY", config.NetHostGateway); err != nil {
+			return err
+		}
+	}
+	if config.NetHostService != "" {
+		if err := os.Setenv("TINYRANGE_HOST_SERVICE", config.NetHostService); err != nil {
+			return err
+		}
+	}
+	if config.NoInternet {
+		if err := os.Setenv("TINYRANGE_ALLOW_INTERNET", "false"); err != nil {
+			return err
+		}
+	}
+
+	if config.NetGuestMAC != "" {
+		if _, err := net.ParseMAC(config.NetGuestMAC); err != nil {
+			return fmt.Errorf("invalid --net-mac: %w", err)
+		}
+		if err := os.Setenv("TINYRANGE_GUEST_MAC", config.NetGuestMAC); err != nil {
+			return err
+		}
+	}
+
 	var tags common.TagList
 
 	tags = append(tags, "level3", "defaults")
@@ -655,7 +846,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 			for _, mount := range mountDirectives {
 				scriptLines = append(scriptLines, fmt.Sprintf(
-					"  mount('9p', '10.42.0.1', '%s', options='trans=tcp,version=9p2000.L,port=%d', ensure_path=True)",
+					"  mount('9p', 'host.internal', '%s', options='trans=tcp,version=9p2000.L,port=%d', ensure_path=True)",
 					mount.GuestDirectory, mount.Port,
 				))
 			}

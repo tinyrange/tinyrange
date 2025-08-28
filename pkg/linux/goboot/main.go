@@ -1216,6 +1216,18 @@ func getStarlarkGlobals(log log.Handler) (starlark.StringDict, error) {
 				if err := os.Setenv("TINYRANGE_INTERACTION", interaction); err != nil {
 					return starlark.None, err
 				}
+			} else if strings.HasPrefix(arg, "tinyrange.net.guest=") {
+				if err := os.Setenv("TINYRANGE_GUEST_CIDR", strings.TrimPrefix(arg, "tinyrange.net.guest=")); err != nil {
+					return starlark.None, err
+				}
+			} else if strings.HasPrefix(arg, "tinyrange.net.gateway=") {
+				if err := os.Setenv("TINYRANGE_HOST_IP", strings.TrimPrefix(arg, "tinyrange.net.gateway=")); err != nil {
+					return starlark.None, err
+				}
+			} else if strings.HasPrefix(arg, "tinyrange.net.service=") {
+				if err := os.Setenv("TINYRANGE_HOST_SERVICE", strings.TrimPrefix(arg, "tinyrange.net.service=")); err != nil {
+					return starlark.None, err
+				}
 			}
 		}
 

@@ -1383,9 +1383,9 @@ func (d *driver) startDNSServer() error {
 		dnsLookup: func(name string) (string, error) {
 			switch name {
 			case "tinyrange.":
-				return "10.42.0.2", nil
+				return d.networkGuestIP(), nil
 			case "host.internal.":
-				return "10.42.0.1", nil
+				return d.networkHostGateway(), nil
 			}
 
 			d.log.Debug("doing DNS lookup", "name", name)
@@ -1448,7 +1448,7 @@ func (d *driver) exportPort(port portInformation) error {
 			go func() {
 				defer conn.Close()
 
-				clientConn, err := d.ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("10.42.0.2:%d", port.port))
+				clientConn, err := d.ns.DialInternalContext(context.Background(), "tcp", fmt.Sprintf("%s:%d", d.networkGuestIP(), port.port))
 				if err != nil {
 					// silence these errors since they are exposed to the client anyway.
 					d.log.Debug("failed to dial vm port", "err", err)
@@ -1469,6 +1469,33 @@ func (d *driver) exportPort(port portInformation) error {
 
 func (d *driver) topConfig() *config.TinyRangeConfig {
 	return &d.configs[0]
+}
+
+// networkGuestIP returns the guest IPv4 without CIDR suffix.
+func (d *driver) networkGuestIP() string {
+	cfg := d.topConfig().Network
+	if cfg.GuestCIDR == "" {
+		return "10.42.0.2"
+	}
+	// Split CIDR like "10.42.0.2/16"
+	if ip, _, ok := strings.Cut(cfg.GuestCIDR, "/"); ok {
+		return ip
+	}
+	return cfg.GuestCIDR
+}
+
+func (d *driver) networkHostGateway() string {
+	if gw := d.topConfig().Network.HostGateway; gw != "" {
+		return gw
+	}
+	return "10.42.0.1"
+}
+
+func (d *driver) networkServiceIP() string {
+	if ip := d.topConfig().Network.HostService; ip != "" {
+		return ip
+	}
+	return "10.42.0.100"
 }
 
 type mountInfo struct {
@@ -1817,6 +1844,13 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 	go d.nbdLoop(listener, exports...)
 
 	ns := netstack.New(d.log)
+	// Configure netstack addressing and internet policy from config.
+	_ = ns.SetNetworkParams(d.networkHostGateway(), d.networkGuestIP(), d.networkServiceIP(), d.topConfig().Network.AllowInternet)
+	if mac := d.topConfig().Network.GuestMAC; mac != "" {
+		if err := ns.SetGuestMAC(mac); err != nil {
+			return fmt.Errorf("invalid network.guest_mac: %w", err)
+		}
+	}
 	d.ns = ns
 
 	if d.wireguardUrl != "" {
@@ -2003,10 +2037,10 @@ func (d *driver) runInteraction(
 		}()
 
 		if d.Interaction() == config.InteractionVNC {
-			go runVncClient(d.ns, d.log, "10.42.0.2:5901")
+			go runVncClient(d.ns, d.log, fmt.Sprintf("%s:5901", d.networkGuestIP()))
 		}
 
-		err = connectOverSsh(d.ns, d.log, "10.42.0.2:2222", "root", secureSSH, exited)
+		err = connectOverSsh(d.ns, d.log, fmt.Sprintf("%s:2222", d.networkGuestIP()), "root", secureSSH, exited)
 		if err != nil {
 			return fmt.Errorf("failed to connect over ssh: %w", err)
 		}
@@ -2032,7 +2066,7 @@ func (d *driver) runInteraction(
 			}
 		}()
 
-		return runWebSsh(d.ns, d.log, "10.42.0.2:2222", "root", secureSSH, strings.TrimPrefix(string(d.Interaction()), "webssh,"))
+		return runWebSsh(d.ns, d.log, fmt.Sprintf("%s:2222", d.networkGuestIP()), "root", secureSSH, strings.TrimPrefix(string(d.Interaction()), "webssh,"))
 	default:
 		return fmt.Errorf("unsupported interaction mode: %s", d.Interaction())
 	}

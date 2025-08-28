@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"runtime"
 
 	"github.com/tinyrange/tinyrange/pkg/filesystem"
@@ -506,6 +507,9 @@ type TinyRangeConfig struct {
 
 	// Redirect hypervisor input to the host. The VM will exit after it completes initialization.
 	Debug bool `json:"debug" yaml:"debug"`
+
+	// Network controls guest/host addressing and internet access.
+	Network NetworkConfig `json:"network" yaml:"network"`
 }
 
 func (cfg TinyRangeConfig) Validate() error {
@@ -553,6 +557,10 @@ func (cfg TinyRangeConfig) Validate() error {
 		}
 	}
 
+	if err := cfg.Network.Validate(); err != nil {
+		return fmt.Errorf("invalid network config: %w", err)
+	}
+
 	return nil
 }
 
@@ -563,4 +571,114 @@ type BuildCacheFilesystem interface {
 
 type ProxyLoadRequest struct {
 	Socks5Address string `json:"socks5_address" yaml:"socks5_address"`
+}
+
+// NetworkConfig contains addressing and connectivity policy for the guest VM.
+// Defaults are chosen to match previous behavior if fields are empty:
+//
+//	guest_cidr:    10.42.0.2/16
+//	host_gateway:  10.42.0.1
+//	host_service:  10.42.0.100
+//	allow_internet: true
+type NetworkConfig struct {
+	// GuestCIDR is the guest IP with CIDR prefix length (e.g. 10.42.0.2/16).
+	GuestCIDR string `json:"guest_cidr" yaml:"guest_cidr"`
+	// HostGateway is the host IP the guest uses as its default gateway and DNS.
+	HostGateway string `json:"host_gateway" yaml:"host_gateway"`
+	// HostService is a special host IP the guest uses to reach host-exposed services (e.g. upload server).
+	HostService string `json:"host_service" yaml:"host_service"`
+	// GuestMAC is the MAC address for the guest NIC (optional).
+	// If empty a random locally administered MAC is used.
+	GuestMAC string `json:"guest_mac" yaml:"guest_mac"`
+	// AllowInternet controls whether the guest may connect to external internet addresses.
+	AllowInternet bool `json:"allow_internet" yaml:"allow_internet"`
+}
+
+func (n *NetworkConfig) setDefaults() {
+	if n.GuestCIDR == "" {
+		n.GuestCIDR = "10.42.0.2/16"
+	}
+	if n.HostGateway == "" {
+		n.HostGateway = "10.42.0.1"
+	}
+	if n.HostService == "" {
+		n.HostService = "10.42.0.100"
+	}
+	// AllowInternet default is true; leave zero-value false only if explicitly set to false by user when non-empty? Keep default true.
+	// We only set to true if struct is empty and left unspecified, to preserve previous behavior.
+}
+
+func (n NetworkConfig) Validate() error {
+	// Copy to mutate defaults safely.
+	nn := n
+	nn.setDefaults()
+
+	if nn.GuestCIDR == "" || nn.HostGateway == "" || nn.HostService == "" {
+		return fmt.Errorf("guest_cidr, host_gateway, and host_service are required")
+	}
+
+	// Parse guest CIDR and ensure host addresses are within the same network.
+	ip, ipNet, err := net.ParseCIDR(nn.GuestCIDR)
+	if err != nil {
+		return fmt.Errorf("invalid guest_cidr: %w", err)
+	}
+
+	// Validate guest IP is a usable host (not network/broadcast) and subnet size is sane.
+	ones, bits := ipNet.Mask.Size()
+	if bits != 32 || ones >= 31 {
+		return fmt.Errorf("guest_cidr needs at least 2 usable hosts (prefix < 31)")
+	}
+	network := ipNet.IP.To4()
+	if network == nil {
+		return fmt.Errorf("guest_cidr must be IPv4")
+	}
+	// Compute broadcast: ip OR NOT mask.
+	mask := ipNet.Mask
+	broadcast := net.IP{network[0] | ^mask[0], network[1] | ^mask[1], network[2] | ^mask[2], network[3] | ^mask[3]}
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return fmt.Errorf("guest_cidr must be IPv4")
+	}
+	if ip4.Equal(network) || ip4.Equal(broadcast) {
+		return fmt.Errorf("guest IP must be a usable host address (not network/broadcast)")
+	}
+
+	hostGw := net.ParseIP(nn.HostGateway)
+	if hostGw == nil {
+		return fmt.Errorf("invalid host_gateway: %s", nn.HostGateway)
+	}
+	if !ipNet.Contains(hostGw) {
+		return fmt.Errorf("host_gateway (%s) not in guest_cidr network (%s)", nn.HostGateway, ipNet.String())
+	}
+
+	hostSvc := net.ParseIP(nn.HostService)
+	if hostSvc == nil {
+		return fmt.Errorf("invalid host_service: %s", nn.HostService)
+	}
+	if !ipNet.Contains(hostSvc) {
+		return fmt.Errorf("host_service (%s) not in guest_cidr network (%s)", nn.HostService, ipNet.String())
+	}
+
+	// Ensure distinct addresses: gateway != guest, service != guest, service != gateway.
+	if ip4.Equal(hostGw.To4()) {
+		return fmt.Errorf("host_gateway must differ from guest IP (%s)", ip.String())
+	}
+	if ip4.Equal(hostSvc.To4()) {
+		return fmt.Errorf("host_service must differ from guest IP (%s)", ip.String())
+	}
+	if hostSvc.Equal(hostGw) {
+		return fmt.Errorf("host_service must differ from host_gateway (%s)", hostGw.String())
+	}
+
+	if nn.GuestMAC != "" {
+		mac, err := net.ParseMAC(nn.GuestMAC)
+		if err != nil {
+			return fmt.Errorf("invalid guest_mac: %w", err)
+		}
+		if len(mac) != 6 {
+			return fmt.Errorf("guest_mac must be 6 bytes, got %d", len(mac))
+		}
+	}
+
+	return nil
 }

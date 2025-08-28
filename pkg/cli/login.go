@@ -196,6 +196,11 @@ func init() {
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.WriteTemplate, "template", false, "If true then just generate the config and don't run the VM.")
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ReadOnlyMounts, "mount", []string{}, "Mount a host directory into the VM using 9P.")
 	loginCmd.PersistentFlags().StringArrayVar(&currentConfig.ReadWriteMounts, "mount-rw", []string{}, "Mount a host directory into the VM using 9P with read-write access.")
-	// loginCmd.PersistentFlags().BoolVar(&currentConfig.NoNetwork, "no-network", false, "Disable network access.")
+	// Network addressing and policy
+	loginCmd.PersistentFlags().StringVar(&currentConfig.NetGuestCIDR, "net-guest-cidr", "", "Set guest IP with CIDR (e.g., 192.168.76.2/24).")
+	loginCmd.PersistentFlags().StringVar(&currentConfig.NetHostGateway, "net-gateway", "", "Set host gateway IP reachable from the guest.")
+	loginCmd.PersistentFlags().StringVar(&currentConfig.NetHostService, "net-service", "", "Set host service IP used for host-only services.")
+	loginCmd.PersistentFlags().BoolVar(&currentConfig.NoInternet, "no-internet", false, "Disable internet access for the VM.")
+	loginCmd.PersistentFlags().StringVar(&currentConfig.NetGuestMAC, "net-mac", "", "Set guest MAC address (format: 02:00:5e:00:53:01).")
 	rootCmd.AddCommand(loginCmd)
 }
