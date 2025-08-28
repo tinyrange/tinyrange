@@ -8,6 +8,14 @@ db.add_mirror("kali", [BASE_MIRROR + "/kali/kali"])
 LATEST_UBUNTU_VERSION = "noble"
 UBUNTU_VERSIONS = ["noble", "jammy", "focal"]
 
+# Map Ubuntu codenames to their numeric release aliases.
+# Used to add alias container builders (e.g. ubuntu@24.04).
+UBUNTU_NUMERIC_ALIAS = {
+    "noble": "24.04",
+    "jammy": "22.04",
+    "focal": "20.04",
+}
+
 def parse_debian_index(base, contents):
     lines = contents.splitlines()
 
@@ -462,7 +470,7 @@ def make_ubuntu_builders(repos, arch):
         packages, sources_list = repos[version]
 
         # Define a container builder for each version.
-        ret.append(define.container_builder(
+        base_builder = define.container_builder(
             name = "ubuntu@" + version,
             arch = arch,
             display_name = "Ubuntu " + version,
@@ -473,10 +481,46 @@ def make_ubuntu_builders(repos, arch):
             # This builder is scoped to just the packages in this repo.
             packages = packages,
             metadata = {
+                # Keep the codename in metadata for apt sources and image tags.
                 "version": version,
                 "sources.list": sources_list,
             },
-        ))
+        )
+        ret.append(base_builder)
+
+        # Add numeric alias if known (e.g. ubuntu@24.04 for noble).
+        if version in UBUNTU_NUMERIC_ALIAS:
+            ret.append(define.container_builder(
+                name = "ubuntu@" + UBUNTU_NUMERIC_ALIAS[version],
+                arch = arch,
+                display_name = "Ubuntu " + UBUNTU_NUMERIC_ALIAS[version],
+                plan_callback = build_debian_directives,
+                default_packages = defaults,
+                split_default_packages = True,
+                packages = packages,
+                metadata = {
+                    # Still use the codename for internal metadata.
+                    "version": version,
+                    "sources.list": sources_list,
+                },
+            ))
+
+        # Add a 'latest' alias pointing to the latest Ubuntu release.
+        if version == LATEST_UBUNTU_VERSION:
+            ret.append(define.container_builder(
+                name = "ubuntu@latest",
+                arch = arch,
+                display_name = "Ubuntu latest",
+                plan_callback = build_debian_directives,
+                default_packages = defaults,
+                split_default_packages = True,
+                packages = packages,
+                metadata = {
+                    # Keep the codename in metadata for internal usage.
+                    "version": version,
+                    "sources.list": sources_list,
+                },
+            ))
 
     return ret
 

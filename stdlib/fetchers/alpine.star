@@ -322,7 +322,7 @@ def make_alpine_builders(arch, repos):
     ret = []
     for version in repos:
         # Define a container builder for each version.
-        ret.append(define.container_builder(
+        base_builder = define.container_builder(
             name = "alpine@" + version,
             arch = arch,
             display_name = "Alpine " + version,
@@ -345,7 +345,26 @@ def make_alpine_builders(arch, repos):
             metadata = {
                 "version": version,
             },
-        ))
+        )
+        ret.append(base_builder)
+
+        # Add a 'latest' alias that points to the latest version.
+        if version == LATEST_ALPINE_VERSION:
+            ret.append(define.container_builder(
+                name = "alpine@latest",
+                arch = arch,
+                display_name = "Alpine latest",
+                plan_callback = build_alpine_directives,
+                default_packages = [
+                    query("busybox-binsh"),
+                    query("alpine-baselayout"),
+                ],
+                packages = repos[version],
+                metadata = {
+                    # Keep the real version in metadata.
+                    "version": version,
+                },
+            ))
 
     return ret
 
