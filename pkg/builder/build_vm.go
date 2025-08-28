@@ -20,7 +20,6 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/log"
-	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 func init() {
@@ -303,16 +302,24 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		}
 	}
 
-	buildConfig, err := json.Marshal(&builderCfg)
-	if err != nil {
-		return config.TinyRangeConfig{}, fmt.Errorf("failed to marshal builder config: %w", err)
-	}
-
 	// Pass network details to the guest init via environment variables.
 	builderCfg.Environment = append(builderCfg.Environment,
 		fmt.Sprintf("TINYRANGE_GUEST_CIDR=%s", vmCfg.Network.GuestCIDR),
 		fmt.Sprintf("TINYRANGE_HOST_IP=%s", vmCfg.Network.HostGateway),
 	)
+
+	// If a history key is set up, configure the builder to use it.
+	if def.params.HistoryKey != "" {
+		builderCfg.Environment = append(builderCfg.Environment,
+			"TINYRANGE_HISTORY_KEY=enable",
+			"HISTFILE=/root/.tinyrange_history",
+		)
+	}
+
+	buildConfig, err := json.Marshal(&builderCfg)
+	if err != nil {
+		return config.TinyRangeConfig{}, fmt.Errorf("failed to marshal builder config: %w", err)
+	}
 
 	rootFsFragments = append(rootFsFragments,
 		config.Fragment{FileContents: &config.FileContentsFragment{
@@ -390,49 +397,29 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 		}
 	})
 
-	historyKey := os.Getenv("TINYRANGE_HISTORY_KEY")
-	var historyFile string
-	if historyKey != "" {
-		if home, err := os.UserHomeDir(); err == nil {
-			dir := path.Native.Join(home, ".tinyrange", "history")
-			if err := os.MkdirAll(dir, 0o755); err == nil {
-				historyFile = path.Native.Join(dir, historyKey)
-			} else {
-				def.log.Error("error creating history dir", "err", err)
-			}
-		} else {
-			def.log.Error("error getting user home", "err", err)
-		}
-	}
-
-	def.mux.HandleFunc("/history", func(w http.ResponseWriter, r *http.Request) {
-		if historyFile == "" {
-			http.Error(w, "history disabled", http.StatusBadRequest)
-			return
-		}
-		if r.URL.Query().Get("key") != historyKey {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		switch r.Method {
-		case http.MethodGet:
-			f, err := os.Open(historyFile)
-			if err == nil {
+	if def.params.HistoryKey != "" {
+		fm := ctx.Database().FileMethods()
+		def.mux.HandleFunc("/history", func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				f, err := fm.OpenCacheKey(def.params.HistoryKey)
+				if err == nil {
+					defer f.Close()
+					io.Copy(w, f)
+				}
+			case http.MethodPost:
+				f, err := fm.AppendCacheKey(def.params.HistoryKey)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
 				defer f.Close()
-				io.Copy(w, f)
+				io.Copy(f, r.Body)
+			default:
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			}
-		case http.MethodPost:
-			f, err := os.OpenFile(historyFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			defer f.Close()
-			io.Copy(f, r.Body)
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
+		})
+	}
 
 	go func() {
 		def.server.Serve(listener)
@@ -503,6 +490,7 @@ func newBuildVmDefinition(
 	rootArchitecture config.CPUArchitecture,
 	storageSize int,
 	interaction string,
+	historyKey string,
 	debug bool,
 ) common.BuildVmDefinition {
 	if storageSize == 0 {
@@ -527,6 +515,7 @@ func newBuildVmDefinition(
 			RootArchitecture: string(rootArchitecture),
 			StorageSize:      storageSize,
 			Interaction:      interaction,
+			HistoryKey:       historyKey,
 			Debug:            debug,
 		},
 	}

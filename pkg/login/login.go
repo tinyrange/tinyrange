@@ -573,6 +573,7 @@ func (config *Config) addLayer(directives []common.Directive,
 		vmArch, arch,
 		"/init/changed.archive",
 		"ssh",
+		"", // no history for layers
 	)
 	if err != nil {
 		return nil, err
@@ -587,6 +588,7 @@ func (config *Config) makeBuildVMDefinition(
 	arch cfg.CPUArchitecture,
 	outputName string,
 	interaction string,
+	historyKey string,
 ) (common.BuildVmDefinition, error) {
 	var kernel common.BuildDefinition
 	var initramfs common.BuildDefinition
@@ -616,7 +618,9 @@ func (config *Config) makeBuildVMDefinition(
 		config.CpuCores, config.MemorySize, config.AutoScale,
 		vmArch, arch,
 		config.StorageSize,
-		interaction, config.Debug,
+		interaction,
+		historyKey,
+		config.Debug,
 	), nil
 }
 
@@ -654,26 +658,6 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 	if config.Builder == "" {
 		return fmt.Errorf("please specify a builder")
-	}
-
-	if !config.DisableHistory {
-		wd := config.basePath
-		if wd == "" {
-			var err error
-			wd, err = os.Getwd()
-			if err != nil {
-				return err
-			}
-		}
-		sum := sha256.Sum256([]byte(wd))
-		key := hex.EncodeToString(sum[:])
-		config.Environment = append(config.Environment,
-			"TINYRANGE_HISTORY_KEY="+key,
-			"HISTFILE=/root/.tinyrange_history",
-		)
-		if err := os.Setenv("TINYRANGE_HISTORY_KEY", key); err != nil {
-			return err
-		}
 	}
 
 	// Apply network CLI flags to host-side configuration via environment.
@@ -1012,7 +996,13 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 	outputName := config.replaceVariables(config.Output)
 
-	def, err := config.makeBuildVMDefinition(directives, vmArch, arch, outputName, interaction)
+	historyKey := ""
+	if !config.DisableHistory && outputName == "" {
+		hash := sha256.Sum256([]byte(outputName))
+		historyKey = hex.EncodeToString(hash[:])
+	}
+
+	def, err := config.makeBuildVMDefinition(directives, vmArch, arch, outputName, interaction, historyKey)
 	if err != nil {
 		return err
 	}

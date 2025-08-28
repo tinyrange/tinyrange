@@ -80,6 +80,16 @@ type packageDatabase struct {
 	simpleCache map[string][]byte
 }
 
+// AppendCacheKey implements filesystem.ExtendedFileMethods.
+func (db *packageDatabase) AppendCacheKey(key string) (io.WriteCloser, error) {
+	return db.builder.Filesystem().SimpleCache().Append(key)
+}
+
+// OpenCacheKey implements filesystem.ExtendedFileMethods.
+func (db *packageDatabase) OpenCacheKey(key string) (io.ReadCloser, error) {
+	return db.builder.Filesystem().SimpleCache().Open(key)
+}
+
 // GetOrSetCacheForHash implements filesystem.ExtendedFileMethods.
 func (db *packageDatabase) GetOrSetCacheForHash(hash string, setter func(w io.Writer) error) (io.ReaderAt, error) {
 	simpleCache := db.builder.Filesystem().SimpleCache()

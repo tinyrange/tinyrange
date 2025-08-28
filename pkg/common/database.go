@@ -53,6 +53,9 @@ type WritableBuildCacheDirectory interface {
 
 type SimpleCache interface {
 	GetOrSet(hash string, setter func(w io.Writer) error) (io.ReaderAt, error)
+
+	Open(key string) (io.ReadCloser, error)
+	Append(key string) (io.WriteCloser, error)
 }
 
 type BuildCacheFilesystem interface {
