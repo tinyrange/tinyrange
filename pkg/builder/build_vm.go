@@ -20,6 +20,7 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/filesystem/star"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	"github.com/tinyrange/tinyrange/pkg/log"
+	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 func init() {
@@ -386,6 +387,50 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 		if err != nil {
 			def.log.Error("error writing output from VM", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	historyKey := os.Getenv("TINYRANGE_HISTORY_KEY")
+	var historyFile string
+	if historyKey != "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			dir := path.Native.Join(home, ".tinyrange", "history")
+			if err := os.MkdirAll(dir, 0o755); err == nil {
+				historyFile = path.Native.Join(dir, historyKey)
+			} else {
+				def.log.Error("error creating history dir", "err", err)
+			}
+		} else {
+			def.log.Error("error getting user home", "err", err)
+		}
+	}
+
+	def.mux.HandleFunc("/history", func(w http.ResponseWriter, r *http.Request) {
+		if historyFile == "" {
+			http.Error(w, "history disabled", http.StatusBadRequest)
+			return
+		}
+		if r.URL.Query().Get("key") != historyKey {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			f, err := os.Open(historyFile)
+			if err == nil {
+				defer f.Close()
+				io.Copy(w, f)
+			}
+		case http.MethodPost:
+			f, err := os.OpenFile(historyFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			defer f.Close()
+			io.Copy(f, r.Body)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
 

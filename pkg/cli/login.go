@@ -174,6 +174,7 @@ func init() {
 	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Layers, "layer", "L", []string{}, "Add a cached layer created by running a command to the virtual machine.")
 	loginCmd.PersistentFlags().StringVar(&currentConfig.Init, "init", "", "Replace the init system with a different command.")
 	loginCmd.PersistentFlags().BoolVar(&currentConfig.NoScripts, "no-scripts", false, "Disable script execution.")
+	loginCmd.PersistentFlags().BoolVar(&currentConfig.DisableHistory, "no-history", false, "Disable persisting shell history.")
 	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Files, "file", "f", []string{}, "Specify local files/URLs to be copied into the virtual machine. URLs will be downloaded to the build directory first.")
 	loginCmd.PersistentFlags().StringArrayVarP(&currentConfig.Archives, "archive", "a", []string{}, "Specify archives to be copied into the virtual machine. A copy will be made in the build directory.")
 	loginCmd.PersistentFlags().StringVarP(&currentConfig.Output, "output", "o", "", "Write the specified file from the guest to the host.")

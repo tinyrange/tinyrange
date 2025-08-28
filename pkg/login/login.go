@@ -1,6 +1,8 @@
 package login
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -282,6 +284,7 @@ type Config struct {
 	Volumes          []string          `json:"volumes,omitempty" yaml:"volumes,omitempty"`
 	AutoScale        bool              `json:"auto_scale,omitempty" yaml:"auto_scale,omitempty"`
 	MinSpec          VMSpec            `json:"min_spec,omitempty" yaml:"min_spec,omitempty"`
+	DisableHistory   bool              `json:"disable_history,omitempty" yaml:"disable_history,omitempty"`
 
 	// secure configs that have to be set on the command line.
 	CpuCores        int      `json:"-" yaml:"-"`
@@ -651,6 +654,26 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 	if config.Builder == "" {
 		return fmt.Errorf("please specify a builder")
+	}
+
+	if !config.DisableHistory {
+		wd := config.basePath
+		if wd == "" {
+			var err error
+			wd, err = os.Getwd()
+			if err != nil {
+				return err
+			}
+		}
+		sum := sha256.Sum256([]byte(wd))
+		key := hex.EncodeToString(sum[:])
+		config.Environment = append(config.Environment,
+			"TINYRANGE_HISTORY_KEY="+key,
+			"HISTFILE=/root/.tinyrange_history",
+		)
+		if err := os.Setenv("TINYRANGE_HISTORY_KEY", key); err != nil {
+			return err
+		}
 	}
 
 	// Apply network CLI flags to host-side configuration via environment.

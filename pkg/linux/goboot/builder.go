@@ -3,6 +3,7 @@
 package goboot
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,6 +32,52 @@ import (
 
 type Builder struct {
 	totalRunCommand time.Duration
+}
+
+func fetchHistory(address, key, filename string, log log.Handler) error {
+	url := fmt.Sprintf("http://%s/history?key=%s", address, key)
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filename, data, 0600)
+}
+
+func streamHistory(address, key, filename string, log log.Handler) {
+	var offset int64
+	for {
+		f, err := os.Open(filename)
+		if err != nil {
+			time.Sleep(time.Second)
+			continue
+		}
+		fi, err := f.Stat()
+		if err != nil {
+			f.Close()
+			time.Sleep(time.Second)
+			continue
+		}
+		if fi.Size() < offset {
+			offset = 0
+		}
+		f.Seek(offset, io.SeekStart)
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := scanner.Text()
+			_, err := http.Post(fmt.Sprintf("http://%s/history?key=%s", address, key), "text/plain", strings.NewReader(line+"\n"))
+			if err != nil {
+				log.Debug("history post failed", "err", err)
+			}
+		}
+		offset, _ = f.Seek(0, io.SeekCurrent)
+		f.Close()
+		time.Sleep(time.Second)
+	}
 }
 
 // OnBuiltin implements shelltranslater.Notifier.
@@ -592,6 +639,15 @@ func builderRunWithConfig(cfg config.BuilderConfig, log log.Handler) error {
 		if err := os.WriteFile(profile, []byte(appendProfile.String()), 0644); err != nil {
 			return err
 		}
+	}
+
+	historyKey := os.Getenv("TINYRANGE_HISTORY_KEY")
+	histFile := os.Getenv("HISTFILE")
+	if historyKey != "" && histFile != "" && cfg.HostAddress != "" {
+		if err := fetchHistory(cfg.HostAddress, historyKey, histFile, log); err != nil {
+			log.Debug("failed to fetch history", "err", err)
+		}
+		go streamHistory(cfg.HostAddress, historyKey, histFile, log)
 	}
 
 	// Start services
