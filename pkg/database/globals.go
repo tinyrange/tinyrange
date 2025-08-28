@@ -415,6 +415,7 @@ func (db *packageDatabase) getGlobals(name string) starlark.StringDict {
 					arch,
 					storageSize,
 					interaction,
+					"",
 					false,
 				), nil
 			}),

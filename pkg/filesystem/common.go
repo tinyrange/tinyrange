@@ -45,6 +45,9 @@ type ExtendedFileMethods interface {
 
 	// GetOrSetCacheForHash returns a cached file for the given hash.
 	GetOrSetCacheForHash(hash string, setter func(w io.Writer) error) (io.ReaderAt, error)
+
+	OpenCacheKey(key string) (io.ReadCloser, error)
+	AppendCacheKey(key string) (io.WriteCloser, error)
 }
 
 type HasOpenRegion interface {
@@ -90,6 +93,14 @@ type MutableFile interface {
 
 	// Truncate truncates the file to the specified size.
 	Truncate(size int64) error
+}
+
+// MutableAppendFile is a file that can be modified and appended to.
+type MutableAppendFile interface {
+	MutableFile
+
+	// OpenMutAppend opens the file for appending.
+	OpenMutAppend() (io.WriteCloser, error)
 }
 
 type HasLinkName interface {

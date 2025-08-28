@@ -30,6 +30,7 @@ type BuildVmParameters struct {
 	AutoScale   bool                   // Automatically scale the CPU and RAM to the limits of the host.
 	StorageSize int                    // The amount of storage the root device will have in megabytes.
 	Interaction string                 // How will the virtual machine be interacted with (ssh, serial)
+	HistoryKey  string                 // The key used to store the history of the VM. If empty no history is stored.
 	Debug       bool                   // Redirect hypervisor input to the host. The VM will exit after it completes initialization.
 }
 

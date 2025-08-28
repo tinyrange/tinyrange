@@ -41,6 +41,7 @@ func (*definitionFactory) NewBuildVmDefinition(
 	rootArchitecture config.CPUArchitecture,
 	storageSize int,
 	interaction string,
+	historyKey string,
 	debug bool,
 ) common.BuildVmDefinition {
 	return newBuildVmDefinition(dir,
@@ -51,6 +52,7 @@ func (*definitionFactory) NewBuildVmDefinition(
 		architecture, rootArchitecture,
 		storageSize,
 		interaction,
+		historyKey,
 		debug,
 	)
 }

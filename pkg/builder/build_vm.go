@@ -302,16 +302,24 @@ func (def *buildVmDefinition) BuildTemplate(ctx common.BuildContext, hostAddress
 		}
 	}
 
-	buildConfig, err := json.Marshal(&builderCfg)
-	if err != nil {
-		return config.TinyRangeConfig{}, fmt.Errorf("failed to marshal builder config: %w", err)
-	}
-
 	// Pass network details to the guest init via environment variables.
 	builderCfg.Environment = append(builderCfg.Environment,
 		fmt.Sprintf("TINYRANGE_GUEST_CIDR=%s", vmCfg.Network.GuestCIDR),
 		fmt.Sprintf("TINYRANGE_HOST_IP=%s", vmCfg.Network.HostGateway),
 	)
+
+	// If a history key is set up, configure the builder to use it.
+	if def.params.HistoryKey != "" {
+		builderCfg.Environment = append(builderCfg.Environment,
+			"TINYRANGE_HISTORY_KEY=enable",
+			"HISTFILE=/root/.tinyrange_history",
+		)
+	}
+
+	buildConfig, err := json.Marshal(&builderCfg)
+	if err != nil {
+		return config.TinyRangeConfig{}, fmt.Errorf("failed to marshal builder config: %w", err)
+	}
 
 	rootFsFragments = append(rootFsFragments,
 		config.Fragment{FileContents: &config.FileContentsFragment{
@@ -389,6 +397,30 @@ func (def *buildVmDefinition) Build(ctx common.BuildContext) error {
 		}
 	})
 
+	if def.params.HistoryKey != "" {
+		fm := ctx.Database().FileMethods()
+		def.mux.HandleFunc("/history", func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				f, err := fm.OpenCacheKey(def.params.HistoryKey)
+				if err == nil {
+					defer f.Close()
+					io.Copy(w, f)
+				}
+			case http.MethodPost:
+				f, err := fm.AppendCacheKey(def.params.HistoryKey)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				defer f.Close()
+				io.Copy(f, r.Body)
+			default:
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
+		})
+	}
+
 	go func() {
 		def.server.Serve(listener)
 	}()
@@ -458,6 +490,7 @@ func newBuildVmDefinition(
 	rootArchitecture config.CPUArchitecture,
 	storageSize int,
 	interaction string,
+	historyKey string,
 	debug bool,
 ) common.BuildVmDefinition {
 	if storageSize == 0 {
@@ -482,6 +515,7 @@ func newBuildVmDefinition(
 			RootArchitecture: string(rootArchitecture),
 			StorageSize:      storageSize,
 			Interaction:      interaction,
+			HistoryKey:       historyKey,
 			Debug:            debug,
 		},
 	}

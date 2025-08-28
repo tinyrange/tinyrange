@@ -69,6 +69,7 @@ type DefinitionFactory interface {
 		rootArchitecture config.CPUArchitecture,
 		storageSize int,
 		interaction string,
+		historyKey string,
 		debug bool,
 	) BuildVmDefinition
 	NewDecompressFileBuildDefinition(
