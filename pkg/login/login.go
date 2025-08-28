@@ -846,7 +846,7 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 			for _, mount := range mountDirectives {
 				scriptLines = append(scriptLines, fmt.Sprintf(
-					"  mount('9p', 'host.internal', '%s', options='trans=tcp,version=9p2000.L,port=%d', ensure_path=True)",
+					"  mount('9p', resolve_dns('host.internal')[0], '%s', options='trans=tcp,version=9p2000.L,port=%d', ensure_path=True)",
 					mount.GuestDirectory, mount.Port,
 				))
 			}

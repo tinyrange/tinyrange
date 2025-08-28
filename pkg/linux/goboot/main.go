@@ -1428,6 +1428,35 @@ func getStarlarkGlobals(log log.Handler) (starlark.StringDict, error) {
 		return starlark.String(fmt.Sprintf("/dev/nbd%d", n)), nil
 	})
 
+	globals["resolve_dns"] = starlark.NewBuiltin("resolve_dns", func(
+		thread *starlark.Thread,
+		fn *starlark.Builtin,
+		args starlark.Tuple,
+		kwargs []starlark.Tuple,
+	) (starlark.Value, error) {
+		var (
+			hostname string
+		)
+
+		if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+			"hostname", &hostname,
+		); err != nil {
+			return starlark.None, err
+		}
+
+		ips, err := net.LookupHost(hostname)
+		if err != nil {
+			return starlark.None, err
+		}
+
+		ipList := &starlark.List{}
+		for _, ip := range ips {
+			ipList.Append(starlark.String(ip))
+		}
+
+		return ipList, nil
+	})
+
 	globals["json"] = starlarkjson.Module
 
 	var uname unix.Utsname
