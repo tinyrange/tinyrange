@@ -4,8 +4,8 @@ package main
 
 import (
 	"encoding/binary"
-	"io"
 	"fmt"
+	"io"
 )
 
 type MediaDescriptorType uint8
