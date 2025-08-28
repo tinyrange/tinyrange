@@ -34,7 +34,7 @@ type Builder struct {
 	totalRunCommand time.Duration
 }
 
-func fetchHistory(address, key, filename string, log log.Handler) error {
+func fetchHistory(address, key, filename string) error {
 	url := fmt.Sprintf("http://%s/history?key=%s", address, key)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -644,7 +644,7 @@ func builderRunWithConfig(cfg config.BuilderConfig, log log.Handler) error {
 	historyKey := os.Getenv("TINYRANGE_HISTORY_KEY")
 	histFile := os.Getenv("HISTFILE")
 	if historyKey != "" && histFile != "" && cfg.HostAddress != "" {
-		if err := fetchHistory(cfg.HostAddress, historyKey, histFile, log); err != nil {
+		if err := fetchHistory(cfg.HostAddress, historyKey, histFile); err != nil {
 			log.Debug("failed to fetch history", "err", err)
 		}
 		go streamHistory(cfg.HostAddress, historyKey, histFile, log)
