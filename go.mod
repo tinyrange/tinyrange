@@ -3,7 +3,7 @@ module github.com/tinyrange/tinyrange
 go 1.24.0
 
 require (
-	github.com/Code-Hex/vz/v3 v3.7.0
+	github.com/Code-Hex/vz/v3 v3.7.1
 	github.com/Merovius/nbd v0.0.0-20240812113926-fd65a54c9949
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/basgys/goxml2json v1.1.0
