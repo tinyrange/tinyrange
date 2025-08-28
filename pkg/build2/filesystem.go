@@ -438,6 +438,56 @@ type filesystemBuildCache struct {
 	cacheDirectories []ReadOnlyBuildCache
 }
 
+// Append implements common.SimpleCache.
+func (f *filesystemBuildCache) Append(key string) (io.WriteCloser, error) {
+	cacheDir, err := f.dir.Mkdir("cache")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
+	ent, err := cacheDir.GetChild(key)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("failed to get cache entry: %w", err)
+		}
+
+		// create the cache entry
+		cacheFile, err := cacheDir.Create(key, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create cache entry: %w", err)
+		}
+
+		mut, ok := cacheFile.(filesystem.MutableAppendFile)
+		if !ok {
+			return nil, fmt.Errorf("cache entry is not appendable: %T", cacheFile)
+		}
+
+		return mut.OpenMutAppend()
+	}
+
+	mut, ok := ent.File.(filesystem.MutableAppendFile)
+	if !ok {
+		return nil, fmt.Errorf("cache entry is not appendable: %T", ent.File)
+	}
+
+	return mut.OpenMutAppend()
+}
+
+// Open implements common.SimpleCache.
+func (f *filesystemBuildCache) Open(key string) (io.ReadCloser, error) {
+	cacheDir, err := f.dir.Mkdir("cache")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
+	ent, err := cacheDir.GetChild(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cache entry: %w", err)
+	}
+
+	return ent.Open()
+}
+
 func (f *filesystemBuildCache) HttpClient() *http.Client {
 	return http.DefaultClient
 }

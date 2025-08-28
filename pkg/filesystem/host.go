@@ -287,6 +287,13 @@ func (l *localMutableFile) OpenMut() (WritableFileHandle, error) {
 	return os.OpenFile(l.filename, os.O_RDWR, 0)
 }
 
+// OpenMutAppend implements MutableAppendFile.
+func (l *localMutableFile) OpenMutAppend() (io.WriteCloser, error) {
+	l.log("open-mut-append")
+
+	return os.OpenFile(l.filename, os.O_APPEND|os.O_WRONLY, 0)
+}
+
 // Rename implements MutableRenameFile.
 func (l *localMutableFile) Rename(newDirectory MutableDirectory, newName string) error {
 	if mut, ok := newDirectory.(*localMutableDirectory); ok {
@@ -300,6 +307,7 @@ func (l *localMutableFile) Rename(newDirectory MutableDirectory, newName string)
 
 var (
 	_ MutableFile       = &localMutableFile{}
+	_ MutableAppendFile = &localMutableFile{}
 	_ MutableRenameFile = &localMutableFile{}
 )
 

@@ -1,6 +1,8 @@
 package login
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -282,6 +284,7 @@ type Config struct {
 	Volumes          []string          `json:"volumes,omitempty" yaml:"volumes,omitempty"`
 	AutoScale        bool              `json:"auto_scale,omitempty" yaml:"auto_scale,omitempty"`
 	MinSpec          VMSpec            `json:"min_spec,omitempty" yaml:"min_spec,omitempty"`
+	DisableHistory   bool              `json:"disable_history,omitempty" yaml:"disable_history,omitempty"`
 
 	// secure configs that have to be set on the command line.
 	CpuCores        int      `json:"-" yaml:"-"`
@@ -570,6 +573,7 @@ func (config *Config) addLayer(directives []common.Directive,
 		vmArch, arch,
 		"/init/changed.archive",
 		"ssh",
+		"", // no history for layers
 	)
 	if err != nil {
 		return nil, err
@@ -584,6 +588,7 @@ func (config *Config) makeBuildVMDefinition(
 	arch cfg.CPUArchitecture,
 	outputName string,
 	interaction string,
+	historyKey string,
 ) (common.BuildVmDefinition, error) {
 	var kernel common.BuildDefinition
 	var initramfs common.BuildDefinition
@@ -613,7 +618,9 @@ func (config *Config) makeBuildVMDefinition(
 		config.CpuCores, config.MemorySize, config.AutoScale,
 		vmArch, arch,
 		config.StorageSize,
-		interaction, config.Debug,
+		interaction,
+		historyKey,
+		config.Debug,
 	), nil
 }
 
@@ -989,7 +996,13 @@ func (config *Config) Run(db common.PackageDatabase) error {
 
 	outputName := config.replaceVariables(config.Output)
 
-	def, err := config.makeBuildVMDefinition(directives, vmArch, arch, outputName, interaction)
+	historyKey := ""
+	if !config.DisableHistory && outputName == "" {
+		hash := sha256.Sum256([]byte(outputName))
+		historyKey = hex.EncodeToString(hash[:])
+	}
+
+	def, err := config.makeBuildVMDefinition(directives, vmArch, arch, outputName, interaction, historyKey)
 	if err != nil {
 		return err
 	}

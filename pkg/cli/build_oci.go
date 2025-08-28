@@ -193,6 +193,7 @@ var buildOciCmd = &cobra.Command{
 					config.HostArchitecture, // target architecture
 					1024,                    // storage
 					"ssh",                   // interaction
+					"",                      // history key
 					false,                   // debug
 				)
 
@@ -263,6 +264,7 @@ var buildOciCmd = &cobra.Command{
 			config.HostArchitecture, // target architecture
 			1024,                    // storage
 			"ssh",                   // interaction
+			"",                      // history key
 			false,                   // debug
 		)
 

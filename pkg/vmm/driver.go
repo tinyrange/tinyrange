@@ -416,6 +416,16 @@ type driver struct {
 	sshPort          int
 }
 
+// AppendCacheKey implements filesystem.ExtendedFileMethods.
+func (tr *driver) AppendCacheKey(key string) (io.WriteCloser, error) {
+	return nil, fmt.Errorf("AppendCacheKey not implemented")
+}
+
+// OpenCacheKey implements filesystem.ExtendedFileMethods.
+func (tr *driver) OpenCacheKey(key string) (io.ReadCloser, error) {
+	return nil, fmt.Errorf("OpenCacheKey not implemented")
+}
+
 // Logger implements Driver.
 func (tr *driver) Logger() log.Handler {
 	return tr.log
