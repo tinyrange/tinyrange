@@ -101,13 +101,16 @@ func MakeNonFatal(err error) error {
 	return ErrNonFatal{Err: err}
 }
 
-type ErrTemplateBuilt string
+type ErrTemplateBuilt struct {
+	Hash     string
+	Filename string
+}
 
 // Error implements error.
 func (e ErrTemplateBuilt) Error() string { return "template built" }
 
 var (
-	_ error = ErrTemplateBuilt("")
+	_ error = ErrTemplateBuilt{}
 )
 
 var (
@@ -342,6 +345,8 @@ type Builder interface {
 	MinimalContext() MinimalBuildContext
 	// GetDefinitionByHash returns a definition by hash.
 	GetDefinitionByHash(hash hash.Hash) (BuildDefinition, error)
+	// TryGetReceiptFromDefinition tries to get a receipt from a definition.
+	TryGetReceiptFromDefinition(def BuildDefinition) (BuildReceipt, error)
 	// FileFromReference returns a file from a database reference.
 	FileFromReference(ref config.DatabaseReference) (filesystem.File, error)
 	// ImportAndValidate imports and validates a definition adding it to the build cache in an unbuilt state.

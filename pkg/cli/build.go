@@ -58,7 +58,7 @@ var buildCmd = &cobra.Command{
 				_, err := db.Builder().Build(vmDef, common.BuildOptions{AlwaysRebuild: true})
 				var built common.ErrTemplateBuilt
 				if errors.As(err, &built) {
-					fmt.Printf("%s\n", string(built))
+					fmt.Printf("%s\n", string(built.Hash))
 
 					return nil
 				} else if err != nil {

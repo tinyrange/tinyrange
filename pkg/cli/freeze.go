@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	pb "github.com/tinyrange/tinyrange/pkg/proto"
 
@@ -13,6 +12,21 @@ import (
 	gp "google.golang.org/protobuf/proto"
 	"gopkg.in/yaml.v3"
 )
+
+var (
+	freezeIncludeImplicitDependencies bool
+)
+
+type SerializedDefinition struct {
+	Type                 string         `yaml:"type"`
+	ImplicitDependencies []string       `yaml:"implicit_dependencies,omitempty"`
+	Params               map[string]any `yaml:"params"`
+}
+
+type SerializedFile struct {
+	Root        string                          `yaml:"root"`
+	Definitions map[string]SerializedDefinition `yaml:"definitions"`
+}
 
 var freezeCmd = &cobra.Command{
 	Use:   "freeze <hash>",
@@ -30,12 +44,7 @@ var freezeCmd = &cobra.Command{
 		rootHash := hash.Hash(args[0])
 		builder := db.Builder()
 
-		type serialized struct {
-			Type   string         `yaml:"type"`
-			Params map[string]any `yaml:"params"`
-		}
-
-		defs := make(map[string]serialized)
+		defs := make(map[string]SerializedDefinition)
 		defDb := hash.NewDefinitionDatabase(nil)
 
 		var walk func(hash.Hash) error
@@ -48,6 +57,11 @@ var freezeCmd = &cobra.Command{
 			def, err := builder.GetDefinitionByHash(h)
 			if err != nil {
 				return fmt.Errorf("failed to get definition %s: %w", hStr, err)
+			}
+
+			receipt, err := builder.TryGetReceiptFromDefinition(def)
+			if err != nil {
+				return fmt.Errorf("failed to get receipt for %s: %w", hStr, err)
 			}
 
 			data, err := defDb.MarshalDefinition(def)
@@ -123,7 +137,6 @@ var freezeCmd = &cobra.Command{
 					return err
 				}
 			}
-			defs[hStr] = serialized{Type: typeName, Params: paramsMap}
 
 			deps, err := def.Dependencies()
 			if err != nil {
@@ -139,23 +152,21 @@ var freezeCmd = &cobra.Command{
 				}
 			}
 
-			dir, err := builder.Filesystem().GetBuildDirectory(h)
-			if err != nil {
-				return fmt.Errorf("failed to open build directory for %s: %w", hStr, err)
+			ser := SerializedDefinition{
+				Type:   typeName,
+				Params: paramsMap,
 			}
-			receiptBytes, err := dir.ReadReceipt()
-			if err != nil {
-				return fmt.Errorf("failed to read receipt for %s: %w", hStr, err)
-			}
-			var receipt common.BuildReceipt
-			if err := json.Unmarshal(receiptBytes, &receipt); err != nil {
-				return fmt.Errorf("failed to unmarshal receipt for %s: %w", hStr, err)
-			}
+
 			for _, req := range receipt.Requirements {
 				if err := walk(req); err != nil {
 					return err
 				}
+				if freezeIncludeImplicitDependencies {
+					ser.ImplicitDependencies = append(ser.ImplicitDependencies, req.String())
+				}
 			}
+
+			defs[hStr] = ser
 
 			return nil
 		}
@@ -164,10 +175,7 @@ var freezeCmd = &cobra.Command{
 			return err
 		}
 
-		out := struct {
-			Root        string                `yaml:"root"`
-			Definitions map[string]serialized `yaml:"definitions"`
-		}{Root: rootHash.String(), Definitions: defs}
+		out := SerializedFile{Root: rootHash.String(), Definitions: defs}
 
 		b, err := yaml.Marshal(out)
 		if err != nil {
@@ -180,4 +188,12 @@ var freezeCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(freezeCmd)
+
+	freezeCmd.Flags().BoolVarP(
+		&freezeIncludeImplicitDependencies,
+		"include-implicit-dependencies",
+		"I",
+		false,
+		"Include implicit dependencies in the output",
+	)
 }

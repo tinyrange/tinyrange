@@ -242,7 +242,10 @@ func (c *buildContext) RunVMM(name string, config config.TinyRangeConfig) (*exec
 	}
 
 	if name == "" {
-		return nil, common.ErrTemplateBuilt(configFilename)
+		return nil, common.ErrTemplateBuilt{
+			Hash:     c.hash.String(),
+			Filename: configFilename,
+		}
 	}
 
 	var exe string
@@ -719,6 +722,38 @@ func (b *builder) GetDefinitionByHash(hash hash.Hash) (common.BuildDefinition, e
 	}
 
 	return buildDef, nil
+}
+
+// TryGetReceiptFromDefinition implements common.Builder.
+func (b *builder) TryGetReceiptFromDefinition(def common.BuildDefinition) (common.BuildReceipt, error) {
+	if def == nil {
+		return common.BuildReceipt{}, fmt.Errorf("definition is nil")
+	}
+
+	hash, err := b.defDb.HashDefinition(def)
+	if err != nil {
+		return common.BuildReceipt{}, fmt.Errorf("failed to hash definition: %w", err)
+	}
+
+	dir, err := b.buildDir.GetBuildDirectory(hash)
+	if err != nil {
+		return common.BuildReceipt{}, fmt.Errorf("failed to get build directory: %w", err)
+	}
+
+	recept, err := dir.ReadReceipt()
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) || err == io.EOF {
+			return common.BuildReceipt{}, fmt.Errorf("receipt does not exist for definition %s", def.String())
+		}
+		return common.BuildReceipt{}, fmt.Errorf("failed to read receipt: %w", err)
+	}
+
+	var receipt common.BuildReceipt
+	if err := json.Unmarshal(recept, &receipt); err != nil {
+		return common.BuildReceipt{}, fmt.Errorf("failed to unmarshal receipt: %w", err)
+	}
+
+	return receipt, nil
 }
 
 // MinimalContext implements common.Builder.

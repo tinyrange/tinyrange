@@ -287,15 +287,16 @@ type Config struct {
 	DisableHistory   bool              `json:"disable_history,omitempty" yaml:"disable_history,omitempty"`
 
 	// secure configs that have to be set on the command line.
-	CpuCores        int      `json:"-" yaml:"-"`
-	MemorySize      int      `json:"-" yaml:"-"`
-	StorageSize     int      `json:"-" yaml:"-"`
-	Debug           bool     `json:"-" yaml:"-"`
-	WriteRoot       string   `json:"-" yaml:"-"`
-	WebSSH          string   `json:"-" yaml:"-"`
-	WriteTemplate   bool     `json:"-" yaml:"-"`
-	ReadOnlyMounts  []string `json:"-" yaml:"-"`
-	ReadWriteMounts []string `json:"-" yaml:"-"`
+	CpuCores          int      `json:"-" yaml:"-"`
+	MemorySize        int      `json:"-" yaml:"-"`
+	StorageSize       int      `json:"-" yaml:"-"`
+	Debug             bool     `json:"-" yaml:"-"`
+	WriteRoot         string   `json:"-" yaml:"-"`
+	WebSSH            string   `json:"-" yaml:"-"`
+	WriteTemplate     bool     `json:"-" yaml:"-"`
+	WriteTemplateHash bool     `json:"-" yaml:"-"`
+	ReadOnlyMounts    []string `json:"-" yaml:"-"`
+	ReadWriteMounts   []string `json:"-" yaml:"-"`
 
 	// Network options (CLI only)
 	NetGuestCIDR   string `json:"-" yaml:"-"`
@@ -1040,13 +1041,18 @@ func (config *Config) Run(db common.PackageDatabase) error {
 		return err
 	}
 
-	if config.WriteTemplate {
+	if config.WriteTemplate || config.WriteTemplateHash {
 		def.SetBuildTemplateMode()
 
 		_, err := db.Builder().Build(def, common.BuildOptions{AlwaysRebuild: true})
 		var built common.ErrTemplateBuilt
 		if errors.As(err, &built) {
-			fmt.Printf("%s\n", string(built))
+			if config.WriteTemplate {
+				fmt.Printf("%s\n", built.Filename)
+			}
+			if config.WriteTemplateHash {
+				fmt.Printf("%s\n", built.Hash)
+			}
 
 			return nil
 		} else if err != nil {
