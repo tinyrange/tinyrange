@@ -772,6 +772,9 @@ func OpenFilesystemBuildCache(dir filesystem.MutableDirectory, config dbconfig.B
 
 	if err := checkMarkerFile(dir); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("failed to check marker file: %w", err)
+	} else if err == nil {
+		// marker file exists and is valid
+		return ret, nil
 	}
 
 	// Create the marker file
