@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package proto;
+
+import "fetch_http.proto";
+
+enum ArchiveType {
+  ARCHIVE_TYPE_UNSPECIFIED = 0;
+  TAR = 1;
+}
+
+enum CompressionType {
+  COMPRESSION_TYPE_UNSPECIFIED = 0;
+  GZIP = 1;
+}
+
+message ExtractArchiveDefinition {
+  oneof source { FetchHttpDefinition fetch_http = 1; }
+  ArchiveType archive_type = 2;
+  CompressionType compression_type = 3;
+}

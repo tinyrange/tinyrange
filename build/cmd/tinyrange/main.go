@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/tinyrange/tinyrange/build"
+	build "github.com/tinyrange/tinyrange/build/cli"
 )
 
 func main() {

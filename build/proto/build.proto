@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package proto;
+
+import "google/protobuf/any.proto";
+
+message Definition {
+  // A canonical type name, e.g. "tinyrange/v1/fetch_http".
+  // This is the dispatch key for the registry.
+  string type_name = 1;
+
+  // The raw payload, encoded as an Any so it can carry arbitrary
+  // protobuf messages defined by third parties.
+  google.protobuf.Any payload = 2;
+}
