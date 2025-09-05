@@ -5,12 +5,12 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	pj "google.golang.org/protobuf/encoding/protojson"
+	gp "google.golang.org/protobuf/proto"
 
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/hash"
 	pb "github.com/tinyrange/tinyrange/pkg/proto"
-	pj "google.golang.org/protobuf/encoding/protojson"
-	gp "google.golang.org/protobuf/proto"
 )
 
 var inspectCmd = &cobra.Command{
