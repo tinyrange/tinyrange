@@ -523,6 +523,12 @@ func init() {
         return FetchCVMFSParameters{Mirror: p.GetMirror(), Repo: p.GetRepo(), Path: p.GetPath()}, nil
     })
 
+    // Registry request (used internally by OCI fetcher)
+    hash.RegisterProto(&registryRequestDefinition{}, (*pb.RegistryRequestParameters)(nil), func(db *hash.DefinitionDatabase, msg any) (hash.SerializableValue, error) {
+        p := msg.(*pb.RegistryRequestParameters)
+        return RegistryRequestParameters{Url: p.GetUrl(), ExpireTime: p.GetExpireTime(), Accept: p.GetAccept()}, nil
+    })
+
     hash.RegisterProto(&decompressFileBuildDefinition{}, (*pb.DecompressFileParameters)(nil), func(db *hash.DefinitionDatabase, msg any) (hash.SerializableValue, error) {
         p := msg.(*pb.DecompressFileParameters)
         var base common.BuildDefinition
