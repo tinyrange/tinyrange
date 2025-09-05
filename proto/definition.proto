@@ -1,0 +1,157 @@
+syntax = "proto3";
+
+package proto;
+
+import "common.proto";
+import "directive.proto";
+
+// ----------------------
+// BuildDefinition
+// ----------------------
+// A BuildDefinition is a polymorphic type that can represent any of the
+// builder parameter messages. In Go this is an interface; here it is a oneof.
+message BuildDefinition {
+  oneof definition {
+    BuildFsParameters build_fs = 1;
+    BuildVmParameters build_vm = 2;
+    BuildEmulatorParameters build_emulator = 3;
+    DecompressFileParameters decompress_file = 4;
+    FetchHttpParameters fetch_http = 5;
+    RegistryRequestParameters registry_request = 6;
+    FetchOciImageParameters fetch_oci_image = 7;
+    FetchCVMFSParameters fetch_cvmfs = 8;
+    ReadOciImageParameters read_oci_image = 9;
+    FileParameters file = 10;
+    ConstantHashParameters constant_hash = 11;
+    ExtractFileParameters extract_file = 12;
+    PlanParameters plan = 13;
+    ReadArchiveParameters read_archive = 14;
+    StarParameters star = 15;
+  }
+}
+
+// ----------------------
+// Builder Parameter Types
+// ----------------------
+
+// Build Filesystem exports a series of directives into a filesystem format.
+// The build result is the built filesystem.
+message BuildFsParameters {
+  repeated Directive directives = 1; // A list of directives to build the filesystem from.
+  string kind = 2; // The kind of filesystem to create (initramfs, tar, fragments).
+}
+
+// Build Virtual Machine uses TinyRange to run a virtual machine with a root
+// filesystem provided by a list of directives.
+// The output is either nothing or a file from the virtual machine.
+message BuildVmParameters {
+  repeated Directive directives = 1; // A list of directives to build the root filesystem from.
+  string output_file = 2; // The name inside of the guest of the file to copy as the build result.
+  string architecture = 3; // The CPU Architecture of the guest. If null defaults to the host architecture.
+  string root_architecture = 4; // The CPU Architecture of the root filesystem. This is a hint to enable vmm-specific optimizations.
+
+  BuildDefinitionRef kernel = 5; // A build definition that creates the kernel.
+  BuildDefinitionRef init_ram_fs = 6; // A build definition that creates the initial ram filesystem.
+  int32 cpu_cores = 7; // The number of CPU cores to allocate to the virtual machine.
+  int32 memory_mb = 8; // The amount of RAM in the virtual machine in megabytes.
+  bool auto_scale = 9; // Automatically scale the CPU and RAM to the limits of the host.
+  int32 storage_size = 10; // The amount of storage the root device will have in megabytes.
+  string interaction = 11; // How will the virtual machine be interacted with (ssh, serial).
+  string history_key = 12; // The key used to store the history of the VM. If empty no history is stored.
+  bool debug = 13; // Redirect hypervisor input to the host. The VM will exit after it completes initialization.
+}
+
+// Build Emulator uses an internal shell emulator to run simple shell scripts
+// with support from Starlark to stub applications. The Directives and output
+// file work the same way as BuildVmParameters.
+message BuildEmulatorParameters {
+  repeated Directive directives = 1; // A list of directives to build the root filesystem from.
+  string output_file = 2; // The name inside of the guest of the file to copy as the build result.
+
+  string script_filename = 3; // The filename of the script used to run this builder.
+  string create_name = 4; // The name of the create function.
+}
+
+// Decompress a build result.
+message DecompressFileParameters {
+  BuildDefinitionRef base = 1; // The build result to decompress.
+  string kind = 2; // The compression format to use (.xz).
+}
+
+// Download a file from the internet.
+message FetchHttpParameters {
+  string url = 1; // The URL to download (can start with mirror:// if a mirror is registered).
+  int64 expire_time = 2; // How long before the file is considered expired and will be redownloaded.
+  map<string, string> headers = 3; // A collection of headers to send along with the request.
+}
+
+// Make a request to an OCI registry.
+// This is an internal type that is attached to a context to persist the authentication token between requests.
+message RegistryRequestParameters {
+  string url = 1;
+  int64 expire_time = 2;
+  repeated string accept = 3;
+}
+
+// Download an image from an OCI registry.
+// The output is a serialized copy of FetchOciImageDefinition.
+message FetchOciImageParameters {
+  string registry = 1;
+  string image = 2;
+  string tag = 3;
+  string architecture = 4;
+}
+
+// Create a streaming archive from a CernVM-FS filesystem.
+// The output is an archive2 file.
+message FetchCVMFSParameters {
+  string mirror = 1;
+  string repo = 2;
+  string path = 3;
+}
+
+// Read an OCI image from a file.
+// The output is a serialized copy of FetchOciImageDefinition (for compatibility reasons).
+message ReadOciImageParameters {
+  BuildDefinitionRef base = 1;
+}
+
+// Copy a file to the build output directory.
+message FileParameters {
+  File file = 1;
+}
+
+// Constant hash needs to be manually replicated by constructing an object.
+message ConstantHashParameters {
+  string hash = 1;
+}
+
+// Extract a single file from an archive.
+message ExtractFileParameters {
+  BuildDefinitionRef base = 1;
+  string name = 2;
+}
+
+// Create an installation plan using a given builder.
+// The result is a serialized version of PlanDefinition which contains a list of fragments.
+message PlanParameters {
+  string builder = 1; // A registered builder to use to create the installation plan.
+  string architecture = 2; // A CPUArchitecture. If not specified then use the host architecture.
+  repeated PackageQuery search = 3; // A list of packages to query to make the installation plan.
+  repeated string tag_list = 4; // A list of tags used to modify and configure the plan.
+}
+
+// Read an archive in a compressed format.
+// The output is a file in the native archive format (it still has to be read with ReadArchiveFromFile).
+message ReadArchiveParameters {
+  BuildDefinitionRef base = 1; // The definition used as a base.
+  string kind = 2; // The compression kind of the input file (supports .gz, .zst, and .xz compression and .tar, .cpio, and .ar archive formats).
+  int32 strip_components = 3; // The number of components to strip from the path.
+}
+
+// Execute a builder defined in Starlark.
+message StarParameters {
+  string script_filename = 1; // The filename of the script used to run this builder.
+  string builder_name = 2; // The name of the builder function.
+  repeated SerializableValue arguments = 3; // The arguments passed to the function. These must be convertible to starlark.Value.
+}

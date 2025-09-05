@@ -3,20 +3,20 @@
 package main
 
 import (
-	"archive/zip"
-	"flag"
-	"fmt"
-	"io"
-	"log"
-	"log/slog"
-	"net/http"
-	"os"
-	"os/exec"
-	"path"
-	"path/filepath"
-	"runtime"
-	"strings"
-	"time"
+    "archive/zip"
+    "flag"
+    "fmt"
+    "io"
+    "log"
+    "log/slog"
+    "net/http"
+    "os"
+    "os/exec"
+    "path"
+    "path/filepath"
+    "runtime"
+    "strings"
+    "time"
 )
 
 const PACKAGE_NAME = "github.com/tinyrange/tinyrange"
@@ -687,7 +687,7 @@ func getBasePath() (string, error) {
 }
 
 func runCommand(cmdName string, args ...string) error {
-	cmd := exec.Command(cmdName, args...)
+    cmd := exec.Command(cmdName, args...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -699,40 +699,160 @@ func runCommand(cmdName string, args ...string) error {
 	}
 	cmd.Env = env
 
-	return cmd.Run()
+    return cmd.Run()
 }
 
 var (
-	buildOs          = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
-	buildArch        = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
-	buildDir         = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
-	cross            = flag.String("cross", "", "Specify another init executable architecture to build (options x86_64 and aarch64).")
-	debug            = flag.Bool("debug", false, "Print executed commands.")
-	run              = flag.Bool("run", false, "Run TinyRange with the remaining arguments.")
-	test             = flag.String("test", "", "Run all .yml files in a subdirectory using TinyRange.")
-	testVerbose      = flag.Bool("test-verbose", false, "Run tests in verbose mode.")
-	testExperimental = flag.String("test-experimental", "", "Add experimental feature flags to the test.")
-	release          = flag.Bool("release", false, "Build a release version of TinyRange.")
-	cgo              = flag.Bool("cgo", false, "Build VMMs that require CGO.")
-	exp              = flag.String("exp", "", "Run a experimental feature.")
-	runExpScripts    = flag.Bool("exp-scripts", false, "Run experimental scripts defined by a build file in the experimental path.")
-	install          = flag.Bool("install", false, "Install TinyRange and any compatible VMMs into the GOPATH")
+    buildOs          = flag.String("os", runtime.GOOS, "Specify the operating system to build for.")
+    buildArch        = flag.String("arch", runtime.GOARCH, "Specify the architecture to build for.")
+    buildDir         = flag.String("buildDir", "build/", "Specify the build dir to write build outputs to.")
+    cross            = flag.String("cross", "", "Specify another init executable architecture to build (options x86_64 and aarch64).")
+    debug            = flag.Bool("debug", false, "Print executed commands.")
+    run              = flag.Bool("run", false, "Run TinyRange with the remaining arguments.")
+    test             = flag.String("test", "", "Run all .yml files in a subdirectory using TinyRange.")
+    testVerbose      = flag.Bool("test-verbose", false, "Run tests in verbose mode.")
+    testExperimental = flag.String("test-experimental", "", "Add experimental feature flags to the test.")
+    release          = flag.Bool("release", false, "Build a release version of TinyRange.")
+    cgo              = flag.Bool("cgo", false, "Build VMMs that require CGO.")
+    exp              = flag.String("exp", "", "Run a experimental feature.")
+    runExpScripts    = flag.Bool("exp-scripts", false, "Run experimental scripts defined by a build file in the experimental path.")
+    install          = flag.Bool("install", false, "Install TinyRange and any compatible VMMs into the GOPATH")
+    buildProto       = flag.Bool("proto", false, "Generate Go code from protobufs in proto/ to pkg/proto.")
 )
 
+// buildProtobuf generates Go code from the .proto files in the "proto" directory
+// into the "pkg/proto" directory using protoc and protoc-gen-go.
+func buildProtobuf(outDir string) error {
+    basePath, err := getBasePath()
+    if err != nil {
+        return err
+    }
+
+    // Ensure protoc exists
+    if _, err := exec.LookPath("protoc"); err != nil {
+        return fmt.Errorf("protoc not found in PATH; please install protoc")
+    }
+    // Ensure protoc-gen-go exists
+    if _, err := exec.LookPath("protoc-gen-go"); err != nil {
+        return fmt.Errorf("protoc-gen-go not found in PATH; install with: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest")
+    }
+
+    protoDir := filepath.Join(basePath, "proto")
+    entries, err := os.ReadDir(protoDir)
+    if err != nil {
+        return fmt.Errorf("failed to read proto dir: %w", err)
+    }
+
+    var protoFiles []string
+    for _, ent := range entries {
+        if !ent.IsDir() && strings.HasSuffix(ent.Name(), ".proto") {
+            protoFiles = append(protoFiles, filepath.Join("proto", ent.Name()))
+        }
+    }
+
+    if len(protoFiles) == 0 {
+        slog.Info("No .proto files found; skipping generation")
+        return nil
+    }
+
+    // Make sure output directory exists
+    if err := os.MkdirAll(filepath.Join(basePath, outDir), os.ModePerm); err != nil {
+        return fmt.Errorf("failed to create output dir: %w", err)
+    }
+
+    // Determine module path from go.mod for import paths
+    gomodData, err := os.ReadFile(filepath.Join(basePath, "go.mod"))
+    if err != nil {
+        return fmt.Errorf("failed to read go.mod: %w", err)
+    }
+
+    modulePath := ""
+    for _, line := range strings.Split(string(gomodData), "\n") {
+        line = strings.TrimSpace(line)
+        if strings.HasPrefix(line, "module ") {
+            modulePath = strings.TrimSpace(strings.TrimPrefix(line, "module "))
+            break
+        }
+    }
+    if modulePath == "" {
+        return fmt.Errorf("failed to determine module path from go.mod")
+    }
+
+    // Build go_opt mappings: M<file>=<module>/<outDir>/<proto_package>
+    var goOpts []string
+    for _, rel := range protoFiles {
+        // Parse package name from file
+        contents, err := os.ReadFile(filepath.Join(basePath, rel))
+        if err != nil {
+            return fmt.Errorf("failed to read %s: %w", rel, err)
+        }
+        pkgName := ""
+        for _, l := range strings.Split(string(contents), "\n") {
+            l = strings.TrimSpace(l)
+            if strings.HasPrefix(l, "package ") {
+                // e.g. package common;
+                pkgName = strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(l, "package ")), ";")
+                break
+            }
+        }
+        if pkgName == "" {
+            return fmt.Errorf("missing package declaration in %s", rel)
+        }
+
+        // Map this file's import path so imports resolve without go_package options
+        goOpts = append(goOpts, fmt.Sprintf("M%[1]s=%[2]s/%[3]s/%[4]s",
+            filepath.Base(rel), modulePath, strings.TrimSuffix(outDir, string(filepath.Separator)), pkgName))
+    }
+
+    // Construct protoc command
+    args := []string{
+        "-I", "proto",
+        fmt.Sprintf("--go_out=paths=source_relative:%s", outDir),
+    }
+    for _, opt := range goOpts {
+        args = append(args, "--go_opt="+opt)
+    }
+    args = append(args, protoFiles...)
+
+    cmd := exec.Command("protoc", args...)
+    cmd.Dir = basePath
+    cmd.Stdout = os.Stdout
+    cmd.Stderr = os.Stderr
+
+    if *debug {
+        log.Printf("executing %v (cwd=%s)", append([]string{"protoc"}, args...), basePath)
+    }
+
+    slog.Info("Generating protobufs", "out", outDir, "files", len(protoFiles))
+    if err := cmd.Run(); err != nil {
+        return fmt.Errorf("protoc failed: %w", err)
+    }
+
+    return nil
+}
+
 func main() {
-	flag.Parse()
+    flag.Parse()
 
-	basePath, err := getBasePath()
-	if err != nil {
-		log.Fatal(err)
-	}
+    basePath, err := getBasePath()
+    if err != nil {
+        log.Fatal(err)
+    }
 
-	if *exp != "" {
-		if _, err := os.Stat(filepath.Join(basePath, "experimental", *exp, "build")); err == nil && *runExpScripts {
-			if err := runExperimentalScripts(basePath, *exp); err != nil {
-				log.Fatal(err)
-			}
-		}
+    // If requested, generate protobufs and exit.
+    if *buildProto {
+        if err := buildProtobuf(filepath.Join("pkg", "proto")); err != nil {
+            log.Fatal(err)
+        }
+        return
+    }
+
+    if *exp != "" {
+        if _, err := os.Stat(filepath.Join(basePath, "experimental", *exp, "build")); err == nil && *runExpScripts {
+            if err := runExperimentalScripts(basePath, *exp); err != nil {
+                log.Fatal(err)
+            }
+        }
 
 		args := []string{"go", "run", PACKAGE_NAME + "/experimental/" + *exp}
 		args = append(args, flag.Args()...)

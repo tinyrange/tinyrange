@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package proto;
+
+// ----------------------
+// BuildDefinition reference
+// ----------------------
+// In Go, BuildDefinition is an interface. Here we represent it as an indirect
+// typed hash reference (string). Replace with a stronger type if needed.
+message BuildDefinitionRef {
+  string hash = 1; // Indirect reference to a BuildDefinition
+}
+
+// Package query used in plans.
+message PackageQuery {
+    bool match_direct = 1;
+    string name = 2;
+    bool match_partial_name = 3;
+    string version = 4;
+    repeated string tags = 5;
+}
+
+message SerializableValue {
+}
+
+message File {
+
+}

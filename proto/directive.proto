@@ -1,0 +1,145 @@
+syntax = "proto3";
+
+package proto;
+
+import "common.proto";
+
+// ----------------------
+// Directive Variants
+// ----------------------
+
+// Run a command inside the build.
+message DirectiveRunCommand {
+  string command = 1; // The command to run
+  bool raw = 2;       // If true, run without shell wrapping
+}
+
+// Start a service inside the build.
+message DirectiveStartServiceCommand {
+  string command = 1; // The service command to run
+}
+
+// Run a Starlark script.
+message DirectiveRunStarlarkScript {
+  string script = 1; // The script contents
+}
+
+// Add a file to the build.
+message DirectiveAddFile {
+  string filename = 1;              // Guest filename
+  BuildDefinitionRef definition = 2; // Optional reference to a build definition
+  bytes contents = 3;               // Raw file contents
+  bool executable = 4;              // Whether the file is executable
+}
+
+// Add a file from the host filesystem.
+message DirectiveLocalFile {
+  string filename = 1;      // Guest filename
+  string host_filename = 2; // Host filename
+}
+
+// Add a directory from the host filesystem.
+message DirectiveLocalDirectory {
+  string host_directory = 1;  // Host directory path
+  string guest_directory = 2; // Guest directory path
+}
+
+// Add an archive to the build.
+message DirectiveArchive {
+  BuildDefinitionRef definition = 1; // Reference to archive build definition
+  string target = 2;                  // Target path inside guest
+  bool archive2 = 3;                  // Whether to use archive2 format
+}
+
+// Export a port from the build.
+message DirectiveExportPort {
+  string name = 1;           // Port name
+  string listen_address = 2; // Default is localhost
+  int32 port = 3;            // Port number
+}
+
+// Set environment variables.
+message DirectiveEnvironment {
+  repeated string variables = 1; // List of environment variables
+}
+
+// Use a builtin artifact.
+message DirectiveBuiltin {
+  string name = 1;           // Builtin name
+  string architecture = 2;   // CPU architecture
+  string guest_filename = 3; // Guest filename
+}
+
+// A list of directives.
+message DirectiveList {
+  repeated Directive items = 1; // Nested directives
+}
+
+// Add a package to the build.
+message DirectiveAddPackage {
+  string package_query = 1; // Package query string
+}
+
+// Add an interaction directive.
+message DirectiveInteraction {
+  string interaction = 1; // Interaction type
+}
+
+// Set a default interactive command.
+message DirectiveDefaultInteractive {
+  repeated string interactive_command = 1; // Command arguments
+}
+
+// Mount a host directory into the guest.
+message DirectiveMountHostDirectory {
+  string host_directory = 1;  // Host directory path
+  string guest_directory = 2; // Guest directory path
+  int32 port = 3;             // Only used for 9p
+  bool writable = 4;          // Whether the mount is writable
+}
+
+// Add a kernel/initramfs pair.
+message DirectiveKernel {
+  BuildDefinitionRef kernel = 1;    // Kernel build definition
+  BuildDefinitionRef initramfs = 2; // Initramfs build definition
+}
+
+// Add an init script.
+message DirectiveAddInitScript {
+  string guest_filename = 1; // Guest filename for init script
+}
+
+// Add a volume to the build.
+message DirectiveAddVolume {
+  string volume_name = 1;     // Volume name
+  string guest_path = 2;      // Guest path
+  uint64 minimum_size_mb = 3; // Minimum size in MB
+  bool persist = 4;           // Whether the volume persists
+}
+
+// ----------------------
+// Directive Union
+// ----------------------
+// A Directive is one of the above variants.
+message Directive {
+  oneof directive {
+    DirectiveRunCommand run_command = 1;
+    DirectiveStartServiceCommand start_service_command = 2;
+    DirectiveRunStarlarkScript run_starlark_script = 3;
+    DirectiveAddFile add_file = 4;
+    DirectiveLocalFile local_file = 5;
+    DirectiveLocalDirectory local_directory = 6;
+    DirectiveArchive archive = 7;
+    DirectiveExportPort export_port = 8;
+    DirectiveEnvironment environment = 9;
+    DirectiveBuiltin builtin = 10;
+    DirectiveList list = 11;
+    DirectiveAddPackage add_package = 12;
+    DirectiveInteraction interaction = 13;
+    DirectiveDefaultInteractive default_interactive = 14;
+    DirectiveMountHostDirectory mount_host_directory = 15;
+    DirectiveKernel kernel = 16;
+    DirectiveAddInitScript add_init_script = 17;
+    DirectiveAddVolume add_volume = 18;
+  }
+}
