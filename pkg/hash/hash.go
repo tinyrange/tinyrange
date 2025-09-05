@@ -67,8 +67,8 @@ var registeredTypes = make(map[string]SerializableValue)
 // protoRegistry maps protobuf parameter message types to a factory entry that
 // can reconstruct the Go Definition from protobuf parameters.
 type protoFactoryEntry struct {
-    factory   Definition
-    unmarshal func(db *DefinitionDatabase, msg any) (SerializableValue, error)
+	factory   Definition
+	unmarshal func(db *DefinitionDatabase, msg any) (SerializableValue, error)
 }
 
 var protoRegistry = make(map[reflect.Type]protoFactoryEntry)
@@ -84,7 +84,7 @@ func RegisterType(typ SerializableValue) {
 }
 
 func init() {
-    RegisterType(SerializableList{})
+	RegisterType(SerializableList{})
 }
 
 // RegisterProto registers a mapping from a protobuf parameter message type to
@@ -93,17 +93,17 @@ func init() {
 // pbExample must be a pointer to the protobuf parameters type (e.g.,
 // (*pb.BuildVmParameters)(nil)).
 func RegisterProto(factory Definition, pbExample any, fn func(db *DefinitionDatabase, msg any) (SerializableValue, error)) {
-    if pbExample == nil {
-        panic("pbExample must be a non-nil typed nil pointer")
-    }
-    t := reflect.TypeOf(pbExample)
-    if t.Kind() != reflect.Pointer {
-        panic("pbExample must be a pointer type")
-    }
-    if _, exists := protoRegistry[t]; exists {
-        panic(fmt.Sprintf("proto type %s already registered", t))
-    }
-    protoRegistry[t] = protoFactoryEntry{factory: factory, unmarshal: fn}
+	if pbExample == nil {
+		panic("pbExample must be a non-nil typed nil pointer")
+	}
+	t := reflect.TypeOf(pbExample)
+	if t.Kind() != reflect.Pointer {
+		panic("pbExample must be a pointer type")
+	}
+	if _, exists := protoRegistry[t]; exists {
+		panic(fmt.Sprintf("proto type %s already registered", t))
+	}
+	protoRegistry[t] = protoFactoryEntry{factory: factory, unmarshal: fn}
 }
 
 type serializedValue struct {
@@ -357,8 +357,8 @@ func (db *DefinitionDatabase) marshalSerializableValue(params SerializableValue)
 }
 
 func (db *DefinitionDatabase) MarshalDefinition(d Definition) ([]byte, error) {
-    // Canonical on-disk format is protobuf.
-    return db.marshalDefinitionProto(d)
+	// Canonical on-disk format is protobuf.
+	return db.marshalDefinitionProto(d)
 }
 
 // ProtoMarshaler is an optional interface that a Definition can implement to
@@ -374,17 +374,17 @@ type ProtoMarshaler interface {
 // representation. If the definition does not implement ProtoMarshaler, it
 // falls back to the legacy JSON-based marshaling used by MarshalDefinition.
 func (db *DefinitionDatabase) marshalDefinitionProto(d Definition) ([]byte, error) {
-    if pm, ok := d.(ProtoMarshaler); ok {
-        msg, err := pm.ToProto(db)
-        if err != nil {
-            return nil, err
-        }
-        // Deterministic to ensure stable hashing for maps.
-        return (gp.MarshalOptions{Deterministic: true}).Marshal(msg)
-    }
+	if pm, ok := d.(ProtoMarshaler); ok {
+		msg, err := pm.ToProto(db)
+		if err != nil {
+			return nil, err
+		}
+		// Deterministic to ensure stable hashing for maps.
+		return (gp.MarshalOptions{Deterministic: true}).Marshal(msg)
+	}
 
-    // Fallback to legacy JSON path for types without proto support yet.
-    return db.MarshalDefinition(d)
+	// Fallback to legacy JSON path for types without proto support yet.
+	return db.MarshalDefinition(d)
 }
 
 func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.RawMessage) (any, error) {
@@ -637,65 +637,65 @@ func (db *DefinitionDatabase) unmarshalParameters(params SerializableValue, inpu
 }
 
 func (db *DefinitionDatabase) UnmarshalDefinition(input io.Reader) (Definition, error) {
-    // Read all bytes
-    buf, err := io.ReadAll(input)
-    if err != nil {
-        return nil, err
-    }
+	// Read all bytes
+	buf, err := io.ReadAll(input)
+	if err != nil {
+		return nil, err
+	}
 
-    var bd pb.BuildDefinition
-    if err := gp.Unmarshal(buf, &bd); err != nil {
-        return nil, fmt.Errorf("failed to unmarshal protobuf definition: %w", err)
-    }
+	var bd pb.BuildDefinition
+	if err := gp.Unmarshal(buf, &bd); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal protobuf definition: %w", err)
+	}
 
-    var msg any
-    switch v := bd.GetDefinition().(type) {
-    case *pb.BuildDefinition_BuildFs:
-        msg = v.BuildFs
-    case *pb.BuildDefinition_BuildVm:
-        msg = v.BuildVm
-    case *pb.BuildDefinition_BuildEmulator:
-        msg = v.BuildEmulator
-    case *pb.BuildDefinition_DecompressFile:
-        msg = v.DecompressFile
-    case *pb.BuildDefinition_FetchHttp:
-        msg = v.FetchHttp
-    case *pb.BuildDefinition_RegistryRequest:
-        msg = v.RegistryRequest
-    case *pb.BuildDefinition_FetchOciImage:
-        msg = v.FetchOciImage
-    case *pb.BuildDefinition_FetchCvmfs:
-        msg = v.FetchCvmfs
-    case *pb.BuildDefinition_ReadOciImage:
-        msg = v.ReadOciImage
-    case *pb.BuildDefinition_File:
-        msg = v.File
-    case *pb.BuildDefinition_ConstantHash:
-        msg = v.ConstantHash
-    case *pb.BuildDefinition_ExtractFile:
-        msg = v.ExtractFile
-    case *pb.BuildDefinition_Plan:
-        msg = v.Plan
-    case *pb.BuildDefinition_ReadArchive:
-        msg = v.ReadArchive
-    case *pb.BuildDefinition_Star:
-        msg = v.Star
-    default:
-        return nil, fmt.Errorf("unknown build definition kind: %T", bd.GetDefinition())
-    }
+	var msg any
+	switch v := bd.GetDefinition().(type) {
+	case *pb.BuildDefinition_BuildFs:
+		msg = v.BuildFs
+	case *pb.BuildDefinition_BuildVm:
+		msg = v.BuildVm
+	case *pb.BuildDefinition_BuildEmulator:
+		msg = v.BuildEmulator
+	case *pb.BuildDefinition_DecompressFile:
+		msg = v.DecompressFile
+	case *pb.BuildDefinition_FetchHttp:
+		msg = v.FetchHttp
+	case *pb.BuildDefinition_RegistryRequest:
+		msg = v.RegistryRequest
+	case *pb.BuildDefinition_FetchOciImage:
+		msg = v.FetchOciImage
+	case *pb.BuildDefinition_FetchCvmfs:
+		msg = v.FetchCvmfs
+	case *pb.BuildDefinition_ReadOciImage:
+		msg = v.ReadOciImage
+	case *pb.BuildDefinition_File:
+		msg = v.File
+	case *pb.BuildDefinition_ConstantHash:
+		msg = v.ConstantHash
+	case *pb.BuildDefinition_ExtractFile:
+		msg = v.ExtractFile
+	case *pb.BuildDefinition_Plan:
+		msg = v.Plan
+	case *pb.BuildDefinition_ReadArchive:
+		msg = v.ReadArchive
+	case *pb.BuildDefinition_Star:
+		msg = v.Star
+	default:
+		return nil, fmt.Errorf("unknown build definition kind: %T", bd.GetDefinition())
+	}
 
-    t := reflect.TypeOf(msg)
-    entry, ok := protoRegistry[t]
-    if !ok {
-        return nil, fmt.Errorf("no proto factory registered for %s", t)
-    }
+	t := reflect.TypeOf(msg)
+	entry, ok := protoRegistry[t]
+	if !ok {
+		return nil, fmt.Errorf("no proto factory registered for %s", t)
+	}
 
-    params, err := entry.unmarshal(db, msg)
-    if err != nil {
-        return nil, err
-    }
+	params, err := entry.unmarshal(db, msg)
+	if err != nil {
+		return nil, err
+	}
 
-    return entry.factory.Create(params), nil
+	return entry.factory.Create(params), nil
 }
 
 func (db *DefinitionDatabase) unmarshalPointer(ptr definitionPointer) (Definition, error) {
