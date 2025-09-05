@@ -8,6 +8,10 @@ import (
 	"io"
 	"reflect"
 	"sync"
+
+	gp "google.golang.org/protobuf/proto"
+
+	pb "github.com/tinyrange/tinyrange/pkg/proto"
 )
 
 type Hash string
@@ -60,6 +64,15 @@ type Definition interface {
 
 var registeredTypes = make(map[string]SerializableValue)
 
+// protoRegistry maps protobuf parameter message types to a factory entry that
+// can reconstruct the Go Definition from protobuf parameters.
+type protoFactoryEntry struct {
+    factory   Definition
+    unmarshal func(db *DefinitionDatabase, msg any) (SerializableValue, error)
+}
+
+var protoRegistry = make(map[reflect.Type]protoFactoryEntry)
+
 func RegisterType(typ SerializableValue) {
 	name := typ.SerializableType()
 
@@ -71,7 +84,26 @@ func RegisterType(typ SerializableValue) {
 }
 
 func init() {
-	RegisterType(SerializableList{})
+    RegisterType(SerializableList{})
+}
+
+// RegisterProto registers a mapping from a protobuf parameter message type to
+// a Go Definition factory along with a function that converts the protobuf
+// message into the Definition's SerializableValue params.
+// pbExample must be a pointer to the protobuf parameters type (e.g.,
+// (*pb.BuildVmParameters)(nil)).
+func RegisterProto(factory Definition, pbExample any, fn func(db *DefinitionDatabase, msg any) (SerializableValue, error)) {
+    if pbExample == nil {
+        panic("pbExample must be a non-nil typed nil pointer")
+    }
+    t := reflect.TypeOf(pbExample)
+    if t.Kind() != reflect.Pointer {
+        panic("pbExample must be a pointer type")
+    }
+    if _, exists := protoRegistry[t]; exists {
+        panic(fmt.Sprintf("proto type %s already registered", t))
+    }
+    protoRegistry[t] = protoFactoryEntry{factory: factory, unmarshal: fn}
 }
 
 type serializedValue struct {
@@ -151,7 +183,8 @@ func (db *DefinitionDatabase) HashDefinition(d Definition) (Hash, error) {
 		return hash, nil
 	}
 
-	val, err := db.MarshalDefinition(d)
+	// Prefer protobuf-based deterministic marshaling when available.
+	val, err := db.marshalDefinitionProto(d)
 	if err != nil {
 		return "", err
 	}
@@ -324,19 +357,34 @@ func (db *DefinitionDatabase) marshalSerializableValue(params SerializableValue)
 }
 
 func (db *DefinitionDatabase) MarshalDefinition(d Definition) ([]byte, error) {
-	serialized := &serializedDefinition{
-		TypeName: d.SerializableType(),
-	}
+    // Canonical on-disk format is protobuf.
+    return db.marshalDefinitionProto(d)
+}
 
-	params := d.Params()
+// ProtoMarshaler is an optional interface that a Definition can implement to
+// provide a protobuf representation used for hashing.
+type ProtoMarshaler interface {
+	// ToProto returns a fully formed pb.BuildDefinition. Implementations should
+	// convert nested child definitions to pb.BuildDefinitionRef by hashing them
+	// via the provided DefinitionDatabase.
+	ToProto(db *DefinitionDatabase) (*pb.BuildDefinition, error)
+}
 
-	var err error
-	serialized.Params, err = db.marshalSerializableValue(params)
-	if err != nil {
-		return nil, err
-	}
+// marshalDefinitionProto attempts to marshal a definition using its protobuf
+// representation. If the definition does not implement ProtoMarshaler, it
+// falls back to the legacy JSON-based marshaling used by MarshalDefinition.
+func (db *DefinitionDatabase) marshalDefinitionProto(d Definition) ([]byte, error) {
+    if pm, ok := d.(ProtoMarshaler); ok {
+        msg, err := pm.ToProto(db)
+        if err != nil {
+            return nil, err
+        }
+        // Deterministic to ensure stable hashing for maps.
+        return (gp.MarshalOptions{Deterministic: true}).Marshal(msg)
+    }
 
-	return json.Marshal(serialized)
+    // Fallback to legacy JSON path for types without proto support yet.
+    return db.MarshalDefinition(d)
 }
 
 func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.RawMessage) (any, error) {
@@ -589,30 +637,65 @@ func (db *DefinitionDatabase) unmarshalParameters(params SerializableValue, inpu
 }
 
 func (db *DefinitionDatabase) UnmarshalDefinition(input io.Reader) (Definition, error) {
-	var def serializedDefinition
+    // Read all bytes
+    buf, err := io.ReadAll(input)
+    if err != nil {
+        return nil, err
+    }
 
-	dec := json.NewDecoder(input)
+    var bd pb.BuildDefinition
+    if err := gp.Unmarshal(buf, &bd); err != nil {
+        return nil, fmt.Errorf("failed to unmarshal protobuf definition: %w", err)
+    }
 
-	if err := dec.Decode(&def); err != nil {
-		return nil, err
-	}
+    var msg any
+    switch v := bd.GetDefinition().(type) {
+    case *pb.BuildDefinition_BuildFs:
+        msg = v.BuildFs
+    case *pb.BuildDefinition_BuildVm:
+        msg = v.BuildVm
+    case *pb.BuildDefinition_BuildEmulator:
+        msg = v.BuildEmulator
+    case *pb.BuildDefinition_DecompressFile:
+        msg = v.DecompressFile
+    case *pb.BuildDefinition_FetchHttp:
+        msg = v.FetchHttp
+    case *pb.BuildDefinition_RegistryRequest:
+        msg = v.RegistryRequest
+    case *pb.BuildDefinition_FetchOciImage:
+        msg = v.FetchOciImage
+    case *pb.BuildDefinition_FetchCvmfs:
+        msg = v.FetchCvmfs
+    case *pb.BuildDefinition_ReadOciImage:
+        msg = v.ReadOciImage
+    case *pb.BuildDefinition_File:
+        msg = v.File
+    case *pb.BuildDefinition_ConstantHash:
+        msg = v.ConstantHash
+    case *pb.BuildDefinition_ExtractFile:
+        msg = v.ExtractFile
+    case *pb.BuildDefinition_Plan:
+        msg = v.Plan
+    case *pb.BuildDefinition_ReadArchive:
+        msg = v.ReadArchive
+    case *pb.BuildDefinition_Star:
+        msg = v.Star
+    default:
+        return nil, fmt.Errorf("unknown build definition kind: %T", bd.GetDefinition())
+    }
 
-	val, ok := registeredTypes[def.TypeName]
-	if !ok {
-		return nil, fmt.Errorf("factory for type %s not found", def.TypeName)
-	}
+    t := reflect.TypeOf(msg)
+    entry, ok := protoRegistry[t]
+    if !ok {
+        return nil, fmt.Errorf("no proto factory registered for %s", t)
+    }
 
-	fac, ok := val.(Definition)
-	if !ok {
-		return nil, fmt.Errorf("factory for type %s is not a Definition", def.TypeName)
-	}
+    params, err := entry.unmarshal(db, msg)
+    if err != nil {
+        return nil, err
+    }
 
-	params, err := db.unmarshalParameters(fac.Params(), def.Params)
-	if err != nil {
-		return nil, err
-	}
-
-	return fac.Create(params), nil
+    return entry.factory.Create(params), nil
 }
 
 func (db *DefinitionDatabase) unmarshalPointer(ptr definitionPointer) (Definition, error) {

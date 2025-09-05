@@ -1,14 +1,16 @@
 package cli
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
+    "encoding/json"
+    "fmt"
 
 	"github.com/spf13/cobra"
 
-	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/hash"
+    "github.com/tinyrange/tinyrange/pkg/common"
+    "github.com/tinyrange/tinyrange/pkg/hash"
+    pb "github.com/tinyrange/tinyrange/pkg/proto"
+    gp "google.golang.org/protobuf/proto"
+    pj "google.golang.org/protobuf/encoding/protojson"
 )
 
 var inspectCmd = &cobra.Command{
@@ -37,11 +39,14 @@ var inspectCmd = &cobra.Command{
 			return fmt.Errorf("failed to get definition: %w", err)
 		}
 
-		buf := new(bytes.Buffer)
-		if err := json.Indent(buf, defBytes, "", "  "); err != nil {
-			return fmt.Errorf("failed to indent definition: %w", err)
-		}
-		fmt.Println(buf.String())
+        // Definition is protobuf; render as JSON for display
+        var bd pb.BuildDefinition
+        if err := gp.Unmarshal(defBytes, &bd); err != nil {
+            return fmt.Errorf("failed to parse definition: %w", err)
+        }
+        j, err := (pj.MarshalOptions{UseProtoNames: true, Multiline: true, Indent: "  "}).Marshal(&bd)
+        if err != nil { return fmt.Errorf("failed to marshal definition json: %w", err) }
+        fmt.Println(string(j))
 
 		receiptBytes, err := art.ReadReceipt()
 		if err != nil {

@@ -1,14 +1,17 @@
 package cli
 
 import (
-	"encoding/json"
-	"fmt"
+    "encoding/json"
+    "fmt"
 
-	"github.com/tinyrange/tinyrange/pkg/common"
-	"github.com/tinyrange/tinyrange/pkg/hash"
+    "github.com/tinyrange/tinyrange/pkg/common"
+    "github.com/tinyrange/tinyrange/pkg/hash"
+    pb "github.com/tinyrange/tinyrange/pkg/proto"
 
-	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
+    "github.com/spf13/cobra"
+    "gopkg.in/yaml.v3"
+    gp "google.golang.org/protobuf/proto"
+    pj "google.golang.org/protobuf/encoding/protojson"
 )
 
 var freezeCmd = &cobra.Command{
@@ -27,10 +30,10 @@ var freezeCmd = &cobra.Command{
 		rootHash := hash.Hash(args[0])
 		builder := db.Builder()
 
-		type serialized struct {
-			Type   string         `yaml:"type"`
-			Params map[string]any `yaml:"params"`
-		}
+        type serialized struct {
+            Type   string         `yaml:"type"`
+            Params map[string]any `yaml:"params"`
+        }
 
 		defs := make(map[string]serialized)
 		defDb := hash.NewDefinitionDatabase(nil)
@@ -47,18 +50,74 @@ var freezeCmd = &cobra.Command{
 				return fmt.Errorf("failed to get definition %s: %w", hStr, err)
 			}
 
-			data, err := defDb.MarshalDefinition(def)
-			if err != nil {
-				return err
-			}
-			var tmp struct {
-				TypeName string         `json:"TypeName"`
-				Params   map[string]any `json:"Params"`
-			}
-			if err := json.Unmarshal(data, &tmp); err != nil {
-				return err
-			}
-			defs[hStr] = serialized{Type: tmp.TypeName, Params: tmp.Params}
+            data, err := defDb.MarshalDefinition(def)
+            if err != nil { return err }
+
+            var bd pb.BuildDefinition
+            if err := gp.Unmarshal(data, &bd); err != nil {
+                return fmt.Errorf("failed to parse definition protobuf: %w", err)
+            }
+
+            var typeName string
+            var paramsMsg gp.Message
+            switch v := bd.GetDefinition().(type) {
+            case *pb.BuildDefinition_BuildFs:
+                typeName = "BuildFsParameters"
+                paramsMsg = v.BuildFs
+            case *pb.BuildDefinition_BuildVm:
+                typeName = "BuildVmParameters"
+                paramsMsg = v.BuildVm
+            case *pb.BuildDefinition_BuildEmulator:
+                typeName = "BuildEmulatorParameters"
+                paramsMsg = v.BuildEmulator
+            case *pb.BuildDefinition_DecompressFile:
+                typeName = "DecompressFileParameters"
+                paramsMsg = v.DecompressFile
+            case *pb.BuildDefinition_FetchHttp:
+                typeName = "FetchHttpParameters"
+                paramsMsg = v.FetchHttp
+            case *pb.BuildDefinition_RegistryRequest:
+                typeName = "RegistryRequestParameters"
+                paramsMsg = v.RegistryRequest
+            case *pb.BuildDefinition_FetchOciImage:
+                typeName = "FetchOciImageParameters"
+                paramsMsg = v.FetchOciImage
+            case *pb.BuildDefinition_FetchCvmfs:
+                typeName = "FetchCVMFSParameters"
+                paramsMsg = v.FetchCvmfs
+            case *pb.BuildDefinition_ReadOciImage:
+                typeName = "ReadOciImageParameters"
+                paramsMsg = v.ReadOciImage
+            case *pb.BuildDefinition_File:
+                typeName = "FileParameters"
+                paramsMsg = v.File
+            case *pb.BuildDefinition_ConstantHash:
+                typeName = "ConstantHashParameters"
+                paramsMsg = v.ConstantHash
+            case *pb.BuildDefinition_ExtractFile:
+                typeName = "ExtractFileParameters"
+                paramsMsg = v.ExtractFile
+            case *pb.BuildDefinition_Plan:
+                typeName = "PlanParameters"
+                paramsMsg = v.Plan
+            case *pb.BuildDefinition_ReadArchive:
+                typeName = "ReadArchiveParameters"
+                paramsMsg = v.ReadArchive
+            case *pb.BuildDefinition_Star:
+                typeName = "StarParameters"
+                paramsMsg = v.Star
+            default:
+                return fmt.Errorf("unsupported definition type: %T", bd.GetDefinition())
+            }
+
+            // Convert params message to generic map using protojson
+            var paramsMap map[string]any
+            if paramsMsg != nil {
+                b, err := (pj.MarshalOptions{UseProtoNames: true}).Marshal(paramsMsg)
+                if err != nil { return err }
+                if err := json.Unmarshal(b, &paramsMap); err != nil { return err }
+            }
+            defs[hStr] = serialized{Type: typeName, Params: paramsMap}
 
 			deps, err := def.Dependencies()
 			if err != nil {

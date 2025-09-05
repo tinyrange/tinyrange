@@ -20,9 +20,29 @@ message PackageQuery {
     repeated string tags = 5;
 }
 
+// Generic recursive value used in star builder arguments
 message SerializableValue {
+  oneof kind {
+    string string_value = 1;
+    bool bool_value = 2;
+    SerializableList list_value = 3;
+    BuildDefinitionRef definition_ref = 4;
+    ChildSource child_source = 5;
+  }
+}
+
+message SerializableList {
+  repeated SerializableValue items = 1;
+}
+
+// Reference to a specific file within a source archive/tree.
+message ChildSource {
+  // Prefer to encode as a BuildDefinitionRef when available.
+  BuildDefinitionRef source_def = 1;
+  // Fallback to a nested SerializableValue if the source isn’t a definition.
+  SerializableValue source_val = 2;
+  string name = 3;
 }
 
 message File {
-
 }

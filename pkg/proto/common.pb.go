@@ -147,8 +147,17 @@ func (x *PackageQuery) GetTags() []string {
 	return nil
 }
 
+// Generic recursive value used in star builder arguments
 type SerializableValue struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Kind:
+	//
+	//	*SerializableValue_StringValue
+	//	*SerializableValue_BoolValue
+	//	*SerializableValue_ListValue
+	//	*SerializableValue_DefinitionRef
+	//	*SerializableValue_ChildSource
+	Kind          isSerializableValue_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -183,6 +192,199 @@ func (*SerializableValue) Descriptor() ([]byte, []int) {
 	return file_common_proto_rawDescGZIP(), []int{2}
 }
 
+func (x *SerializableValue) GetKind() isSerializableValue_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return nil
+}
+
+func (x *SerializableValue) GetStringValue() string {
+	if x != nil {
+		if x, ok := x.Kind.(*SerializableValue_StringValue); ok {
+			return x.StringValue
+		}
+	}
+	return ""
+}
+
+func (x *SerializableValue) GetBoolValue() bool {
+	if x != nil {
+		if x, ok := x.Kind.(*SerializableValue_BoolValue); ok {
+			return x.BoolValue
+		}
+	}
+	return false
+}
+
+func (x *SerializableValue) GetListValue() *SerializableList {
+	if x != nil {
+		if x, ok := x.Kind.(*SerializableValue_ListValue); ok {
+			return x.ListValue
+		}
+	}
+	return nil
+}
+
+func (x *SerializableValue) GetDefinitionRef() *BuildDefinitionRef {
+	if x != nil {
+		if x, ok := x.Kind.(*SerializableValue_DefinitionRef); ok {
+			return x.DefinitionRef
+		}
+	}
+	return nil
+}
+
+func (x *SerializableValue) GetChildSource() *ChildSource {
+	if x != nil {
+		if x, ok := x.Kind.(*SerializableValue_ChildSource); ok {
+			return x.ChildSource
+		}
+	}
+	return nil
+}
+
+type isSerializableValue_Kind interface {
+	isSerializableValue_Kind()
+}
+
+type SerializableValue_StringValue struct {
+	StringValue string `protobuf:"bytes,1,opt,name=string_value,json=stringValue,proto3,oneof"`
+}
+
+type SerializableValue_BoolValue struct {
+	BoolValue bool `protobuf:"varint,2,opt,name=bool_value,json=boolValue,proto3,oneof"`
+}
+
+type SerializableValue_ListValue struct {
+	ListValue *SerializableList `protobuf:"bytes,3,opt,name=list_value,json=listValue,proto3,oneof"`
+}
+
+type SerializableValue_DefinitionRef struct {
+	DefinitionRef *BuildDefinitionRef `protobuf:"bytes,4,opt,name=definition_ref,json=definitionRef,proto3,oneof"`
+}
+
+type SerializableValue_ChildSource struct {
+	ChildSource *ChildSource `protobuf:"bytes,5,opt,name=child_source,json=childSource,proto3,oneof"`
+}
+
+func (*SerializableValue_StringValue) isSerializableValue_Kind() {}
+
+func (*SerializableValue_BoolValue) isSerializableValue_Kind() {}
+
+func (*SerializableValue_ListValue) isSerializableValue_Kind() {}
+
+func (*SerializableValue_DefinitionRef) isSerializableValue_Kind() {}
+
+func (*SerializableValue_ChildSource) isSerializableValue_Kind() {}
+
+type SerializableList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*SerializableValue   `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SerializableList) Reset() {
+	*x = SerializableList{}
+	mi := &file_common_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SerializableList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SerializableList) ProtoMessage() {}
+
+func (x *SerializableList) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SerializableList.ProtoReflect.Descriptor instead.
+func (*SerializableList) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *SerializableList) GetItems() []*SerializableValue {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+// Reference to a specific file within a source archive/tree.
+type ChildSource struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Prefer to encode as a BuildDefinitionRef when available.
+	SourceDef *BuildDefinitionRef `protobuf:"bytes,1,opt,name=source_def,json=sourceDef,proto3" json:"source_def,omitempty"`
+	// Fallback to a nested SerializableValue if the source isn’t a definition.
+	SourceVal     *SerializableValue `protobuf:"bytes,2,opt,name=source_val,json=sourceVal,proto3" json:"source_val,omitempty"`
+	Name          string             `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChildSource) Reset() {
+	*x = ChildSource{}
+	mi := &file_common_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChildSource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChildSource) ProtoMessage() {}
+
+func (x *ChildSource) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChildSource.ProtoReflect.Descriptor instead.
+func (*ChildSource) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ChildSource) GetSourceDef() *BuildDefinitionRef {
+	if x != nil {
+		return x.SourceDef
+	}
+	return nil
+}
+
+func (x *ChildSource) GetSourceVal() *SerializableValue {
+	if x != nil {
+		return x.SourceVal
+	}
+	return nil
+}
+
+func (x *ChildSource) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
 type File struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -191,7 +393,7 @@ type File struct {
 
 func (x *File) Reset() {
 	*x = File{}
-	mi := &file_common_proto_msgTypes[3]
+	mi := &file_common_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -203,7 +405,7 @@ func (x *File) String() string {
 func (*File) ProtoMessage() {}
 
 func (x *File) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[3]
+	mi := &file_common_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -216,7 +418,7 @@ func (x *File) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use File.ProtoReflect.Descriptor instead.
 func (*File) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{3}
+	return file_common_proto_rawDescGZIP(), []int{5}
 }
 
 var File_common_proto protoreflect.FileDescriptor
@@ -231,8 +433,24 @@ const file_common_proto_rawDesc = "" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12,\n" +
 	"\x12match_partial_name\x18\x03 \x01(\bR\x10matchPartialName\x12\x18\n" +
 	"\aversion\x18\x04 \x01(\tR\aversion\x12\x12\n" +
-	"\x04tags\x18\x05 \x03(\tR\x04tags\"\x13\n" +
-	"\x11SerializableValue\"\x06\n" +
+	"\x04tags\x18\x05 \x03(\tR\x04tags\"\x98\x02\n" +
+	"\x11SerializableValue\x12#\n" +
+	"\fstring_value\x18\x01 \x01(\tH\x00R\vstringValue\x12\x1f\n" +
+	"\n" +
+	"bool_value\x18\x02 \x01(\bH\x00R\tboolValue\x128\n" +
+	"\n" +
+	"list_value\x18\x03 \x01(\v2\x17.proto.SerializableListH\x00R\tlistValue\x12B\n" +
+	"\x0edefinition_ref\x18\x04 \x01(\v2\x19.proto.BuildDefinitionRefH\x00R\rdefinitionRef\x127\n" +
+	"\fchild_source\x18\x05 \x01(\v2\x12.proto.ChildSourceH\x00R\vchildSourceB\x06\n" +
+	"\x04kind\"B\n" +
+	"\x10SerializableList\x12.\n" +
+	"\x05items\x18\x01 \x03(\v2\x18.proto.SerializableValueR\x05items\"\x94\x01\n" +
+	"\vChildSource\x128\n" +
+	"\n" +
+	"source_def\x18\x01 \x01(\v2\x19.proto.BuildDefinitionRefR\tsourceDef\x127\n" +
+	"\n" +
+	"source_val\x18\x02 \x01(\v2\x18.proto.SerializableValueR\tsourceVal\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\"\x06\n" +
 	"\x04Fileb\x06proto3"
 
 var (
@@ -247,19 +465,27 @@ func file_common_proto_rawDescGZIP() []byte {
 	return file_common_proto_rawDescData
 }
 
-var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_common_proto_goTypes = []any{
 	(*BuildDefinitionRef)(nil), // 0: proto.BuildDefinitionRef
 	(*PackageQuery)(nil),       // 1: proto.PackageQuery
 	(*SerializableValue)(nil),  // 2: proto.SerializableValue
-	(*File)(nil),               // 3: proto.File
+	(*SerializableList)(nil),   // 3: proto.SerializableList
+	(*ChildSource)(nil),        // 4: proto.ChildSource
+	(*File)(nil),               // 5: proto.File
 }
 var file_common_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	3, // 0: proto.SerializableValue.list_value:type_name -> proto.SerializableList
+	0, // 1: proto.SerializableValue.definition_ref:type_name -> proto.BuildDefinitionRef
+	4, // 2: proto.SerializableValue.child_source:type_name -> proto.ChildSource
+	2, // 3: proto.SerializableList.items:type_name -> proto.SerializableValue
+	0, // 4: proto.ChildSource.source_def:type_name -> proto.BuildDefinitionRef
+	2, // 5: proto.ChildSource.source_val:type_name -> proto.SerializableValue
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }
@@ -267,13 +493,20 @@ func file_common_proto_init() {
 	if File_common_proto != nil {
 		return
 	}
+	file_common_proto_msgTypes[2].OneofWrappers = []any{
+		(*SerializableValue_StringValue)(nil),
+		(*SerializableValue_BoolValue)(nil),
+		(*SerializableValue_ListValue)(nil),
+		(*SerializableValue_DefinitionRef)(nil),
+		(*SerializableValue_ChildSource)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

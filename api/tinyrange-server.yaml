@@ -88,10 +88,10 @@ paths:
         "500":
           description: Internal server error
 
-  /build/{hash}/definition.json:
+  /build/{hash}/definition.bin:
     get:
-      summary: Get Build Definition
-      description: Retrieve the definition JSON for a specific build identified by its hash.
+      summary: Get Build Definition (binary)
+      description: Retrieve the build definition protobuf for a specific build identified by its hash.
       parameters:
         - name: hash
           in: path
@@ -101,12 +101,12 @@ paths:
             type: string
       responses:
         "200":
-          description: Successful response with build definition JSON
+          description: Successful response with build definition protobuf
           content:
-            application/json:
+            application/octet-stream:
               schema:
-                type: object
-                description: Build definition data
+                type: string
+                format: binary
         "400":
           description: Bad request - missing hash parameters
         "404":

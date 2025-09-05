@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	definitionFileName = "definition.json"
+    definitionFileName = "definition.bin"
 	receiptFileName    = "receipt.json"
 	outputPrefix       = "output."
 
