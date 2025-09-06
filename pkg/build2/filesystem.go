@@ -468,30 +468,33 @@ func OpenFilesystemBuildCache(dir filesystem.MutableDirectory, config dbconfig.B
 		config: []dbconfig.BuildDatabaseConfig{config},
 	}
 
-	if err := checkMarkerFile(dir); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	err := checkMarkerFile(dir)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("failed to check marker file: %w", err)
 	}
 
-	// Create the marker file
-	markerFile := filesystem.Factory.NewMemoryFile()
-	markerFileHandle, err := markerFile.OpenMut()
-	if err != nil {
-		return nil, fmt.Errorf("failed to open marker file: %w", err)
-	}
+	if errors.Is(err, fs.ErrNotExist) {
+		// Create the marker file
+		markerFile := filesystem.Factory.NewMemoryFile()
+		markerFileHandle, err := markerFile.OpenMut()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open marker file: %w", err)
+		}
 
-	markerHeader := MarkerHeader{
-		Version: MARKET_VERSION,
-	}
+		markerHeader := MarkerHeader{
+			Version: MARKET_VERSION,
+		}
 
-	if err := json.NewEncoder(markerFileHandle).Encode(markerHeader); err != nil {
+		if err := json.NewEncoder(markerFileHandle).Encode(markerHeader); err != nil {
+			markerFileHandle.Close()
+			return nil, fmt.Errorf("failed to encode marker file: %w", err)
+		}
+
 		markerFileHandle.Close()
-		return nil, fmt.Errorf("failed to encode marker file: %w", err)
-	}
 
-	markerFileHandle.Close()
-
-	if _, err := dir.Create(MARKER_FILENAME, markerFile); err != nil {
-		return nil, fmt.Errorf("failed to create marker file: %w", err)
+		if _, err := dir.Create(MARKER_FILENAME, markerFile); err != nil {
+			return nil, fmt.Errorf("failed to create marker file: %w", err)
+		}
 	}
 
 	return ret, nil
