@@ -13,7 +13,13 @@ import (
 func Main() error {
 	fs := flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ExitOnError)
 
+	url := fs.String("url", "", "URL to fetch and extract")
+
 	fs.Parse(os.Args[1:])
+
+	if *url == "" {
+		return fmt.Errorf("url is required")
+	}
 
 	db, err := build.NewDatabase()
 	if err != nil {
@@ -24,7 +30,7 @@ func Main() error {
 
 	art, err := db.Build(
 		fact.NewExtractArchive(
-			fact.NewFetchHttp("https://example.com/archive.tar.gz"),
+			fact.NewFetchHttp(*url),
 			proto.ArchiveType_TAR,
 			proto.CompressionType_GZIP,
 		),
@@ -35,5 +41,5 @@ func Main() error {
 
 	_ = art
 
-	return fmt.Errorf("not implemented")
+	return nil
 }

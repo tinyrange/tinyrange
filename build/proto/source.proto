@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package proto;
+
+import "fetch_http.proto";
+import "build.proto";
+
+message FileSource {
+    oneof source {
+      FetchHttpDefinition fetch_http = 1;
+      DefinitionReference reference = 2;
+    }
+}

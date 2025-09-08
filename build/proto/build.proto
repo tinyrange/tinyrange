@@ -13,3 +13,16 @@ message Definition {
   // protobuf messages defined by third parties.
   google.protobuf.Any payload = 2;
 }
+
+message DefinitionReference {
+  // The hash of the referenced definition.
+  string hash = 1;
+}
+
+message BuildClosure {
+  // The root definition of the build.
+  Definition root = 1;
+
+  // All transitive dependencies of the root definition.
+  repeated BuildClosure dependencies = 2;
+}

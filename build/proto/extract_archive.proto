@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package proto;
 
-import "fetch_http.proto";
+import "source.proto";
 
 enum ArchiveType {
   ARCHIVE_TYPE_UNSPECIFIED = 0;
@@ -11,11 +11,12 @@ enum ArchiveType {
 
 enum CompressionType {
   COMPRESSION_TYPE_UNSPECIFIED = 0;
-  GZIP = 1;
+  NONE = 1;
+  GZIP = 2;
 }
 
 message ExtractArchiveDefinition {
-  oneof source { FetchHttpDefinition fetch_http = 1; }
+  FileSource source = 1;
   ArchiveType archive_type = 2;
   CompressionType compression_type = 3;
 }
