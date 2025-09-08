@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"os"
 	"runtime/pprof"
 	"strings"
@@ -13,17 +14,64 @@ import (
 	"github.com/tinyrange/tinyrange/pkg/common"
 	"github.com/tinyrange/tinyrange/pkg/log"
 	"github.com/tinyrange/tinyrange/pkg/login"
+	login2 "github.com/tinyrange/tinyrange/pkg/login/v2"
 	"github.com/tinyrange/tinyrange/pkg/path"
 )
 
 const DEFAULT_BUILDER = "alpine@3.22"
 
+type abstractConfig interface {
+	Run(db common.PackageDatabase) error
+}
+
 var currentConfig login.Config = login.Config{Version: login.CURRENT_CONFIG_VERSION}
+
+var loginConfigToRun abstractConfig = &currentConfig
 
 var (
 	loginSaveConfig string
 	loginLoadConfig string
 )
+
+func determineConfigVersion(r io.ReaderAt) (int, error) {
+	dec := yaml.NewDecoder(io.NewSectionReader(r, 0, 1<<20))
+
+	var raw struct {
+		Version int `yaml:"version"`
+	}
+
+	if err := dec.Decode(&raw); err != nil {
+		return 0, err
+	}
+
+	return raw.Version, nil
+}
+
+func loadConfigFromReader(r io.ReaderAt) error {
+	version, err := determineConfigVersion(r)
+	if err != nil {
+		return err
+	}
+
+	if version == 2 {
+		config, err := login2.Load(r)
+		if err != nil {
+			return err
+		}
+
+		loginConfigToRun = config
+
+		return nil
+	} else {
+		dec := yaml.NewDecoder(io.NewSectionReader(r, 0, 1<<20))
+
+		if err := dec.Decode(&currentConfig); err != nil {
+			return err
+		}
+
+		return nil
+	}
+}
 
 func runLogin(args []string) error {
 	if rootCpuProfile != "" {
@@ -87,7 +135,7 @@ func runLogin(args []string) error {
 				}
 				defer fh.Close()
 
-				if err := yaml.NewDecoder(fh).Decode(&currentConfig); err != nil {
+				if err := loadConfigFromReader(fh); err != nil {
 					return err
 				}
 			} else {
@@ -97,9 +145,7 @@ func runLogin(args []string) error {
 				}
 				defer f.Close()
 
-				dec := yaml.NewDecoder(f)
-
-				if err := dec.Decode(&currentConfig); err != nil {
+				if err := loadConfigFromReader(f); err != nil {
 					return err
 				}
 
@@ -141,7 +187,7 @@ func runLogin(args []string) error {
 			currentConfig.SetBasePath(wd)
 		}
 
-		return currentConfig.Run(db)
+		return loginConfigToRun.Run(db)
 	}
 }
 
