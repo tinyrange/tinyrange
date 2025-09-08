@@ -2,44 +2,55 @@ package cli
 
 import (
 	"flag"
-	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 
-	"github.com/tinyrange/tinyrange/build"
-	"github.com/tinyrange/tinyrange/build/proto"
+	"github.com/tinyrange/tinyrange/build/internal"
+
+	buildhttp "github.com/tinyrange/tinyrange/build/http"
 )
 
 func Main() error {
 	fs := flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ExitOnError)
 
-	url := fs.String("url", "", "URL to fetch and extract")
+	addr := fs.String("addr", "127.0.0.1:8080", "Address to listen on")
+	static := fs.String("static", "", "Path to static web files")
 
 	fs.Parse(os.Args[1:])
 
-	if *url == "" {
-		return fmt.Errorf("url is required")
-	}
-
-	db, err := build.NewDatabase()
+	db, err := internal.New()
 	if err != nil {
 		return err
 	}
 
-	fact := db.Factory()
+	handler := buildhttp.New(db)
 
-	art, err := db.Build(
-		fact.NewExtractArchive(
-			fact.NewFetchHttp(*url),
-			proto.ArchiveType_TAR,
-			proto.CompressionType_GZIP,
-		),
-	)
+	mux := http.NewServeMux()
+
+	mux.Handle("/api/", http.StripPrefix("/api/", handler))
+
+	if *static != "" {
+		slog.Info("serving static files", "path", *static)
+		fs := http.FileServer(http.Dir(*static))
+		mux.Handle("/", fs)
+	} else {
+		slog.Info("no static files configured")
+	}
+
+	listen, err := net.Listen("tcp", *addr)
 	if err != nil {
 		return err
 	}
+	defer listen.Close()
 
-	_ = art
+	slog.Info("listening", "addr", listen.Addr().String())
 
-	return nil
+	srv := &http.Server{
+		Handler: mux,
+	}
+
+	return srv.Serve(listen)
 }
