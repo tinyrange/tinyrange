@@ -7,13 +7,13 @@ import (
 	protob "google.golang.org/protobuf/proto"
 
 	"github.com/tinyrange/tinyrange/archive"
-	"github.com/tinyrange/tinyrange/build/hash"
 	"github.com/tinyrange/tinyrange/build/proto"
 )
 
 const (
 	TYPE_NAME_EXTRACT_ARCHIVE = "tinyrange/alpha/extract_archive"
 	TYPE_NAME_FETCH_HTTP      = "tinyrange/alpha/fetch_http"
+	TYPE_NAME_WRITE_FILE      = "tinyrange/alpha/write_file"
 )
 
 type FileType string
@@ -24,8 +24,16 @@ const (
 	FileType_ArchiveContents FileType = "application/x-tinyrange-archive-contents"
 )
 
+type File interface {
+	io.Reader
+	io.ReaderAt
+	io.Closer
+}
+
 type WritableFile interface {
 	io.WriteCloser
+
+	Hash() *proto.Hash
 }
 
 type ArchiveWriter interface {
@@ -34,7 +42,7 @@ type ArchiveWriter interface {
 }
 
 type Context interface {
-	Hash() hash.Hash
+	Hash() *proto.Hash
 	Decode(msg protob.Message) error
 
 	HttpClient() *http.Client
@@ -48,6 +56,7 @@ type Context interface {
 type BuildClosure = *proto.BuildClosure
 
 type Artifact interface {
+	Open(ft FileType) (File, error)
 }
 
 type Option interface {
@@ -58,6 +67,28 @@ type Builder interface {
 	Build(ctx Context) error
 }
 
+type BuildCacheDirectory interface {
+	ReadDefinition() ([]byte, error)
+	ReadReceipt() ([]byte, error)
+
+	OpenFile(ft FileType) (File, error)
+}
+
+type WritableBuildCacheDirectory interface {
+	BuildCacheDirectory
+
+	WriteDefinition(content []byte) error
+	WriteReceipt(content []byte) error
+
+	CreateFile(ft FileType) (WritableFile, error)
+}
+
+type BuildCache interface {
+	// Returns fs.ErrNotExist if not found.
+	OpenRead(h *proto.Hash) (BuildCacheDirectory, error)
+	OpenWrite(h *proto.Hash) (WritableBuildCacheDirectory, error)
+}
+
 type Database interface {
 	Factory() Factory
 	Build(def BuildClosure, opt ...Option) (Artifact, error)
@@ -66,4 +97,5 @@ type Database interface {
 type Factory interface {
 	NewFetchHttp(url string) BuildClosure
 	NewExtractArchive(src BuildClosure, archiveType proto.ArchiveType, compressionType proto.CompressionType) BuildClosure
+	NewWriteFile(content []byte) BuildClosure
 }

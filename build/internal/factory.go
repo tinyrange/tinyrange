@@ -18,26 +18,9 @@ func (f *factoryImpl) pack(typeName string, body protob.Message, depends ...comm
 	}
 	def.TypeName = typeName
 	def.Payload.MarshalFrom(body)
+
 	closure.Root = def
-
-	visited := map[proto.Hash]bool{}
-
-	var visit func(def *proto.BuildClosure)
-	visit = func(def *proto.BuildClosure) {
-		h := def.Root.Hash()
-		if visited[h] {
-			return
-		}
-		visited[h] = true
-		closure.Dependencies = append(closure.Dependencies, def)
-		for _, d := range def.Dependencies {
-			visit(d)
-		}
-	}
-
-	for _, d := range depends {
-		visit(d)
-	}
+	closure.Dependencies = depends
 
 	return closure
 }
@@ -58,7 +41,7 @@ func (f *factoryImpl) NewExtractArchive(src common.BuildClosure, archiveType pro
 
 		source = &proto.FileSource_Reference{
 			Reference: &proto.DefinitionReference{
-				Hash: string(hash),
+				Hash: string(hash.Value),
 			},
 		}
 		children = append(children, src)
@@ -75,6 +58,13 @@ func (f *factoryImpl) NewExtractArchive(src common.BuildClosure, archiveType pro
 func (f *factoryImpl) NewFetchHttp(url string) common.BuildClosure {
 	return f.pack(common.TYPE_NAME_FETCH_HTTP, &proto.FetchHttpDefinition{
 		Url: url,
+	})
+}
+
+// NewWriteFile implements common.Factory.
+func (f *factoryImpl) NewWriteFile(content []byte) common.BuildClosure {
+	return f.pack(common.TYPE_NAME_WRITE_FILE, &proto.WriteFileDefinition{
+		Content: content,
 	})
 }
 

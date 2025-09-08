@@ -192,6 +192,7 @@ func main() {
 			"build/proto/fetch_http.proto",
 			"build/proto/extract_archive.proto",
 			"build/proto/source.proto",
+			"build/proto/write_file.proto",
 		); err != nil {
 			slog.Error("protoc failed", "error", err)
 			os.Exit(1)

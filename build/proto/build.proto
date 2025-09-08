@@ -3,6 +3,11 @@ syntax = "proto3";
 package proto;
 
 import "google/protobuf/any.proto";
+import "google/protobuf/timestamp.proto";
+
+message Hash {
+  string value = 1;
+}
 
 message Definition {
   // A canonical type name, e.g. "tinyrange/v1/fetch_http".
@@ -23,6 +28,20 @@ message BuildClosure {
   // The root definition of the build.
   Definition root = 1;
 
-  // All transitive dependencies of the root definition.
+  // All direct dependencies of the root definition.
   repeated BuildClosure dependencies = 2;
+}
+
+message BuildReceipt {
+  // Direct dependencies of the build, identified by their hashes.
+  repeated Hash dependencies = 1;
+
+  // Start time of the build.
+  google.protobuf.Timestamp start_time = 2;
+
+  // End time of the build.
+  google.protobuf.Timestamp end_time = 3;
+
+  // Files produced by the build, secured with their hashes.
+  map<string, Hash> outputs = 4;
 }

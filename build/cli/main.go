@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tinyrange/tinyrange/build/cache/memory"
 	"github.com/tinyrange/tinyrange/build/internal"
 
 	buildhttp "github.com/tinyrange/tinyrange/build/http"
@@ -21,7 +22,9 @@ func Main() error {
 
 	fs.Parse(os.Args[1:])
 
-	db, err := internal.New()
+	cache := memory.NewCache()
+
+	db, err := internal.New(cache)
 	if err != nil {
 		return err
 	}

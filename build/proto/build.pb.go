@@ -10,6 +10,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	anypb "google.golang.org/protobuf/types/known/anypb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -21,6 +22,50 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+type Hash struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Value         string                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Hash) Reset() {
+	*x = Hash{}
+	mi := &file_build_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Hash) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Hash) ProtoMessage() {}
+
+func (x *Hash) ProtoReflect() protoreflect.Message {
+	mi := &file_build_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Hash.ProtoReflect.Descriptor instead.
+func (*Hash) Descriptor() ([]byte, []int) {
+	return file_build_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *Hash) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
 
 type Definition struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -36,7 +81,7 @@ type Definition struct {
 
 func (x *Definition) Reset() {
 	*x = Definition{}
-	mi := &file_build_proto_msgTypes[0]
+	mi := &file_build_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48,7 +93,7 @@ func (x *Definition) String() string {
 func (*Definition) ProtoMessage() {}
 
 func (x *Definition) ProtoReflect() protoreflect.Message {
-	mi := &file_build_proto_msgTypes[0]
+	mi := &file_build_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -61,7 +106,7 @@ func (x *Definition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Definition.ProtoReflect.Descriptor instead.
 func (*Definition) Descriptor() ([]byte, []int) {
-	return file_build_proto_rawDescGZIP(), []int{0}
+	return file_build_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Definition) GetTypeName() string {
@@ -88,7 +133,7 @@ type DefinitionReference struct {
 
 func (x *DefinitionReference) Reset() {
 	*x = DefinitionReference{}
-	mi := &file_build_proto_msgTypes[1]
+	mi := &file_build_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -100,7 +145,7 @@ func (x *DefinitionReference) String() string {
 func (*DefinitionReference) ProtoMessage() {}
 
 func (x *DefinitionReference) ProtoReflect() protoreflect.Message {
-	mi := &file_build_proto_msgTypes[1]
+	mi := &file_build_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -113,7 +158,7 @@ func (x *DefinitionReference) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DefinitionReference.ProtoReflect.Descriptor instead.
 func (*DefinitionReference) Descriptor() ([]byte, []int) {
-	return file_build_proto_rawDescGZIP(), []int{1}
+	return file_build_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *DefinitionReference) GetHash() string {
@@ -127,7 +172,7 @@ type BuildClosure struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The root definition of the build.
 	Root *Definition `protobuf:"bytes,1,opt,name=root,proto3" json:"root,omitempty"`
-	// All transitive dependencies of the root definition.
+	// All direct dependencies of the root definition.
 	Dependencies  []*BuildClosure `protobuf:"bytes,2,rep,name=dependencies,proto3" json:"dependencies,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -135,7 +180,7 @@ type BuildClosure struct {
 
 func (x *BuildClosure) Reset() {
 	*x = BuildClosure{}
-	mi := &file_build_proto_msgTypes[2]
+	mi := &file_build_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -147,7 +192,7 @@ func (x *BuildClosure) String() string {
 func (*BuildClosure) ProtoMessage() {}
 
 func (x *BuildClosure) ProtoReflect() protoreflect.Message {
-	mi := &file_build_proto_msgTypes[2]
+	mi := &file_build_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -160,7 +205,7 @@ func (x *BuildClosure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildClosure.ProtoReflect.Descriptor instead.
 func (*BuildClosure) Descriptor() ([]byte, []int) {
-	return file_build_proto_rawDescGZIP(), []int{2}
+	return file_build_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *BuildClosure) GetRoot() *Definition {
@@ -177,11 +222,85 @@ func (x *BuildClosure) GetDependencies() []*BuildClosure {
 	return nil
 }
 
+type BuildReceipt struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Direct dependencies of the build, identified by their hashes.
+	Dependencies []*Hash `protobuf:"bytes,1,rep,name=dependencies,proto3" json:"dependencies,omitempty"`
+	// Start time of the build.
+	StartTime *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"`
+	// End time of the build.
+	EndTime *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
+	// Files produced by the build, secured with their hashes.
+	Outputs       map[string]*Hash `protobuf:"bytes,4,rep,name=outputs,proto3" json:"outputs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BuildReceipt) Reset() {
+	*x = BuildReceipt{}
+	mi := &file_build_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BuildReceipt) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BuildReceipt) ProtoMessage() {}
+
+func (x *BuildReceipt) ProtoReflect() protoreflect.Message {
+	mi := &file_build_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BuildReceipt.ProtoReflect.Descriptor instead.
+func (*BuildReceipt) Descriptor() ([]byte, []int) {
+	return file_build_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *BuildReceipt) GetDependencies() []*Hash {
+	if x != nil {
+		return x.Dependencies
+	}
+	return nil
+}
+
+func (x *BuildReceipt) GetStartTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartTime
+	}
+	return nil
+}
+
+func (x *BuildReceipt) GetEndTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.EndTime
+	}
+	return nil
+}
+
+func (x *BuildReceipt) GetOutputs() map[string]*Hash {
+	if x != nil {
+		return x.Outputs
+	}
+	return nil
+}
+
 var File_build_proto protoreflect.FileDescriptor
 
 const file_build_proto_rawDesc = "" +
 	"\n" +
-	"\vbuild.proto\x12\x05proto\x1a\x19google/protobuf/any.proto\"Y\n" +
+	"\vbuild.proto\x12\x05proto\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x1c\n" +
+	"\x04Hash\x12\x14\n" +
+	"\x05value\x18\x01 \x01(\tR\x05value\"Y\n" +
 	"\n" +
 	"Definition\x12\x1b\n" +
 	"\ttype_name\x18\x01 \x01(\tR\btypeName\x12.\n" +
@@ -190,7 +309,16 @@ const file_build_proto_rawDesc = "" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\"n\n" +
 	"\fBuildClosure\x12%\n" +
 	"\x04root\x18\x01 \x01(\v2\x11.proto.DefinitionR\x04root\x127\n" +
-	"\fdependencies\x18\x02 \x03(\v2\x13.proto.BuildClosureR\fdependenciesb\x06proto3"
+	"\fdependencies\x18\x02 \x03(\v2\x13.proto.BuildClosureR\fdependencies\"\xb6\x02\n" +
+	"\fBuildReceipt\x12/\n" +
+	"\fdependencies\x18\x01 \x03(\v2\v.proto.HashR\fdependencies\x129\n" +
+	"\n" +
+	"start_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tstartTime\x125\n" +
+	"\bend_time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\aendTime\x12:\n" +
+	"\aoutputs\x18\x04 \x03(\v2 .proto.BuildReceipt.OutputsEntryR\aoutputs\x1aG\n" +
+	"\fOutputsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12!\n" +
+	"\x05value\x18\x02 \x01(\v2\v.proto.HashR\x05value:\x028\x01b\x06proto3"
 
 var (
 	file_build_proto_rawDescOnce sync.Once
@@ -204,22 +332,31 @@ func file_build_proto_rawDescGZIP() []byte {
 	return file_build_proto_rawDescData
 }
 
-var file_build_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_build_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_build_proto_goTypes = []any{
-	(*Definition)(nil),          // 0: proto.Definition
-	(*DefinitionReference)(nil), // 1: proto.DefinitionReference
-	(*BuildClosure)(nil),        // 2: proto.BuildClosure
-	(*anypb.Any)(nil),           // 3: google.protobuf.Any
+	(*Hash)(nil),                  // 0: proto.Hash
+	(*Definition)(nil),            // 1: proto.Definition
+	(*DefinitionReference)(nil),   // 2: proto.DefinitionReference
+	(*BuildClosure)(nil),          // 3: proto.BuildClosure
+	(*BuildReceipt)(nil),          // 4: proto.BuildReceipt
+	nil,                           // 5: proto.BuildReceipt.OutputsEntry
+	(*anypb.Any)(nil),             // 6: google.protobuf.Any
+	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
 }
 var file_build_proto_depIdxs = []int32{
-	3, // 0: proto.Definition.payload:type_name -> google.protobuf.Any
-	0, // 1: proto.BuildClosure.root:type_name -> proto.Definition
-	2, // 2: proto.BuildClosure.dependencies:type_name -> proto.BuildClosure
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	6, // 0: proto.Definition.payload:type_name -> google.protobuf.Any
+	1, // 1: proto.BuildClosure.root:type_name -> proto.Definition
+	3, // 2: proto.BuildClosure.dependencies:type_name -> proto.BuildClosure
+	0, // 3: proto.BuildReceipt.dependencies:type_name -> proto.Hash
+	7, // 4: proto.BuildReceipt.start_time:type_name -> google.protobuf.Timestamp
+	7, // 5: proto.BuildReceipt.end_time:type_name -> google.protobuf.Timestamp
+	5, // 6: proto.BuildReceipt.outputs:type_name -> proto.BuildReceipt.OutputsEntry
+	0, // 7: proto.BuildReceipt.OutputsEntry.value:type_name -> proto.Hash
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_build_proto_init() }
@@ -233,7 +370,7 @@ func file_build_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_build_proto_rawDesc), len(file_build_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

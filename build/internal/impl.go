@@ -1,26 +1,22 @@
 package internal
 
 import (
-	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
+	"time"
 
 	"github.com/schollz/progressbar/v3"
 	"github.com/tinyrange/tinyrange/archive"
-	"github.com/tinyrange/tinyrange/build/hash"
 	_ "github.com/tinyrange/tinyrange/build/internal/builder"
 	"github.com/tinyrange/tinyrange/build/internal/common"
 	"github.com/tinyrange/tinyrange/build/internal/registry"
 	"github.com/tinyrange/tinyrange/build/proto"
 	protob "google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
-
-type nopCloser struct {
-	io.Writer
-}
-
-func (n *nopCloser) Close() error { return nil }
 
 type wrapCloser struct {
 	io.Reader
@@ -45,13 +41,13 @@ func (a *archiveWriter) Close() error {
 }
 
 type contextImpl struct {
+	write   common.WritableBuildCacheDirectory
+	receipt *proto.BuildReceipt
 	db      *databaseImpl
-	hash    hash.Hash
+	hash    *proto.Hash
 	msg     *proto.Definition
 	depends []*proto.BuildClosure
-
-	// temp
-	files map[string]*bytes.Buffer
+	writers map[common.FileType]common.WritableFile
 }
 
 // ProgressBar implements common.Context.
@@ -62,12 +58,17 @@ func (c *contextImpl) ProgressBar(name string, size int64, r io.ReadCloser) io.R
 
 // Create implements common.Context.
 func (c *contextImpl) Create(ft common.FileType) (common.WritableFile, error) {
-	if _, ok := c.files[string(ft)]; ok {
-		return nil, fmt.Errorf("file of type %s already created", ft)
+	// check if we already have a writer for this type
+	if _, ok := c.writers[ft]; ok {
+		return nil, fmt.Errorf("file type %q already created", ft)
 	}
-	buf := &bytes.Buffer{}
-	c.files[string(ft)] = buf
-	return &nopCloser{buf}, nil
+
+	w, err := c.write.CreateFile(ft)
+	if err != nil {
+		return nil, err
+	}
+	c.writers[ft] = w
+	return w, nil
 }
 
 func (c *contextImpl) CreateArchive() (common.ArchiveWriter, error) {
@@ -101,17 +102,24 @@ func (c *contextImpl) Decode(msg protob.Message) error {
 }
 
 // Hash implements common.Context.
-func (c *contextImpl) Hash() hash.Hash { return c.hash }
+func (c *contextImpl) Hash() *proto.Hash { return c.hash }
 
 var (
 	_ common.Context = &contextImpl{}
 )
 
 type artifactImpl struct {
+	cacheDir common.BuildCacheDirectory
+}
+
+// Open implements common.Artifact.
+func (a *artifactImpl) Open(ft common.FileType) (common.File, error) {
+	return a.cacheDir.OpenFile(ft)
 }
 
 type databaseImpl struct {
 	factory *factoryImpl
+	cache   common.BuildCache
 }
 
 // Factory implements common.Database.
@@ -119,10 +127,18 @@ func (d *databaseImpl) Factory() common.Factory {
 	return d.factory
 }
 
-// Build implements build.Database.
-func (d *databaseImpl) Build(closure *proto.BuildClosure, opt ...common.Option) (common.Artifact, error) {
+func (d *databaseImpl) lockAndBuild(closure *proto.BuildClosure, opt ...common.Option) (common.Artifact, error) {
+	write, err := d.cache.OpenWrite(closure.Root.Hash())
+	if err != nil {
+		return nil, err
+	}
+
 	// get the root definition
 	def := closure.Root
+
+	if err := write.WriteDefinition(def.AsBytes()); err != nil {
+		return nil, err
+	}
 
 	// resolve the builder
 	builder := registry.Get(def.TypeName)
@@ -131,26 +147,58 @@ func (d *databaseImpl) Build(closure *proto.BuildClosure, opt ...common.Option) 
 	}
 
 	ctx := &contextImpl{
+		receipt: &proto.BuildReceipt{
+			StartTime: timestamppb.New(time.Now()),
+			Outputs:   map[string]*proto.Hash{},
+		},
+		write:   write,
 		db:      d,
-		hash:    hash.Hash(""),
+		hash:    def.Hash(),
 		msg:     def,
 		depends: closure.Dependencies,
-		files:   map[string]*bytes.Buffer{},
+		writers: map[common.FileType]common.WritableFile{},
 	}
 
 	if err := builder.Build(ctx); err != nil {
 		return nil, err
 	}
 
-	return &artifactImpl{}, nil
+	ctx.receipt.EndTime = timestamppb.New(time.Now())
+
+	for ft, w := range ctx.writers {
+		ctx.receipt.Outputs[string(ft)] = w.Hash()
+	}
+
+	if err := write.WriteReceipt(ctx.receipt.AsBytes()); err != nil {
+		return nil, err
+	}
+
+	return &artifactImpl{
+		cacheDir: write,
+	}, nil
+}
+
+// Build implements build.Database.
+func (d *databaseImpl) Build(closure *proto.BuildClosure, opt ...common.Option) (common.Artifact, error) {
+	rootHash := closure.Root.Hash()
+
+	read, err := d.cache.OpenRead(rootHash)
+	if errors.Is(err, fs.ErrNotExist) {
+		return d.lockAndBuild(closure, opt...)
+	} else if err != nil {
+		return nil, err
+	}
+
+	return &artifactImpl{cacheDir: read}, nil
 }
 
 var (
 	_ common.Database = &databaseImpl{}
 )
 
-func New() (common.Database, error) {
+func New(cache common.BuildCache) (common.Database, error) {
 	return &databaseImpl{
 		factory: &factoryImpl{},
+		cache:   cache,
 	}, nil
 }

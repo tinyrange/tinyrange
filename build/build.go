@@ -6,7 +6,8 @@ import (
 )
 
 type Database = common.Database
+type BuildCache = common.BuildCache
 
-func NewDatabase() (Database, error) {
-	return internal.New()
+func NewDatabase(cache BuildCache) (Database, error) {
+	return internal.New(cache)
 }
