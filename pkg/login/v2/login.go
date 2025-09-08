@@ -143,6 +143,8 @@ func (r RunDirective) Apply(ctx *context) error {
 
 	runDirs = append(runDirs, common.DirectiveRunCommand{Command: "%change_tracker"})
 
+	runDirs = append(runDirs, common.DirectiveRunCommand{Command: "%exit_on_failure"})
+
 	for _, cmd := range r {
 		cmd = strings.TrimSpace(cmd)
 		if cmd == "" {
