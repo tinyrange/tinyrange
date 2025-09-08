@@ -59,6 +59,14 @@ func loadConfigFromReader(r io.ReaderAt) error {
 			return err
 		}
 
+		if currentConfig.WriteTemplate {
+			config.SetWriteTemplatePath(true)
+		}
+
+		if currentConfig.WriteTemplateHash {
+			config.SetWriteTemplateHash(true)
+		}
+
 		loginConfigToRun = config
 
 		return nil
@@ -150,6 +158,9 @@ func runLogin(args []string) error {
 				}
 
 				currentConfig.SetLocalConfig()
+				if v2, ok := loginConfigToRun.(*login2.Config); ok {
+					v2.SetLocalConfig()
+				}
 			}
 
 			configDir := path.Native.Dir(loginLoadConfig)
@@ -161,6 +172,9 @@ func runLogin(args []string) error {
 				configDir = path.Native.Join(wd, configDir)
 			}
 			currentConfig.SetBasePath(configDir)
+			if v2, ok := loginConfigToRun.(*login2.Config); ok {
+				v2.SetBasePath(configDir)
+			}
 
 			if len(addedCommands) > 0 {
 				if len(currentConfig.Commands) > 0 {
@@ -185,6 +199,10 @@ func runLogin(args []string) error {
 				return err
 			}
 			currentConfig.SetBasePath(wd)
+			if v2, ok := loginConfigToRun.(*login2.Config); ok {
+				v2.SetLocalConfig()
+				v2.SetBasePath(wd)
+			}
 		}
 
 		return loginConfigToRun.Run(db)

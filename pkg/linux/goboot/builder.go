@@ -674,9 +674,15 @@ func builderRunWithConfig(cfg config.BuilderConfig, log log.Handler) error {
 	}
 
 	// Run commands.
+	enabledChangeTracker := false
 	for i, cmd := range cfg.Commands {
-		// Check if this is the last command.
-		if i == len(cfg.Commands)-1 {
+		if cmd == "%change_tracker" {
+			if err := builder.writeChangeTracker("/init.changed"); err != nil {
+				return err
+			}
+			enabledChangeTracker = true
+		} else if i == len(cfg.Commands)-1 && !enabledChangeTracker {
+			// Check if this is the last command and enable the change tracker if not already enabled.
 			if cfg.OutputFilename == "/init/changed.archive" {
 				// take a snapshot of the filesystem and store it locally.
 

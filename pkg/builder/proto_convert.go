@@ -103,7 +103,13 @@ func directiveToProto(db *hash.DefinitionDatabase, d common.Directive) (*pb.Dire
 			if err != nil {
 				return nil, err
 			}
-			return &pb.Directive{Directive: &pb.Directive_Archive{Archive: &pb.DirectiveArchive{Definition: &pb.BuildDefinitionRef{Hash: h.String()}}}}, nil
+			return &pb.Directive{
+				Directive: &pb.Directive_Reference{
+					Reference: &pb.DirectiveReference{
+						Definition: &pb.BuildDefinitionRef{Hash: h.String()},
+					},
+				},
+			}, nil
 		}
 		return nil, fmt.Errorf("directive to proto not implemented: %T", d)
 	}
@@ -490,6 +496,20 @@ func fromProtoDirective(db *hash.DefinitionDatabase, d *pb.Directive) (common.Di
 	case *pb.Directive_AddVolume:
 		a := v.AddVolume
 		return common.DirectiveAddVolume{VolumeName: a.GetVolumeName(), GuestPath: a.GetGuestPath(), MinimumSizeMB: a.GetMinimumSizeMb(), Persist: a.GetPersist()}, nil
+	case *pb.Directive_Reference:
+		if v.Reference.GetDefinition() == nil {
+			return nil, fmt.Errorf("reference directive missing definition")
+		}
+		d2, err := db.GetDefinitionByHash(hash.Hash(v.Reference.GetDefinition().GetHash()))
+		if err != nil {
+			return nil, err
+		}
+		// Ensure it's a BuildDefinition
+		bd, ok := d2.(common.Directive)
+		if !ok {
+			return nil, fmt.Errorf("hash %s is not BuildDefinition", v.Reference.GetDefinition().GetHash())
+		}
+		return bd, nil
 	default:
 		return nil, fmt.Errorf("fromProtoDirective: unsupported %T", d.GetDirective())
 	}

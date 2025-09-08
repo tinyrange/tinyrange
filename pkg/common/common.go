@@ -194,6 +194,8 @@ func (o *ExecOptions) EvaluateOptions(opts string) error {
 			o.Verbose = true
 		case "exit_on_failure":
 			o.ExitOnFailure = true
+		case "change_tracker":
+			// ignored
 		default:
 			return fmt.Errorf("unknown option: %s", token)
 		}

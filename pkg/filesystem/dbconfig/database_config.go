@@ -85,11 +85,11 @@ func (cfg DefaultBuildDirectory) Validate() error {
 }
 
 type BuildDatabaseConfig struct {
-	DefaultBuildDirectory      *DefaultBuildDirectory      `json:"default_build_directory" yaml:"default_build_directory"`
-	RelativeHostBuildDirectory *RelativeHostBuildDirectory `json:"relative_host_build_directory" yaml:"relative_host_build_directory"`
-	AbsoluteHostBuildDirectory *AbsoluteHostBuildDirectory `json:"absolute_host_build_directory" yaml:"absolute_host_build_directory"`
-	Archive2BuildArtifact      *Archive2BuildArtifact      `json:"archive2_build_artifact" yaml:"archive2_build_artifact"`
-	RemoteBuildDirectory       *RemoteBuildDirectory       `json:"remote_build_directory" yaml:"remote_build_directory"`
+	DefaultBuildDirectory      *DefaultBuildDirectory      `json:"default_build_directory,omitempty" yaml:"default_build_directory,omitempty"`
+	RelativeHostBuildDirectory *RelativeHostBuildDirectory `json:"relative_host_build_directory,omitempty" yaml:"relative_host_build_directory,omitempty"`
+	AbsoluteHostBuildDirectory *AbsoluteHostBuildDirectory `json:"absolute_host_build_directory,omitempty" yaml:"absolute_host_build_directory,omitempty"`
+	Archive2BuildArtifact      *Archive2BuildArtifact      `json:"archive2_build_artifact,omitempty" yaml:"archive2_build_artifact,omitempty"`
+	RemoteBuildDirectory       *RemoteBuildDirectory       `json:"remote_build_directory,omitempty" yaml:"remote_build_directory,omitempty"`
 }
 
 func (cfg BuildDatabaseConfig) Validate() error {

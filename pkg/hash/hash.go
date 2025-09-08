@@ -116,11 +116,6 @@ type definitionPointer struct {
 	Hash     Hash
 }
 
-type serializedDefinition struct {
-	TypeName string
-	Params   map[string]json.RawMessage
-}
-
 type CacheMissFunction func(hash Hash) (io.ReadCloser, error)
 
 type DefinitionDatabase struct {
@@ -625,15 +620,6 @@ func (db *DefinitionDatabase) unmarshalObject(params any, input map[string]json.
 	}
 
 	return val.Interface(), nil
-}
-
-func (db *DefinitionDatabase) unmarshalParameters(params SerializableValue, input map[string]json.RawMessage) (SerializableValue, error) {
-	ret, err := db.unmarshalObject(params, input)
-	if err != nil {
-		return nil, err
-	}
-
-	return ret.(SerializableValue), nil
 }
 
 func (db *DefinitionDatabase) UnmarshalDefinition(input io.Reader) (Definition, error) {

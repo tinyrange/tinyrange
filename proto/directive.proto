@@ -117,6 +117,11 @@ message DirectiveAddVolume {
   bool persist = 4;           // Whether the volume persists
 }
 
+// Reference another build definition.
+message DirectiveReference {
+  BuildDefinitionRef definition = 1; // Build definition reference
+}
+
 // ----------------------
 // Directive Union
 // ----------------------
@@ -141,5 +146,6 @@ message Directive {
     DirectiveKernel kernel = 16;
     DirectiveAddInitScript add_init_script = 17;
     DirectiveAddVolume add_volume = 18;
+    DirectiveReference reference = 19;
   }
 }
