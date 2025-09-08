@@ -199,7 +199,7 @@ func main() {
 	}
 
 	slog.Info("building tinyrange", "os", goSettings.os, "arch", goSettings.arch)
-	outFilename, err := ctx.buildGo("build/cmd/tinyrange", "tinyrange", ctx.defaultGoSettings())
+	outFilename, err := ctx.buildGo("cmd/tinyrange", "tinyrange", ctx.defaultGoSettings())
 	if err != nil {
 		slog.Error("build failed", "error", err)
 		os.Exit(1)
