@@ -8,8 +8,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/tinyrange/minigit/internal/git"
-	"github.com/tinyrange/minigit/internal/storage"
+	"github.com/tinyrange/tinyrange/vibe_party/minigit/internal/git"
+	"github.com/tinyrange/tinyrange/vibe_party/minigit/internal/storage"
 )
 
 // HTTP server implementing minimal Git smart protocol (v2 focus) without deps.
@@ -32,11 +32,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-    repo := parts[0]
-    // Accept common ".git" suffix in the first path segment
-    if strings.HasSuffix(repo, ".git") {
-        repo = strings.TrimSuffix(repo, ".git")
-    }
+	repo := parts[0]
+	// Accept common ".git" suffix in the first path segment
+	if strings.HasSuffix(repo, ".git") {
+		repo = strings.TrimSuffix(repo, ".git")
+	}
 	action := strings.Join(parts[1:], "/")
 	_, ok := s.reg.Get(repo)
 	if !ok {
