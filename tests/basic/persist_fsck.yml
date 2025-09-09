@@ -1,0 +1,6 @@
+version: 1
+builder: alpine@3.22
+commands:
+  - echo hello > /test/hello.txt
+volumes:
+  - trTestFsck,128,/test,persist

@@ -1739,6 +1739,23 @@ type volumeInfo struct {
 	Persist       bool
 }
 
+func buildMountScript(volumes []volumeInfo, resize bool) string {
+	mountNames := []string{"vdb", "vdc", "vdd", "vde", "vdf", "vdg"}
+	script := "def main():\n"
+	for i, volume := range volumes {
+		dev := fmt.Sprintf("/dev/%s", mountNames[i])
+		if volume.Persist {
+			script += fmt.Sprintf("  if \"run\" in dir() and path_exists(\"/sbin/fsck.ext4\"):\n")
+			script += fmt.Sprintf("    run(\"/sbin/fsck.ext4\", \"-p\", \"%s\")\n", dev)
+		}
+		script += fmt.Sprintf("  mount(\"ext4\", \"%s\", \"%s\", ensure_path = True)\n", dev, volume.GuestPath)
+		if resize {
+			script += fmt.Sprintf("  linux_ext4_try_resize(\"%s\")\n", volume.GuestPath)
+		}
+	}
+	return script
+}
+
 func (d *driver) startFileShare(mountedHostDirectories []mountInfo) error {
 	if feature.HasFeature(feature.Feature9P) {
 		for _, dir := range mountedHostDirectories {
@@ -2050,18 +2067,7 @@ func (d *driver) exec(create func(vmm Driver) (VirtualMachineMonitor, error)) er
 				return fmt.Errorf("failed to ensure path: %w", err)
 			}
 
-			mountNames := []string{"vdb", "vdc", "vdd", "vde", "vdf", "vdg"}
-
-			mountScript := "def main():\n"
-			for i, volume := range volumes {
-				mountScript += fmt.Sprintf(
-					"  mount(\"ext4\", \"/dev/%s\", \"%s\", ensure_path = True)\n",
-					mountNames[i], volume.GuestPath,
-				)
-				if feature.HasFeature(feature.FeatureExt4Resize) {
-					mountScript += fmt.Sprintf("  linux_ext4_try_resize(\"%s\")\n", volume.GuestPath)
-				}
-			}
+			mountScript := buildMountScript(volumes, feature.HasFeature(feature.FeatureExt4Resize))
 
 			if err := rootFilesystem.WriteFile("/init.d/mount.star", []byte(mountScript)); err != nil {
 				return fmt.Errorf("failed to write file: %w", err)
