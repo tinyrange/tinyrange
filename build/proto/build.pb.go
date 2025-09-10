@@ -420,8 +420,10 @@ type BuilderMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The canonical type name of the builder, e.g. "tinyrange/v1/fetch_http".
 	TypeName string `protobuf:"bytes,1,opt,name=type_name,json=typeName,proto3" json:"type_name,omitempty"`
+	// The top-level protobuf type that the builder accepts as its definition.
+	TopLevelType string `protobuf:"bytes,2,opt,name=top_level_type,json=topLevelType,proto3" json:"top_level_type,omitempty"`
 	// The protobuf type of the builder's definition message.
-	Definition    *descriptorpb.FileDescriptorProto `protobuf:"bytes,2,opt,name=definition,proto3" json:"definition,omitempty"`
+	Definition    *descriptorpb.FileDescriptorProto `protobuf:"bytes,3,opt,name=definition,proto3" json:"definition,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -459,6 +461,13 @@ func (*BuilderMetadata) Descriptor() ([]byte, []int) {
 func (x *BuilderMetadata) GetTypeName() string {
 	if x != nil {
 		return x.TypeName
+	}
+	return ""
+}
+
+func (x *BuilderMetadata) GetTopLevelType() string {
+	if x != nil {
+		return x.TopLevelType
 	}
 	return ""
 }
@@ -544,11 +553,12 @@ const file_build_proto_rawDesc = "" +
 	"\aclosure\x18\x01 \x01(\v2\x13.proto.BuildClosureR\aclosure\"H\n" +
 	"\vBuildStatus\x12/\n" +
 	"\asuccess\x18\x01 \x01(\v2\x13.proto.BuildReceiptH\x00R\asuccessB\b\n" +
-	"\x06status\"t\n" +
+	"\x06status\"\x9a\x01\n" +
 	"\x0fBuilderMetadata\x12\x1b\n" +
-	"\ttype_name\x18\x01 \x01(\tR\btypeName\x12D\n" +
+	"\ttype_name\x18\x01 \x01(\tR\btypeName\x12$\n" +
+	"\x0etop_level_type\x18\x02 \x01(\tR\ftopLevelType\x12D\n" +
 	"\n" +
-	"definition\x18\x02 \x01(\v2$.google.protobuf.FileDescriptorProtoR\n" +
+	"definition\x18\x03 \x01(\v2$.google.protobuf.FileDescriptorProtoR\n" +
 	"definition\"A\n" +
 	"\vBuilderList\x122\n" +
 	"\bbuilders\x18\x01 \x03(\v2\x16.proto.BuilderMetadataR\bbuildersb\x06proto3"

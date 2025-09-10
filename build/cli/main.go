@@ -19,6 +19,8 @@ func Main() error {
 
 	addr := fs.String("addr", "127.0.0.1:8080", "Address to listen on")
 	static := fs.String("static", "", "Path to static web files")
+	apiOnly := fs.Bool("api-only", false, "Don't serve any files")
+	insecureCors := fs.Bool("insecure-cors", false, "Add a middleware to set insecure CORS headers")
 
 	fs.Parse(os.Args[1:])
 
@@ -28,20 +30,42 @@ func Main() error {
 	if err != nil {
 		return err
 	}
-
-	handler := buildhttp.New(db, "/api")
-
-	mux := http.NewServeMux()
-
-	if *static != "" {
-		slog.Info("serving static files", "path", *static)
-		fs := http.FileServer(http.Dir(*static))
-		mux.Handle("/", fs)
+	var mux http.Handler
+	if *apiOnly {
+		mux = buildhttp.New(db, "")
 	} else {
-		slog.Info("no static files configured")
+		handler := buildhttp.New(db, "/api")
+
+		serveMux := http.NewServeMux()
+
+		if *static != "" {
+			slog.Info("serving static files", "path", *static)
+			fs := http.FileServer(http.Dir(*static))
+			serveMux.Handle("/", fs)
+		} else {
+			slog.Info("no static files configured")
+		}
+
+		serveMux.Handle("/api/", handler)
+
+		mux = serveMux
 	}
 
-	mux.Handle("/api/", handler)
+	if *insecureCors {
+		oldMux := mux
+		mux = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			oldMux.ServeHTTP(w, r)
+		})
+	}
 
 	listen, err := net.Listen("tcp", *addr)
 	if err != nil {

@@ -52,7 +52,7 @@ func TestServer_Build(t *testing.T) {
 	makeServer := func() (httpstd.Handler, *fakeDB) {
 		receipt := &proto.BuildReceipt{Outputs: map[string]*proto.Hash{"out.txt": {Value: "abc123"}}}
 		fdb := &fakeDB{art: &fakeArtifact{receipt: receipt}}
-		return New(fdb), fdb
+		return New(fdb, ""), fdb
 	}
 
 	t.Run("default JSON", func(t *testing.T) {

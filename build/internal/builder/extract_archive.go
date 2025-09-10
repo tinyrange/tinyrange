@@ -31,9 +31,9 @@ func (e *extractArchiveBuilder) Build(ctx common.Context) error {
 	var reader io.ReadCloser
 
 	switch params.CompressionType {
-	case proto.CompressionType_NONE:
+	case proto.CompressionType_COMPRESSION_TYPE_NONE:
 		reader = in
-	case proto.CompressionType_GZIP:
+	case proto.CompressionType_COMPRESSION_TYPE_GZIP:
 		var err error
 		reader, err = gzip.NewReader(in)
 		if err != nil {
@@ -51,7 +51,7 @@ func (e *extractArchiveBuilder) Build(ctx common.Context) error {
 	defer ark.Close()
 
 	switch params.ArchiveType {
-	case proto.ArchiveType_TAR:
+	case proto.ArchiveType_ARCHIVE_TYPE_TAR:
 		r := tar.NewReader(reader)
 
 		for {

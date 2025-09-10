@@ -152,6 +152,8 @@ func New(db common.Database, base string) http.Handler {
 
 			meta.TypeName = b.TypeName
 
+			meta.TopLevelType = string(b.Definition.ProtoReflect().Descriptor().Name())
+
 			meta.Definition = getDescriptorProto(b.Definition)
 
 			ret.Builders = append(ret.Builders, &meta)

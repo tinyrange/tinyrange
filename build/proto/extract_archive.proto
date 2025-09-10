@@ -6,13 +6,13 @@ import "source.proto";
 
 enum ArchiveType {
   ARCHIVE_TYPE_UNSPECIFIED = 0;
-  TAR = 1;
+  ARCHIVE_TYPE_TAR = 1;
 }
 
 enum CompressionType {
   COMPRESSION_TYPE_UNSPECIFIED = 0;
-  NONE = 1;
-  GZIP = 2;
+  COMPRESSION_TYPE_NONE = 1;
+  COMPRESSION_TYPE_GZIP = 2;
 }
 
 message ExtractArchiveDefinition {

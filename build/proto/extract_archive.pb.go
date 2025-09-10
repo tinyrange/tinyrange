@@ -25,18 +25,18 @@ type ArchiveType int32
 
 const (
 	ArchiveType_ARCHIVE_TYPE_UNSPECIFIED ArchiveType = 0
-	ArchiveType_TAR                      ArchiveType = 1
+	ArchiveType_ARCHIVE_TYPE_TAR         ArchiveType = 1
 )
 
 // Enum value maps for ArchiveType.
 var (
 	ArchiveType_name = map[int32]string{
 		0: "ARCHIVE_TYPE_UNSPECIFIED",
-		1: "TAR",
+		1: "ARCHIVE_TYPE_TAR",
 	}
 	ArchiveType_value = map[string]int32{
 		"ARCHIVE_TYPE_UNSPECIFIED": 0,
-		"TAR":                      1,
+		"ARCHIVE_TYPE_TAR":         1,
 	}
 )
 
@@ -71,21 +71,21 @@ type CompressionType int32
 
 const (
 	CompressionType_COMPRESSION_TYPE_UNSPECIFIED CompressionType = 0
-	CompressionType_NONE                         CompressionType = 1
-	CompressionType_GZIP                         CompressionType = 2
+	CompressionType_COMPRESSION_TYPE_NONE        CompressionType = 1
+	CompressionType_COMPRESSION_TYPE_GZIP        CompressionType = 2
 )
 
 // Enum value maps for CompressionType.
 var (
 	CompressionType_name = map[int32]string{
 		0: "COMPRESSION_TYPE_UNSPECIFIED",
-		1: "NONE",
-		2: "GZIP",
+		1: "COMPRESSION_TYPE_NONE",
+		2: "COMPRESSION_TYPE_GZIP",
 	}
 	CompressionType_value = map[string]int32{
 		"COMPRESSION_TYPE_UNSPECIFIED": 0,
-		"NONE":                         1,
-		"GZIP":                         2,
+		"COMPRESSION_TYPE_NONE":        1,
+		"COMPRESSION_TYPE_GZIP":        2,
 	}
 )
 
@@ -184,14 +184,14 @@ const file_extract_archive_proto_rawDesc = "" +
 	"\x18ExtractArchiveDefinition\x12)\n" +
 	"\x06source\x18\x01 \x01(\v2\x11.proto.FileSourceR\x06source\x125\n" +
 	"\farchive_type\x18\x02 \x01(\x0e2\x12.proto.ArchiveTypeR\varchiveType\x12A\n" +
-	"\x10compression_type\x18\x03 \x01(\x0e2\x16.proto.CompressionTypeR\x0fcompressionType*4\n" +
+	"\x10compression_type\x18\x03 \x01(\x0e2\x16.proto.CompressionTypeR\x0fcompressionType*A\n" +
 	"\vArchiveType\x12\x1c\n" +
-	"\x18ARCHIVE_TYPE_UNSPECIFIED\x10\x00\x12\a\n" +
-	"\x03TAR\x10\x01*G\n" +
+	"\x18ARCHIVE_TYPE_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10ARCHIVE_TYPE_TAR\x10\x01*i\n" +
 	"\x0fCompressionType\x12 \n" +
-	"\x1cCOMPRESSION_TYPE_UNSPECIFIED\x10\x00\x12\b\n" +
-	"\x04NONE\x10\x01\x12\b\n" +
-	"\x04GZIP\x10\x02b\x06proto3"
+	"\x1cCOMPRESSION_TYPE_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15COMPRESSION_TYPE_NONE\x10\x01\x12\x19\n" +
+	"\x15COMPRESSION_TYPE_GZIP\x10\x02b\x06proto3"
 
 var (
 	file_extract_archive_proto_rawDescOnce sync.Once
