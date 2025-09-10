@@ -10,9 +10,18 @@ import (
 	"github.com/tinyrange/tinyrange/build/proto"
 	"google.golang.org/protobuf/encoding/protojson"
 	gproto "google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protodesc"
+	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 var protoOpts = gproto.UnmarshalOptions{}
+
+func getDescriptorProto(m gproto.Message) *descriptorpb.FileDescriptorProto {
+	md := m.ProtoReflect().Descriptor()
+
+	// Convert the FileDescriptor to a FileDescriptorProto
+	return protodesc.ToFileDescriptorProto(md.ParentFile())
+}
 
 func unmarshalWithContentType(body io.ReadCloser, contentType string, msg gproto.Message) error {
 	switch contentType {
@@ -47,29 +56,33 @@ func unmarshalWithContentType(body io.ReadCloser, contentType string, msg gproto
 	}
 }
 
-func marshalWithAcceptHeader(msg gproto.Message, accept string) ([]byte, error) {
+func marshalWithAcceptHeader(msg gproto.Message, accept string) ([]byte, string, error) {
 	switch accept {
 	case "application/protobuf":
 		data, err := gproto.Marshal(msg)
 		if err != nil {
-			return nil, fmt.Errorf("marshal proto: %v", err)
+			return nil, "", fmt.Errorf("marshal proto: %v", err)
 		}
-		return data, nil
-	case "application/json":
+		return data, "application/protobuf", nil
+	case "application/json", "*/*":
 		data, err := protojson.Marshal(msg)
 		if err != nil {
-			return nil, fmt.Errorf("marshal json: %v", err)
+			return nil, "", fmt.Errorf("marshal json: %v", err)
 		}
-		return data, nil
+		return data, "application/json", nil
 	default:
-		return nil, fmt.Errorf("unsupported Accept header: %s", accept)
+		return nil, "", fmt.Errorf("unsupported Accept header: %s", accept)
 	}
 }
 
-func New(db common.Database) http.Handler {
+func New(db common.Database, base string) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /build", func(w http.ResponseWriter, r *http.Request) {
+	route := func(s string) string {
+		return fmt.Sprintf(s, base)
+	}
+
+	mux.HandleFunc(route("POST %s/build"), func(w http.ResponseWriter, r *http.Request) {
 		// check the content type to determine how to parse the body, options are JSON or protobuf
 		// default to JSON
 		contentType := r.Header.Get("Content-Type")
@@ -104,14 +117,54 @@ func New(db common.Database) http.Handler {
 			accept = "application/json"
 		}
 
-		respBytes, err := marshalWithAcceptHeader(receipt, accept)
+		respBytes, contentType, err := marshalWithAcceptHeader(receipt, accept)
 		if err != nil {
 			slog.Error("marshal response", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		w.Header().Set("Content-Type", accept)
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write(respBytes); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	})
+
+	mux.HandleFunc(route("GET %s/builders"), func(w http.ResponseWriter, r *http.Request) {
+		builders, err := db.GetBuilders()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		accept := r.Header.Get("Accept")
+		if accept == "" {
+			accept = "application/json"
+		}
+
+		var ret proto.BuilderList
+		ret.Reset()
+		for _, b := range builders {
+			var meta proto.BuilderMetadata
+			meta.Reset()
+
+			meta.TypeName = b.TypeName
+
+			meta.Definition = getDescriptorProto(b.Definition)
+
+			ret.Builders = append(ret.Builders, &meta)
+		}
+
+		respBytes, contentType, err := marshalWithAcceptHeader(&ret, accept)
+		if err != nil {
+			slog.Error("marshal response", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", contentType)
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write(respBytes); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

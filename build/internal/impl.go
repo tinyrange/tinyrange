@@ -156,6 +156,15 @@ type databaseImpl struct {
 	cache   common.BuildCache
 }
 
+// GetBuilders implements common.Database.
+func (d *databaseImpl) GetBuilders() ([]common.BuilderMetadata, error) {
+	builders := []common.BuilderMetadata{}
+	for _, b := range registry.GetAll() {
+		builders = append(builders, b)
+	}
+	return builders, nil
+}
+
 // Factory implements common.Database.
 func (d *databaseImpl) Factory() common.Factory {
 	return d.factory
@@ -175,8 +184,8 @@ func (d *databaseImpl) lockAndBuild(closure *proto.BuildClosure, opt ...common.O
 	}
 
 	// resolve the builder
-	builder := registry.Get(def.TypeName)
-	if builder == nil {
+	builder, ok := registry.Get(def.TypeName)
+	if !ok {
 		return nil, fmt.Errorf("unknown builder: %s", def.TypeName)
 	}
 
@@ -197,7 +206,7 @@ func (d *databaseImpl) lockAndBuild(closure *proto.BuildClosure, opt ...common.O
 		ctx.depends[string(dep.Hash().Value)] = dep
 	}
 
-	if err := builder.Build(ctx); err != nil {
+	if err := builder.Builder.Build(ctx); err != nil {
 		return nil, err
 	}
 

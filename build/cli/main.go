@@ -29,11 +29,9 @@ func Main() error {
 		return err
 	}
 
-	handler := buildhttp.New(db)
+	handler := buildhttp.New(db, "/api")
 
 	mux := http.NewServeMux()
-
-	mux.Handle("/api/", http.StripPrefix("/api/", handler))
 
 	if *static != "" {
 		slog.Info("serving static files", "path", *static)
@@ -42,6 +40,8 @@ func Main() error {
 	} else {
 		slog.Info("no static files configured")
 	}
+
+	mux.Handle("/api/", handler)
 
 	listen, err := net.Listen("tcp", *addr)
 	if err != nil {

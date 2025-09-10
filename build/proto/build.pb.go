@@ -9,6 +9,7 @@ package proto
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	descriptorpb "google.golang.org/protobuf/types/descriptorpb"
 	anypb "google.golang.org/protobuf/types/known/anypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
@@ -415,11 +416,109 @@ type BuildStatus_Success struct {
 
 func (*BuildStatus_Success) isBuildStatus_Status() {}
 
+type BuilderMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The canonical type name of the builder, e.g. "tinyrange/v1/fetch_http".
+	TypeName string `protobuf:"bytes,1,opt,name=type_name,json=typeName,proto3" json:"type_name,omitempty"`
+	// The protobuf type of the builder's definition message.
+	Definition    *descriptorpb.FileDescriptorProto `protobuf:"bytes,2,opt,name=definition,proto3" json:"definition,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BuilderMetadata) Reset() {
+	*x = BuilderMetadata{}
+	mi := &file_build_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BuilderMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BuilderMetadata) ProtoMessage() {}
+
+func (x *BuilderMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_build_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BuilderMetadata.ProtoReflect.Descriptor instead.
+func (*BuilderMetadata) Descriptor() ([]byte, []int) {
+	return file_build_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *BuilderMetadata) GetTypeName() string {
+	if x != nil {
+		return x.TypeName
+	}
+	return ""
+}
+
+func (x *BuilderMetadata) GetDefinition() *descriptorpb.FileDescriptorProto {
+	if x != nil {
+		return x.Definition
+	}
+	return nil
+}
+
+type BuilderList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Builders      []*BuilderMetadata     `protobuf:"bytes,1,rep,name=builders,proto3" json:"builders,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BuilderList) Reset() {
+	*x = BuilderList{}
+	mi := &file_build_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BuilderList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BuilderList) ProtoMessage() {}
+
+func (x *BuilderList) ProtoReflect() protoreflect.Message {
+	mi := &file_build_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BuilderList.ProtoReflect.Descriptor instead.
+func (*BuilderList) Descriptor() ([]byte, []int) {
+	return file_build_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *BuilderList) GetBuilders() []*BuilderMetadata {
+	if x != nil {
+		return x.Builders
+	}
+	return nil
+}
+
 var File_build_proto protoreflect.FileDescriptor
 
 const file_build_proto_rawDesc = "" +
 	"\n" +
-	"\vbuild.proto\x12\x05proto\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x1c\n" +
+	"\vbuild.proto\x12\x05proto\x1a\x19google/protobuf/any.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a google/protobuf/descriptor.proto\"\x1c\n" +
 	"\x04Hash\x12\x14\n" +
 	"\x05value\x18\x01 \x01(\tR\x05value\"Y\n" +
 	"\n" +
@@ -445,7 +544,14 @@ const file_build_proto_rawDesc = "" +
 	"\aclosure\x18\x01 \x01(\v2\x13.proto.BuildClosureR\aclosure\"H\n" +
 	"\vBuildStatus\x12/\n" +
 	"\asuccess\x18\x01 \x01(\v2\x13.proto.BuildReceiptH\x00R\asuccessB\b\n" +
-	"\x06statusb\x06proto3"
+	"\x06status\"t\n" +
+	"\x0fBuilderMetadata\x12\x1b\n" +
+	"\ttype_name\x18\x01 \x01(\tR\btypeName\x12D\n" +
+	"\n" +
+	"definition\x18\x02 \x01(\v2$.google.protobuf.FileDescriptorProtoR\n" +
+	"definition\"A\n" +
+	"\vBuilderList\x122\n" +
+	"\bbuilders\x18\x01 \x03(\v2\x16.proto.BuilderMetadataR\bbuildersb\x06proto3"
 
 var (
 	file_build_proto_rawDescOnce sync.Once
@@ -459,36 +565,41 @@ func file_build_proto_rawDescGZIP() []byte {
 	return file_build_proto_rawDescData
 }
 
-var file_build_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_build_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_build_proto_goTypes = []any{
-	(*Hash)(nil),                  // 0: proto.Hash
-	(*Definition)(nil),            // 1: proto.Definition
-	(*DefinitionReference)(nil),   // 2: proto.DefinitionReference
-	(*BuildClosure)(nil),          // 3: proto.BuildClosure
-	(*BuildReceipt)(nil),          // 4: proto.BuildReceipt
-	(*BuildRequest)(nil),          // 5: proto.BuildRequest
-	(*BuildStatus)(nil),           // 6: proto.BuildStatus
-	nil,                           // 7: proto.BuildReceipt.OutputsEntry
-	(*anypb.Any)(nil),             // 8: google.protobuf.Any
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(*Hash)(nil),                             // 0: proto.Hash
+	(*Definition)(nil),                       // 1: proto.Definition
+	(*DefinitionReference)(nil),              // 2: proto.DefinitionReference
+	(*BuildClosure)(nil),                     // 3: proto.BuildClosure
+	(*BuildReceipt)(nil),                     // 4: proto.BuildReceipt
+	(*BuildRequest)(nil),                     // 5: proto.BuildRequest
+	(*BuildStatus)(nil),                      // 6: proto.BuildStatus
+	(*BuilderMetadata)(nil),                  // 7: proto.BuilderMetadata
+	(*BuilderList)(nil),                      // 8: proto.BuilderList
+	nil,                                      // 9: proto.BuildReceipt.OutputsEntry
+	(*anypb.Any)(nil),                        // 10: google.protobuf.Any
+	(*timestamppb.Timestamp)(nil),            // 11: google.protobuf.Timestamp
+	(*descriptorpb.FileDescriptorProto)(nil), // 12: google.protobuf.FileDescriptorProto
 }
 var file_build_proto_depIdxs = []int32{
-	8,  // 0: proto.Definition.payload:type_name -> google.protobuf.Any
+	10, // 0: proto.Definition.payload:type_name -> google.protobuf.Any
 	1,  // 1: proto.BuildClosure.root:type_name -> proto.Definition
 	1,  // 2: proto.BuildClosure.dependencies:type_name -> proto.Definition
 	0,  // 3: proto.BuildReceipt.hash:type_name -> proto.Hash
 	0,  // 4: proto.BuildReceipt.dependencies:type_name -> proto.Hash
-	9,  // 5: proto.BuildReceipt.start_time:type_name -> google.protobuf.Timestamp
-	9,  // 6: proto.BuildReceipt.end_time:type_name -> google.protobuf.Timestamp
-	7,  // 7: proto.BuildReceipt.outputs:type_name -> proto.BuildReceipt.OutputsEntry
+	11, // 5: proto.BuildReceipt.start_time:type_name -> google.protobuf.Timestamp
+	11, // 6: proto.BuildReceipt.end_time:type_name -> google.protobuf.Timestamp
+	9,  // 7: proto.BuildReceipt.outputs:type_name -> proto.BuildReceipt.OutputsEntry
 	3,  // 8: proto.BuildRequest.closure:type_name -> proto.BuildClosure
 	4,  // 9: proto.BuildStatus.success:type_name -> proto.BuildReceipt
-	0,  // 10: proto.BuildReceipt.OutputsEntry.value:type_name -> proto.Hash
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	12, // 10: proto.BuilderMetadata.definition:type_name -> google.protobuf.FileDescriptorProto
+	7,  // 11: proto.BuilderList.builders:type_name -> proto.BuilderMetadata
+	0,  // 12: proto.BuildReceipt.OutputsEntry.value:type_name -> proto.Hash
+	13, // [13:13] is the sub-list for method output_type
+	13, // [13:13] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_build_proto_init() }
@@ -505,7 +616,7 @@ func file_build_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_build_proto_rawDesc), len(file_build_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

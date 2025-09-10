@@ -29,6 +29,11 @@ type fakeDB struct {
 	err error
 }
 
+// GetBuilders implements common.Database.
+func (f *fakeDB) GetBuilders() ([]common.BuilderMetadata, error) {
+	panic("unimplemented")
+}
+
 func (f *fakeDB) Factory() common.Factory { return nil }
 func (f *fakeDB) Build(def common.BuildClosure, opt ...common.Option) (common.Artifact, error) {
 	// common.BuildClosure is a type alias of *proto.BuildClosure

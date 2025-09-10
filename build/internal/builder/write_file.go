@@ -29,5 +29,9 @@ func (w *writeFileBuilder) Build(ctx common.Context) error {
 }
 
 func init() {
-	registry.Register(common.TYPE_NAME_WRITE_FILE, &writeFileBuilder{})
+	registry.Register(
+		common.TYPE_NAME_WRITE_FILE,
+		&proto.WriteFileDefinition{},
+		&writeFileBuilder{},
+	)
 }

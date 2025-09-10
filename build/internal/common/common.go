@@ -4,7 +4,7 @@ import (
 	"io"
 	"net/http"
 
-	protob "google.golang.org/protobuf/proto"
+	gproto "google.golang.org/protobuf/proto"
 
 	"github.com/tinyrange/tinyrange/archive"
 	"github.com/tinyrange/tinyrange/build/proto"
@@ -43,7 +43,7 @@ type ArchiveWriter interface {
 
 type Context interface {
 	Hash() *proto.Hash
-	Decode(msg protob.Message) error
+	Decode(msg gproto.Message) error
 
 	HttpClient() *http.Client
 
@@ -84,6 +84,12 @@ type Builder interface {
 	Build(ctx Context) error
 }
 
+type BuilderMetadata struct {
+	Builder    Builder
+	TypeName   string
+	Definition gproto.Message
+}
+
 type BuildCacheDirectory interface {
 	ReadDefinition() ([]byte, error)
 	ReadReceipt() ([]byte, error)
@@ -109,6 +115,8 @@ type BuildCache interface {
 type Database interface {
 	Factory() Factory
 	Build(def BuildClosure, opt ...Option) (Artifact, error)
+
+	GetBuilders() ([]BuilderMetadata, error)
 }
 
 type Factory interface {

@@ -61,5 +61,8 @@ func (f *fetchHttpBuilder) Build(ctx common.Context) error {
 }
 
 func init() {
-	registry.Register(common.TYPE_NAME_FETCH_HTTP, &fetchHttpBuilder{})
+	registry.Register(
+		common.TYPE_NAME_FETCH_HTTP,
+		&proto.FetchHttpDefinition{},
+		&fetchHttpBuilder{})
 }

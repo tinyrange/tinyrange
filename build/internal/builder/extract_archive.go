@@ -109,5 +109,9 @@ func (e *extractArchiveBuilder) Build(ctx common.Context) error {
 }
 
 func init() {
-	registry.Register(common.TYPE_NAME_EXTRACT_ARCHIVE, &extractArchiveBuilder{})
+	registry.Register(
+		common.TYPE_NAME_EXTRACT_ARCHIVE,
+		&proto.ExtractArchiveDefinition{},
+		&extractArchiveBuilder{},
+	)
 }
