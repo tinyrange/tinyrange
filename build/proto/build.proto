@@ -29,19 +29,34 @@ message BuildClosure {
   Definition root = 1;
 
   // All direct dependencies of the root definition.
-  repeated BuildClosure dependencies = 2;
+  repeated Definition dependencies = 2;
 }
 
 message BuildReceipt {
+  // The hash of the build itself.
+  Hash hash = 1;
+
   // Direct dependencies of the build, identified by their hashes.
-  repeated Hash dependencies = 1;
+  repeated Hash dependencies = 2;
 
   // Start time of the build.
-  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp start_time = 3;
 
   // End time of the build.
-  google.protobuf.Timestamp end_time = 3;
+  google.protobuf.Timestamp end_time = 4;
 
   // Files produced by the build, secured with their hashes.
-  map<string, Hash> outputs = 4;
+  map<string, Hash> outputs = 5;
+}
+
+message BuildRequest {
+  // The build closure to build.
+  BuildClosure closure = 1;
+}
+
+message BuildStatus {
+  oneof status {
+    // The build has completed successfully.
+    BuildReceipt success = 1;
+  }
 }

@@ -7,6 +7,32 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
+type definitionWalker struct {
+	defs map[string]*proto.Definition
+}
+
+func (w *definitionWalker) Definitions() map[string]*proto.Definition {
+	return w.defs
+}
+
+func (w *definitionWalker) walkDefinition(def *proto.Definition) bool {
+	hash := def.Hash()
+	if _, ok := w.defs[string(hash.Value)]; ok {
+		return false
+	}
+	w.defs[string(hash.Value)] = def
+	return true
+}
+
+func (w *definitionWalker) walkClosure(def *proto.BuildClosure) {
+	if !w.walkDefinition(def.Root) {
+		return
+	}
+	for _, dep := range def.Dependencies {
+		w.walkDefinition(dep)
+	}
+}
+
 type factoryImpl struct {
 }
 
@@ -20,7 +46,13 @@ func (f *factoryImpl) pack(typeName string, body protob.Message, depends ...comm
 	def.Payload.MarshalFrom(body)
 
 	closure.Root = def
-	closure.Dependencies = depends
+	w := &definitionWalker{
+		defs: map[string]*proto.Definition{},
+	}
+	w.walkClosure(closure)
+	for _, def := range w.Definitions() {
+		closure.Dependencies = append(closure.Dependencies, def)
+	}
 
 	return closure
 }

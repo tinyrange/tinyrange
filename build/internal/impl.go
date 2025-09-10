@@ -14,7 +14,7 @@ import (
 	"github.com/tinyrange/tinyrange/build/internal/common"
 	"github.com/tinyrange/tinyrange/build/internal/registry"
 	"github.com/tinyrange/tinyrange/build/proto"
-	protob "google.golang.org/protobuf/proto"
+	gproto "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -46,7 +46,7 @@ type contextImpl struct {
 	db      *databaseImpl
 	hash    *proto.Hash
 	msg     *proto.Definition
-	depends []*proto.BuildClosure
+	depends map[string]*proto.Definition
 	writers map[common.FileType]common.WritableFile
 }
 
@@ -97,7 +97,7 @@ func (c *contextImpl) HttpClient() *http.Client {
 }
 
 // Decode implements common.Context.
-func (c *contextImpl) Decode(msg protob.Message) error {
+func (c *contextImpl) Decode(msg gproto.Message) error {
 	return c.msg.Payload.UnmarshalTo(msg)
 }
 
@@ -110,6 +110,40 @@ var (
 
 type artifactImpl struct {
 	cacheDir common.BuildCacheDirectory
+}
+
+// Definition implements common.Artifact.
+func (a *artifactImpl) Definition() (*proto.Definition, error) {
+	def, err := a.cacheDir.ReadDefinition()
+	if err != nil {
+		return nil, err
+	}
+
+	var msg proto.Definition
+	msg.Reset()
+
+	if err := gproto.Unmarshal(def, &msg); err != nil {
+		return nil, err
+	}
+
+	return &msg, nil
+}
+
+// Receipt implements common.Artifact.
+func (a *artifactImpl) Receipt() (*proto.BuildReceipt, error) {
+	receipt, err := a.cacheDir.ReadReceipt()
+	if err != nil {
+		return nil, err
+	}
+
+	var msg proto.BuildReceipt
+	msg.Reset()
+
+	if err := gproto.Unmarshal(receipt, &msg); err != nil {
+		return nil, err
+	}
+
+	return &msg, nil
 }
 
 // Open implements common.Artifact.
@@ -155,8 +189,12 @@ func (d *databaseImpl) lockAndBuild(closure *proto.BuildClosure, opt ...common.O
 		db:      d,
 		hash:    def.Hash(),
 		msg:     def,
-		depends: closure.Dependencies,
+		depends: map[string]*proto.Definition{},
 		writers: map[common.FileType]common.WritableFile{},
+	}
+
+	for _, dep := range closure.Dependencies {
+		ctx.depends[string(dep.Hash().Value)] = dep
 	}
 
 	if err := builder.Build(ctx); err != nil {

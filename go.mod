@@ -1,6 +1,6 @@
 module github.com/tinyrange/tinyrange
 
-go 1.24.2
+go 1.25.1
 
 require (
 	github.com/schollz/progressbar/v3 v3.18.0

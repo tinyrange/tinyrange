@@ -167,6 +167,7 @@ func main() {
 	fs := flag.NewFlagSet("build", flag.ExitOnError)
 
 	run := fs.Bool("run", false, "Run the built binary after building")
+	test := fs.Bool("test", false, "Run tests after building")
 	proto := fs.Bool("proto", false, "Build protobuf files")
 
 	fs.Parse(os.Args[1:])
@@ -208,6 +209,16 @@ func main() {
 
 	if *run {
 		cmd := exec.Command(outFilename, fs.Args()...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Stdin = os.Stdin
+
+		if err := cmd.Run(); err != nil {
+			os.Exit(1)
+		}
+	} else if *test {
+		slog.Info("running tests")
+		cmd := exec.Command("go", "test", "./...")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Stdin = os.Stdin

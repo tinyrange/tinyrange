@@ -57,10 +57,27 @@ type BuildClosure = *proto.BuildClosure
 
 type Artifact interface {
 	Open(ft FileType) (File, error)
+
+	Definition() (*proto.Definition, error)
+	Receipt() (*proto.BuildReceipt, error)
 }
 
 type Option interface {
-	apply()
+	apply(opt *BuildOptions)
+}
+
+type optionFunc func(opt *BuildOptions)
+
+func (f optionFunc) apply(opt *BuildOptions) { f(opt) }
+
+type BuildOptions struct {
+	status func(*proto.BuildStatus)
+}
+
+func WithStatusCallback(f func(*proto.BuildStatus)) Option {
+	return optionFunc(func(opt *BuildOptions) {
+		opt.status = f
+	})
 }
 
 type Builder interface {
