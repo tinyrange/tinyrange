@@ -54,6 +54,25 @@
   box-shadow: 0 10px 20px rgba(0,0,0,0.15);
 }
 
+/* Node inline controls: inputs/selects */
+.defnode-input, .defnode-select {
+  border-width: 1px;
+}
+
+:root.dark .defnode-input,
+:root.dark .defnode-select {
+  background-color: rgba(24,24,27,0.7) !important; /* zinc-900/70 */
+  color: rgba(255,255,255,0.95) !important;
+  border-color: rgba(255,255,255,0.10) !important;
+}
+
+:root:not(.dark) .defnode-input,
+:root:not(.dark) .defnode-select {
+  background-color: #ffffff !important;
+  color: #18181b !important; /* zinc-900 */
+  border-color: rgba(0,0,0,0.10) !important;
+}
+
 /* Bottom-left controls styling */
 .rf-controls.react-flow__controls.react-flow__panel.bottom-left {
   left: 12px !important;
