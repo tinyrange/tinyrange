@@ -2,19 +2,85 @@
 
 @layer base {
   :root {
-    @apply text-[rgba(255, 255, 255, 0.87)] bg-[#242424] font-sans;
+    /* Light mode defaults */
+    @apply font-sans text-zinc-900 bg-zinc-50;
+  }
+
+  :root.dark {
+    /* Dark mode overrides */
+    @apply text-[rgba(255,255,255,0.87)] bg-[#242424];
   }
 
   body {
-    @apply grid place-items-center min-w-[320px] min-h-screen relative m-0;
+    @apply min-w-[320px] min-h-screen relative m-0;
   }
 }
 
 @media (prefers-reduced-motion) {
-
   *,
   ::before,
   ::after {
     animation: none !important;
   }
+}
+
+/* React Flow styling tweaks to match app theme */
+.react-flow {
+  background: transparent !important;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+.react-flow__panel,
+.react-flow__controls {
+  border-radius: 0.5rem;
+}
+
+:root.dark .react-flow__panel,
+:root.dark .react-flow__controls {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+:root:not(.dark) .react-flow__panel,
+:root:not(.dark) .react-flow__controls {
+  background-color: rgba(255, 255, 255, 0.6) !important;
+  color: #18181b;
+}
+
+.react-flow__node-default {
+  box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+}
+
+/* Bottom-left controls styling */
+.rf-controls.react-flow__controls.react-flow__panel.bottom-left {
+  left: 12px !important;
+  bottom: 12px !important;
+  padding: 4px;
+  border: 1px solid rgba(0,0,0,0.1);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+}
+
+:root.dark .rf-controls.react-flow__controls.react-flow__panel.bottom-left {
+  border-color: rgba(255,255,255,0.1);
+}
+
+.rf-controls.react-flow__controls button.react-flow__controls-button {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+.rf-controls.react-flow__controls button.react-flow__controls-button:hover {
+  background: rgba(0,0,0,0.06) !important;
+}
+
+:root.dark .rf-controls.react-flow__controls button.react-flow__controls-button:hover {
+  background: rgba(255,255,255,0.08) !important;
+}
+
+.rf-controls.react-flow__controls button.react-flow__controls-button svg {
+  fill: currentColor !important;
 }

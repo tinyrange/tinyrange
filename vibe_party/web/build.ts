@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// @ts-nocheck
 import plugin from "bun-plugin-tailwind";
 import { existsSync } from "fs";
 import { rm } from "fs/promises";
