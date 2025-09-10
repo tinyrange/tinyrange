@@ -26,6 +26,7 @@ func (e *extractArchiveBuilder) Build(ctx common.Context) error {
 	if err != nil {
 		return err
 	}
+	defer in.Close()
 
 	var reader io.ReadCloser
 
@@ -47,6 +48,7 @@ func (e *extractArchiveBuilder) Build(ctx common.Context) error {
 	if err != nil {
 		return err
 	}
+	defer ark.Close()
 
 	switch params.ArchiveType {
 	case proto.ArchiveType_TAR:

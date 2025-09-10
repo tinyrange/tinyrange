@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/tinyrange/tinyrange/build/internal/common"
@@ -12,6 +13,6 @@ func ReaderFromSource(ctx common.Context, source *proto.FileSource) (io.ReadClos
 	case *proto.FileSource_FetchHttp:
 		return ReaderFromFetchHttp(ctx, src.FetchHttp)
 	default:
-		return nil, nil
+		return nil, fmt.Errorf("unsupported source type: %T", src)
 	}
 }

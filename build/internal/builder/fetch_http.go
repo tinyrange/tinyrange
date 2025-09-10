@@ -24,6 +24,7 @@ func ReaderFromFetchHttp(ctx common.Context, fetch *proto.FetchHttpDefinition) (
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
 		return nil, fmt.Errorf("failed to fetch http: %s", resp.Status)
 	}
 

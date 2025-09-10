@@ -532,6 +532,11 @@ func (ar *Reader) NextEntry() error {
 		return fmt.Errorf("invalid index entry length: %d < %d", lineLen, staticSize)
 	}
 
+	// Check for overflows of our buffer.
+	if lineLen > uint16(len(ar.buf)) {
+		return fmt.Errorf("index entry length too large: %d > %d", lineLen, len(ar.buf))
+	}
+
 	// Read the rest of the index entry.
 	n, err := io.ReadFull(ar.index, ar.buf[:lineLen])
 	if err != nil {
@@ -542,10 +547,11 @@ func (ar *Reader) NextEntry() error {
 	}
 
 	// The filename and linkname are separated by a tab character.
-	ar.nameEnd = bytes.IndexRune(ar.buf[staticSize:lineLen], '\t') + staticSize
+	ar.nameEnd = bytes.IndexRune(ar.buf[staticSize:lineLen], '\t')
 	if ar.nameEnd == -1 {
 		return errors.New("invalid index entry format, could not find nameEnd")
 	}
+	ar.nameEnd += staticSize
 
 	ar.linkNameEnd = int(lineLen - 1)
 
