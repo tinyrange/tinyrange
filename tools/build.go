@@ -94,7 +94,7 @@ func (ctx *buildContext) buildGo(packageName string, outName string, buildSettin
 	return outFilename, nil
 }
 
-func (ctx *buildContext) buildProto(outputDir string, inputs ...string) error {
+func (ctx *buildContext) buildProto(outputDir string, withTypeScript bool, inputs ...string) error {
 	if _, err := ctx.checkExecutableExists("protoc"); err != nil {
 		return err
 	}
@@ -105,10 +105,12 @@ func (ctx *buildContext) buildProto(outputDir string, inputs ...string) error {
 
 	var typeScriptEnabled bool
 	tsProtoPath := filepath.Join("vibe_party", "web", "node_modules", ".bin", "protoc-gen-ts_proto")
-	if _, err := ctx.exists(tsProtoPath); err == nil {
-		typeScriptEnabled = true
-	} else {
-		slog.Warn("protoc-gen-ts_proto not found, skipping TypeScript generation. To enable, run 'bun install' in vibe_party/web", "checked_in", tsProtoPath)
+	if withTypeScript {
+		if _, err := ctx.exists(tsProtoPath); err == nil {
+			typeScriptEnabled = true
+		} else {
+			return fmt.Errorf("protoc-gen-ts_proto not found at %s, please install it with 'bun install'", tsProtoPath)
+		}
 	}
 
 	// Determine module path from go.mod for import paths
@@ -210,12 +212,18 @@ func main() {
 
 	if *proto {
 		slog.Info("building protobuf files")
-		if err := ctx.buildProto("build/proto",
+		if err := ctx.buildProto("build/proto", false,
 			"build/proto/build.proto",
 			"build/proto/fetch_http.proto",
 			"build/proto/extract_archive.proto",
 			"build/proto/source.proto",
 			"build/proto/write_file.proto",
+		); err != nil {
+			slog.Error("protoc failed", "error", err)
+			os.Exit(1)
+		}
+		if err := ctx.buildProto("build/proto", true,
+			"build/proto/build.proto",
 		); err != nil {
 			slog.Error("protoc failed", "error", err)
 			os.Exit(1)
