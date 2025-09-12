@@ -1,31 +1,11 @@
-export type DescriptorField = {
-  name: string;
-  jsonName?: string;
-  number: number;
-  label?: string;
-  type: string;
-  typeName?: string;
-};
-
-export type DescriptorMessageType = {
-  name: string;
-  field?: DescriptorField[];
-};
-
-export type FileDescriptorProto = {
-  name: string;
-  package?: string;
-  dependency?: string[];
-  messageType?: DescriptorMessageType[];
-  enumType?: { name: string; value?: { name: string; number: number }[] }[];
-  syntax?: string;
-};
-
-export type BuilderMetadata = {
-  typeName: string; // canonical server type name
-  topLevelType: string; // top-level message type for UI
-  definition: FileDescriptorProto; // descriptor for forms/ports
-};
+// Re-export protobuf types used by the UI
+export type { BuilderMetadata } from "./gen/build";
+export type {
+  FileDescriptorProto,
+  DescriptorProto as DescriptorMessageType,
+  FieldDescriptorProto as DescriptorField,
+  FieldDescriptorProto_Type as DescriptorFieldType,
+} from "./gen/google/protobuf/descriptor";
 
 export type Point = { x: number; y: number };
 
@@ -33,7 +13,7 @@ export type GraphNode = {
   id: string;
   typeName: string; // display label (topLevelType)
   position: Point;
-  builder: BuilderMetadata;
+  builder: import("./gen/build").BuilderMetadata;
   payload: Record<string, any>;
 };
 
@@ -41,4 +21,3 @@ export type Viewport = {
   offset: Point;
   scale: number;
 };
-

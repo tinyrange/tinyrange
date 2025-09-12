@@ -18,11 +18,12 @@ import {
 import "@xyflow/react/dist/style.css";
 import { enumValues, fieldKey, getInputsFor, getTopMessage, enumCommonPrefix, enumDisplayName } from "./descriptors";
 import type { GraphNode } from "./types";
+import { FieldDescriptorProto_Type as FType } from "./gen/google/protobuf/descriptor";
 
 type FieldUI = {
   key: string;
   label: string;
-  type: string;
+  type: number; // FieldDescriptorProto_Type
   enumValues?: { name: string; number: number }[];
   connectable: boolean;
   connectedSourceId?: string | null;
@@ -68,7 +69,7 @@ const DefNode: React.FC<any> = ({ data }: any) => {
               </label>
             );
           }
-          if (f.type === "TYPE_BOOL") {
+          if (f.type === FType.TYPE_BOOL) {
             return (
               <label key={f.key} className="flex items-center gap-2 text-[11px]">
                 <span className="opacity-70 min-w-16">{f.label}</span>
@@ -76,7 +77,21 @@ const DefNode: React.FC<any> = ({ data }: any) => {
               </label>
             );
           }
-          const inputType = f.type.startsWith("TYPE_INT") || f.type.startsWith("TYPE_UINT") || f.type === "TYPE_FLOAT" || f.type === "TYPE_DOUBLE" ? "number" : "text";
+          const numericTypes = new Set([
+            FType.TYPE_INT32,
+            FType.TYPE_INT64,
+            FType.TYPE_UINT32,
+            FType.TYPE_UINT64,
+            FType.TYPE_FLOAT,
+            FType.TYPE_DOUBLE,
+            FType.TYPE_SINT32,
+            FType.TYPE_SINT64,
+            FType.TYPE_FIXED32,
+            FType.TYPE_FIXED64,
+            FType.TYPE_SFIXED32,
+            FType.TYPE_SFIXED64,
+          ]);
+          const inputType = numericTypes.has(f.type) ? "number" : "text";
           return (
             <label key={f.key} className="flex items-center gap-2 text-[11px]">
               <span className="opacity-70 min-w-16">{f.label}</span>
@@ -117,13 +132,13 @@ export function NodeFlow({ nodes, edges, setEdges, onDrag, onSelect, onDeleteNod
       const top = getTopMessage(n.builder);
       const fields: FieldUI[] = (top?.field || []).map((f) => {
         const key = fieldKey(f);
-        const connectable = f.type === 'TYPE_MESSAGE' && !!f.typeName && (/(FileSource|DefinitionReference|Definition)$/.test(f.typeName));
+        const connectable = f.type === FType.TYPE_MESSAGE && !!f.typeName && (/(FileSource|DefinitionReference|Definition)$/.test(f.typeName));
         const connectedEdge = edges.find((ed) => ed.target === n.id && ed.targetHandle === `in:${key}`);
         return {
           key,
           label: key,
-          type: f.type,
-          enumValues: f.type === 'TYPE_ENUM' ? enumValues(n.builder.definition, f.typeName) : undefined,
+          type: f.type as number,
+          enumValues: f.type === FType.TYPE_ENUM ? enumValues(n.builder.definition, f.typeName) : undefined,
           connectable,
           connectedSourceId: connectedEdge ? connectedEdge.source : null,
           value: n.payload?.[key],

@@ -1,6 +1,7 @@
 import type { BuilderMetadata, GraphNode } from "./types";
 import { fieldKey, getTopMessage } from "./descriptors";
 import type { Edge as RFEdge } from "@xyflow/react";
+import { FieldDescriptorProto_Type as FType } from "./gen/google/protobuf/descriptor";
 
 export function makeAny(typeName: string, pkg: string, message: Record<string, any>) {
   const typeUrl = `type.googleapis.com/${pkg}.${typeName}`;
@@ -23,7 +24,7 @@ export function defFromNode(n: GraphNode, allNodes: GraphNode[], edges: RFEdge[]
   const payload: Record<string, any> = {};
   for (const f of top?.field || []) {
     const key = fieldKey(f);
-    if (f.type === "TYPE_MESSAGE") {
+    if (f.type === FType.TYPE_MESSAGE) {
       if (/(\.proto\.FileSource|FileSource)$/.test(f.typeName || "")) {
         const e = edges.find((ed) => ed.target === n.id && ed.targetHandle === `in:${key}`);
         if (!e) continue;
@@ -35,9 +36,9 @@ export function defFromNode(n: GraphNode, allNodes: GraphNode[], edges: RFEdge[]
           throw new Error(`Unsupported source for FileSource: ${src.builder.topLevelType}`);
         }
       }
-    } else if (f.type === "TYPE_ENUM") {
+    } else if (f.type === FType.TYPE_ENUM) {
       payload[key] = n.payload[key];
-    } else if (f.type === "TYPE_BYTES") {
+    } else if (f.type === FType.TYPE_BYTES) {
       const v = n.payload[key];
       if (typeof v === "string" && v.length > 0) {
         payload[key] = isProbablyBase64(v) ? v : stringToBase64Utf8(v);

@@ -1,4 +1,5 @@
 import type { BuilderMetadata, DescriptorField, DescriptorMessageType, FileDescriptorProto } from "./types";
+import { FieldDescriptorProto_Type as FType } from "./gen/google/protobuf/descriptor";
 
 export function getTopMessage(meta: BuilderMetadata): DescriptorMessageType | null {
   const mt = meta.definition?.messageType || [];
@@ -6,15 +7,16 @@ export function getTopMessage(meta: BuilderMetadata): DescriptorMessageType | nu
 }
 
 export function fieldKey(f: DescriptorField): string {
-  return f.jsonName || f.name;
+  return f.jsonName || f.name || "";
 }
 
-export function enumValues(def: FileDescriptorProto, typeName?: string): { name: string; number: number }[] {
-  if (!typeName) return [];
+export function enumValues(def?: FileDescriptorProto, typeName?: string): { name: string; number: number }[] {
+  if (!def || !typeName) return [];
   const parts = typeName.split(".").filter(Boolean);
   const name = parts[parts.length - 1];
   const e = def.enumType?.find((x) => x.name === name);
-  return e?.value || [];
+  const vals = e?.value || [];
+  return vals.map((v) => ({ name: v.name ?? "", number: v.number ?? 0 }));
 }
 
 // Compute a common ALL-CAPS underscore prefix across enum value names, trimmed to last underscore
@@ -47,26 +49,26 @@ export function enumDisplayName(raw: string, commonPrefix: string): string {
   return toTitleCaseFromUnderscore(trimmed);
 }
 
-export function defaultForField(def: FileDescriptorProto, f: DescriptorField): any {
+export function defaultForField(def: FileDescriptorProto | undefined, f: DescriptorField): any {
   switch (f.type) {
-    case "TYPE_STRING":
+    case FType.TYPE_STRING:
       return "";
-    case "TYPE_INT32":
-    case "TYPE_INT64":
-    case "TYPE_UINT32":
-    case "TYPE_UINT64":
-    case "TYPE_FLOAT":
-    case "TYPE_DOUBLE":
+    case FType.TYPE_INT32:
+    case FType.TYPE_INT64:
+    case FType.TYPE_UINT32:
+    case FType.TYPE_UINT64:
+    case FType.TYPE_FLOAT:
+    case FType.TYPE_DOUBLE:
       return 0;
-    case "TYPE_BOOL":
+    case FType.TYPE_BOOL:
       return false;
-    case "TYPE_BYTES":
+    case FType.TYPE_BYTES:
       return "";
-    case "TYPE_ENUM": {
+    case FType.TYPE_ENUM: {
       const vals = enumValues(def, f.typeName);
       return vals[0]?.name || "";
     }
-    case "TYPE_MESSAGE":
+    case FType.TYPE_MESSAGE:
     default:
       return null;
   }
@@ -77,7 +79,7 @@ export function getInputsFor(meta: BuilderMetadata): { key: string; label: strin
   const fields = top?.field || [];
   return fields.map((f) => {
     const typeName = f.typeName;
-    const isMsg = f.type === "TYPE_MESSAGE";
+    const isMsg = f.type === FType.TYPE_MESSAGE;
     const connectable = isMsg && !!typeName && /(FileSource|DefinitionReference|Definition)$/.test(typeName);
     return { key: fieldKey(f), label: fieldKey(f), typeName, connectable };
   });
