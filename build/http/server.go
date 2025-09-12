@@ -145,6 +145,7 @@ func New(db common.Database, base string) http.Handler {
 
 		var resp proto.BuildStatusResponse
 		resp.Reset()
+		resp.Statuses = make(map[string]proto.CurrentBuildStatus)
 		for _, key := range keys {
 			key = strings.TrimSpace(key)
 			if key == "" {
