@@ -114,7 +114,9 @@ type BuildCache interface {
 
 type Database interface {
 	Factory() Factory
+
 	Build(def BuildClosure, opt ...Option) (Artifact, error)
+	GetBuildStatus(hash string) (proto.CurrentBuildStatus, error)
 
 	GetBuilders() ([]BuilderMetadata, error)
 }

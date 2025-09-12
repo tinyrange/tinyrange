@@ -156,13 +156,28 @@ type databaseImpl struct {
 	cache   common.BuildCache
 }
 
+// GetBuildStatus implements common.Database.
+func (d *databaseImpl) GetBuildStatus(hash string) (proto.CurrentBuildStatus, error) {
+	dir, err := d.cache.OpenRead(&proto.Hash{Value: hash})
+	if errors.Is(err, fs.ErrNotExist) {
+		return proto.CurrentBuildStatus_BUILD_STATE_NOT_FOUND, nil
+	} else if err != nil {
+		return proto.CurrentBuildStatus_BUILD_STATE_UNSPECIFIED, err
+	}
+
+	_, err = dir.ReadReceipt()
+	if errors.Is(err, fs.ErrNotExist) {
+		return proto.CurrentBuildStatus_BUILD_STATE_RUNNING, nil
+	} else if err != nil {
+		return proto.CurrentBuildStatus_BUILD_STATE_UNSPECIFIED, err
+	}
+
+	return proto.CurrentBuildStatus_BUILD_STATE_SUCCESS, nil
+}
+
 // GetBuilders implements common.Database.
 func (d *databaseImpl) GetBuilders() ([]common.BuilderMetadata, error) {
-	builders := []common.BuilderMetadata{}
-	for _, b := range registry.GetAll() {
-		builders = append(builders, b)
-	}
-	return builders, nil
+	return registry.GetAll(), nil
 }
 
 // Factory implements common.Database.

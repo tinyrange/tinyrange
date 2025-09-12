@@ -29,6 +29,11 @@ type fakeDB struct {
 	err error
 }
 
+// GetBuildStatus implements common.Database.
+func (f *fakeDB) GetBuildStatus(hash string) (proto.CurrentBuildStatus, error) {
+	panic("unimplemented")
+}
+
 // GetBuilders implements common.Database.
 func (f *fakeDB) GetBuilders() ([]common.BuilderMetadata, error) {
 	panic("unimplemented")

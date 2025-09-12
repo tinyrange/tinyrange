@@ -9,6 +9,10 @@ import (
 )
 
 func ReaderFromSource(ctx common.Context, source *proto.FileSource) (io.ReadCloser, error) {
+	if source == nil {
+		return nil, fmt.Errorf("source is nil")
+	}
+
 	switch src := source.Source.(type) {
 	case *proto.FileSource_FetchHttp:
 		return ReaderFromFetchHttp(ctx, src.FetchHttp)

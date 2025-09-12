@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/tinyrange/tinyrange/build/internal/common"
 	"github.com/tinyrange/tinyrange/build/proto"
@@ -118,6 +119,53 @@ func New(db common.Database, base string) http.Handler {
 		}
 
 		respBytes, contentType, err := marshalWithAcceptHeader(receipt, accept)
+		if err != nil {
+			slog.Error("marshal response", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write(respBytes); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	})
+
+	mux.HandleFunc(route("GET %s/status"), func(w http.ResponseWriter, r *http.Request) {
+		// takes a url parameters "key" which is a comma separated list of cache keys to check
+		keysParam := r.URL.Query().Get("key")
+		if keysParam == "" {
+			http.Error(w, "missing key parameter", http.StatusBadRequest)
+			return
+		}
+
+		keys := strings.Split(keysParam, ",")
+
+		var resp proto.BuildStatusResponse
+		resp.Reset()
+		for _, key := range keys {
+			key = strings.TrimSpace(key)
+			if key == "" {
+				continue
+			}
+
+			status, err := db.GetBuildStatus(key)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("get build status for key %s: %v", key, err), http.StatusInternalServerError)
+				return
+			}
+
+			resp.Statuses[key] = status
+		}
+
+		accept := r.Header.Get("Accept")
+		if accept == "" {
+			accept = "application/json"
+		}
+
+		respBytes, contentType, err := marshalWithAcceptHeader(&resp, accept)
 		if err != nil {
 			slog.Error("marshal response", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
