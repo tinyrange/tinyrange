@@ -24,6 +24,64 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type CurrentBuildStatus int32
+
+const (
+	CurrentBuildStatus_BUILD_STATE_UNSPECIFIED CurrentBuildStatus = 0
+	CurrentBuildStatus_BUILD_STATE_NOT_FOUND   CurrentBuildStatus = 1
+	CurrentBuildStatus_BUILD_STATE_QUEUED      CurrentBuildStatus = 2
+	CurrentBuildStatus_BUILD_STATE_RUNNING     CurrentBuildStatus = 3
+	CurrentBuildStatus_BUILD_STATE_SUCCESS     CurrentBuildStatus = 4
+	CurrentBuildStatus_BUILD_STATE_FAILURE     CurrentBuildStatus = 5
+)
+
+// Enum value maps for CurrentBuildStatus.
+var (
+	CurrentBuildStatus_name = map[int32]string{
+		0: "BUILD_STATE_UNSPECIFIED",
+		1: "BUILD_STATE_NOT_FOUND",
+		2: "BUILD_STATE_QUEUED",
+		3: "BUILD_STATE_RUNNING",
+		4: "BUILD_STATE_SUCCESS",
+		5: "BUILD_STATE_FAILURE",
+	}
+	CurrentBuildStatus_value = map[string]int32{
+		"BUILD_STATE_UNSPECIFIED": 0,
+		"BUILD_STATE_NOT_FOUND":   1,
+		"BUILD_STATE_QUEUED":      2,
+		"BUILD_STATE_RUNNING":     3,
+		"BUILD_STATE_SUCCESS":     4,
+		"BUILD_STATE_FAILURE":     5,
+	}
+)
+
+func (x CurrentBuildStatus) Enum() *CurrentBuildStatus {
+	p := new(CurrentBuildStatus)
+	*p = x
+	return p
+}
+
+func (x CurrentBuildStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CurrentBuildStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_build_proto_enumTypes[0].Descriptor()
+}
+
+func (CurrentBuildStatus) Type() protoreflect.EnumType {
+	return &file_build_proto_enumTypes[0]
+}
+
+func (x CurrentBuildStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CurrentBuildStatus.Descriptor instead.
+func (CurrentBuildStatus) EnumDescriptor() ([]byte, []int) {
+	return file_build_proto_rawDescGZIP(), []int{0}
+}
+
 type Hash struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Value         string                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
@@ -523,6 +581,50 @@ func (x *BuilderList) GetBuilders() []*BuilderMetadata {
 	return nil
 }
 
+type BuildStatusResponse struct {
+	state         protoimpl.MessageState        `protogen:"open.v1"`
+	Statuses      map[string]CurrentBuildStatus `protobuf:"bytes,1,rep,name=statuses,proto3" json:"statuses,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value,enum=proto.CurrentBuildStatus"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BuildStatusResponse) Reset() {
+	*x = BuildStatusResponse{}
+	mi := &file_build_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BuildStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BuildStatusResponse) ProtoMessage() {}
+
+func (x *BuildStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_build_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BuildStatusResponse.ProtoReflect.Descriptor instead.
+func (*BuildStatusResponse) Descriptor() ([]byte, []int) {
+	return file_build_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *BuildStatusResponse) GetStatuses() map[string]CurrentBuildStatus {
+	if x != nil {
+		return x.Statuses
+	}
+	return nil
+}
+
 var File_build_proto protoreflect.FileDescriptor
 
 const file_build_proto_rawDesc = "" +
@@ -561,7 +663,19 @@ const file_build_proto_rawDesc = "" +
 	"definition\x18\x03 \x01(\v2$.google.protobuf.FileDescriptorProtoR\n" +
 	"definition\"A\n" +
 	"\vBuilderList\x122\n" +
-	"\bbuilders\x18\x01 \x03(\v2\x16.proto.BuilderMetadataR\bbuildersb\x06proto3"
+	"\bbuilders\x18\x01 \x03(\v2\x16.proto.BuilderMetadataR\bbuilders\"\xb3\x01\n" +
+	"\x13BuildStatusResponse\x12D\n" +
+	"\bstatuses\x18\x01 \x03(\v2(.proto.BuildStatusResponse.StatusesEntryR\bstatuses\x1aV\n" +
+	"\rStatusesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12/\n" +
+	"\x05value\x18\x02 \x01(\x0e2\x19.proto.CurrentBuildStatusR\x05value:\x028\x01*\xaf\x01\n" +
+	"\x12CurrentBuildStatus\x12\x1b\n" +
+	"\x17BUILD_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15BUILD_STATE_NOT_FOUND\x10\x01\x12\x16\n" +
+	"\x12BUILD_STATE_QUEUED\x10\x02\x12\x17\n" +
+	"\x13BUILD_STATE_RUNNING\x10\x03\x12\x17\n" +
+	"\x13BUILD_STATE_SUCCESS\x10\x04\x12\x17\n" +
+	"\x13BUILD_STATE_FAILURE\x10\x05b\x06proto3"
 
 var (
 	file_build_proto_rawDescOnce sync.Once
@@ -575,41 +689,47 @@ func file_build_proto_rawDescGZIP() []byte {
 	return file_build_proto_rawDescData
 }
 
-var file_build_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_build_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_build_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_build_proto_goTypes = []any{
-	(*Hash)(nil),                             // 0: proto.Hash
-	(*Definition)(nil),                       // 1: proto.Definition
-	(*DefinitionReference)(nil),              // 2: proto.DefinitionReference
-	(*BuildClosure)(nil),                     // 3: proto.BuildClosure
-	(*BuildReceipt)(nil),                     // 4: proto.BuildReceipt
-	(*BuildRequest)(nil),                     // 5: proto.BuildRequest
-	(*BuildStatus)(nil),                      // 6: proto.BuildStatus
-	(*BuilderMetadata)(nil),                  // 7: proto.BuilderMetadata
-	(*BuilderList)(nil),                      // 8: proto.BuilderList
-	nil,                                      // 9: proto.BuildReceipt.OutputsEntry
-	(*anypb.Any)(nil),                        // 10: google.protobuf.Any
-	(*timestamppb.Timestamp)(nil),            // 11: google.protobuf.Timestamp
-	(*descriptorpb.FileDescriptorProto)(nil), // 12: google.protobuf.FileDescriptorProto
+	(CurrentBuildStatus)(0),                  // 0: proto.CurrentBuildStatus
+	(*Hash)(nil),                             // 1: proto.Hash
+	(*Definition)(nil),                       // 2: proto.Definition
+	(*DefinitionReference)(nil),              // 3: proto.DefinitionReference
+	(*BuildClosure)(nil),                     // 4: proto.BuildClosure
+	(*BuildReceipt)(nil),                     // 5: proto.BuildReceipt
+	(*BuildRequest)(nil),                     // 6: proto.BuildRequest
+	(*BuildStatus)(nil),                      // 7: proto.BuildStatus
+	(*BuilderMetadata)(nil),                  // 8: proto.BuilderMetadata
+	(*BuilderList)(nil),                      // 9: proto.BuilderList
+	(*BuildStatusResponse)(nil),              // 10: proto.BuildStatusResponse
+	nil,                                      // 11: proto.BuildReceipt.OutputsEntry
+	nil,                                      // 12: proto.BuildStatusResponse.StatusesEntry
+	(*anypb.Any)(nil),                        // 13: google.protobuf.Any
+	(*timestamppb.Timestamp)(nil),            // 14: google.protobuf.Timestamp
+	(*descriptorpb.FileDescriptorProto)(nil), // 15: google.protobuf.FileDescriptorProto
 }
 var file_build_proto_depIdxs = []int32{
-	10, // 0: proto.Definition.payload:type_name -> google.protobuf.Any
-	1,  // 1: proto.BuildClosure.root:type_name -> proto.Definition
-	1,  // 2: proto.BuildClosure.dependencies:type_name -> proto.Definition
-	0,  // 3: proto.BuildReceipt.hash:type_name -> proto.Hash
-	0,  // 4: proto.BuildReceipt.dependencies:type_name -> proto.Hash
-	11, // 5: proto.BuildReceipt.start_time:type_name -> google.protobuf.Timestamp
-	11, // 6: proto.BuildReceipt.end_time:type_name -> google.protobuf.Timestamp
-	9,  // 7: proto.BuildReceipt.outputs:type_name -> proto.BuildReceipt.OutputsEntry
-	3,  // 8: proto.BuildRequest.closure:type_name -> proto.BuildClosure
-	4,  // 9: proto.BuildStatus.success:type_name -> proto.BuildReceipt
-	12, // 10: proto.BuilderMetadata.definition:type_name -> google.protobuf.FileDescriptorProto
-	7,  // 11: proto.BuilderList.builders:type_name -> proto.BuilderMetadata
-	0,  // 12: proto.BuildReceipt.OutputsEntry.value:type_name -> proto.Hash
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	13, // 0: proto.Definition.payload:type_name -> google.protobuf.Any
+	2,  // 1: proto.BuildClosure.root:type_name -> proto.Definition
+	2,  // 2: proto.BuildClosure.dependencies:type_name -> proto.Definition
+	1,  // 3: proto.BuildReceipt.hash:type_name -> proto.Hash
+	1,  // 4: proto.BuildReceipt.dependencies:type_name -> proto.Hash
+	14, // 5: proto.BuildReceipt.start_time:type_name -> google.protobuf.Timestamp
+	14, // 6: proto.BuildReceipt.end_time:type_name -> google.protobuf.Timestamp
+	11, // 7: proto.BuildReceipt.outputs:type_name -> proto.BuildReceipt.OutputsEntry
+	4,  // 8: proto.BuildRequest.closure:type_name -> proto.BuildClosure
+	5,  // 9: proto.BuildStatus.success:type_name -> proto.BuildReceipt
+	15, // 10: proto.BuilderMetadata.definition:type_name -> google.protobuf.FileDescriptorProto
+	8,  // 11: proto.BuilderList.builders:type_name -> proto.BuilderMetadata
+	12, // 12: proto.BuildStatusResponse.statuses:type_name -> proto.BuildStatusResponse.StatusesEntry
+	1,  // 13: proto.BuildReceipt.OutputsEntry.value:type_name -> proto.Hash
+	0,  // 14: proto.BuildStatusResponse.StatusesEntry.value:type_name -> proto.CurrentBuildStatus
+	15, // [15:15] is the sub-list for method output_type
+	15, // [15:15] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_build_proto_init() }
@@ -625,13 +745,14 @@ func file_build_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_build_proto_rawDesc), len(file_build_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   10,
+			NumEnums:      1,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_build_proto_goTypes,
 		DependencyIndexes: file_build_proto_depIdxs,
+		EnumInfos:         file_build_proto_enumTypes,
 		MessageInfos:      file_build_proto_msgTypes,
 	}.Build()
 	File_build_proto = out.File

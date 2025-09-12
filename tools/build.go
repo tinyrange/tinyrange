@@ -5,6 +5,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -23,6 +24,11 @@ type goBuildSettings struct {
 	goCommand string
 	os        string
 	arch      string
+}
+
+func (ctx *buildContext) exists(path string) (fs.FileInfo, error) {
+	fullPath := filepath.Join(ctx.basePath, path)
+	return os.Stat(fullPath)
 }
 
 func (ctx *buildContext) checkExecutableExists(name string) (string, error) {
@@ -97,6 +103,14 @@ func (ctx *buildContext) buildProto(outputDir string, inputs ...string) error {
 		return fmt.Errorf("protoc-gen-go not found in PATH, please install it with 'go install google.golang.org/protobuf/cmd/protoc-gen-go@latest'")
 	}
 
+	var typeScriptEnabled bool
+	tsProtoPath := filepath.Join("vibe_party", "web", "node_modules", ".bin", "protoc-gen-ts_proto")
+	if _, err := ctx.exists(tsProtoPath); err == nil {
+		typeScriptEnabled = true
+	} else {
+		slog.Warn("protoc-gen-ts_proto not found, skipping TypeScript generation. To enable, run 'bun install' in vibe_party/web", "checked_in", tsProtoPath)
+	}
+
 	// Determine module path from go.mod for import paths
 	gomodData, err := os.ReadFile(filepath.Join(ctx.basePath, "go.mod"))
 	if err != nil {
@@ -148,6 +162,14 @@ func (ctx *buildContext) buildProto(outputDir string, inputs ...string) error {
 	}
 	for _, opt := range goOpts {
 		args = append(args, "--go_opt="+opt)
+	}
+	if typeScriptEnabled {
+		args = append(args,
+			fmt.Sprintf("--plugin=%s", tsProtoPath),
+			fmt.Sprintf("--ts_proto_out=%s", filepath.Join(ctx.basePath, "vibe_party", "web", "src", "gen")),
+			"--ts_proto_opt=esModuleInterop=true",
+			"--ts_proto_opt=forceLong=string",
+		)
 	}
 	args = append(args, inputs...)
 

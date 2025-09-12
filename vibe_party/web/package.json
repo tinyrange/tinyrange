@@ -13,7 +13,8 @@
     "bun-plugin-tailwind": "^0.0.15",
     "react": "^19",
     "react-dom": "^19",
-    "tailwindcss": "^4.1.11"
+    "tailwindcss": "^4.1.11",
+    "ts-proto": "^2.7.7"
   },
   "devDependencies": {
     "@types/react": "^19",

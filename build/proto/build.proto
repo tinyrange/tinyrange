@@ -72,3 +72,14 @@ message BuilderMetadata {
 }
 
 message BuilderList { repeated BuilderMetadata builders = 1; }
+
+enum CurrentBuildStatus {
+  BUILD_STATE_UNSPECIFIED = 0;
+  BUILD_STATE_NOT_FOUND = 1;
+  BUILD_STATE_QUEUED = 2;
+  BUILD_STATE_RUNNING = 3;
+  BUILD_STATE_SUCCESS = 4;
+  BUILD_STATE_FAILURE = 5;
+}
+
+message BuildStatusResponse { map<string, CurrentBuildStatus> statuses = 1; }
