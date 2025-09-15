@@ -238,6 +238,16 @@ func main() {
 		}
 
 		return
+	} else if *test {
+		slog.Info("running tests")
+		cmd := exec.Command("go", "test", "./...")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Stdin = os.Stdin
+
+		if err := cmd.Run(); err != nil {
+			os.Exit(1)
+		}
 	}
 
 	cwd, err := os.Getwd()
@@ -285,12 +295,12 @@ func main() {
 		}
 
 		if err := ctx.buildProto(buildProtoOptions{
-			output: "vibe_party/machine/proto",
+			output: "vibe_party/localclient/proto",
 			golang: true,
 			grpc:   true,
 		},
 			// machine interface
-			"vibe_party/machine/proto/machine.proto",
+			"vibe_party/localclient/proto/machine.proto",
 		); err != nil {
 			slog.Error("protoc failed", "error", err)
 			os.Exit(1)
@@ -306,16 +316,6 @@ func main() {
 
 	if *run {
 		cmd := exec.Command(outFilename, fs.Args()...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.Stdin = os.Stdin
-
-		if err := cmd.Run(); err != nil {
-			os.Exit(1)
-		}
-	} else if *test {
-		slog.Info("running tests")
-		cmd := exec.Command("go", "test", "./...")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Stdin = os.Stdin

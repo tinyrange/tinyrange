@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	machinepkg "github.com/tinyrange/tinyrange/vibe_party/machine"
-	machinepb "github.com/tinyrange/tinyrange/vibe_party/machine/proto"
+	machinepkg "github.com/tinyrange/tinyrange/vibe_party/localclient"
+	machinepb "github.com/tinyrange/tinyrange/vibe_party/localclient/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"

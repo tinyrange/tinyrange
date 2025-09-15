@@ -32,7 +32,7 @@ import (
 	"sync"
 	"time"
 
-	machinepb "github.com/tinyrange/tinyrange/vibe_party/machine/proto"
+	machinepb "github.com/tinyrange/tinyrange/vibe_party/localclient/proto"
 )
 
 // Client is a friendly wrapper around MachineServiceClient, exposing a Go-like

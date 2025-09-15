@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	machinepb "github.com/tinyrange/tinyrange/vibe_party/machine/proto"
+	machinepb "github.com/tinyrange/tinyrange/vibe_party/localclient/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
