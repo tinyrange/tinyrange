@@ -156,6 +156,15 @@ export interface BuildStatusResponse_StatusesEntry {
   value: CurrentBuildStatus;
 }
 
+export interface HashRequest {
+  definitions: Definition[];
+}
+
+export interface HashResponse {
+  hashes: Hash[];
+  statuses: CurrentBuildStatus[];
+}
+
 function createBaseHash(): Hash {
   return { value: "" };
 }
@@ -1085,6 +1094,158 @@ export const BuildStatusResponse_StatusesEntry: MessageFns<BuildStatusResponse_S
     const message = createBaseBuildStatusResponse_StatusesEntry();
     message.key = object.key ?? "";
     message.value = object.value ?? 0;
+    return message;
+  },
+};
+
+function createBaseHashRequest(): HashRequest {
+  return { definitions: [] };
+}
+
+export const HashRequest: MessageFns<HashRequest> = {
+  encode(message: HashRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.definitions) {
+      Definition.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): HashRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseHashRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.definitions.push(Definition.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): HashRequest {
+    return {
+      definitions: globalThis.Array.isArray(object?.definitions)
+        ? object.definitions.map((e: any) => Definition.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: HashRequest): unknown {
+    const obj: any = {};
+    if (message.definitions?.length) {
+      obj.definitions = message.definitions.map((e) => Definition.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<HashRequest>, I>>(base?: I): HashRequest {
+    return HashRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<HashRequest>, I>>(object: I): HashRequest {
+    const message = createBaseHashRequest();
+    message.definitions = object.definitions?.map((e) => Definition.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseHashResponse(): HashResponse {
+  return { hashes: [], statuses: [] };
+}
+
+export const HashResponse: MessageFns<HashResponse> = {
+  encode(message: HashResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.hashes) {
+      Hash.encode(v!, writer.uint32(10).fork()).join();
+    }
+    writer.uint32(18).fork();
+    for (const v of message.statuses) {
+      writer.int32(v);
+    }
+    writer.join();
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): HashResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseHashResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.hashes.push(Hash.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 2: {
+          if (tag === 16) {
+            message.statuses.push(reader.int32() as any);
+
+            continue;
+          }
+
+          if (tag === 18) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.statuses.push(reader.int32() as any);
+            }
+
+            continue;
+          }
+
+          break;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): HashResponse {
+    return {
+      hashes: globalThis.Array.isArray(object?.hashes) ? object.hashes.map((e: any) => Hash.fromJSON(e)) : [],
+      statuses: globalThis.Array.isArray(object?.statuses)
+        ? object.statuses.map((e: any) => currentBuildStatusFromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: HashResponse): unknown {
+    const obj: any = {};
+    if (message.hashes?.length) {
+      obj.hashes = message.hashes.map((e) => Hash.toJSON(e));
+    }
+    if (message.statuses?.length) {
+      obj.statuses = message.statuses.map((e) => currentBuildStatusToJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<HashResponse>, I>>(base?: I): HashResponse {
+    return HashResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<HashResponse>, I>>(object: I): HashResponse {
+    const message = createBaseHashResponse();
+    message.hashes = object.hashes?.map((e) => Hash.fromPartial(e)) || [];
+    message.statuses = object.statuses?.map((e) => e) || [];
     return message;
   },
 };
