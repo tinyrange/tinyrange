@@ -7,9 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/tinyrange/tinyrange/build"
 	"github.com/tinyrange/tinyrange/build/cache/memory"
-	"github.com/tinyrange/tinyrange/build/internal"
-	"github.com/tinyrange/tinyrange/build/internal/common"
 
 	buildhttp "github.com/tinyrange/tinyrange/build/http"
 )
@@ -21,8 +20,8 @@ var (
 	serverInsecureCors bool
 )
 
-func newDb() (common.Database, error) {
-	return internal.New(memory.NewCache())
+func newDb() (build.Database, error) {
+	return build.NewDatabase(memory.NewCache())
 }
 
 var serverCmd = &cobra.Command{
@@ -93,12 +92,12 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(serverCmd)
-
 	serverCmd.Flags().StringVar(&serverAddr, "addr", ":8080", "Address to listen on")
 	serverCmd.Flags().StringVar(&serverStaticPath, "static", "", "Path to static files")
 	serverCmd.Flags().BoolVar(&serverApiOnly, "api-only", false, "Only expose the API")
 	serverCmd.Flags().BoolVar(&serverInsecureCors, "insecure-cors", false, "Enable insecure CORS")
+
+	rootCmd.AddCommand(serverCmd)
 }
 
 func Main() error {
