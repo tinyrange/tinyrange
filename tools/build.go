@@ -94,7 +94,14 @@ func (ctx *buildContext) buildGo(packageName string, outName string, buildSettin
 	return outFilename, nil
 }
 
-func (ctx *buildContext) buildProto(outputDir string, withTypeScript bool, inputs ...string) error {
+type buildProtoOptions struct {
+	output     string
+	golang     bool
+	typeScript bool
+	grpc       bool
+}
+
+func (ctx *buildContext) buildProto(options buildProtoOptions, inputs ...string) error {
 	if _, err := ctx.checkExecutableExists("protoc"); err != nil {
 		return err
 	}
@@ -103,12 +110,19 @@ func (ctx *buildContext) buildProto(outputDir string, withTypeScript bool, input
 		return fmt.Errorf("protoc-gen-go not found in PATH, please install it with 'go install google.golang.org/protobuf/cmd/protoc-gen-go@latest'")
 	}
 
-	var typeScriptEnabled bool
+	if options.grpc {
+		if _, err := ctx.checkExecutableExists("protoc-gen-go-grpc"); err != nil {
+			return fmt.Errorf("protoc-gen-go-grpc not found in PATH, please install it with 'go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest'")
+		}
+
+		if !options.golang {
+			return fmt.Errorf("grpc option requires golang option to be set")
+		}
+	}
+
 	tsProtoPath := filepath.Join("vibe_party", "web", "node_modules", ".bin", "protoc-gen-ts_proto")
-	if withTypeScript {
-		if _, err := ctx.exists(tsProtoPath); err == nil {
-			typeScriptEnabled = true
-		} else {
+	if options.typeScript {
+		if _, err := ctx.exists(tsProtoPath); err != nil {
 			return fmt.Errorf("protoc-gen-ts_proto not found at %s, please install it with 'bun install'", tsProtoPath)
 		}
 	}
@@ -154,25 +168,39 @@ func (ctx *buildContext) buildProto(outputDir string, withTypeScript bool, input
 
 		// Map this file's import path so imports resolve without go_package options
 		goOpts = append(goOpts, fmt.Sprintf("M%[1]s=%[2]s/%[3]s/%[4]s",
-			filepath.Base(input), modulePath, strings.TrimSuffix(outputDir, string(filepath.Separator)), pkgName))
+			filepath.Base(input), modulePath, strings.TrimSuffix(options.output, string(filepath.Separator)), pkgName))
 	}
 
 	// Construct protoc command
 	args := []string{
 		"-I", filepath.Dir(inputs[0]),
-		fmt.Sprintf("--go_out=paths=source_relative:%s", outputDir),
 	}
-	for _, opt := range goOpts {
-		args = append(args, "--go_opt="+opt)
+
+	if options.golang {
+		args = append(args, fmt.Sprintf("--go_out=paths=source_relative:%s", options.output))
+		for _, opt := range goOpts {
+			args = append(args, "--go_opt="+opt)
+		}
 	}
-	if typeScriptEnabled {
+
+	if options.typeScript {
 		args = append(args,
 			fmt.Sprintf("--plugin=%s", tsProtoPath),
-			fmt.Sprintf("--ts_proto_out=%s", filepath.Join(ctx.basePath, "vibe_party", "web", "src", "gen")),
+			fmt.Sprintf("--ts_proto_out=%s", filepath.Join(ctx.basePath, options.output)),
 			"--ts_proto_opt=esModuleInterop=true",
 			"--ts_proto_opt=forceLong=string",
 		)
 	}
+
+	if options.grpc {
+		args = append(args,
+			fmt.Sprintf("--go-grpc_out=paths=source_relative:%s", options.output),
+		)
+		for _, opt := range goOpts {
+			args = append(args, "--go-grpc_opt="+opt)
+		}
+	}
+
 	args = append(args, inputs...)
 
 	cmd := exec.Command("protoc", args...)
@@ -212,8 +240,14 @@ func main() {
 
 	if *proto {
 		slog.Info("building protobuf files")
-		if err := ctx.buildProto("build/proto", false,
+		if err := ctx.buildProto(buildProtoOptions{
+			output: "build/proto",
+			golang: true,
+		},
+			// basic build system
 			"build/proto/build.proto",
+
+			// definitions
 			"build/proto/fetch_http.proto",
 			"build/proto/extract_archive.proto",
 			"build/proto/source.proto",
@@ -222,8 +256,25 @@ func main() {
 			slog.Error("protoc failed", "error", err)
 			os.Exit(1)
 		}
-		if err := ctx.buildProto("build/proto", true,
+
+		if err := ctx.buildProto(buildProtoOptions{
+			output:     "vibe_party/web/src/gen",
+			typeScript: true,
+		},
+			// basic build system
 			"build/proto/build.proto",
+		); err != nil {
+			slog.Error("protoc failed", "error", err)
+			os.Exit(1)
+		}
+
+		if err := ctx.buildProto(buildProtoOptions{
+			output: "vibe_party/machine/proto",
+			golang: true,
+			grpc:   true,
+		},
+			// machine interface
+			"vibe_party/machine/proto/machine.proto",
 		); err != nil {
 			slog.Error("protoc failed", "error", err)
 			os.Exit(1)

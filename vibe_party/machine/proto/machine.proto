@@ -1,0 +1,168 @@
+syntax = "proto3";
+
+package remote.machine;
+option go_package = "example.com/remote/machine;machinepb";
+
+// ** File Operations **
+message OpenFileRequest {
+  string path = 1;    // Path of the file to open
+  bool for_read = 2;  // Open for reading
+  bool for_write = 3; // Open for writing
+  bool create = 4;    // Create file if not exists
+  bool truncate = 5;  // Truncate file if exists and opening for write
+  uint32 mode = 6; // (Optional) file permission bits for creation (e.g., 0644),
+                   // ignored if not creating
+}
+message OpenFileResponse {
+  int32 fd = 1; // File descriptor (handle) for the opened file
+}
+message ReadRequest {
+  int32 fd = 1;         // Handle to read from (file, socket, or process stream)
+  uint32 max_bytes = 2; // Maximum bytes to read in one chunk (hint, not strict)
+}
+message ReadResponse {
+  bytes data =
+      1; // Data read (up to max_bytes, or less if stream had less available)
+  bool eof = 2; // True if end-of-file/stream is reached (no more data)
+}
+message WriteRequest {
+  int32 fd = 1;   // Handle to write to (file, socket, or process stream)
+  bytes data = 2; // Chunk of data to write
+}
+message WriteResponse {
+  uint64 bytes_written = 1; // Total bytes successfully written (could be less
+                            // than sent if disk full, etc.)
+}
+message CloseRequest {
+  int32 fd = 1; // Handle to close
+}
+message CloseResponse { bool success = 1; }
+
+// ** Process Execution **
+message ExecRequest {
+  string command = 1;          // Path to executable or command name
+  repeated string args = 2;    // Command-line arguments
+  map<string, string> env = 3; // Environment variables (KEY=VALUE), optional
+  string working_dir = 4;      // Working directory for the process, optional
+  bool tty = 5; // Allocate a pseudo-terminal (TTY) for the process (if
+                // supported by OS)
+}
+message ExecResponse {
+  int32 pid = 1;       // Process ID or handle of the started process
+  int32 stdin_fd = 2;  // File descriptor for writing to process stdin
+  int32 stdout_fd = 3; // File descriptor for reading process stdout
+  int32 stderr_fd =
+      4; // File descriptor for reading process stderr (if tty=false)
+  // If tty=true was requested, stdout_fd will carry combined output and
+  // stderr_fd may be unused.
+}
+message SignalProcessRequest {
+  int32 pid = 1;    // Process ID/handle to signal
+  int32 signal = 2; // Signal number (e.g., 15 for SIGTERM, 9 for SIGKILL). On
+                    // Windows, use 9 for terminate.
+}
+message SignalProcessResponse { bool success = 1; }
+message WaitProcessRequest { int32 pid = 1; }
+message WaitProcessResponse { int32 exit_code = 1; }
+
+// ** Network Socket Operations **
+message OpenSocketRequest {
+  enum Protocol {
+    PROTO_TCP = 0;
+    PROTO_UDP = 1;
+  }
+  Protocol protocol = 1;
+  bool listen = 2;    // If true, create a server socket (bind and listen). If
+                      // false, create a client socket.
+  string address = 3; // Address to bind or connect to (e.g., "0.0.0.0" for
+                      // listen or remote host for connect)
+  uint32 port = 4;    // Port to bind or connect.
+  // For UDP: if listen=true, binds to address:port to receive datagrams; if
+  // listen=false, will bind an ephemeral port and (optionally) connect to the
+  // given address:port.
+}
+message OpenSocketResponse {
+  int32 fd = 1; // Socket handle (listening socket or connected socket)
+}
+message AcceptRequest {
+  int32 server_fd = 1; // The file descriptor of a listening socket (from
+                       // OpenSocket with listen=true)
+}
+message AcceptResponse {
+  int32 client_fd = 1; // New socket descriptor for the accepted connection
+  string remote_address = 2; // Remote peer address (for info)
+  uint32 remote_port = 3;    // Remote peer port
+}
+
+// Mkdir
+message MkdirRequest {
+  string path = 1;
+  uint32 mode = 2;  // e.g., 0755
+  bool parents = 3; // if true, create parent directories as needed
+}
+message MkdirResponse { bool success = 1; }
+
+// Stat
+message StatRequest {
+  string path = 1;
+  bool follow_symlinks = 2; // if true, follow symlinks to their target
+}
+message StatResponse {
+  string path = 1;
+  bool exists = 2;
+  bool is_dir = 3;
+  int64 size = 4;       // bytes
+  uint32 mode = 5;      // permission bits
+  int64 mtime_sec = 6;  // last modified (unix seconds)
+  int64 mtime_nsec = 7; // last modified (nsec part)
+}
+
+// Chmod
+message ChmodRequest {
+  string path = 1;
+  uint32 mode = 2;
+}
+message ChmodResponse { bool success = 1; }
+
+// Chown
+message ChownRequest {
+  string path = 1;
+  int32 uid = 2;
+  int32 gid = 3;
+}
+message ChownResponse { bool success = 1; }
+
+service MachineService {
+  // File-related RPCs
+  rpc OpenFile(OpenFileRequest) returns (OpenFileResponse);
+  rpc Read(ReadRequest) returns (
+      stream ReadResponse); // server-streaming: send data chunks until EOF
+  rpc Write(stream WriteRequest)
+      returns (WriteResponse); // client-streaming: client sends chunks, server
+                               // replies with result
+  rpc Close(CloseRequest) returns (CloseResponse);
+
+  // Process execution RPCs
+  rpc Exec(ExecRequest) returns (ExecResponse);
+  rpc SignalProcess(SignalProcessRequest) returns (SignalProcessResponse);
+  rpc WaitProcess(WaitProcessRequest) returns (
+      WaitProcessResponse); // Wait for process to exit (could also be done via
+                            // polling or event, but simple sync wait)
+
+  // Network socket RPCs
+  rpc OpenSocket(OpenSocketRequest) returns (OpenSocketResponse);
+  rpc Accept(AcceptRequest) returns (AcceptResponse);
+  // (Reads and writes on sockets use the same Read/Write calls above with the
+  // socket's fd.)
+
+  // ** Filesystem Utilities **
+  // Create a directory at the given path. If parents=true, creates parents like
+  // `mkdir -p`.
+  rpc Mkdir(MkdirRequest) returns (MkdirResponse);
+  // Retrieve file metadata similar to stat(2).
+  rpc Stat(StatRequest) returns (StatResponse);
+  // Change file mode bits.
+  rpc Chmod(ChmodRequest) returns (ChmodResponse);
+  // Change file ownership (best-effort on non-UNIX platforms).
+  rpc Chown(ChownRequest) returns (ChownResponse);
+}
