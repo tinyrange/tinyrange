@@ -78,6 +78,7 @@ type OpenFileRequest struct {
 	Mode          uint32                 `protobuf:"varint,6,opt,name=mode,proto3" json:"mode,omitempty"`                         // (Optional) file permission bits for creation (e.g., 0644),
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
+	Append        bool `protobuf:"varint,7,opt,name=append,proto3" json:"append,omitempty"` // Open with O_APPEND semantics
 }
 
 func (x *OpenFileRequest) Reset() {
@@ -150,6 +151,13 @@ func (x *OpenFileRequest) GetMode() uint32 {
 		return x.Mode
 	}
 	return 0
+}
+
+func (x *OpenFileRequest) GetAppend() bool {
+	if x != nil {
+		return x.Append
+	}
+	return false
 }
 
 type OpenFileResponse struct {

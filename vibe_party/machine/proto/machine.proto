@@ -12,6 +12,7 @@ message OpenFileRequest {
   bool truncate = 5;  // Truncate file if exists and opening for write
   uint32 mode = 6; // (Optional) file permission bits for creation (e.g., 0644),
                    // ignored if not creating
+  bool append = 7; // Open with O_APPEND semantics (if for_write is true)
 }
 message OpenFileResponse {
   int32 fd = 1; // File descriptor (handle) for the opened file
