@@ -1,83 +1,106 @@
 package cli
 
 import (
-	"flag"
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
+
+	"github.com/spf13/cobra"
 
 	"github.com/tinyrange/tinyrange/build/cache/memory"
 	"github.com/tinyrange/tinyrange/build/internal"
+	"github.com/tinyrange/tinyrange/build/internal/common"
 
 	buildhttp "github.com/tinyrange/tinyrange/build/http"
 )
 
-func Main() error {
-	fs := flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ExitOnError)
+var (
+	serverAddr         string
+	serverStaticPath   string
+	serverApiOnly      bool
+	serverInsecureCors bool
+)
 
-	addr := fs.String("addr", "127.0.0.1:8080", "Address to listen on")
-	static := fs.String("static", "", "Path to static web files")
-	apiOnly := fs.Bool("api-only", false, "Don't serve any files")
-	insecureCors := fs.Bool("insecure-cors", false, "Add a middleware to set insecure CORS headers")
+func newDb() (common.Database, error) {
+	return internal.New(memory.NewCache())
+}
 
-	fs.Parse(os.Args[1:])
-
-	cache := memory.NewCache()
-
-	db, err := internal.New(cache)
-	if err != nil {
-		return err
-	}
-	var mux http.Handler
-	if *apiOnly {
-		mux = buildhttp.New(db, "")
-	} else {
-		handler := buildhttp.New(db, "/api")
-
-		serveMux := http.NewServeMux()
-
-		if *static != "" {
-			slog.Info("serving static files", "path", *static)
-			fs := http.FileServer(http.Dir(*static))
-			serveMux.Handle("/", fs)
-		} else {
-			slog.Info("no static files configured")
+var serverCmd = &cobra.Command{
+	Use:   "server",
+	Short: "Run the TinyRange build server",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		db, err := newDb()
+		if err != nil {
+			return err
 		}
 
-		serveMux.Handle("/api/", handler)
+		var mux http.Handler
+		if serverApiOnly {
+			mux = buildhttp.New(db, "")
+		} else {
+			handler := buildhttp.New(db, "/api")
 
-		mux = serveMux
-	}
+			serveMux := http.NewServeMux()
 
-	if *insecureCors {
-		oldMux := mux
-		mux = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusNoContent)
-				return
+			if serverStaticPath != "" {
+				slog.Info("serving static files", "path", serverStaticPath)
+				fs := http.FileServer(http.Dir(serverStaticPath))
+				serveMux.Handle("/", fs)
+			} else {
+				slog.Info("no static files configured")
 			}
 
-			oldMux.ServeHTTP(w, r)
-		})
-	}
+			serveMux.Handle("/api/", handler)
 
-	listen, err := net.Listen("tcp", *addr)
-	if err != nil {
-		return err
-	}
-	defer listen.Close()
+			mux = serveMux
+		}
 
-	slog.Info("listening", "addr", listen.Addr().String())
+		if serverInsecureCors {
+			oldMux := mux
+			mux = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-	srv := &http.Server{
-		Handler: mux,
-	}
+				if r.Method == "OPTIONS" {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
 
-	return srv.Serve(listen)
+				oldMux.ServeHTTP(w, r)
+			})
+		}
+
+		listen, err := net.Listen("tcp", serverAddr)
+		if err != nil {
+			return err
+		}
+		defer listen.Close()
+
+		slog.Info("listening", "addr", listen.Addr().String())
+
+		srv := &http.Server{
+			Handler: mux,
+		}
+
+		return srv.Serve(listen)
+	},
+}
+
+var rootCmd = &cobra.Command{
+	Use:   "tinyrange",
+	Short: "TinyRange is a small, self-hosted range server",
+}
+
+func init() {
+	rootCmd.AddCommand(serverCmd)
+
+	serverCmd.Flags().StringVar(&serverAddr, "addr", ":8080", "Address to listen on")
+	serverCmd.Flags().StringVar(&serverStaticPath, "static", "", "Path to static files")
+	serverCmd.Flags().BoolVar(&serverApiOnly, "api-only", false, "Only expose the API")
+	serverCmd.Flags().BoolVar(&serverInsecureCors, "insecure-cors", false, "Enable insecure CORS")
+}
+
+func Main() error {
+	return rootCmd.Execute()
 }
