@@ -19,10 +19,10 @@
 package pubgrub
 
 import (
-    "errors"
-    "fmt"
-    "sort"
-    "strings"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -189,14 +189,63 @@ type partialSolution struct {
 	trail []assignment
 	// index of current decision level (0 = before any decisions)
 	level int
+	// satisfiers records which assignment satisfied a given term at the time
+	// it became true. Organized per package to keep lookups compact.
+	// Key format: pkg:range:polarity where polarity is true for positive.
+	satisfiers map[PackageID]map[string]Satisfier
 }
 
 func newPartialSolution() *partialSolution {
 	return &partialSolution{
-		allowed: map[PackageID]Range{},
-		trail:   []assignment{},
-		level:   0,
+		allowed:    map[PackageID]Range{},
+		trail:      []assignment{},
+		level:      0,
+		satisfiers: map[PackageID]map[string]Satisfier{},
 	}
+}
+
+// Satisfier describes the assignment/incompatibility that made a term true
+// during propagation.
+type Satisfier struct {
+	By         *Incompatibility
+	Pivot      PackageID
+	TrailIndex int
+}
+
+// termKey builds a stable key for satisfier tracking.
+func termKey(t Term) string {
+	return fmt.Sprintf("%s:%s:%t", t.Pkg, rangeString(t.Allowed), t.Positive)
+}
+
+// recordSatisfier registers that term t became satisfied due to the given
+// incompatibility and pivot at the provided trail index.
+func (ps *partialSolution) recordSatisfier(t Term, trailIndex int, by *Incompatibility, pivot PackageID) {
+	if ps.satisfiers == nil {
+		ps.satisfiers = map[PackageID]map[string]Satisfier{}
+	}
+	m := ps.satisfiers[t.Pkg]
+	if m == nil {
+		m = map[string]Satisfier{}
+		ps.satisfiers[t.Pkg] = m
+	}
+	k := termKey(t)
+	// Only record the first satisfier to preserve the earliest cause at this state.
+	if _, exists := m[k]; !exists {
+		m[k] = Satisfier{By: by, Pivot: pivot, TrailIndex: trailIndex}
+	}
+}
+
+// satisfierOf returns the recorded satisfier for term t, if any.
+func (ps *partialSolution) satisfierOf(t Term) (Satisfier, bool) {
+	if ps.satisfiers == nil {
+		return Satisfier{}, false
+	}
+	m := ps.satisfiers[t.Pkg]
+	if m == nil {
+		return Satisfier{}, false
+	}
+	s, ok := m[termKey(t)]
+	return s, ok
 }
 
 func (ps *partialSolution) currentAllowed(pkg PackageID) (Range, bool) {
@@ -299,21 +348,52 @@ func (s *Solver) Solve(roots []Constraint) (map[PackageID]Version, error) {
 
 	// Main loop: propagate → decide → repeat.
 	decided := map[PackageID]bool{}
-    steps := 0
-    for {
+	steps := 0
+	for {
         steps++
         if steps > 2000 {
-            return nil, errors.New("resolution aborted: too many steps (possible loop)")
+            // Loop safeguard: forbid latest decision and continue search
+            latestDec := -1
+            for i := len(ps.trail) - 1; i >= 0; i-- {
+                if ps.trail[i].Kind == assignDecision {
+                    latestDec = i
+                    break
+                }
+            }
+            if latestDec == -1 {
+                return nil, errors.New("resolution aborted: too many steps (possible loop)")
+            }
+            as := ps.trail[latestDec]
+            if sn, ok := as.Allowed.(singletonRange); ok {
+                learned := &Incompatibility{Terms: []Term{{Pkg: as.Pkg, Allowed: sn, Positive: false}}, Cause: CauseExternal{Reason: "loop-guard forbid"}}
+                s.addIncompatibility(learned)
+                ps.backtrack(as.DecisionN - 1)
+                for k := range decided { delete(decided, k) }
+                for _, d := range ps.trail { if d.Kind == assignDecision { decided[d.Pkg] = true } }
+                steps = 0
+                continue
+            }
+            return nil, errors.New("resolution aborted: too many steps (non-singleton decision)")
         }
-        conflict := s.unitPropagate(ps)
+		conflict := s.unitPropagate(ps)
 		if conflict != nil {
 			backLevel, learned := s.resolveConflict(ps, conflict)
+			// Guard against negative backjump in ambiguous cases: treat as back to 0
+			// and continue searching unless truly unsatisfiable by exhaustion.
 			if backLevel < 0 {
-				// Unsolvable; explain.
-				return nil, s.Explainer.ErrorFromConflict(learned)
+				backLevel = 0
 			}
 			s.addIncompatibility(learned)
 			ps.backtrack(backLevel)
+			// Recompute decided set after backtracking to avoid stale entries.
+			for k := range decided {
+				delete(decided, k)
+			}
+			for _, as := range ps.trail {
+				if as.Kind == assignDecision {
+					decided[as.Pkg] = true
+				}
+			}
 			continue
 		}
 
@@ -338,31 +418,37 @@ func (s *Solver) Solve(roots []Constraint) (map[PackageID]Version, error) {
 			return solution, nil
 		}
 
-        // Decision: prefer undecided roots first, then prioritizer suggestion, then any unresolved.
-        var nextPkg PackageID
-        picked := false
-        // roots preference
-        if len(roots) > 0 {
-            ids := make([]string, 0, len(roots))
-            for _, r := range roots { ids = append(ids, string(r.Pkg)) }
-            sort.Strings(ids)
-            for _, id := range ids {
-                pid := PackageID(id)
-                if !decided[pid] { nextPkg = pid; picked = true; break }
-            }
-        }
-        if !picked {
-            if id, ok := s.Prior.ChooseNextPackage(ps.allowed, decided); ok {
-                nextPkg = id; picked = true
-            }
-        }
-        if !picked {
-            nextPkg = s.pickAnyUnresolved(ps.allowed, decided)
-            if nextPkg == "" {
-                nextPkg = s.pickRootPackage(roots)
-                if nextPkg == "" { return nil, errors.New("no packages to decide on") }
-            }
-        }
+		// Decision: prefer undecided roots first, then prioritizer suggestion, then any unresolved.
+		var nextPkg PackageID
+		picked := false
+		// roots preference
+		if len(roots) > 0 {
+			ids := make([]string, 0, len(roots))
+			for _, r := range roots {
+				ids = append(ids, string(r.Pkg))
+			}
+			sort.Strings(ids)
+			for _, id := range ids {
+				pid := PackageID(id)
+				if !decided[pid] {
+					nextPkg = pid
+					picked = true
+					break
+				}
+			}
+		}
+		if !picked {
+			if id, ok := s.Prior.ChooseNextPackage(ps.allowed, decided); ok {
+				nextPkg = id
+				picked = true
+			}
+		}
+		if !picked {
+			nextPkg = s.pickAnyUnresolved(ps.allowed, decided)
+			if nextPkg == "" {
+				return nil, errors.New("no packages to decide on")
+			}
+		}
 
 		// Choose a candidate version set for decision (as a range containing one version).
 		vers, err := s.Prov.ListVersions(nextPkg)
@@ -379,17 +465,65 @@ func (s *Solver) Solve(roots []Constraint) (map[PackageID]Version, error) {
 			allowed = anyRange{}
 		}
 		cands := filterByRange(vers, allowed, s.Cmp)
+		// Exclude versions forbidden by learned single-literal negative clauses for this package.
+		if len(s.incs) > 0 {
+			banned := map[string]bool{}
+			for _, ic := range s.incs {
+				if len(ic.Terms) == 1 {
+					t := ic.Terms[0]
+					if t.Pkg == nextPkg && !t.Positive {
+						if sn, ok := t.Allowed.(singletonRange); ok && sn.V != nil {
+							banned[sn.V.String()] = true
+						}
+					}
+				}
+			}
+			if len(banned) > 0 {
+				filtered := make([]Version, 0, len(cands))
+				for _, v := range cands {
+					if !banned[v.String()] {
+						filtered = append(filtered, v)
+					}
+				}
+				cands = filtered
+			}
+		}
 		cands = s.Chooser.CandidateVersions(nextPkg, allowed, cands, s.Cmp)
 		if len(cands) == 0 {
-			// No possible version -> conflict with "empty range".
-			empty := emptyRange{}
-			conf := &Incompatibility{
-				Terms: []Term{{Pkg: nextPkg, Allowed: empty, Positive: true}},
-				Cause: CauseExternal{Reason: "no viable version for decision"},
+			// No possible version for nextPkg under current decisions.
+			// Learn a clause that forbids the latest decision to force backtracking.
+			// If no decisions have been made, it's unsatisfiable.
+			latestDec := -1
+			for i := len(ps.trail) - 1; i >= 0; i-- {
+				if ps.trail[i].Kind == assignDecision {
+					latestDec = i
+					break
+				}
 			}
-			// Force resolution path.
-			_, learned := s.resolveConflict(ps, conf)
-			return nil, s.Explainer.ErrorFromConflict(learned)
+			if latestDec == -1 {
+				conf := &Incompatibility{Terms: []Term{{Pkg: nextPkg, Allowed: emptyRange{}, Positive: true}}, Cause: CauseExternal{Reason: "no viable version for decision"}}
+				return nil, s.Explainer.ErrorFromConflict(conf)
+			}
+			as := ps.trail[latestDec]
+			if sn, ok := as.Allowed.(singletonRange); ok {
+				learned := &Incompatibility{Terms: []Term{{Pkg: as.Pkg, Allowed: sn, Positive: false}}, Cause: CauseExternal{Reason: "backtrack from no candidates"}}
+				s.addIncompatibility(learned)
+				bj := as.DecisionN - 1
+				ps.backtrack(bj)
+				// Recompute decided after backtrack
+				for k := range decided {
+					delete(decided, k)
+				}
+				for _, d := range ps.trail {
+					if d.Kind == assignDecision {
+						decided[d.Pkg] = true
+					}
+				}
+				continue
+			}
+			// If decision wasn't singleton (shouldn't happen), fallback to unsat report.
+			conf := &Incompatibility{Terms: []Term{{Pkg: nextPkg, Allowed: emptyRange{}, Positive: true}}, Cause: CauseExternal{Reason: "no viable version for decision"}}
+			return nil, s.Explainer.ErrorFromConflict(conf)
 		}
 		// Decide the *first* candidate deterministically by chooser’s order.
 		chosen := cands[0]
@@ -409,9 +543,10 @@ func (s *Solver) learnDependencies(pkg PackageID, ver Version) {
 		return
 	}
 	for _, d := range deps {
+		// Encode implication: (pkg@[ver]) -> (dep in R) as (not pkg@[ver]) or (dep in R)
 		ic := &Incompatibility{
 			Terms: []Term{
-				{Pkg: pkg, Allowed: singletonRange{V: ver}, Positive: true},
+				{Pkg: pkg, Allowed: singletonRange{V: ver}, Positive: false},
 				{Pkg: d.Pkg, Allowed: d.Allow, Positive: true},
 			},
 			Cause: CauseDependency{Pkg: pkg, Ver: ver},
@@ -462,56 +597,90 @@ func (s *Solver) pickRootPackage(roots []Constraint) PackageID {
 // unitPropagate applies all known incompatibilities to narrow ranges and
 // detect immediate conflicts. Returns a conflicting incompatibility if found.
 func (s *Solver) unitPropagate(ps *partialSolution) *Incompatibility {
-	changed := true
-	for changed {
-		changed = false
-		for _, ic := range s.incs {
-			// Check if all but one term in ic are satisfied; then the last must be false.
-			var unsatisfiedIdx = -1
-			allOthersTrue := true
-			for i, t := range ic.Terms {
-				tr, has := ps.currentAllowed(t.Pkg)
-				if !has {
-					// If no knowledge yet, treat as unknown → not "true".
-					allOthersTrue = false
-					unsatisfiedIdx = i // candidate
-					continue
-				}
-				ok := termSatisfied(t, tr, s.Cmp)
-				if !ok {
-					// This term is not currently satisfied → keep as candidate to force.
-					allOthersTrue = false
-					if unsatisfiedIdx == -1 {
-						unsatisfiedIdx = i
-					} else {
-						// Multiple unknown/unsatisfied → nothing to derive from this ic now.
-						unsatisfiedIdx = -1
-						break
-					}
-				}
-			}
-			if unsatisfiedIdx == -1 && allOthersTrue {
-				// Clause fully satisfied: nothing to do.
-				continue
-			}
-			if !allOthersTrue && unsatisfiedIdx >= 0 {
-				// Derive: tighten range of the remaining term to make clause hold.
-				t := ic.Terms[unsatisfiedIdx]
-				prev, _ := ps.currentAllowed(t.Pkg)
-				newR := deriveRangeForTerm(t, prev, s.Cmp)
-            if newR.IsEmpty() {
-                // Return the conflicting incompatibility as the initial learned clause.
+    // Helpers to evaluate literal states
+    termTrue := func(t Term, have Range) bool { return have != nil && termSatisfied(t, have, s.Cmp) }
+    termFalse := func(t Term, have Range) bool {
+        if have == nil {
+            return false
+        }
+        inter := have.Intersect(t.Allowed, s.Cmp)
+        if t.Positive {
+            return inter.IsEmpty()
+        }
+        return !inter.IsEmpty()
+    }
+    latestIdx := func(pkg PackageID) int {
+        for i := len(ps.trail) - 1; i >= 0; i-- {
+            if ps.trail[i].Pkg == pkg {
+                return i
+            }
+        }
+        return -1
+    }
+
+    changed := true
+    for changed {
+        changed = false
+        for _, ic := range s.incs {
+            falseCount := 0
+            unknownIdx := -1
+            type fals struct{ term Term; li int }
+            falses := make([]fals, 0, len(ic.Terms))
+            satisfiedClause := false
+            for i, t := range ic.Terms {
+                have, has := ps.currentAllowed(t.Pkg)
+                if !has {
+                    if unknownIdx == -1 {
+                        unknownIdx = i
+                    } else {
+                        unknownIdx = -2
+                        break
+                    }
+                    continue
+                }
+                if termTrue(t, have) {
+                    satisfiedClause = true
+                    break
+                }
+                if termFalse(t, have) {
+                    falseCount++
+                    falses = append(falses, fals{term: t, li: latestIdx(t.Pkg)})
+                } else {
+                    if unknownIdx == -1 {
+                        unknownIdx = i
+                    } else {
+                        unknownIdx = -2
+                        break
+                    }
+                }
+            }
+            if satisfiedClause {
+                continue
+            }
+            if unknownIdx == -1 && falseCount == len(ic.Terms) {
                 return ic
             }
-				// Only record if it changes something.
-				if prevStr := rangeString(prev); prevStr != rangeString(newR) {
-					ps.derive(t.Pkg, newR, ic)
-					changed = true
-				}
-			}
-		}
-	}
-	return nil
+            if unknownIdx >= 0 && falseCount == len(ic.Terms)-1 {
+                // Unit: force unknown literal to be true
+                t := ic.Terms[unknownIdx]
+                for _, f := range falses {
+                    if f.li >= 0 {
+                        ps.recordSatisfier(f.term, f.li, ic, t.Pkg)
+                    }
+                }
+                prev, _ := ps.currentAllowed(t.Pkg)
+                newR := deriveRangeForTerm(t, prev, s.Cmp)
+                if newR.IsEmpty() {
+                    return ic
+                }
+                if rangeString(prev) != rangeString(newR) {
+                    ps.derive(t.Pkg, newR, ic)
+                    changed = true
+                }
+            }
+        }
+    }
+    return nil
 }
 
 func termSatisfied(t Term, have Range, cmp Comparator) bool {
@@ -526,35 +695,56 @@ func termSatisfied(t Term, have Range, cmp Comparator) bool {
 }
 
 func deriveRangeForTerm(t Term, prev Range, cmp Comparator) Range {
-	// If t is positive ("pkg in R"), then we must intersect prev with R.
-	// If prev is empty (unknown), treat as Any() intersect R => R.
-	if t.Positive {
-		if prev == nil {
-			return t.Allowed
-		}
-		return prev.Intersect(t.Allowed, cmp)
-	}
-	// If t is negative ("pkg not in R"), then we must subtract R from prev.
-	// Minimal single-file implementation: if prev is singleton and it’s in R,
-	// we have a conflict (empty). If prev is anyRange, convert to a negatedRange.
-	if prev == nil {
-		return negatedRange{Disallow: t.Allowed}
-	}
-	switch p := prev.(type) {
-	case singletonRange:
-		if t.Allowed.Contains(p.V, cmp) {
-			return emptyRange{}
-		}
-		return prev
-	case anyRange:
-		return negatedRange{Disallow: t.Allowed}
-case negatedRange:
-        // union of disallowed sets
+    // Make the literal t true given previous range prev
+    if t.Positive {
+        if prev == nil {
+            return t.Allowed
+        }
+        return prev.Intersect(t.Allowed, cmp)
+    }
+    // Negative literal: ensure exclusion of t.Allowed from prev
+    if prev == nil {
+        return negatedRange{Disallow: t.Allowed}
+    }
+    switch p := prev.(type) {
+    case singletonRange:
+        if t.Allowed.Contains(p.V, cmp) {
+            return emptyRange{}
+        }
+        return prev
+    case anyRange:
+        return negatedRange{Disallow: t.Allowed}
+    case negatedRange:
+        if rangeContainsRange(p.Disallow, t.Allowed) {
+            return prev
+        }
         return negatedRange{Disallow: unionRange{A: p.Disallow, B: t.Allowed}}
-	default:
-		// Fallback: intersect with a complement isn't available in minimal range algebra; leave as-is.
-		return prev
+    case intervalRange:
+        if sv, ok := t.Allowed.(singletonRange); ok {
+            if p.Lower != nil && cmp.Compare(sv.V, p.Lower) == 0 && p.IncLower {
+                return intervalRange{Lower: p.Lower, Upper: p.Upper, IncLower: false, IncUpper: p.IncUpper}
+            }
+            if p.Upper != nil && cmp.Compare(sv.V, p.Upper) == 0 && p.IncUpper {
+                return intervalRange{Lower: p.Lower, Upper: p.Upper, IncLower: p.IncLower, IncUpper: false}
+            }
+        }
+        return prev
+    default:
+        return prev
+    }
+}
+
+// rangeContainsRange reports whether container already includes target when the
+// container may be a nested unionRange. This uses structural/string equality of
+// leaf ranges to avoid infinite growth during repeated propagation.
+func rangeContainsRange(container Range, target Range) bool {
+	if rangeString(container) == rangeString(target) {
+		return true
 	}
+	if u, ok := container.(unionRange); ok {
+		return rangeContainsRange(u.A, target) || rangeContainsRange(u.B, target)
+	}
+	return false
 }
 
 // resolveConflict performs conflict-driven learning and backjump level selection.
@@ -563,237 +753,185 @@ case negatedRange:
 func (s *Solver) resolveConflict(ps *partialSolution, conflict *Incompatibility) (int, *Incompatibility) {
     learned := conflict
 
-    // Helper: index of latest assignment for a package
     latestIdx := func(pkg PackageID) int {
         for i := len(ps.trail) - 1; i >= 0; i-- {
-            if ps.trail[i].Pkg == pkg { return i }
+            if ps.trail[i].Pkg == pkg {
+                return i
+            }
         }
         return -1
     }
 
-    // Resolution loop: eliminate all but one term at current level
-    for {
-        // Count current-level terms and pick the most recent as pivot
-        countCurr := 0
-        var pivotPkg PackageID
-        pivotPos := -1
-        pivotIdx := -1
-        for i, t := range learned.Terms {
-            li := latestIdx(t.Pkg)
-            if li < 0 { continue }
-            if ps.trail[li].DecisionN == ps.level {
-                countCurr++
-                if li > pivotIdx { pivotIdx = li; pivotPkg = t.Pkg; pivotPos = i }
+    // Heuristic: prefer to block the most recent depender version involved in derivations.
+    for i := len(ps.trail) - 1; i >= 0; i-- {
+        as := ps.trail[i]
+        if as.Reason != nil {
+            if cd, ok := as.Reason.Cause.(CauseDependency); ok {
+                learned = &Incompatibility{Terms: []Term{{Pkg: cd.Pkg, Allowed: singletonRange{V: cd.Ver}, Positive: false}}, Cause: CauseConflict{Conflict: conflict, Other: as.Reason}}
+                // backjump just before that depender decision
+                li := latestIdx(cd.Pkg)
+                bj := 0
+                if li >= 0 { bj = ps.trail[li].DecisionN - 1 }
+                return bj, learned
             }
         }
-        if countCurr <= 1 { break }
-        if pivotPos == -1 { break }
-        // Get reason for pivot assignment
-        as := ps.trail[pivotIdx]
-        reason := as.Reason
-        if reason == nil {
-            // try to find an earlier derived reason for the same package
-            for j := pivotIdx - 1; j >= 0; j-- {
-                pj := ps.trail[j]
-                if pj.Pkg == pivotPkg && pj.Reason != nil { reason = pj.Reason; break }
-            }
-            if reason == nil {
-                // can't resolve further
-                break
-            }
-        }
-        // Resolve learned with pivot reason
-        learned = resolveOn(learned, reason, pivotPkg)
     }
 
-    // If learned is a unit clause, convert it to a negative term to forbid it.
-    if len(learned.Terms) == 1 {
-        t := learned.Terms[0]
-        learned = &Incompatibility{Terms: []Term{{Pkg: t.Pkg, Allowed: t.Allowed, Positive: false}}, Cause: learned.Cause}
-    }
+    // Fast-path removed: rely on UIP resolution to ensure good backjumps.
 
-    // If the learned clause has exactly two terms and one is at the current
-    // level while the other is at a lower level, turn it into a negative unit
-    // clause forbidding the lower-level exact version. This prevents cycling by
-    // forcing an alternative at that earlier decision.
-    if len(learned.Terms) == 2 {
-        type tl struct{ t Term; lvl int }
-        items := make([]tl, 0, 2)
-        for _, t := range learned.Terms {
-            li := latestIdx(t.Pkg)
-            lvl := -1
-            if li >= 0 { lvl = ps.trail[li].DecisionN }
-            items = append(items, tl{t: t, lvl: lvl})
-        }
-        if (items[0].lvl == ps.level && items[1].lvl >= 0 && items[1].lvl < ps.level) || (items[1].lvl == ps.level && items[0].lvl >= 0 && items[0].lvl < ps.level) {
-            var low tl
-            if items[0].lvl < items[1].lvl { low = items[0] } else { low = items[1] }
-            // only if it's a singleton so we can block it precisely
-            if _, ok := low.t.Allowed.(singletonRange); ok {
-                learned = &Incompatibility{Terms: []Term{{Pkg: low.t.Pkg, Allowed: low.t.Allowed, Positive: false}}, Cause: learned.Cause}
-                // Force backjump to just before that lower-level decision
-                return low.lvl - 1, learned
-            }
-            // If the other package at current level has no alternative but the lower-level one does,
-            // block the lower-level exact version (even if low term isn't singleton, use its latest decision ver).
-            // Identify packages' version counts.
-            // current-level item:
-            var cur tl
-            if items[0].lvl == ps.level { cur = items[0] } else { cur = items[1] }
-            vsCur, _ := s.Prov.ListVersions(cur.t.Pkg)
-            vsLow, _ := s.Prov.ListVersions(low.t.Pkg)
-            if len(vsCur) == 1 && len(vsLow) > 1 {
-                // find latest decision version for low.t.Pkg
-                li := latestIdx(low.t.Pkg)
-                if li >= 0 {
-                    if dec := ps.trail[li]; dec.Kind == assignDecision {
-                        if s.Cmp != nil {
-                            learned = &Incompatibility{Terms: []Term{{Pkg: low.t.Pkg, Allowed: singletonRange{V: dec.Allowed.(singletonRange).V}, Positive: false}}, Cause: learned.Cause}
-                            return low.lvl - 1, learned
-                        }
-                    }
+    // (UIP) Conflict analysis proceeds via resolution; no eager depender blocking here.
+
+	for {
+		// Count current-level literals and select most recent as pivot
+		countCurr := 0
+		var pivotPkg PackageID
+		pivotPos := -1
+		pivotIdx := -1
+		for i, t := range learned.Terms {
+			li := latestIdx(t.Pkg)
+			if li < 0 {
+				continue
+			}
+			if ps.trail[li].DecisionN == ps.level {
+				countCurr++
+				if li > pivotIdx {
+					pivotIdx = li
+					pivotPkg = t.Pkg
+					pivotPos = i
+				}
+			}
+		}
+        if countCurr <= 1 {
+            // Prefer blocking an earlier depender that forced a non-current term.
+            for _, t := range learned.Terms {
+                // skip pivot package if identified
+                if pivotPos >= 0 && t.Pkg == learned.Terms[pivotPos].Pkg {
+                    continue
                 }
-            }
-        }
-        // Try to find a depender Q@ver whose constraint on the lower-level
-        // package contradicts the learned term; then block Q@ver directly.
-        // This helps flip earlier choices instead of cycling on later ones.
-        lowPkg := items[0].t.Pkg
-        lowAllowed := items[0].t.Allowed
-        if items[1].lvl < items[0].lvl { lowPkg = items[1].t.Pkg; lowAllowed = items[1].t.Allowed }
-        for _, ic := range s.incs {
-            if cd, ok := ic.Cause.(CauseDependency); ok {
-                // Does this incompatibility talk about lowPkg with a positive term contradictory to lowAllowed?
-                var depR Range
-                hasLow := false
-                for _, tt := range ic.Terms {
-                    if tt.Pkg == lowPkg && tt.Positive {
-                        depR = tt.Allowed
-                        hasLow = true
+                li := latestIdx(t.Pkg)
+                if li < 0 {
+                    continue
+                }
+                // walk back to find an assignment with a reason
+                var withReason *assignment
+                for j := li; j >= 0; j-- {
+                    if ps.trail[j].Pkg != t.Pkg {
+                        continue
+                    }
+                    if ps.trail[j].Reason != nil {
+                        withReason = &ps.trail[j]
                         break
                     }
                 }
-                if hasLow {
-                    inter := depR.Intersect(lowAllowed, s.Cmp)
-                    if inter.IsEmpty() {
-                        // Block cd.Pkg@cd.Ver
-                        learned = &Incompatibility{Terms: []Term{{Pkg: cd.Pkg, Allowed: singletonRange{V: cd.Ver}, Positive: false}}, Cause: CauseConflict{Conflict: conflict, Other: learned}}
+                if withReason != nil {
+                    if cd, ok := withReason.Reason.Cause.(CauseDependency); ok {
+                        // Learn unit forbidding that depender version
+                        learned = &Incompatibility{Terms: []Term{{Pkg: cd.Pkg, Allowed: singletonRange{V: cd.Ver}, Positive: false}}, Cause: CauseConflict{Conflict: learned, Other: withReason.Reason}}
+                        // backjump to just before depender's decision
                         lli := latestIdx(cd.Pkg)
-                        lvl := 0
-                        if lli >= 0 { lvl = ps.trail[lli].DecisionN - 1 }
-                        return lvl, learned
+                        bj := 0
+                        if lli >= 0 {
+                            bj = ps.trail[lli].DecisionN - 1
+                        }
+                        return bj, learned
                     }
                 }
             }
-        }
-    }
+            // Compute backjump level as the highest level among non-current literals
+            backLevel := 0
+			for j, t := range learned.Terms {
+				if pivotPos >= 0 && j == pivotPos {
+					continue
+				}
+				li := latestIdx(t.Pkg)
+				if li < 0 {
+					continue
+				}
+				lvl := ps.trail[li].DecisionN
+				if lvl < ps.level && lvl > backLevel {
+					backLevel = lvl
+				}
+			}
+			// If pivot is a decision on a concrete version, forbid it
+			if pivotPos >= 0 && pivotIdx >= 0 {
+				as := ps.trail[pivotIdx]
+				if as.Kind == assignDecision {
+					if sn, ok := as.Allowed.(singletonRange); ok {
+						learned = &Incompatibility{Terms: []Term{{Pkg: pivotPkg, Allowed: sn, Positive: false}}, Cause: CauseConflict{Conflict: learned, Other: as.Reason}}
+						return as.DecisionN - 1, learned
+					}
+				}
+			}
+			return backLevel, learned
+		}
+		if pivotPos == -1 {
+			break
+		}
+		// Fetch reason for pivot via satisfier if possible
+		pivotTerm := learned.Terms[pivotPos]
+		var reason *Incompatibility
+		if sat, ok := ps.satisfierOf(pivotTerm); ok && sat.By != nil {
+			reason = sat.By
+		}
+		if reason == nil {
+			if pivotIdx >= 0 {
+				as := ps.trail[pivotIdx]
+				reason = as.Reason
+			}
+		}
+		if reason == nil {
+			break
+		}
+		learned = resolveOn(learned, reason, pivotPkg)
+	}
 
-    // Try to eliminate additional terms using their reasons to expose earlier
-    // decision variables (e.g., replace A with its depender X).
-    for iter := 0; iter < 4; iter++ {
-        changed := false
-        for i := 0; i < len(learned.Terms); i++ {
-            t := learned.Terms[i]
-            li := latestIdx(t.Pkg)
-            if li < 0 { continue }
-            as := ps.trail[li]
-            if as.Reason == nil { continue }
-            before := len(learned.Terms)
-            learned = resolveOn(learned, as.Reason, t.Pkg)
-            if len(learned.Terms) < before {
-                changed = true
-                break
-            }
-        }
-        if !changed { break }
-    }
-
-    // If clause still has a current-level term and at least one lower-level term
-    // whose latest assignment was derived from a dependency cd.Pkg@cd.Ver, learn
-    // a blocking clause against that depender version to force exploration.
-    hasCurr := false
-    for _, t := range learned.Terms {
-        li := latestIdx(t.Pkg)
-        if li >= 0 && ps.trail[li].DecisionN == ps.level { hasCurr = true; break }
-    }
-    if hasCurr {
-        for _, t := range learned.Terms {
-            li := latestIdx(t.Pkg)
-            if li < 0 { continue }
-            // find earliest prior reason for this pkg
-            var withReason *assignment
-            for j := li; j >= 0; j-- {
-                if ps.trail[j].Pkg != t.Pkg { continue }
-                if ps.trail[j].Reason != nil { withReason = &ps.trail[j]; break }
-            }
-            if withReason == nil { continue }
-            if withReason.DecisionN >= ps.level { continue }
-            if cd, ok := withReason.Reason.Cause.(CauseDependency); ok {
-                // Block cd.Pkg@cd.Ver
-                learned = &Incompatibility{Terms: []Term{{Pkg: cd.Pkg, Allowed: singletonRange{V: cd.Ver}, Positive: false}}, Cause: CauseConflict{Conflict: conflict, Other: learned}}
-                // Backjump to just before that decision
-                // find level of cd.Pkg
-                lli := latestIdx(cd.Pkg)
-                lvl := 0
-                if lli >= 0 { lvl = ps.trail[lli].DecisionN - 1 }
-                return lvl, learned
-            }
-        }
-    }
-
-    // Choose backjump level: the max level among terms other than current level
-    backLevel := 0
-    found := false
-    for _, t := range learned.Terms {
-        li := latestIdx(t.Pkg)
-        if li < 0 { continue }
-        lvl := ps.trail[li].DecisionN
-        if lvl != ps.level {
-            if !found || lvl > backLevel { backLevel = lvl; found = true }
-        }
-    }
-    if !found {
-        // no other levels -> pick the latest prior decision and block it to force alternative
-        for i := len(ps.trail) - 1; i >= 0; i-- {
-            as := ps.trail[i]
-            if as.Kind == assignDecision && as.DecisionN < ps.level {
-                if sn, ok := as.Allowed.(singletonRange); ok {
-                    learned = &Incompatibility{Terms: []Term{{Pkg: as.Pkg, Allowed: sn, Positive: false}}, Cause: CauseConflict{Conflict: conflict, Other: learned}}
-                    return as.DecisionN - 1, learned
-                }
-            }
-        }
-        backLevel = 0
-    }
-    return backLevel, learned
+	// Fallback: block latest decision at current level
+	for i := len(ps.trail) - 1; i >= 0; i-- {
+		as := ps.trail[i]
+		if as.Kind == assignDecision && as.DecisionN == ps.level {
+			if sn, ok := as.Allowed.(singletonRange); ok {
+				learned = &Incompatibility{Terms: []Term{{Pkg: as.Pkg, Allowed: sn, Positive: false}}, Cause: CauseConflict{Conflict: conflict, Other: learned}}
+				return as.DecisionN - 1, learned
+			}
+		}
+	}
+	return 0, learned
 }
 
 func termHasPkg(ic *Incompatibility, pkg PackageID) bool {
-    for _, t := range ic.Terms {
-        if t.Pkg == pkg { return true }
-    }
-    return false
+	for _, t := range ic.Terms {
+		if t.Pkg == pkg {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveOn merges two incompatibilities eliminating references to pivotPkg.
 // This is a simplified resolution: union of terms excluding pivot, with de-dupe.
 func resolveOn(a, b *Incompatibility, pivotPkg PackageID) *Incompatibility {
-    out := &Incompatibility{Terms: []Term{}, Cause: CauseConflict{Conflict: a, Other: b}}
-    add := func(t Term) {
-        for _, et := range out.Terms {
-            if et.Pkg == t.Pkg && rangeString(et.Allowed) == rangeString(t.Allowed) && et.Positive == t.Positive { return }
-        }
-        out.Terms = append(out.Terms, t)
-    }
-    for _, t := range a.Terms {
-        if t.Pkg == pivotPkg { continue }
-        add(t)
-    }
-    for _, t := range b.Terms {
-        if t.Pkg == pivotPkg { continue }
-        add(t)
-    }
-    return out
+	out := &Incompatibility{Terms: []Term{}, Cause: CauseConflict{Conflict: a, Other: b}}
+	add := func(t Term) {
+		for _, et := range out.Terms {
+			if et.Pkg == t.Pkg && rangeString(et.Allowed) == rangeString(t.Allowed) && et.Positive == t.Positive {
+				return
+			}
+		}
+		out.Terms = append(out.Terms, t)
+	}
+	for _, t := range a.Terms {
+		if t.Pkg == pivotPkg {
+			continue
+		}
+		add(t)
+	}
+	for _, t := range b.Terms {
+		if t.Pkg == pivotPkg {
+			continue
+		}
+		add(t)
+	}
+	return out
 }
 
 /*
