@@ -164,9 +164,7 @@ func (ctx *buildContext) buildProto(options buildProtoOptions, inputs ...string)
 	}
 
 	if options.grpc {
-		args = append(args,
-			fmt.Sprintf("--go-grpc_out=paths=source_relative:%s", options.output),
-		)
+		args = append(args, "--go-grpc_out=paths=source_relative:.")
 	}
 
 	args = append(args, inputs...)

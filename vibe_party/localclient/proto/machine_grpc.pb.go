@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v6.32.0
-// source: machine.proto
+// source: vibe_party/localclient/proto/machine.proto
 
-package machinepb
+package proto
 
 import (
 	context "context"
@@ -590,5 +590,5 @@ var MachineService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "machine.proto",
+	Metadata: "vibe_party/localclient/proto/machine.proto",
 }
