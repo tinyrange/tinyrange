@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.9
 // 	protoc        v6.32.0
-// source: machine.proto
+// source: vibe_party/localclient/proto/machine.proto
 
-package machinepb
+package proto
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -51,11 +51,11 @@ func (x OpenSocketRequest_Protocol) String() string {
 }
 
 func (OpenSocketRequest_Protocol) Descriptor() protoreflect.EnumDescriptor {
-	return file_machine_proto_enumTypes[0].Descriptor()
+	return file_vibe_party_localclient_proto_machine_proto_enumTypes[0].Descriptor()
 }
 
 func (OpenSocketRequest_Protocol) Type() protoreflect.EnumType {
-	return &file_machine_proto_enumTypes[0]
+	return &file_vibe_party_localclient_proto_machine_proto_enumTypes[0]
 }
 
 func (x OpenSocketRequest_Protocol) Number() protoreflect.EnumNumber {
@@ -64,26 +64,27 @@ func (x OpenSocketRequest_Protocol) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use OpenSocketRequest_Protocol.Descriptor instead.
 func (OpenSocketRequest_Protocol) EnumDescriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{14, 0}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{14, 0}
 }
 
 // ** File Operations **
 type OpenFileRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`                          // Path of the file to open
-	ForRead       bool                   `protobuf:"varint,2,opt,name=for_read,json=forRead,proto3" json:"for_read,omitempty"`    // Open for reading
-	ForWrite      bool                   `protobuf:"varint,3,opt,name=for_write,json=forWrite,proto3" json:"for_write,omitempty"` // Open for writing
-	Create        bool                   `protobuf:"varint,4,opt,name=create,proto3" json:"create,omitempty"`                     // Create file if not exists
-	Truncate      bool                   `protobuf:"varint,5,opt,name=truncate,proto3" json:"truncate,omitempty"`                 // Truncate file if exists and opening for write
-	Mode          uint32                 `protobuf:"varint,6,opt,name=mode,proto3" json:"mode,omitempty"`                         // (Optional) file permission bits for creation (e.g., 0644),
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Path     string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`                          // Path of the file to open
+	ForRead  bool                   `protobuf:"varint,2,opt,name=for_read,json=forRead,proto3" json:"for_read,omitempty"`    // Open for reading
+	ForWrite bool                   `protobuf:"varint,3,opt,name=for_write,json=forWrite,proto3" json:"for_write,omitempty"` // Open for writing
+	Create   bool                   `protobuf:"varint,4,opt,name=create,proto3" json:"create,omitempty"`                     // Create file if not exists
+	Truncate bool                   `protobuf:"varint,5,opt,name=truncate,proto3" json:"truncate,omitempty"`                 // Truncate file if exists and opening for write
+	Mode     uint32                 `protobuf:"varint,6,opt,name=mode,proto3" json:"mode,omitempty"`                         // (Optional) file permission bits for creation (e.g., 0644),
+	// ignored if not creating
+	Append        bool `protobuf:"varint,7,opt,name=append,proto3" json:"append,omitempty"` // Open with O_APPEND semantics (if for_write is true)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
-	Append        bool `protobuf:"varint,7,opt,name=append,proto3" json:"append,omitempty"` // Open with O_APPEND semantics
 }
 
 func (x *OpenFileRequest) Reset() {
 	*x = OpenFileRequest{}
-	mi := &file_machine_proto_msgTypes[0]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -95,7 +96,7 @@ func (x *OpenFileRequest) String() string {
 func (*OpenFileRequest) ProtoMessage() {}
 
 func (x *OpenFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[0]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -108,7 +109,7 @@ func (x *OpenFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenFileRequest.ProtoReflect.Descriptor instead.
 func (*OpenFileRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{0}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *OpenFileRequest) GetPath() string {
@@ -169,7 +170,7 @@ type OpenFileResponse struct {
 
 func (x *OpenFileResponse) Reset() {
 	*x = OpenFileResponse{}
-	mi := &file_machine_proto_msgTypes[1]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -181,7 +182,7 @@ func (x *OpenFileResponse) String() string {
 func (*OpenFileResponse) ProtoMessage() {}
 
 func (x *OpenFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[1]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -194,7 +195,7 @@ func (x *OpenFileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenFileResponse.ProtoReflect.Descriptor instead.
 func (*OpenFileResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{1}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *OpenFileResponse) GetFd() int32 {
@@ -214,7 +215,7 @@ type ReadRequest struct {
 
 func (x *ReadRequest) Reset() {
 	*x = ReadRequest{}
-	mi := &file_machine_proto_msgTypes[2]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -226,7 +227,7 @@ func (x *ReadRequest) String() string {
 func (*ReadRequest) ProtoMessage() {}
 
 func (x *ReadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[2]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -239,7 +240,7 @@ func (x *ReadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadRequest.ProtoReflect.Descriptor instead.
 func (*ReadRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{2}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ReadRequest) GetFd() int32 {
@@ -266,7 +267,7 @@ type ReadResponse struct {
 
 func (x *ReadResponse) Reset() {
 	*x = ReadResponse{}
-	mi := &file_machine_proto_msgTypes[3]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -278,7 +279,7 @@ func (x *ReadResponse) String() string {
 func (*ReadResponse) ProtoMessage() {}
 
 func (x *ReadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[3]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -291,7 +292,7 @@ func (x *ReadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadResponse.ProtoReflect.Descriptor instead.
 func (*ReadResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{3}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ReadResponse) GetData() []byte {
@@ -318,7 +319,7 @@ type WriteRequest struct {
 
 func (x *WriteRequest) Reset() {
 	*x = WriteRequest{}
-	mi := &file_machine_proto_msgTypes[4]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -330,7 +331,7 @@ func (x *WriteRequest) String() string {
 func (*WriteRequest) ProtoMessage() {}
 
 func (x *WriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[4]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -343,7 +344,7 @@ func (x *WriteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteRequest.ProtoReflect.Descriptor instead.
 func (*WriteRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{4}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *WriteRequest) GetFd() int32 {
@@ -369,7 +370,7 @@ type WriteResponse struct {
 
 func (x *WriteResponse) Reset() {
 	*x = WriteResponse{}
-	mi := &file_machine_proto_msgTypes[5]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -381,7 +382,7 @@ func (x *WriteResponse) String() string {
 func (*WriteResponse) ProtoMessage() {}
 
 func (x *WriteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[5]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -394,7 +395,7 @@ func (x *WriteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteResponse.ProtoReflect.Descriptor instead.
 func (*WriteResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{5}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *WriteResponse) GetBytesWritten() uint64 {
@@ -413,7 +414,7 @@ type CloseRequest struct {
 
 func (x *CloseRequest) Reset() {
 	*x = CloseRequest{}
-	mi := &file_machine_proto_msgTypes[6]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -425,7 +426,7 @@ func (x *CloseRequest) String() string {
 func (*CloseRequest) ProtoMessage() {}
 
 func (x *CloseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[6]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -438,7 +439,7 @@ func (x *CloseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseRequest.ProtoReflect.Descriptor instead.
 func (*CloseRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{6}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CloseRequest) GetFd() int32 {
@@ -457,7 +458,7 @@ type CloseResponse struct {
 
 func (x *CloseResponse) Reset() {
 	*x = CloseResponse{}
-	mi := &file_machine_proto_msgTypes[7]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -469,7 +470,7 @@ func (x *CloseResponse) String() string {
 func (*CloseResponse) ProtoMessage() {}
 
 func (x *CloseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[7]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -482,7 +483,7 @@ func (x *CloseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseResponse.ProtoReflect.Descriptor instead.
 func (*CloseResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{7}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CloseResponse) GetSuccess() bool {
@@ -506,7 +507,7 @@ type ExecRequest struct {
 
 func (x *ExecRequest) Reset() {
 	*x = ExecRequest{}
-	mi := &file_machine_proto_msgTypes[8]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -518,7 +519,7 @@ func (x *ExecRequest) String() string {
 func (*ExecRequest) ProtoMessage() {}
 
 func (x *ExecRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[8]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -531,7 +532,7 @@ func (x *ExecRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecRequest.ProtoReflect.Descriptor instead.
 func (*ExecRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{8}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ExecRequest) GetCommand() string {
@@ -581,7 +582,7 @@ type ExecResponse struct {
 
 func (x *ExecResponse) Reset() {
 	*x = ExecResponse{}
-	mi := &file_machine_proto_msgTypes[9]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -593,7 +594,7 @@ func (x *ExecResponse) String() string {
 func (*ExecResponse) ProtoMessage() {}
 
 func (x *ExecResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[9]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -606,7 +607,7 @@ func (x *ExecResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecResponse.ProtoReflect.Descriptor instead.
 func (*ExecResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{9}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ExecResponse) GetPid() int32 {
@@ -647,7 +648,7 @@ type SignalProcessRequest struct {
 
 func (x *SignalProcessRequest) Reset() {
 	*x = SignalProcessRequest{}
-	mi := &file_machine_proto_msgTypes[10]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -659,7 +660,7 @@ func (x *SignalProcessRequest) String() string {
 func (*SignalProcessRequest) ProtoMessage() {}
 
 func (x *SignalProcessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[10]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -672,7 +673,7 @@ func (x *SignalProcessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignalProcessRequest.ProtoReflect.Descriptor instead.
 func (*SignalProcessRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{10}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SignalProcessRequest) GetPid() int32 {
@@ -698,7 +699,7 @@ type SignalProcessResponse struct {
 
 func (x *SignalProcessResponse) Reset() {
 	*x = SignalProcessResponse{}
-	mi := &file_machine_proto_msgTypes[11]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -710,7 +711,7 @@ func (x *SignalProcessResponse) String() string {
 func (*SignalProcessResponse) ProtoMessage() {}
 
 func (x *SignalProcessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[11]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -723,7 +724,7 @@ func (x *SignalProcessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignalProcessResponse.ProtoReflect.Descriptor instead.
 func (*SignalProcessResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{11}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SignalProcessResponse) GetSuccess() bool {
@@ -742,7 +743,7 @@ type WaitProcessRequest struct {
 
 func (x *WaitProcessRequest) Reset() {
 	*x = WaitProcessRequest{}
-	mi := &file_machine_proto_msgTypes[12]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -754,7 +755,7 @@ func (x *WaitProcessRequest) String() string {
 func (*WaitProcessRequest) ProtoMessage() {}
 
 func (x *WaitProcessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[12]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -767,7 +768,7 @@ func (x *WaitProcessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WaitProcessRequest.ProtoReflect.Descriptor instead.
 func (*WaitProcessRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{12}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *WaitProcessRequest) GetPid() int32 {
@@ -786,7 +787,7 @@ type WaitProcessResponse struct {
 
 func (x *WaitProcessResponse) Reset() {
 	*x = WaitProcessResponse{}
-	mi := &file_machine_proto_msgTypes[13]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -798,7 +799,7 @@ func (x *WaitProcessResponse) String() string {
 func (*WaitProcessResponse) ProtoMessage() {}
 
 func (x *WaitProcessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[13]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -811,7 +812,7 @@ func (x *WaitProcessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WaitProcessResponse.ProtoReflect.Descriptor instead.
 func (*WaitProcessResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{13}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *WaitProcessResponse) GetExitCode() int32 {
@@ -836,7 +837,7 @@ type OpenSocketRequest struct {
 
 func (x *OpenSocketRequest) Reset() {
 	*x = OpenSocketRequest{}
-	mi := &file_machine_proto_msgTypes[14]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -848,7 +849,7 @@ func (x *OpenSocketRequest) String() string {
 func (*OpenSocketRequest) ProtoMessage() {}
 
 func (x *OpenSocketRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[14]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -861,7 +862,7 @@ func (x *OpenSocketRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenSocketRequest.ProtoReflect.Descriptor instead.
 func (*OpenSocketRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{14}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *OpenSocketRequest) GetProtocol() OpenSocketRequest_Protocol {
@@ -901,7 +902,7 @@ type OpenSocketResponse struct {
 
 func (x *OpenSocketResponse) Reset() {
 	*x = OpenSocketResponse{}
-	mi := &file_machine_proto_msgTypes[15]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -913,7 +914,7 @@ func (x *OpenSocketResponse) String() string {
 func (*OpenSocketResponse) ProtoMessage() {}
 
 func (x *OpenSocketResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[15]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -926,7 +927,7 @@ func (x *OpenSocketResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenSocketResponse.ProtoReflect.Descriptor instead.
 func (*OpenSocketResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{15}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *OpenSocketResponse) GetFd() int32 {
@@ -945,7 +946,7 @@ type AcceptRequest struct {
 
 func (x *AcceptRequest) Reset() {
 	*x = AcceptRequest{}
-	mi := &file_machine_proto_msgTypes[16]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -957,7 +958,7 @@ func (x *AcceptRequest) String() string {
 func (*AcceptRequest) ProtoMessage() {}
 
 func (x *AcceptRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[16]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -970,7 +971,7 @@ func (x *AcceptRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptRequest.ProtoReflect.Descriptor instead.
 func (*AcceptRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{16}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *AcceptRequest) GetServerFd() int32 {
@@ -991,7 +992,7 @@ type AcceptResponse struct {
 
 func (x *AcceptResponse) Reset() {
 	*x = AcceptResponse{}
-	mi := &file_machine_proto_msgTypes[17]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1003,7 +1004,7 @@ func (x *AcceptResponse) String() string {
 func (*AcceptResponse) ProtoMessage() {}
 
 func (x *AcceptResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[17]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1016,7 +1017,7 @@ func (x *AcceptResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptResponse.ProtoReflect.Descriptor instead.
 func (*AcceptResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{17}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *AcceptResponse) GetClientFd() int32 {
@@ -1052,7 +1053,7 @@ type MkdirRequest struct {
 
 func (x *MkdirRequest) Reset() {
 	*x = MkdirRequest{}
-	mi := &file_machine_proto_msgTypes[18]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1064,7 +1065,7 @@ func (x *MkdirRequest) String() string {
 func (*MkdirRequest) ProtoMessage() {}
 
 func (x *MkdirRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[18]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1077,7 +1078,7 @@ func (x *MkdirRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MkdirRequest.ProtoReflect.Descriptor instead.
 func (*MkdirRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{18}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *MkdirRequest) GetPath() string {
@@ -1110,7 +1111,7 @@ type MkdirResponse struct {
 
 func (x *MkdirResponse) Reset() {
 	*x = MkdirResponse{}
-	mi := &file_machine_proto_msgTypes[19]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1122,7 +1123,7 @@ func (x *MkdirResponse) String() string {
 func (*MkdirResponse) ProtoMessage() {}
 
 func (x *MkdirResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[19]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1135,7 +1136,7 @@ func (x *MkdirResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MkdirResponse.ProtoReflect.Descriptor instead.
 func (*MkdirResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{19}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *MkdirResponse) GetSuccess() bool {
@@ -1156,7 +1157,7 @@ type StatRequest struct {
 
 func (x *StatRequest) Reset() {
 	*x = StatRequest{}
-	mi := &file_machine_proto_msgTypes[20]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1168,7 +1169,7 @@ func (x *StatRequest) String() string {
 func (*StatRequest) ProtoMessage() {}
 
 func (x *StatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[20]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1181,7 +1182,7 @@ func (x *StatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatRequest.ProtoReflect.Descriptor instead.
 func (*StatRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{20}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *StatRequest) GetPath() string {
@@ -1213,7 +1214,7 @@ type StatResponse struct {
 
 func (x *StatResponse) Reset() {
 	*x = StatResponse{}
-	mi := &file_machine_proto_msgTypes[21]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1225,7 +1226,7 @@ func (x *StatResponse) String() string {
 func (*StatResponse) ProtoMessage() {}
 
 func (x *StatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[21]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1238,7 +1239,7 @@ func (x *StatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatResponse.ProtoReflect.Descriptor instead.
 func (*StatResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{21}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *StatResponse) GetPath() string {
@@ -1301,7 +1302,7 @@ type ChmodRequest struct {
 
 func (x *ChmodRequest) Reset() {
 	*x = ChmodRequest{}
-	mi := &file_machine_proto_msgTypes[22]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1313,7 +1314,7 @@ func (x *ChmodRequest) String() string {
 func (*ChmodRequest) ProtoMessage() {}
 
 func (x *ChmodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[22]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1326,7 +1327,7 @@ func (x *ChmodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChmodRequest.ProtoReflect.Descriptor instead.
 func (*ChmodRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{22}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ChmodRequest) GetPath() string {
@@ -1352,7 +1353,7 @@ type ChmodResponse struct {
 
 func (x *ChmodResponse) Reset() {
 	*x = ChmodResponse{}
-	mi := &file_machine_proto_msgTypes[23]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1364,7 +1365,7 @@ func (x *ChmodResponse) String() string {
 func (*ChmodResponse) ProtoMessage() {}
 
 func (x *ChmodResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[23]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1377,7 +1378,7 @@ func (x *ChmodResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChmodResponse.ProtoReflect.Descriptor instead.
 func (*ChmodResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{23}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ChmodResponse) GetSuccess() bool {
@@ -1399,7 +1400,7 @@ type ChownRequest struct {
 
 func (x *ChownRequest) Reset() {
 	*x = ChownRequest{}
-	mi := &file_machine_proto_msgTypes[24]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1411,7 +1412,7 @@ func (x *ChownRequest) String() string {
 func (*ChownRequest) ProtoMessage() {}
 
 func (x *ChownRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[24]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1424,7 +1425,7 @@ func (x *ChownRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChownRequest.ProtoReflect.Descriptor instead.
 func (*ChownRequest) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{24}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ChownRequest) GetPath() string {
@@ -1457,7 +1458,7 @@ type ChownResponse struct {
 
 func (x *ChownResponse) Reset() {
 	*x = ChownResponse{}
-	mi := &file_machine_proto_msgTypes[25]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1469,7 +1470,7 @@ func (x *ChownResponse) String() string {
 func (*ChownResponse) ProtoMessage() {}
 
 func (x *ChownResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_machine_proto_msgTypes[25]
+	mi := &file_vibe_party_localclient_proto_machine_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1482,7 +1483,7 @@ func (x *ChownResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChownResponse.ProtoReflect.Descriptor instead.
 func (*ChownResponse) Descriptor() ([]byte, []int) {
-	return file_machine_proto_rawDescGZIP(), []int{25}
+	return file_vibe_party_localclient_proto_machine_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ChownResponse) GetSuccess() bool {
@@ -1492,18 +1493,19 @@ func (x *ChownResponse) GetSuccess() bool {
 	return false
 }
 
-var File_machine_proto protoreflect.FileDescriptor
+var File_vibe_party_localclient_proto_machine_proto protoreflect.FileDescriptor
 
-const file_machine_proto_rawDesc = "" +
+const file_vibe_party_localclient_proto_machine_proto_rawDesc = "" +
 	"\n" +
-	"\rmachine.proto\x12\x0eremote.machine\"\xa5\x01\n" +
+	"*vibe_party/localclient/proto/machine.proto\x12\x0eremote.machine\"\xbd\x01\n" +
 	"\x0fOpenFileRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x19\n" +
 	"\bfor_read\x18\x02 \x01(\bR\aforRead\x12\x1b\n" +
 	"\tfor_write\x18\x03 \x01(\bR\bforWrite\x12\x16\n" +
 	"\x06create\x18\x04 \x01(\bR\x06create\x12\x1a\n" +
 	"\btruncate\x18\x05 \x01(\bR\btruncate\x12\x12\n" +
-	"\x04mode\x18\x06 \x01(\rR\x04mode\"\"\n" +
+	"\x04mode\x18\x06 \x01(\rR\x04mode\x12\x16\n" +
+	"\x06append\x18\a \x01(\bR\x06append\"\"\n" +
 	"\x10OpenFileResponse\x12\x0e\n" +
 	"\x02fd\x18\x01 \x01(\x05R\x02fd\":\n" +
 	"\vReadRequest\x12\x0e\n" +
@@ -1605,23 +1607,23 @@ const file_machine_proto_rawDesc = "" +
 	"\x05Mkdir\x12\x1c.remote.machine.MkdirRequest\x1a\x1d.remote.machine.MkdirResponse\x12A\n" +
 	"\x04Stat\x12\x1b.remote.machine.StatRequest\x1a\x1c.remote.machine.StatResponse\x12D\n" +
 	"\x05Chmod\x12\x1c.remote.machine.ChmodRequest\x1a\x1d.remote.machine.ChmodResponse\x12D\n" +
-	"\x05Chown\x12\x1c.remote.machine.ChownRequest\x1a\x1d.remote.machine.ChownResponseB&Z$example.com/remote/machine;machinepbb\x06proto3"
+	"\x05Chown\x12\x1c.remote.machine.ChownRequest\x1a\x1d.remote.machine.ChownResponseB=Z;github.com/tinyrange/tinyrange/vibe_party/localclient/protob\x06proto3"
 
 var (
-	file_machine_proto_rawDescOnce sync.Once
-	file_machine_proto_rawDescData []byte
+	file_vibe_party_localclient_proto_machine_proto_rawDescOnce sync.Once
+	file_vibe_party_localclient_proto_machine_proto_rawDescData []byte
 )
 
-func file_machine_proto_rawDescGZIP() []byte {
-	file_machine_proto_rawDescOnce.Do(func() {
-		file_machine_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_machine_proto_rawDesc), len(file_machine_proto_rawDesc)))
+func file_vibe_party_localclient_proto_machine_proto_rawDescGZIP() []byte {
+	file_vibe_party_localclient_proto_machine_proto_rawDescOnce.Do(func() {
+		file_vibe_party_localclient_proto_machine_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_vibe_party_localclient_proto_machine_proto_rawDesc), len(file_vibe_party_localclient_proto_machine_proto_rawDesc)))
 	})
-	return file_machine_proto_rawDescData
+	return file_vibe_party_localclient_proto_machine_proto_rawDescData
 }
 
-var file_machine_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_machine_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
-var file_machine_proto_goTypes = []any{
+var file_vibe_party_localclient_proto_machine_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_vibe_party_localclient_proto_machine_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_vibe_party_localclient_proto_machine_proto_goTypes = []any{
 	(OpenSocketRequest_Protocol)(0), // 0: remote.machine.OpenSocketRequest.Protocol
 	(*OpenFileRequest)(nil),         // 1: remote.machine.OpenFileRequest
 	(*OpenFileResponse)(nil),        // 2: remote.machine.OpenFileResponse
@@ -1651,7 +1653,7 @@ var file_machine_proto_goTypes = []any{
 	(*ChownResponse)(nil),           // 26: remote.machine.ChownResponse
 	nil,                             // 27: remote.machine.ExecRequest.EnvEntry
 }
-var file_machine_proto_depIdxs = []int32{
+var file_vibe_party_localclient_proto_machine_proto_depIdxs = []int32{
 	27, // 0: remote.machine.ExecRequest.env:type_name -> remote.machine.ExecRequest.EnvEntry
 	0,  // 1: remote.machine.OpenSocketRequest.protocol:type_name -> remote.machine.OpenSocketRequest.Protocol
 	1,  // 2: remote.machine.MachineService.OpenFile:input_type -> remote.machine.OpenFileRequest
@@ -1687,27 +1689,27 @@ var file_machine_proto_depIdxs = []int32{
 	0,  // [0:2] is the sub-list for field type_name
 }
 
-func init() { file_machine_proto_init() }
-func file_machine_proto_init() {
-	if File_machine_proto != nil {
+func init() { file_vibe_party_localclient_proto_machine_proto_init() }
+func file_vibe_party_localclient_proto_machine_proto_init() {
+	if File_vibe_party_localclient_proto_machine_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_machine_proto_rawDesc), len(file_machine_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vibe_party_localclient_proto_machine_proto_rawDesc), len(file_vibe_party_localclient_proto_machine_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_machine_proto_goTypes,
-		DependencyIndexes: file_machine_proto_depIdxs,
-		EnumInfos:         file_machine_proto_enumTypes,
-		MessageInfos:      file_machine_proto_msgTypes,
+		GoTypes:           file_vibe_party_localclient_proto_machine_proto_goTypes,
+		DependencyIndexes: file_vibe_party_localclient_proto_machine_proto_depIdxs,
+		EnumInfos:         file_vibe_party_localclient_proto_machine_proto_enumTypes,
+		MessageInfos:      file_vibe_party_localclient_proto_machine_proto_msgTypes,
 	}.Build()
-	File_machine_proto = out.File
-	file_machine_proto_goTypes = nil
-	file_machine_proto_depIdxs = nil
+	File_vibe_party_localclient_proto_machine_proto = out.File
+	file_vibe_party_localclient_proto_machine_proto_goTypes = nil
+	file_vibe_party_localclient_proto_machine_proto_depIdxs = nil
 }

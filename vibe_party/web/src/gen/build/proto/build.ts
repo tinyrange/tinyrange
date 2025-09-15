@@ -2,13 +2,13 @@
 // versions:
 //   protoc-gen-ts_proto  v2.7.7
 //   protoc               v6.32.0
-// source: build.proto
+// source: build/proto/build.proto
 
 /* eslint-disable */
 import { BinaryReader, BinaryWriter } from "@bufbuild/protobuf/wire";
-import { Any } from "./google/protobuf/any";
-import { FileDescriptorProto } from "./google/protobuf/descriptor";
-import { Timestamp } from "./google/protobuf/timestamp";
+import { Any } from "../../google/protobuf/any";
+import { FileDescriptorProto } from "../../google/protobuf/descriptor";
+import { Timestamp } from "../../google/protobuf/timestamp";
 
 export const protobufPackage = "proto";
 

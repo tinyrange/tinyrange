@@ -145,42 +145,13 @@ func (ctx *buildContext) buildProto(options buildProtoOptions, inputs ...string)
 		return fmt.Errorf("failed to determine module path from go.mod")
 	}
 
-	// Build go_opt mappings: M<file>=<module>/<outDir>/<proto_package>
-	var goOpts []string
-	for _, input := range inputs {
-		// Parse package name from file
-		contents, err := os.ReadFile(input)
-		if err != nil {
-			return fmt.Errorf("failed to read %s: %w", input, err)
-		}
-		pkgName := ""
-		for l := range strings.SplitSeq(string(contents), "\n") {
-			l = strings.TrimSpace(l)
-			if after, ok := strings.CutPrefix(l, "package "); ok {
-				// e.g. package common;
-				pkgName = strings.TrimSuffix(strings.TrimSpace(after), ";")
-				break
-			}
-		}
-		if pkgName == "" {
-			return fmt.Errorf("missing package declaration in %s", input)
-		}
-
-		// Map this file's import path so imports resolve without go_package options
-		goOpts = append(goOpts, fmt.Sprintf("M%[1]s=%[2]s/%[3]s/%[4]s",
-			filepath.Base(input), modulePath, strings.TrimSuffix(options.output, string(filepath.Separator)), pkgName))
-	}
-
 	// Construct protoc command
 	args := []string{
-		"-I", filepath.Dir(inputs[0]),
+		"-I", ".",
 	}
 
 	if options.golang {
-		args = append(args, fmt.Sprintf("--go_out=paths=source_relative:%s", options.output))
-		for _, opt := range goOpts {
-			args = append(args, "--go_opt="+opt)
-		}
+		args = append(args, "--go_out=paths=source_relative:.")
 	}
 
 	if options.typeScript {
@@ -196,9 +167,6 @@ func (ctx *buildContext) buildProto(options buildProtoOptions, inputs ...string)
 		args = append(args,
 			fmt.Sprintf("--go-grpc_out=paths=source_relative:%s", options.output),
 		)
-		for _, opt := range goOpts {
-			args = append(args, "--go-grpc_opt="+opt)
-		}
 	}
 
 	args = append(args, inputs...)
@@ -278,6 +246,17 @@ func main() {
 			"build/proto/extract_archive.proto",
 			"build/proto/source.proto",
 			"build/proto/write_file.proto",
+		); err != nil {
+			slog.Error("protoc failed", "error", err)
+			os.Exit(1)
+		}
+
+		if err := ctx.buildProto(buildProtoOptions{
+			output: "machine/proto",
+			golang: true,
+		},
+			"machine/proto/definition.proto",
+			"machine/proto/directive.proto",
 		); err != nil {
 			slog.Error("protoc failed", "error", err)
 			os.Exit(1)

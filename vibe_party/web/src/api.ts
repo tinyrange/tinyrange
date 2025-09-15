@@ -9,7 +9,7 @@ export function getApiBase(): string {
 export const API_BASE = getApiBase();
 
 import type { BuilderMetadata } from "./types";
-import { BuilderList, BuildReceipt } from "./gen/build";
+import { BuilderList, BuildReceipt } from "./gen/build/proto/build";
 
 export async function fetchBuilders(signal?: AbortSignal): Promise<BuilderMetadata[]> {
   const res = await fetch(`${API_BASE}/builders`, { headers: { Accept: "application/protobuf" }, signal });

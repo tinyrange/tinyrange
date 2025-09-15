@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.9
 // 	protoc        v6.32.0
-// source: source.proto
+// source: build/proto/source.proto
 
 package proto
 
@@ -34,7 +34,7 @@ type FileSource struct {
 
 func (x *FileSource) Reset() {
 	*x = FileSource{}
-	mi := &file_source_proto_msgTypes[0]
+	mi := &file_build_proto_source_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +46,7 @@ func (x *FileSource) String() string {
 func (*FileSource) ProtoMessage() {}
 
 func (x *FileSource) ProtoReflect() protoreflect.Message {
-	mi := &file_source_proto_msgTypes[0]
+	mi := &file_build_proto_source_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +59,7 @@ func (x *FileSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileSource.ProtoReflect.Descriptor instead.
 func (*FileSource) Descriptor() ([]byte, []int) {
-	return file_source_proto_rawDescGZIP(), []int{0}
+	return file_build_proto_source_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *FileSource) GetSource() isFileSource_Source {
@@ -103,37 +103,37 @@ func (*FileSource_FetchHttp) isFileSource_Source() {}
 
 func (*FileSource_Reference) isFileSource_Source() {}
 
-var File_source_proto protoreflect.FileDescriptor
+var File_build_proto_source_proto protoreflect.FileDescriptor
 
-const file_source_proto_rawDesc = "" +
+const file_build_proto_source_proto_rawDesc = "" +
 	"\n" +
-	"\fsource.proto\x12\x05proto\x1a\x10fetch_http.proto\x1a\vbuild.proto\"\x8f\x01\n" +
+	"\x18build/proto/source.proto\x12\x05proto\x1a\x1cbuild/proto/fetch_http.proto\x1a\x17build/proto/build.proto\"\x8f\x01\n" +
 	"\n" +
 	"FileSource\x12;\n" +
 	"\n" +
 	"fetch_http\x18\x01 \x01(\v2\x1a.proto.FetchHttpDefinitionH\x00R\tfetchHttp\x12:\n" +
 	"\treference\x18\x02 \x01(\v2\x1a.proto.DefinitionReferenceH\x00R\treferenceB\b\n" +
-	"\x06sourceb\x06proto3"
+	"\x06sourceB,Z*github.com/tinyrange/tinyrange/build/protob\x06proto3"
 
 var (
-	file_source_proto_rawDescOnce sync.Once
-	file_source_proto_rawDescData []byte
+	file_build_proto_source_proto_rawDescOnce sync.Once
+	file_build_proto_source_proto_rawDescData []byte
 )
 
-func file_source_proto_rawDescGZIP() []byte {
-	file_source_proto_rawDescOnce.Do(func() {
-		file_source_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_source_proto_rawDesc), len(file_source_proto_rawDesc)))
+func file_build_proto_source_proto_rawDescGZIP() []byte {
+	file_build_proto_source_proto_rawDescOnce.Do(func() {
+		file_build_proto_source_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_build_proto_source_proto_rawDesc), len(file_build_proto_source_proto_rawDesc)))
 	})
-	return file_source_proto_rawDescData
+	return file_build_proto_source_proto_rawDescData
 }
 
-var file_source_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_source_proto_goTypes = []any{
+var file_build_proto_source_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_build_proto_source_proto_goTypes = []any{
 	(*FileSource)(nil),          // 0: proto.FileSource
 	(*FetchHttpDefinition)(nil), // 1: proto.FetchHttpDefinition
 	(*DefinitionReference)(nil), // 2: proto.DefinitionReference
 }
-var file_source_proto_depIdxs = []int32{
+var file_build_proto_source_proto_depIdxs = []int32{
 	1, // 0: proto.FileSource.fetch_http:type_name -> proto.FetchHttpDefinition
 	2, // 1: proto.FileSource.reference:type_name -> proto.DefinitionReference
 	2, // [2:2] is the sub-list for method output_type
@@ -143,14 +143,14 @@ var file_source_proto_depIdxs = []int32{
 	0, // [0:2] is the sub-list for field type_name
 }
 
-func init() { file_source_proto_init() }
-func file_source_proto_init() {
-	if File_source_proto != nil {
+func init() { file_build_proto_source_proto_init() }
+func file_build_proto_source_proto_init() {
+	if File_build_proto_source_proto != nil {
 		return
 	}
-	file_fetch_http_proto_init()
-	file_build_proto_init()
-	file_source_proto_msgTypes[0].OneofWrappers = []any{
+	file_build_proto_fetch_http_proto_init()
+	file_build_proto_build_proto_init()
+	file_build_proto_source_proto_msgTypes[0].OneofWrappers = []any{
 		(*FileSource_FetchHttp)(nil),
 		(*FileSource_Reference)(nil),
 	}
@@ -158,17 +158,17 @@ func file_source_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_source_proto_rawDesc), len(file_source_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_build_proto_source_proto_rawDesc), len(file_build_proto_source_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_source_proto_goTypes,
-		DependencyIndexes: file_source_proto_depIdxs,
-		MessageInfos:      file_source_proto_msgTypes,
+		GoTypes:           file_build_proto_source_proto_goTypes,
+		DependencyIndexes: file_build_proto_source_proto_depIdxs,
+		MessageInfos:      file_build_proto_source_proto_msgTypes,
 	}.Build()
-	File_source_proto = out.File
-	file_source_proto_goTypes = nil
-	file_source_proto_depIdxs = nil
+	File_build_proto_source_proto = out.File
+	file_build_proto_source_proto_goTypes = nil
+	file_build_proto_source_proto_depIdxs = nil
 }

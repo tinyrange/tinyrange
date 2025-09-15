@@ -1,5 +1,5 @@
 // Re-export protobuf types used by the UI
-export type { BuilderMetadata } from "./gen/build";
+export type { BuilderMetadata } from "./gen/build/proto/build";
 export type {
   FileDescriptorProto,
   DescriptorProto as DescriptorMessageType,
@@ -13,7 +13,7 @@ export type GraphNode = {
   id: string;
   typeName: string; // display label (topLevelType)
   position: Point;
-  builder: import("./gen/build").BuilderMetadata;
+  builder: import("./gen/build/proto/build").BuilderMetadata;
   payload: Record<string, any>;
 };
 

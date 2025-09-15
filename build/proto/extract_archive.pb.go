@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.9
 // 	protoc        v6.32.0
-// source: extract_archive.proto
+// source: build/proto/extract_archive.proto
 
 package proto
 
@@ -51,11 +51,11 @@ func (x ArchiveType) String() string {
 }
 
 func (ArchiveType) Descriptor() protoreflect.EnumDescriptor {
-	return file_extract_archive_proto_enumTypes[0].Descriptor()
+	return file_build_proto_extract_archive_proto_enumTypes[0].Descriptor()
 }
 
 func (ArchiveType) Type() protoreflect.EnumType {
-	return &file_extract_archive_proto_enumTypes[0]
+	return &file_build_proto_extract_archive_proto_enumTypes[0]
 }
 
 func (x ArchiveType) Number() protoreflect.EnumNumber {
@@ -64,7 +64,7 @@ func (x ArchiveType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ArchiveType.Descriptor instead.
 func (ArchiveType) EnumDescriptor() ([]byte, []int) {
-	return file_extract_archive_proto_rawDescGZIP(), []int{0}
+	return file_build_proto_extract_archive_proto_rawDescGZIP(), []int{0}
 }
 
 type CompressionType int32
@@ -100,11 +100,11 @@ func (x CompressionType) String() string {
 }
 
 func (CompressionType) Descriptor() protoreflect.EnumDescriptor {
-	return file_extract_archive_proto_enumTypes[1].Descriptor()
+	return file_build_proto_extract_archive_proto_enumTypes[1].Descriptor()
 }
 
 func (CompressionType) Type() protoreflect.EnumType {
-	return &file_extract_archive_proto_enumTypes[1]
+	return &file_build_proto_extract_archive_proto_enumTypes[1]
 }
 
 func (x CompressionType) Number() protoreflect.EnumNumber {
@@ -113,7 +113,7 @@ func (x CompressionType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CompressionType.Descriptor instead.
 func (CompressionType) EnumDescriptor() ([]byte, []int) {
-	return file_extract_archive_proto_rawDescGZIP(), []int{1}
+	return file_build_proto_extract_archive_proto_rawDescGZIP(), []int{1}
 }
 
 type ExtractArchiveDefinition struct {
@@ -127,7 +127,7 @@ type ExtractArchiveDefinition struct {
 
 func (x *ExtractArchiveDefinition) Reset() {
 	*x = ExtractArchiveDefinition{}
-	mi := &file_extract_archive_proto_msgTypes[0]
+	mi := &file_build_proto_extract_archive_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -139,7 +139,7 @@ func (x *ExtractArchiveDefinition) String() string {
 func (*ExtractArchiveDefinition) ProtoMessage() {}
 
 func (x *ExtractArchiveDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_extract_archive_proto_msgTypes[0]
+	mi := &file_build_proto_extract_archive_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -152,7 +152,7 @@ func (x *ExtractArchiveDefinition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExtractArchiveDefinition.ProtoReflect.Descriptor instead.
 func (*ExtractArchiveDefinition) Descriptor() ([]byte, []int) {
-	return file_extract_archive_proto_rawDescGZIP(), []int{0}
+	return file_build_proto_extract_archive_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *ExtractArchiveDefinition) GetSource() *FileSource {
@@ -176,11 +176,11 @@ func (x *ExtractArchiveDefinition) GetCompressionType() CompressionType {
 	return CompressionType_COMPRESSION_TYPE_UNSPECIFIED
 }
 
-var File_extract_archive_proto protoreflect.FileDescriptor
+var File_build_proto_extract_archive_proto protoreflect.FileDescriptor
 
-const file_extract_archive_proto_rawDesc = "" +
+const file_build_proto_extract_archive_proto_rawDesc = "" +
 	"\n" +
-	"\x15extract_archive.proto\x12\x05proto\x1a\fsource.proto\"\xbf\x01\n" +
+	"!build/proto/extract_archive.proto\x12\x05proto\x1a\x18build/proto/source.proto\"\xbf\x01\n" +
 	"\x18ExtractArchiveDefinition\x12)\n" +
 	"\x06source\x18\x01 \x01(\v2\x11.proto.FileSourceR\x06source\x125\n" +
 	"\farchive_type\x18\x02 \x01(\x0e2\x12.proto.ArchiveTypeR\varchiveType\x12A\n" +
@@ -191,29 +191,29 @@ const file_extract_archive_proto_rawDesc = "" +
 	"\x0fCompressionType\x12 \n" +
 	"\x1cCOMPRESSION_TYPE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15COMPRESSION_TYPE_NONE\x10\x01\x12\x19\n" +
-	"\x15COMPRESSION_TYPE_GZIP\x10\x02b\x06proto3"
+	"\x15COMPRESSION_TYPE_GZIP\x10\x02B,Z*github.com/tinyrange/tinyrange/build/protob\x06proto3"
 
 var (
-	file_extract_archive_proto_rawDescOnce sync.Once
-	file_extract_archive_proto_rawDescData []byte
+	file_build_proto_extract_archive_proto_rawDescOnce sync.Once
+	file_build_proto_extract_archive_proto_rawDescData []byte
 )
 
-func file_extract_archive_proto_rawDescGZIP() []byte {
-	file_extract_archive_proto_rawDescOnce.Do(func() {
-		file_extract_archive_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_extract_archive_proto_rawDesc), len(file_extract_archive_proto_rawDesc)))
+func file_build_proto_extract_archive_proto_rawDescGZIP() []byte {
+	file_build_proto_extract_archive_proto_rawDescOnce.Do(func() {
+		file_build_proto_extract_archive_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_build_proto_extract_archive_proto_rawDesc), len(file_build_proto_extract_archive_proto_rawDesc)))
 	})
-	return file_extract_archive_proto_rawDescData
+	return file_build_proto_extract_archive_proto_rawDescData
 }
 
-var file_extract_archive_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_extract_archive_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_extract_archive_proto_goTypes = []any{
+var file_build_proto_extract_archive_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_build_proto_extract_archive_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_build_proto_extract_archive_proto_goTypes = []any{
 	(ArchiveType)(0),                 // 0: proto.ArchiveType
 	(CompressionType)(0),             // 1: proto.CompressionType
 	(*ExtractArchiveDefinition)(nil), // 2: proto.ExtractArchiveDefinition
 	(*FileSource)(nil),               // 3: proto.FileSource
 }
-var file_extract_archive_proto_depIdxs = []int32{
+var file_build_proto_extract_archive_proto_depIdxs = []int32{
 	3, // 0: proto.ExtractArchiveDefinition.source:type_name -> proto.FileSource
 	0, // 1: proto.ExtractArchiveDefinition.archive_type:type_name -> proto.ArchiveType
 	1, // 2: proto.ExtractArchiveDefinition.compression_type:type_name -> proto.CompressionType
@@ -224,28 +224,28 @@ var file_extract_archive_proto_depIdxs = []int32{
 	0, // [0:3] is the sub-list for field type_name
 }
 
-func init() { file_extract_archive_proto_init() }
-func file_extract_archive_proto_init() {
-	if File_extract_archive_proto != nil {
+func init() { file_build_proto_extract_archive_proto_init() }
+func file_build_proto_extract_archive_proto_init() {
+	if File_build_proto_extract_archive_proto != nil {
 		return
 	}
-	file_source_proto_init()
+	file_build_proto_source_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_extract_archive_proto_rawDesc), len(file_extract_archive_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_build_proto_extract_archive_proto_rawDesc), len(file_build_proto_extract_archive_proto_rawDesc)),
 			NumEnums:      2,
 			NumMessages:   1,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_extract_archive_proto_goTypes,
-		DependencyIndexes: file_extract_archive_proto_depIdxs,
-		EnumInfos:         file_extract_archive_proto_enumTypes,
-		MessageInfos:      file_extract_archive_proto_msgTypes,
+		GoTypes:           file_build_proto_extract_archive_proto_goTypes,
+		DependencyIndexes: file_build_proto_extract_archive_proto_depIdxs,
+		EnumInfos:         file_build_proto_extract_archive_proto_enumTypes,
+		MessageInfos:      file_build_proto_extract_archive_proto_msgTypes,
 	}.Build()
-	File_extract_archive_proto = out.File
-	file_extract_archive_proto_goTypes = nil
-	file_extract_archive_proto_depIdxs = nil
+	File_build_proto_extract_archive_proto = out.File
+	file_build_proto_extract_archive_proto_goTypes = nil
+	file_build_proto_extract_archive_proto_depIdxs = nil
 }
