@@ -1,2 +1,3 @@
-/local/
+/local/*
+!/local/go.mod
 /build/web/
