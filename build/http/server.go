@@ -181,6 +181,59 @@ func New(db common.Database, base string) http.Handler {
 		}
 	})
 
+	mux.HandleFunc(route("GET %s/hash"), func(w http.ResponseWriter, r *http.Request) {
+		var req proto.HashRequest
+		req.Reset()
+
+		// check the content type to determine how to parse the body, options are JSON or protobuf
+		// default to JSON
+		contentType := r.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "application/json"
+		}
+
+		if err := unmarshalWithContentType(r.Body, contentType, &req); err != nil {
+			slog.Error("unmarshal request", "error", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var resp proto.HashResponse
+		resp.Reset()
+		for _, def := range req.Definitions {
+			hash := def.Hash()
+			resp.Hashes = append(resp.Hashes, hash)
+
+			status, err := db.GetBuildStatus(hash.Value)
+			if err != nil {
+				slog.Error("get build status", "error", err, "hash", hash.Value)
+				http.Error(w, fmt.Sprintf("get build status for hash %s: %v", hash.Value, err), http.StatusInternalServerError)
+				return
+			}
+
+			resp.Statuses = append(resp.Statuses, status)
+		}
+
+		accept := r.Header.Get("Accept")
+		if accept == "" {
+			accept = "application/json"
+		}
+
+		respBytes, contentType, err := marshalWithAcceptHeader(&resp, accept)
+		if err != nil {
+			slog.Error("marshal response", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write(respBytes); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	})
+
 	mux.HandleFunc(route("GET %s/builders"), func(w http.ResponseWriter, r *http.Request) {
 		builders, err := db.GetBuilders()
 		if err != nil {

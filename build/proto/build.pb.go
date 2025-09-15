@@ -625,6 +625,102 @@ func (x *BuildStatusResponse) GetStatuses() map[string]CurrentBuildStatus {
 	return nil
 }
 
+type HashRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Definitions   []*Definition          `protobuf:"bytes,1,rep,name=definitions,proto3" json:"definitions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HashRequest) Reset() {
+	*x = HashRequest{}
+	mi := &file_build_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HashRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HashRequest) ProtoMessage() {}
+
+func (x *HashRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_build_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HashRequest.ProtoReflect.Descriptor instead.
+func (*HashRequest) Descriptor() ([]byte, []int) {
+	return file_build_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *HashRequest) GetDefinitions() []*Definition {
+	if x != nil {
+		return x.Definitions
+	}
+	return nil
+}
+
+type HashResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Hashes        []*Hash                `protobuf:"bytes,1,rep,name=hashes,proto3" json:"hashes,omitempty"`
+	Statuses      []CurrentBuildStatus   `protobuf:"varint,2,rep,packed,name=statuses,proto3,enum=proto.CurrentBuildStatus" json:"statuses,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HashResponse) Reset() {
+	*x = HashResponse{}
+	mi := &file_build_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HashResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HashResponse) ProtoMessage() {}
+
+func (x *HashResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_build_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HashResponse.ProtoReflect.Descriptor instead.
+func (*HashResponse) Descriptor() ([]byte, []int) {
+	return file_build_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *HashResponse) GetHashes() []*Hash {
+	if x != nil {
+		return x.Hashes
+	}
+	return nil
+}
+
+func (x *HashResponse) GetStatuses() []CurrentBuildStatus {
+	if x != nil {
+		return x.Statuses
+	}
+	return nil
+}
+
 var File_build_proto protoreflect.FileDescriptor
 
 const file_build_proto_rawDesc = "" +
@@ -668,7 +764,12 @@ const file_build_proto_rawDesc = "" +
 	"\bstatuses\x18\x01 \x03(\v2(.proto.BuildStatusResponse.StatusesEntryR\bstatuses\x1aV\n" +
 	"\rStatusesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12/\n" +
-	"\x05value\x18\x02 \x01(\x0e2\x19.proto.CurrentBuildStatusR\x05value:\x028\x01*\xaf\x01\n" +
+	"\x05value\x18\x02 \x01(\x0e2\x19.proto.CurrentBuildStatusR\x05value:\x028\x01\"B\n" +
+	"\vHashRequest\x123\n" +
+	"\vdefinitions\x18\x01 \x03(\v2\x11.proto.DefinitionR\vdefinitions\"j\n" +
+	"\fHashResponse\x12#\n" +
+	"\x06hashes\x18\x01 \x03(\v2\v.proto.HashR\x06hashes\x125\n" +
+	"\bstatuses\x18\x02 \x03(\x0e2\x19.proto.CurrentBuildStatusR\bstatuses*\xaf\x01\n" +
 	"\x12CurrentBuildStatus\x12\x1b\n" +
 	"\x17BUILD_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15BUILD_STATE_NOT_FOUND\x10\x01\x12\x16\n" +
@@ -690,7 +791,7 @@ func file_build_proto_rawDescGZIP() []byte {
 }
 
 var file_build_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_build_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_build_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_build_proto_goTypes = []any{
 	(CurrentBuildStatus)(0),                  // 0: proto.CurrentBuildStatus
 	(*Hash)(nil),                             // 1: proto.Hash
@@ -703,33 +804,38 @@ var file_build_proto_goTypes = []any{
 	(*BuilderMetadata)(nil),                  // 8: proto.BuilderMetadata
 	(*BuilderList)(nil),                      // 9: proto.BuilderList
 	(*BuildStatusResponse)(nil),              // 10: proto.BuildStatusResponse
-	nil,                                      // 11: proto.BuildReceipt.OutputsEntry
-	nil,                                      // 12: proto.BuildStatusResponse.StatusesEntry
-	(*anypb.Any)(nil),                        // 13: google.protobuf.Any
-	(*timestamppb.Timestamp)(nil),            // 14: google.protobuf.Timestamp
-	(*descriptorpb.FileDescriptorProto)(nil), // 15: google.protobuf.FileDescriptorProto
+	(*HashRequest)(nil),                      // 11: proto.HashRequest
+	(*HashResponse)(nil),                     // 12: proto.HashResponse
+	nil,                                      // 13: proto.BuildReceipt.OutputsEntry
+	nil,                                      // 14: proto.BuildStatusResponse.StatusesEntry
+	(*anypb.Any)(nil),                        // 15: google.protobuf.Any
+	(*timestamppb.Timestamp)(nil),            // 16: google.protobuf.Timestamp
+	(*descriptorpb.FileDescriptorProto)(nil), // 17: google.protobuf.FileDescriptorProto
 }
 var file_build_proto_depIdxs = []int32{
-	13, // 0: proto.Definition.payload:type_name -> google.protobuf.Any
+	15, // 0: proto.Definition.payload:type_name -> google.protobuf.Any
 	2,  // 1: proto.BuildClosure.root:type_name -> proto.Definition
 	2,  // 2: proto.BuildClosure.dependencies:type_name -> proto.Definition
 	1,  // 3: proto.BuildReceipt.hash:type_name -> proto.Hash
 	1,  // 4: proto.BuildReceipt.dependencies:type_name -> proto.Hash
-	14, // 5: proto.BuildReceipt.start_time:type_name -> google.protobuf.Timestamp
-	14, // 6: proto.BuildReceipt.end_time:type_name -> google.protobuf.Timestamp
-	11, // 7: proto.BuildReceipt.outputs:type_name -> proto.BuildReceipt.OutputsEntry
+	16, // 5: proto.BuildReceipt.start_time:type_name -> google.protobuf.Timestamp
+	16, // 6: proto.BuildReceipt.end_time:type_name -> google.protobuf.Timestamp
+	13, // 7: proto.BuildReceipt.outputs:type_name -> proto.BuildReceipt.OutputsEntry
 	4,  // 8: proto.BuildRequest.closure:type_name -> proto.BuildClosure
 	5,  // 9: proto.BuildStatus.success:type_name -> proto.BuildReceipt
-	15, // 10: proto.BuilderMetadata.definition:type_name -> google.protobuf.FileDescriptorProto
+	17, // 10: proto.BuilderMetadata.definition:type_name -> google.protobuf.FileDescriptorProto
 	8,  // 11: proto.BuilderList.builders:type_name -> proto.BuilderMetadata
-	12, // 12: proto.BuildStatusResponse.statuses:type_name -> proto.BuildStatusResponse.StatusesEntry
-	1,  // 13: proto.BuildReceipt.OutputsEntry.value:type_name -> proto.Hash
-	0,  // 14: proto.BuildStatusResponse.StatusesEntry.value:type_name -> proto.CurrentBuildStatus
-	15, // [15:15] is the sub-list for method output_type
-	15, // [15:15] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	14, // 12: proto.BuildStatusResponse.statuses:type_name -> proto.BuildStatusResponse.StatusesEntry
+	2,  // 13: proto.HashRequest.definitions:type_name -> proto.Definition
+	1,  // 14: proto.HashResponse.hashes:type_name -> proto.Hash
+	0,  // 15: proto.HashResponse.statuses:type_name -> proto.CurrentBuildStatus
+	1,  // 16: proto.BuildReceipt.OutputsEntry.value:type_name -> proto.Hash
+	0,  // 17: proto.BuildStatusResponse.StatusesEntry.value:type_name -> proto.CurrentBuildStatus
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_build_proto_init() }
@@ -746,7 +852,7 @@ func file_build_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_build_proto_rawDesc), len(file_build_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   12,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

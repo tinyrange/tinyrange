@@ -83,3 +83,10 @@ enum CurrentBuildStatus {
 }
 
 message BuildStatusResponse { map<string, CurrentBuildStatus> statuses = 1; }
+
+message HashRequest { repeated Definition definitions = 1; }
+
+message HashResponse {
+  repeated Hash hashes = 1;
+  repeated CurrentBuildStatus statuses = 2;
+}
