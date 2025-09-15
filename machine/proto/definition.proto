@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package proto;
+option go_package = "github.com/tinyrange/tinyrange/machine/proto";
+
+import "machine/proto/directive.proto";
+
+message MachineConfig {
+  int32 cpu_cores = 1;
+  int32 memory_mb = 2;
+  int32 min_disk_mb = 3;
+}
+
+message CreateMachineDefinition {
+  repeated Directive directives = 1;
+  MachineConfig config = 2;
+}

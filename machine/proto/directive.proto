@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package proto;
+option go_package = "github.com/tinyrange/tinyrange/machine/proto";
+
+import "build/proto/source.proto";
+
+message RunCommandDirective { string command = 1; }
+
+message EnvironmentDirective { map<string, string> variables = 1; }
+
+message ExportPortDirective { uint32 port = 1; }
+
+message FileContents {
+  oneof contents { bytes raw = 1; }
+}
+
+message AddFileDirective {
+  string path = 1;
+  oneof source {
+    proto.FileSource src = 2;
+    FileContents contents = 3;
+  }
+}
+
+message AddArchiveDirective {
+  string target = 1;
+  proto.FileSource source = 2;
+}
+
+message AddVolumeDirective {
+  string name = 1;
+  string mount_path = 2;
+  int32 size_mb = 3;
+  bool persistent = 4;
+}
+
+message Directive {
+  oneof directive {
+    // Basic filesystem manipulation
+    AddFileDirective add_file = 1;
+    AddArchiveDirective archive = 2;
+
+    // Machine configuration
+    RunCommandDirective run_command = 3;
+    EnvironmentDirective environment = 4;
+    ExportPortDirective export_port = 5;
+    AddVolumeDirective volume = 6;
+  }
+}
