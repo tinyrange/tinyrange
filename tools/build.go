@@ -221,8 +221,24 @@ func main() {
 	run := fs.Bool("run", false, "Run the built binary after building")
 	test := fs.Bool("test", false, "Run tests after building")
 	proto := fs.Bool("proto", false, "Build protobuf files")
+	fmt := fs.Bool("fmt", false, "Run go fmt on all .go files")
 
 	fs.Parse(os.Args[1:])
+
+	if *fmt {
+		slog.Info("running go fmt")
+		cmd := exec.Command("go", "fmt", "./...")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Stdin = os.Stdin
+
+		if err := cmd.Run(); err != nil {
+			slog.Error("go fmt failed", "error", err)
+			os.Exit(1)
+		}
+
+		return
+	}
 
 	cwd, err := os.Getwd()
 	if err != nil {
