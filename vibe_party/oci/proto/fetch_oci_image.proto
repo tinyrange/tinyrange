@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package proto;
+option go_package = "github.com/tinyrange/tinyrange/vibe_party/oci/proto";
+
+message FetchOciImageDefinition {
+  string registry = 1;
+  string image = 2;
+  string reference = 3;
+  string architecture = 4;
+}

@@ -204,16 +204,6 @@ func main() {
 		}
 
 		return
-	} else if *test {
-		slog.Info("running tests")
-		cmd := exec.Command("go", "test", "./...")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.Stdin = os.Stdin
-
-		if err := cmd.Run(); err != nil {
-			os.Exit(1)
-		}
 	}
 
 	cwd, err := os.Getwd()
@@ -282,6 +272,31 @@ func main() {
 			slog.Error("protoc failed", "error", err)
 			os.Exit(1)
 		}
+
+		if err := ctx.buildProto(buildProtoOptions{
+			output: "vibe_party/oci/proto",
+			golang: true,
+		},
+			// OCI fetcher
+			"vibe_party/oci/proto/fetch_oci_image.proto",
+		); err != nil {
+			slog.Error("protoc failed", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	if *test {
+		slog.Info("running tests")
+		cmd := exec.Command("go", "test", "./...")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Stdin = os.Stdin
+
+		if err := cmd.Run(); err != nil {
+			os.Exit(1)
+		}
+
+		return
 	}
 
 	slog.Info("building tinyrange", "os", goSettings.os, "arch", goSettings.arch)

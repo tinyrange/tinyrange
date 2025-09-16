@@ -11,6 +11,8 @@ import (
 	"github.com/tinyrange/tinyrange/build/cache/memory"
 
 	buildhttp "github.com/tinyrange/tinyrange/build/http"
+
+	_ "github.com/tinyrange/tinyrange/vibe_party/oci"
 )
 
 var (
