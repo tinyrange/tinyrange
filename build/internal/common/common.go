@@ -36,11 +36,6 @@ type WritableFile interface {
 	Hash() *proto.Hash
 }
 
-type ArchiveWriter interface {
-	io.Closer
-	WriteEntry(entry *archive.Entry, r io.Reader) error
-}
-
 type Context interface {
 	Hash() *proto.Hash
 	Decode(msg gproto.Message) error
@@ -48,7 +43,7 @@ type Context interface {
 	HttpClient() *http.Client
 
 	Create(ft FileType) (WritableFile, error)
-	CreateArchive() (ArchiveWriter, error)
+	WriteArchiveEntry(entry *archive.Entry, r io.Reader) error
 
 	ProgressBar(name string, size int64, r io.ReadCloser) io.ReadCloser
 }

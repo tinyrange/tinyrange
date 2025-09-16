@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/schollz/progressbar/v3"
@@ -41,6 +42,7 @@ func (a *archiveWriter) Close() error {
 }
 
 type contextImpl struct {
+	mtx     sync.Mutex
 	write   common.WritableBuildCacheDirectory
 	receipt *proto.BuildReceipt
 	db      *databaseImpl
@@ -48,6 +50,35 @@ type contextImpl struct {
 	msg     *proto.Definition
 	depends map[string]*proto.Definition
 	writers map[common.FileType]common.WritableFile
+	archive *archive.Writer
+}
+
+// WriteArchiveEntry implements common.Context.
+func (c *contextImpl) WriteArchiveEntry(entry *archive.Entry, r io.Reader) error {
+	if c.archive == nil {
+		c.mtx.Lock()
+		defer c.mtx.Unlock()
+
+		index, err := c.Create(common.FileType_ArchiveIndex)
+		if err != nil {
+			return err
+		}
+		contents, err := c.Create(common.FileType_ArchiveContents)
+		if err != nil {
+			index.Close()
+			return err
+		}
+
+		w, err := archive.NewWriter(index, contents)
+		if err != nil {
+			contents.Close()
+			return err
+		}
+
+		c.archive = w
+	}
+
+	return c.archive.WriteEntry(entry, r)
 }
 
 // ProgressBar implements common.Context.
@@ -69,26 +100,6 @@ func (c *contextImpl) Create(ft common.FileType) (common.WritableFile, error) {
 	}
 	c.writers[ft] = w
 	return w, nil
-}
-
-func (c *contextImpl) CreateArchive() (common.ArchiveWriter, error) {
-	index, err := c.Create(common.FileType_ArchiveIndex)
-	if err != nil {
-		return nil, err
-	}
-	contents, err := c.Create(common.FileType_ArchiveContents)
-	if err != nil {
-		index.Close()
-		return nil, err
-	}
-
-	w, err := archive.NewWriter(index, contents)
-	if err != nil {
-		contents.Close()
-		return nil, err
-	}
-
-	return &archiveWriter{w, index, contents}, nil
 }
 
 // HttpClient implements common.Context.

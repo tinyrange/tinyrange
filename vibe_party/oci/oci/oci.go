@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/tinyrange/tinyrange/archive"
+	"github.com/tinyrange/tinyrange/build"
 )
 
 // Minimal types for OCI/Docker manifests and indices.
@@ -128,12 +129,7 @@ func (c *Client) getWithAuth(url string, accept []string) (*http.Response, error
 	return resp, nil
 }
 
-// FetchImage fetches an OCI image and writes a merged archive to ark.
-type entryWriter interface {
-	WriteEntry(entry *archive.Entry, r io.Reader) error
-}
-
-func (c *Client) FetchImage(image string, reference string, architecture string, ark entryWriter) error {
+func (c *Client) FetchImage(ctx build.Context, image string, reference string, architecture string) error {
 	// Step 1: fetch tag/digest index
 	idxURL := fmt.Sprintf("%s/%s/manifests/%s", c.Registry, image, reference)
 	resp, err := c.getWithAuth(idxURL, []string{
@@ -255,7 +251,7 @@ func (c *Client) FetchImage(image string, reference string, architecture string,
 				continue
 			}
 
-			if err := ark.WriteEntry(&archive.Entry{
+			if err := ctx.WriteArchiveEntry(&archive.Entry{
 				Kind:     kind,
 				Name:     hdr.Name,
 				Linkname: hdr.Linkname,

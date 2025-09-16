@@ -44,12 +44,6 @@ func (e *extractArchiveBuilder) Build(ctx common.Context) error {
 		return fmt.Errorf("unsupported compression type: %v", params.CompressionType)
 	}
 
-	ark, err := ctx.CreateArchive()
-	if err != nil {
-		return err
-	}
-	defer ark.Close()
-
 	switch params.ArchiveType {
 	case proto.ArchiveType_ARCHIVE_TYPE_TAR:
 		r := tar.NewReader(reader)
@@ -88,7 +82,7 @@ func (e *extractArchiveBuilder) Build(ctx common.Context) error {
 				return fmt.Errorf("unknown type flag: %d", hdr.Typeflag)
 			}
 
-			if err := ark.WriteEntry(&archive.Entry{
+			if err := ctx.WriteArchiveEntry(&archive.Entry{
 				Kind:     typeFlag,
 				Name:     hdr.Name,
 				Linkname: hdr.Linkname,

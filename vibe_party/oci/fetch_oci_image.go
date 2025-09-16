@@ -39,14 +39,8 @@ func (b *fetchOciImageBuilder) Build(ctx build.Context) error {
 		ref = "latest"
 	}
 
-	ark, err := ctx.CreateArchive()
-	if err != nil {
-		return err
-	}
-	defer ark.Close()
-
 	client := &oci.Client{HTTPClient: ctx.HttpClient(), Registry: registryURL}
-	return client.FetchImage(params.Image, ref, params.Architecture, ark)
+	return client.FetchImage(ctx, params.Image, ref, params.Architecture)
 }
 
 func init() {
