@@ -38,7 +38,7 @@ type WritableFile interface {
 
 type ArchiveWriter interface {
 	io.Closer
-	WriteEntry(entry *archive.EntryFactory, r io.Reader) error
+	WriteEntry(entry *archive.Entry, r io.Reader) error
 }
 
 type Context interface {

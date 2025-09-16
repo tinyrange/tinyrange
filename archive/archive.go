@@ -131,59 +131,20 @@ const (
 	EntryKindDeleted             // Deleted file
 )
 
-type EntryFactory struct {
-	kind     EntryKind
-	name     string
-	linkname string
-	size     int64
-	mode     uint32
-	uid      int
-	gid      int
-	modTime  int64
-}
+type Entry struct {
+	Kind EntryKind
 
-func (e *EntryFactory) Kind(k EntryKind) *EntryFactory {
-	e.kind = k
-	return e
-}
+	Name     string
+	Linkname string
 
-func (e *EntryFactory) Name(s string) *EntryFactory {
-	if strings.ContainsRune(s, '\t') {
-		panic("name contains tab character")
-	}
+	Size int64
 
-	e.name = s
-	return e
-}
+	Mode fs.FileMode
 
-func (e *EntryFactory) Linkname(s string) *EntryFactory {
-	if strings.ContainsRune(s, '\t') {
-		panic("name contains tab character")
-	}
+	Uid int
+	Gid int
 
-	e.linkname = s
-	return e
-}
-
-func (e *EntryFactory) Size(s int64) *EntryFactory {
-	e.size = s
-	return e
-}
-
-func (e *EntryFactory) Mode(s fs.FileMode) *EntryFactory {
-	e.mode = uint32(s)
-	return e
-}
-
-func (e *EntryFactory) Owner(uid, gid int) *EntryFactory {
-	e.uid = uid
-	e.gid = gid
-	return e
-}
-
-func (e *EntryFactory) ModTime(t time.Time) *EntryFactory {
-	e.modTime = t.Unix()
-	return e
+	ModTime time.Time
 }
 
 const (
@@ -215,34 +176,34 @@ const (
 // static assert for staticSize
 var _ [0]struct{} = [(hashOffset + hashSize + 1) - staticSize]struct{}{}
 
-func (e *EntryFactory) encode(s *staticPrintf, hashBytes []byte, offset int64) error {
-	if strings.ContainsAny(e.name, "\n\t") || strings.ContainsAny(e.linkname, "\n\t") {
+func (e *Entry) encode(s *staticPrintf, hashBytes []byte, offset int64) error {
+	if strings.ContainsAny(e.Name, "\n\t") || strings.ContainsAny(e.Linkname, "\n\t") {
 		return fmt.Errorf("invalid entry name or linkname contains control characters")
 	}
-	lineLength := staticSize + len(e.name) + len(e.linkname) + terminatorSize
+	lineLength := staticSize + len(e.Name) + len(e.Linkname) + terminatorSize
 	s.Grow(8 + 1 + lineLength)
 
 	s.WriteInt16(int16(lineLength))
 	s.WriteRune(' ')
-	s.WriteInt8(uint8(e.kind))
+	s.WriteInt8(uint8(e.Kind))
 	s.WriteRune(' ')
-	s.WriteInt32(int32(e.mode))
+	s.WriteInt32(int32(e.Mode))
 	s.WriteRune(' ')
-	s.WriteInt32(int32(e.uid))
+	s.WriteInt32(int32(e.Uid))
 	s.WriteRune(':')
-	s.WriteInt32(int32(e.gid))
+	s.WriteInt32(int32(e.Gid))
 	s.WriteRune(' ')
-	s.WriteInt64(e.modTime)
+	s.WriteInt64(e.ModTime.Unix())
 	s.WriteRune(' ')
-	s.WriteInt64(e.size)
+	s.WriteInt64(e.Size)
 	s.WriteRune(' ')
 	s.WriteInt64(offset)
 	s.WriteRune(' ')
 	s.WriteBytes(hashBytes)
 	s.WriteRune(' ')
-	s.WriteString(e.name)
+	s.WriteString(e.Name)
 	s.WriteRune('\t')
-	s.WriteString(e.linkname)
+	s.WriteString(e.Linkname)
 	s.WriteRune('\n')
 
 	return nil
@@ -276,27 +237,27 @@ type Writer struct {
 
 var paddingBytes [4096]byte
 
-func (w *Writer) WriteEntry(entry *EntryFactory, r io.Reader) error {
-	if entry.kind == EntryKindInvalid {
+func (w *Writer) WriteEntry(entry *Entry, r io.Reader) error {
+	if entry.Kind == EntryKindInvalid {
 		return errors.New("invalid entry kind")
 	}
-	if entry.name == "" {
+	if entry.Name == "" {
 		return errors.New("empty entry name")
 	}
 
 	w.hashedWriter.hash.Reset()
 	w.staticPrintf.Reset()
 
-	if r != nil && entry.size > 0 {
+	if r != nil && entry.Size > 0 {
 		w.limitReader.R = r
-		w.limitReader.N = entry.size
+		w.limitReader.N = entry.Size
 
 		// write contents
 		n, err := io.CopyBuffer(&w.hashedWriter, &w.limitReader, w.copyBuffer)
 		if err != nil {
 			return fmt.Errorf("failed to write contents: %w", err)
 		}
-		if n != entry.size {
+		if n != entry.Size {
 			return errors.New("failed to write contents: short write")
 		}
 

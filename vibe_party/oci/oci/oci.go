@@ -130,7 +130,7 @@ func (c *Client) getWithAuth(url string, accept []string) (*http.Response, error
 
 // FetchImage fetches an OCI image and writes a merged archive to ark.
 type entryWriter interface {
-	WriteEntry(entry *archive.EntryFactory, r io.Reader) error
+	WriteEntry(entry *archive.Entry, r io.Reader) error
 }
 
 func (c *Client) FetchImage(image string, reference string, architecture string, ark entryWriter) error {
@@ -255,15 +255,16 @@ func (c *Client) FetchImage(image string, reference string, architecture string,
 				continue
 			}
 
-			var ent archive.EntryFactory
-			if err := ark.WriteEntry(ent.
-				Kind(kind).
-				Name(hdr.Name).
-				Linkname(hdr.Linkname).
-				Size(hdr.Size).
-				Mode(info.Mode()).
-				Owner(hdr.Uid, hdr.Gid).
-				ModTime(hdr.ModTime), tr); err != nil {
+			if err := ark.WriteEntry(&archive.Entry{
+				Kind:     kind,
+				Name:     hdr.Name,
+				Linkname: hdr.Linkname,
+				Size:     hdr.Size,
+				Mode:     info.Mode(),
+				Uid:      hdr.Uid,
+				Gid:      hdr.Gid,
+				ModTime:  hdr.ModTime,
+			}, tr); err != nil {
 				rc.Close()
 				bresp.Body.Close()
 				return err

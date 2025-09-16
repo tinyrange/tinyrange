@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"io/fs"
 	"testing"
 )
 
@@ -13,7 +14,7 @@ func BenchmarkHexEncode(b *testing.B) {
 	hash := make([]byte, sha256.Size)
 	dst := make([]byte, hex.EncodedLen(len(hash)))
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		hex.Encode(dst, hash)
 	}
 }
@@ -21,21 +22,23 @@ func BenchmarkHexEncode(b *testing.B) {
 func BenchmarkEntryEncode(b *testing.B) {
 	hash := make([]byte, sha256.Size)
 
-	ent := new(EntryFactory)
-	ent = ent.Name("file")
+	ent := Entry{
+		Name: "name",
+	}
 
 	var s staticPrintf
 
-	for i := 0; i < b.N; i++ {
-		for i := 0; i < 1000; i++ {
+	for b.Loop() {
+		for range 1000 {
 			s.Reset()
 
-			ent = ent.
-				Kind(EntryKindRegular).
-				Size(1024).
-				Mode(0644)
+			ent2 := ent
 
-			if err := ent.encode(&s, hash, 0); err != nil {
+			ent2.Kind = EntryKindRegular
+			ent2.Size = 1024
+			ent2.Mode = fs.FileMode(0644)
+
+			if err := ent2.encode(&s, hash, 0); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -53,9 +56,9 @@ func BenchmarkCopyBuffer(b *testing.B) {
 
 	limited := io.LimitedReader{}
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		dst.Reset()
-		for i := 0; i < 1000; i++ {
+		for range 1000 {
 			reader.Reset(srcData)
 			limited.N = 1024
 			limited.R = reader
@@ -76,8 +79,8 @@ func BenchmarkHashBuffer(b *testing.B) {
 
 	hash := sha256.New()
 
-	for i := 0; i < b.N; i++ {
-		for i := 0; i < 1000; i++ {
+	for b.Loop() {
+		for range 1000 {
 			hash.Reset()
 			hash.Write(srcData)
 		}
@@ -90,19 +93,17 @@ func CreateArchiveWithSize(index io.Writer, contents io.Writer, items int, fileD
 		return err
 	}
 
-	ent := new(EntryFactory)
-
-	ent = ent.Name("file")
-
 	reader := bytes.NewReader(fileData)
 
-	for i := 0; i < items; i++ {
+	for range items {
 		reader.Reset(fileData)
 		if err := writer.WriteEntry(
-			ent.
-				Kind(EntryKindRegular).
-				Size(int64(len(fileData))).
-				Mode(0644),
+			&Entry{
+				Name: "file",
+				Kind: EntryKindRegular,
+				Size: int64(len(fileData)),
+				Mode: 0644,
+			},
 			reader,
 		); err != nil {
 			return err
@@ -123,7 +124,7 @@ func BenchmarkArchiveCreate(b *testing.B) {
 	index := new(bytes.Buffer)
 	contents := new(bytes.Buffer)
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		index.Reset()
 		contents.Reset()
 
@@ -149,7 +150,7 @@ func BenchmarkArchiveRead(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		ark, err := NewReader(bytes.NewReader(index.Bytes()), nil, bytes.NewReader(contents.Bytes()))
 		if err != nil {
 			b.Fatal(err)

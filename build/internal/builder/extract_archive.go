@@ -88,16 +88,16 @@ func (e *extractArchiveBuilder) Build(ctx common.Context) error {
 				return fmt.Errorf("unknown type flag: %d", hdr.Typeflag)
 			}
 
-			var fact archive.EntryFactory
-
-			if err := ark.WriteEntry(fact.
-				Kind(typeFlag).
-				Name(hdr.Name).
-				Linkname(hdr.Linkname).
-				Size(hdr.Size).
-				Mode(info.Mode()).
-				Owner(hdr.Uid, hdr.Gid).
-				ModTime(hdr.ModTime), r); err != nil {
+			if err := ark.WriteEntry(&archive.Entry{
+				Kind:     typeFlag,
+				Name:     hdr.Name,
+				Linkname: hdr.Linkname,
+				Size:     hdr.Size,
+				Mode:     info.Mode(),
+				Uid:      hdr.Uid,
+				Gid:      hdr.Gid,
+				ModTime:  hdr.ModTime,
+			}, r); err != nil {
 				return err
 			}
 		}
