@@ -37,7 +37,7 @@ require (
 	golang.org/x/net v0.48.0
 	golang.org/x/sys v0.39.0
 	golang.org/x/term v0.38.0
-	google.golang.org/protobuf v1.36.10
+	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20241113022301-6fd8b69821a4
 	mvdan.cc/sh/v3 v3.12.0
