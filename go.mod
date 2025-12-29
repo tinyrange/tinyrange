@@ -24,7 +24,7 @@ require (
 	github.com/moby/buildkit v0.26.2
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/ramr/go-reaper v0.3.1
-	github.com/schollz/progressbar/v3 v3.18.0
+	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/spf13/cobra v1.10.2
 	github.com/things-go/go-socks5 v0.1.0
 	github.com/tinyrange/wireguard v0.1.0
