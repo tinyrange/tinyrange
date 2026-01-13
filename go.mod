@@ -32,9 +32,9 @@ require (
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
 	go.starlark.net v0.0.0-20241125201518-c05ff208a98f
 	golang.org/x/arch v0.23.0
-	golang.org/x/crypto v0.46.0
+	golang.org/x/crypto v0.47.0
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621
-	golang.org/x/net v0.48.0
+	golang.org/x/net v0.49.0
 	golang.org/x/sys v0.40.0
 	golang.org/x/term v0.39.0
 	google.golang.org/protobuf v1.36.11
@@ -68,7 +68,7 @@ require (
 	github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923 // indirect
 	golang.org/x/mod v0.31.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
+	golang.org/x/text v0.33.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.40.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
