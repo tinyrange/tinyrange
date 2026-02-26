@@ -34,7 +34,7 @@ require (
 	golang.org/x/arch v0.24.0
 	golang.org/x/crypto v0.48.0
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621
-	golang.org/x/net v0.50.0
+	golang.org/x/net v0.51.0
 	golang.org/x/sys v0.41.0
 	golang.org/x/term v0.40.0
 	google.golang.org/protobuf v1.36.11
