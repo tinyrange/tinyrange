@@ -40,7 +40,7 @@ require (
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20241113022301-6fd8b69821a4
-	mvdan.cc/sh/v3 v3.12.0
+	mvdan.cc/sh/v3 v3.13.0
 )
 
 require (
