@@ -1,6 +1,6 @@
 module github.com/tinyrange/tinyrange
 
-go 1.25.0
+go 1.25.5
 
 require (
 	github.com/Code-Hex/vz/v3 v3.7.1
@@ -21,7 +21,7 @@ require (
 	github.com/jsimonetti/rtnetlink v1.4.2
 	github.com/klauspost/compress v1.18.4
 	github.com/miekg/dns v1.1.72
-	github.com/moby/buildkit v0.27.1
+	github.com/moby/buildkit v0.28.0
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/ramr/go-reaper v0.3.1
 	github.com/schollz/progressbar/v3 v3.19.0
